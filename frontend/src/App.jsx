@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import Login from "./Login";
-import Dashboard from "./Dashboard";
+import Login from "./pages/Login";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -26,13 +25,14 @@ export default function App() {
     setUser(null);
   };
 
+  if (!user) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
-    <div>
-      {user ? (
-        <Dashboard user={user} onLogout={handleLogout} />
-      ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
-      )}
+    <div style={{ padding: 24 }}>
+      <h2>Welcome, {user.email}</h2>
+      <button onClick={handleLogout}>Logout</button>
     </div>
   );
 }

@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const profileRepository = require('../repositories/profileRepository');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_change_this_in_production';
+const JWT_SECRET = process.env.JWT_SECRET || 'MY_SECRET_KEY';
 
 // Login user - return token and user info
 const login = async (email, password) => {
@@ -29,7 +29,7 @@ const login = async (email, password) => {
     const token = jwt.sign(
         { userId: account.id, email: account.email, role: account.role },
         JWT_SECRET,
-        { expiresIn: '24h' }
+        { expiresIn: '1h' }
     );
 
     return {
