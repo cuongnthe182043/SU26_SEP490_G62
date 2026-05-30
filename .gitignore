@@ -41,6 +41,9 @@ Thumbs.db
 .expo-shared/
 node_modules/
 .env
+CLAUDE.md
+.claude
+AGENTS.md
 .cache/
 dist/
 npm-debug.log*
