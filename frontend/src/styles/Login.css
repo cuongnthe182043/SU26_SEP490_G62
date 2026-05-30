@@ -1,0 +1,93 @@
+.login-root{
+  display:flex;
+  min-height:100vh;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+.login-left{
+  flex:1.2;
+  background-image: url('/chuyen%20nha%20123.jpg');
+  background-size:cover;
+  background-position:center;
+  position:relative;
+  overflow:hidden;
+}
+.login-left-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px;
+  text-align:center;
+  z-index:1;
+}
+.login-logo-large{
+  display:none;
+}
+.login-title{
+  font-size:32px;
+  margin:0;
+  font-weight:700;
+  letter-spacing:0.02em;
+  color:#ffffff;
+  text-shadow:0 1px 10px rgba(0,0,0,0.4);
+}
+.login-sub{
+  opacity:0.9;
+  margin-top:10px;
+  max-width:320px;
+  line-height:1.55;
+  font-size:15px;
+  color:#e5ecf4;
+}
+
+.login-right{
+  flex:0.9;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#eef2f7;
+  padding:24px;
+}
+.login-card{
+  width:100%;
+  max-width:460px;
+  background:#fff;
+  padding:34px;
+  border-radius:18px;
+  box-shadow:0 20px 60px rgba(15,23,42,0.12);
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  min-height:520px;
+}
+.login-help{margin-top:16px;font-size:13px;color:#5c6b77;line-height:1.5}
+.login-card h2{margin:0 0 16px 0;font-size:22px;font-weight:700;color:#16223b}
+.login-logo{width:80px;height:auto;margin:0 auto 18px auto;display:block}
+.login-form{display:flex;flex-direction:column;gap:18px;margin-top:16px;text-align:left}
+.login-form .field{display:flex;flex-direction:column;font-size:14px;text-align:left}
+.login-form .label-text{font-size:14px;color:#2d3a4f;font-weight:600;margin-bottom:8px}
+.login-form input{padding:14px 16px;border:1px solid #d8e1ed;border-radius:12px;margin-top:0;font-size:15px;color:#1f2a3d;background:#f9fbfd}
+.login-form input::placeholder{color:#9aa5b3}
+.login-form input:focus{outline:none;box-shadow:0 0 0 4px rgba(25,118,210,0.12);border-color:#1976d2}
+.input-error{border-color:#d14343 !important;}
+.field-error{color:#d14343;font-size:13px;margin-top:8px}
+.login-btn{margin-top:8px;padding:14px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:12px;cursor:pointer;font-size:15px;font-weight:600;transition:background 0.2s ease}
+.login-btn:hover{background:#1b40bf}
+.login-error{color:#b00020;font-size:14px;text-align:left;padding:0 2px}
+
+.login-row{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.remember{display:flex;align-items:center;gap:8px;color:#555;font-size:13px;line-height:1.2}
+.remember input{margin:0;display:block}
+.forgot{font-size:13px;color:#1976d2;text-decoration:none}
+.forgot:hover{text-decoration:underline}
+
+@media(max-width:1000px){
+  .login-root{flex-direction:column}
+  .login-left{height:34vh;flex:none}
+  .login-right{flex:1;padding:24px}
+  .login-card{width:100%;max-width:420px;margin:0 auto}
+}
+
