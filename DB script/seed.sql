@@ -5,8 +5,8 @@
 -- 1. ROLES MANAGEMENT (Sync with initial schema definition)
 --------------------------------------------------------------------------------
 INSERT INTO roles (id, name) VALUES
-(1, 'admin'),
-(2, 'dispatcher'),  -- Kept as dispatcher to maintain consistency with system architecture
+(1, 'manager'),
+(2, 'coordinator'),  
 (3, 'accountant'),
 (4, 'driver')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
