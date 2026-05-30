@@ -230,13 +230,3 @@ SU26_SEP490_G62/
 - 🔐 Accounts: Manager thêm/xoá user trực tiếp qua SQL hoặc admin panel (không tự đăng ký)
 
 ---
-
-## Tiếp Theo?
-
-- [x] Password hashes: Đã sử dụng `crypt()` + bcrypt trong seed.sql
-- [ ] Thêm admin panel để quản lý users
-- [ ] Thêm middleware role-based access control (RBAC) chi tiết
-- [ ] Thêm refresh token logic
-- [ ] Database migration tool (knex, typeorm, etc.)
-- [ ] API documentation (Swagger)
-- [ ] Cấu hình production environment (nginx, SSL, etc.)

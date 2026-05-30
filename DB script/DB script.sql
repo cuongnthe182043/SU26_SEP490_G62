@@ -27,7 +27,7 @@ CREATE TABLE roles (
 
 INSERT INTO roles (id, name)
 VALUES
-(1, 'admin'),
+(1, 'manager'),
 (2, 'coordinator'),
 (3, 'accountant'),
 (4, 'driver');
