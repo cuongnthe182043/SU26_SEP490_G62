@@ -1,0 +1,113 @@
+/* Dashboard Styling */
+.dashboard-container {
+    background: linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%);
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+}
+
+.dashboard-header h1 {
+    color: #6366F1;
+    margin: 0;
+}
+
+.logout-btn {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.2s ease;
+}
+
+.logout-btn:hover {
+    transform: translateY(-2px);
+}
+
+.user-info-card,
+.permissions-card,
+.roles-list {
+    background: white;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.1);
+}
+
+.user-info-card h2,
+.permissions-card h2,
+.roles-list h2 {
+    color: #6366F1;
+    margin-top: 0;
+    border-bottom: 2px solid #6366F1;
+    padding-bottom: 0.75rem;
+}
+
+.user-info-card p {
+    color: #2D3748;
+    margin: 0.5rem 0;
+}
+
+.role-badge {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.permissions-card ul {
+    list-style: none;
+    padding: 0;
+}
+
+.permissions-card li {
+    color: #2D3748;
+    padding: 0.5rem 0;
+    font-size: 1rem;
+}
+
+.permissions-card li:before {
+    color: #6366F1;
+    font-weight: bold;
+}
+
+/* Table Styling */
+.roles-list table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.roles-list table thead {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+    color: white;
+}
+
+.roles-list table th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+}
+
+.roles-list table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #E2E8F0;
+    color: #2D3748;
+}
+
+.roles-list table tbody tr:hover {
+    background-color: #F8F9FF;
+}
