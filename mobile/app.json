@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "sep490g62",
+    "slug": "sep490g62",
     "scheme": "g62mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,9 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.g62.mobile",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.g62.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -29,7 +31,21 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3b773e4e-dae2-4492-8ae0-4986a560b3bf"
+      }
+    },
+    "owner": "sep490g62",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3b773e4e-dae2-4492-8ae0-4986a560b3bf"
+    }
   }
 }
