@@ -1,5 +1,6 @@
-import { Text, YStack } from 'tamagui';
+import { YStack } from 'tamagui';
 
+import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
 
 type StatCardProps = {
@@ -19,12 +20,12 @@ export function StatCard({ value, label }: StatCardProps) {
       borderWidth={1}
       borderColor={appTheme.colors.border}
     >
-      <Text fontSize={21} fontWeight="900" color={appTheme.colors.primary}>
+      <AppText variant="sectionTitle" tone="primary">
         {value}
-      </Text>
-      <Text fontSize={12} lineHeight={16} color={appTheme.colors.textMuted}>
+      </AppText>
+      <AppText variant="caption" tone="muted">
         {label}
-      </Text>
+      </AppText>
     </YStack>
   );
 }
