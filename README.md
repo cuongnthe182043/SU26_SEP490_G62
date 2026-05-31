@@ -40,3 +40,29 @@ This project includes Docker support for the backend, frontend, and PostgreSQL d
   ```
 - The frontend uses `VITE_API_BASE_URL=http://localhost:9999`.
 - If you want to use a different database name or credentials, update `backend/.env` before starting.
+## Mobile app
+
+Sau khi pull code về, cài dependencies cho mobile:
+
+```powershell
+npm install
+```
+
+Chạy Expo từ root repo:
+
+```powershell
+npm start
+```
+
+Nếu muốn cài lại riêng mobile:
+
+```powershell
+npm run setup
+```
+
+Hoặc chạy trực tiếp trong thư mục mobile:
+
+```powershell
+cd mobile
+npm start
+```
