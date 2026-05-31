@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Input, Text, YStack } from 'tamagui';
+import { Input, YStack } from 'tamagui';
 
+import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
 
 type FormFieldProps = {
@@ -28,15 +29,16 @@ export function FormField({
 }: FormFieldProps) {
   return (
     <YStack gap="$2">
-      <Text fontSize={14} fontWeight="800" color={appTheme.colors.text}>
+      <AppText variant="caption">
         {label}
-      </Text>
+      </AppText>
       <Input
         height={54}
         borderRadius={appTheme.radius.md}
         borderColor={error ? appTheme.colors.danger : appTheme.colors.border}
         backgroundColor={appTheme.colors.surface}
         color={appTheme.colors.text}
+        fontFamily={appTheme.typography.fontFamily.regular}
         placeholder={placeholder}
         placeholderTextColor={appTheme.colors.textMuted}
         value={value}
@@ -51,9 +53,9 @@ export function FormField({
         }}
       />
       {error ? (
-        <Text selectable fontSize={12} lineHeight={17} fontWeight="700" color={appTheme.colors.danger}>
+        <AppText selectable variant="caption" tone="danger">
           {error}
-        </Text>
+        </AppText>
       ) : null}
       {rightElement}
     </YStack>
