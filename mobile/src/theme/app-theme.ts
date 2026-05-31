@@ -11,6 +11,8 @@ export const appTheme = {
     textMuted: '#64748B',
     border: '#E2E8F0',
     success: '#22C55E',
+    danger: '#DC2626',
+    warning: '#F59E0B',
   },
   radius: {
     sm: 14,
