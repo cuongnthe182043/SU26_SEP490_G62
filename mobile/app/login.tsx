@@ -1,5 +1,5 @@
 import { LoginScreen } from '@/features/auth/login';
 
-export default function IndexRoute() {
+export default function LoginRoute() {
   return <LoginScreen />;
 }
