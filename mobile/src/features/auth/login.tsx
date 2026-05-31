@@ -1,38 +1,52 @@
-import { useMemo, useState } from 'react';
-import { Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react-native';
-import { ScrollView, Text, XStack, YStack } from 'tamagui';
+import { useMemo, useState } from "react";
+import { Pressable } from "react-native";
+import { router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import {
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+} from "lucide-react-native";
+import { ScrollView, Text, XStack, YStack } from "tamagui";
 
-import { AppButton } from '@/components/app-button';
-import { FormField } from '@/components/form-field';
-import { appTheme } from '@/theme/app-theme';
+import { AppButton } from "@/components/app-button";
+import { FormField } from "@/components/form-field";
+import { appTheme } from "@/theme/app-theme";
 
-import { hasLoginErrors, type LoginFormErrors, validateLoginForm } from './login-validation';
-import { useLogin } from './use-login';
+import {
+  hasLoginErrors,
+  type LoginFormErrors,
+  validateLoginForm,
+} from "./login-validation";
+import { useLogin } from "./use-login";
 
 export function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<LoginFormErrors>({});
   const { error, isLoading, login } = useLogin();
+  const [loading, setLoading] = useState(false);
 
-  const canSubmit = useMemo(() => email.trim().length > 0 && password.length > 0, [email, password]);
+  const canSubmit = useMemo(
+    () => email.trim().length > 0 && password.length > 0,
+    [email, password],
+  );
 
-  const handleSubmit = async () => {
-    const nextErrors = validateLoginForm(email, password);
-    setFormErrors(nextErrors);
+const handleSubmit = async () => {
+  const nextErrors = validateLoginForm(email, password);
+  setFormErrors(nextErrors);
 
-    if (hasLoginErrors(nextErrors) || isLoading) return;
+  if (hasLoginErrors(nextErrors) || isLoading) return;
 
-    const result = await login(email, password);
-    if (result) {
-      setPassword('');
-      router.replace('/driver-home');
-    }
-  };
+  const result = await login(email, password);
+  if (result) {
+    setPassword('');
+    router.replace('/driver-home');
+  }
+};
 
   return (
     <>
@@ -72,18 +86,32 @@ export function LoginScreen() {
                 backgroundColor={appTheme.colors.primarySoft}
               >
                 <ShieldCheck size={15} color={appTheme.colors.primary} />
-                <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
-                  {'B\u1ea3o m\u1eadt'}
+                <Text
+                  fontSize={12}
+                  fontWeight="900"
+                  color={appTheme.colors.primary}
+                >
+                  Bảo mật
                 </Text>
               </XStack>
             </XStack>
 
             <YStack gap="$3">
-              <Text fontSize={38} lineHeight={44} fontWeight="900" color={appTheme.colors.text}>
-                {'\u0110\u0103ng nh\u1eadp'}
+              <Text
+                fontSize={38}
+                lineHeight={44}
+                fontWeight="900"
+                color={appTheme.colors.text}
+              >
+                Đăng nhập
               </Text>
-              <Text fontSize={16} lineHeight={24} color={appTheme.colors.textMuted}>
-                {'Truy c\u1eadp h\u1ec7 th\u1ed1ng giao v\u1eadn \u0111\u1ec3 theo d\u00f5i \u0111\u01a1n h\u00e0ng, \u0111i\u1ec1u ph\u1ed1i v\u00e0 x\u1eed l\u00fd c\u00f4ng vi\u1ec7c.'}
+              <Text
+                fontSize={16}
+                lineHeight={24}
+                color={appTheme.colors.textMuted}
+              >
+                Truy cập hệ thống giao vận để theo dõi đơn hàng và xử lý công
+                việc
               </Text>
             </YStack>
 
@@ -97,8 +125,12 @@ export function LoginScreen() {
             >
               <XStack alignItems="center" gap="$2">
                 <Mail size={17} color={appTheme.colors.primary} />
-                <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
-                  {'Th\u00f4ng tin t\u00e0i kho\u1ea3n'}
+                <Text
+                  fontSize={13}
+                  fontWeight="900"
+                  color={appTheme.colors.primary}
+                >
+                  Thông tin tài khoản
                 </Text>
               </XStack>
 
@@ -107,9 +139,13 @@ export function LoginScreen() {
                 value={email}
                 onChangeText={(value) => {
                   setEmail(value);
-                  if (formErrors.email) setFormErrors((current) => ({ ...current, email: undefined }));
+                  if (formErrors.email)
+                    setFormErrors((current) => ({
+                      ...current,
+                      email: undefined,
+                    }));
                 }}
-                placeholder={'Nh\u1eadp email'}
+                placeholder={"Nhập email"}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 error={formErrors.email}
@@ -117,13 +153,17 @@ export function LoginScreen() {
 
               <YStack position="relative">
                 <FormField
-                  label={'M\u1eadt kh\u1ea9u'}
+                  label={"Mật khẩu"}
                   value={password}
                   onChangeText={(value) => {
                     setPassword(value);
-                    if (formErrors.password) setFormErrors((current) => ({ ...current, password: undefined }));
+                    if (formErrors.password)
+                      setFormErrors((current) => ({
+                        ...current,
+                        password: undefined,
+                      }));
                   }}
-                  placeholder={'Nh\u1eadp m\u1eadt kh\u1ea9u'}
+                  placeholder={"Nhập mật khẩu"}
                   secureTextEntry={!showPassword}
                   error={formErrors.password}
                 />
@@ -131,13 +171,13 @@ export function LoginScreen() {
                   onPress={() => setShowPassword((current) => !current)}
                   hitSlop={10}
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     right: 14,
                     top: 38,
                     width: 30,
                     height: 30,
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   {showPassword ? (
@@ -156,14 +196,26 @@ export function LoginScreen() {
                   borderWidth={1}
                   borderColor="#FECACA"
                 >
-                  <Text selectable fontSize={13} lineHeight={19} fontWeight="700" color={appTheme.colors.danger}>
+                  <Text
+                    selectable
+                    fontSize={13}
+                    lineHeight={19}
+                    fontWeight="700"
+                    color={appTheme.colors.danger}
+                  >
                     {error}
                   </Text>
                 </YStack>
               ) : null}
 
-              <AppButton disabled={!canSubmit || isLoading} opacity={!canSubmit ? 0.6 : 1} onPress={handleSubmit}>
-                {isLoading ? '\u0110ang \u0111\u0103ng nh\u1eadp...' : '\u0110\u0103ng nh\u1eadp'}
+              <AppButton
+                tone="primary"
+                disabled={!canSubmit}
+                opacity={!canSubmit ? 0.6 : 1}
+                isLoading={isLoading}
+                onPress={handleSubmit}
+              >
+                Đăng nhập
               </AppButton>
             </YStack>
           </YStack>
@@ -173,7 +225,7 @@ export function LoginScreen() {
               G62 Delivery Platform
             </Text>
             <Text fontSize={12} color={appTheme.colors.textMuted}>
-              {'Phi\u00ean b\u1ea3n mobile n\u1ed9i b\u1ed9'}
+              {"Phiên bản mobile nội bộ"}
             </Text>
           </YStack>
         </YStack>
