@@ -4,11 +4,11 @@ import { Button } from 'tamagui';
 import { appTheme } from '@/theme/app-theme';
 
 type AppButtonProps = ButtonProps & {
-  variant?: 'primary' | 'secondary';
+  tone?: 'primary' | 'secondary';
 };
 
-export function AppButton({ variant = 'primary', ...props }: AppButtonProps) {
-  const isPrimary = variant === 'primary';
+export function AppButton({ tone = 'primary', ...props }: AppButtonProps) {
+  const isPrimary = tone === 'primary';
 
   return (
     <Button

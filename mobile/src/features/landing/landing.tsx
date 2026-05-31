@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ArrowRight, BellRing, Clock3, MapPinned, ShieldCheck, Sparkles, Truck } from 'lucide-react-native';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
@@ -189,8 +190,12 @@ export function LandingScreen() {
             </XStack>
 
             <YStack gap="$3">
-              <AppButton iconAfter={ArrowRight}>Bắt đầu ngay</AppButton>
-              <AppButton variant="secondary">Đăng nhập tài khoản</AppButton>
+              <AppButton iconAfter={ArrowRight} onPress={() => router.push('/login')}>
+                Bắt đầu ngay
+              </AppButton>
+              <AppButton tone="secondary" onPress={() => router.push('/login')}>
+                Đăng nhập tài khoản
+              </AppButton>
             </YStack>
           </YStack>
 
