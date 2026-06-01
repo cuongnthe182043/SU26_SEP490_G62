@@ -34,4 +34,25 @@ const uploadReceipt  = makeUploader(UPLOAD.FOLDERS.RECEIPT);
 const uploadIncident = makeUploader(UPLOAD.FOLDERS.INCIDENT);
 const uploadAvatar   = makeUploader(UPLOAD.FOLDERS.AVATAR);
 
-module.exports = { uploadProof, uploadReceipt, uploadIncident, uploadAvatar };
+// Dùng cho POST /trips/:id/complete — nhận 2 field: receipt + proof (proof chỉ có khi final)
+const tripCompleteStorage = new CloudinaryStorage({
+    cloudinary,
+    params: async (_req, file) => ({
+        folder: file.fieldname === 'proof' ? UPLOAD.FOLDERS.PROOF : UPLOAD.FOLDERS.RECEIPT,
+        allowed_formats: UPLOAD.ALLOWED_FORMATS,
+        transformation: [
+            { width: UPLOAD.IMAGE_MAX_WIDTH, quality: UPLOAD.CLOUDINARY_QUALITY, fetch_format: 'auto' },
+        ],
+    }),
+});
+
+const uploadTripComplete = multer({
+    storage: tripCompleteStorage,
+    limits: { fileSize: UPLOAD.MAX_FILE_SIZE_BYTES },
+    fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) return cb(new Error('Chỉ chấp nhận file ảnh'));
+        cb(null, true);
+    },
+});
+
+module.exports = { uploadProof, uploadReceipt, uploadIncident, uploadAvatar, uploadTripComplete };

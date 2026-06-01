@@ -13,13 +13,15 @@ export function useActiveTrip() {
     const [state, setState] = useState<State>({ trip: null, isLoading: true, error: null });
 
     const fetch = useCallback(async () => {
-        setState((s) => ({ ...s, isLoading: true, error: null }));
+        // Chỉ show spinner khi chưa có data (lần đầu load)
+        // Khi đã có data rồi thì refetch âm thầm, không xóa UI cũ
+        setState((s) => ({ ...s, isLoading: s.trip === null, error: null }));
         try {
             const { trip } = await tripService.getActiveTrip();
             setState({ trip, isLoading: false, error: null });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể tải chuyến';
-            setState({ trip: null, isLoading: false, error: message });
+            setState((s) => ({ ...s, isLoading: false, error: message }));
         }
     }, []);
 
