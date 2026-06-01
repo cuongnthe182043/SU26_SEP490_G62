@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Text, XStack, YStack } from 'tamagui';
+import { XStack, YStack } from 'tamagui';
 
+import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
 
 type FeatureRowProps = {
@@ -32,12 +33,12 @@ export function FeatureRow({ icon, title, description }: FeatureRowProps) {
       </XStack>
 
       <YStack flex={1} gap="$1">
-        <Text fontSize={15} fontWeight="700" color={appTheme.colors.text}>
+        <AppText variant="bodyStrong">
           {title}
-        </Text>
-        <Text fontSize={13} lineHeight={19} color={appTheme.colors.textMuted}>
+        </AppText>
+        <AppText variant="caption" tone="muted">
           {description}
-        </Text>
+        </AppText>
       </YStack>
     </XStack>
   );

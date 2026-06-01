@@ -3,10 +3,25 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-native",
-    "ignoreDeprecations": "6.0",
+    "skipLibCheck": true,
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     }
-  }
+  },
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tamagui.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    "dist",
+    "build"
+  ]
 }

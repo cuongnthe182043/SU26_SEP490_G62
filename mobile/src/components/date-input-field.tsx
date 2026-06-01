@@ -1,0 +1,197 @@
+import { type ReactNode, useState } from 'react';
+import { Platform, Pressable, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { CalendarDays } from 'lucide-react-native';
+import { Input, Text, XStack, YStack } from 'tamagui';
+
+import { appTheme } from '@/theme/app-theme';
+import { AppText } from './app-text';
+
+type Props = {
+    label?: string;
+    labelIcon?: ReactNode;
+    /** Giá trị ngoài: YYYY-MM-DD (ISO) — để gửi lên API */
+    value: string;
+    onChange: (iso: string) => void;
+    error?: string;
+};
+
+// DD-MM-YYYY → Date object (hoặc null nếu chưa đủ)
+function parseDisplay(display: string): Date | null {
+    const digits = display.replace(/\D/g, '');
+    if (digits.length < 8) return null;
+    const d = parseInt(digits.slice(0, 2), 10);
+    const m = parseInt(digits.slice(2, 4), 10);
+    const y = parseInt(digits.slice(4, 8), 10);
+    if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900) return null;
+    const date = new Date(y, m - 1, d);
+    if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+    return date;
+}
+
+// ISO YYYY-MM-DD → hiển thị DD-MM-YYYY
+function isoToDisplay(iso: string): string {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    if (!y || !m || !d) return '';
+    return `${d}-${m}-${y}`;
+}
+
+// Date → ISO YYYY-MM-DD
+function dateToIso(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+// Auto-format số nhập → DD-MM-YYYY (tự thêm dấu -)
+function formatInput(raw: string): string {
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
+}
+
+export function DateInputField({ label, labelIcon, value, onChange, error }: Props) {
+    const [displayText, setDisplayText] = useState(() => isoToDisplay(value));
+    const [inputError, setInputError] = useState<string | null>(null);
+    const [showPicker, setShowPicker] = useState(false);
+
+    // Giá trị Date để truyền vào picker
+    const pickerDate = parseDisplay(displayText) ?? new Date(2000, 0, 1);
+
+    const handleTextChange = (raw: string) => {
+        const formatted = formatInput(raw);
+        setDisplayText(formatted);
+        setInputError(null);
+
+        if (formatted.length === 10) {
+            const parsed = parseDisplay(formatted);
+            if (parsed) {
+                if (parsed > new Date()) {
+                    setInputError('Ngày sinh không được ở tương lai');
+                    onChange('');
+                } else {
+                    onChange(dateToIso(parsed));
+                }
+            } else {
+                setInputError('Ngày không hợp lệ');
+                onChange('');
+            }
+        } else {
+            onChange('');
+        }
+    };
+
+    const handlePickerChange = (_: unknown, selected?: Date) => {
+        setShowPicker(Platform.OS === 'ios');
+        if (!selected) return;
+        const iso = dateToIso(selected);
+        setDisplayText(isoToDisplay(iso));
+        setInputError(null);
+        onChange(iso);
+    };
+
+    const displayError = error ?? inputError;
+
+    return (
+        <YStack gap="$2">
+            {label ? (
+                <XStack alignItems="center" gap={6}>
+                    {labelIcon}
+                    <AppText variant="caption">{label}</AppText>
+                </XStack>
+            ) : null}
+
+            <XStack position="relative" alignItems="center">
+                <Input
+                    flex={1}
+                    height={54}
+                    borderRadius={appTheme.radius.md}
+                    borderColor={displayError ? appTheme.colors.danger : appTheme.colors.border}
+                    backgroundColor={appTheme.colors.surface}
+                    color={appTheme.colors.text}
+                    fontFamily={appTheme.typography.fontFamily.regular}
+                    placeholder="DD-MM-YYYY"
+                    placeholderTextColor={appTheme.colors.textMuted}
+                    value={displayText}
+                    onChangeText={handleTextChange}
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    paddingRight={48}
+                    focusStyle={{ borderColor: appTheme.colors.primary }}
+                />
+
+                {/* Nút mở picker */}
+                <Pressable
+                    onPress={() => setShowPicker(true)}
+                    hitSlop={8}
+                    style={{
+                        position: 'absolute',
+                        right: 14,
+                        width: 32,
+                        height: 32,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <CalendarDays size={20} color={appTheme.colors.primary} />
+                </Pressable>
+            </XStack>
+
+            {displayError ? <AppText variant="caption" tone="danger">{displayError}</AppText> : null}
+
+            {/* Picker modal */}
+            {showPicker && (
+                <>
+                    {/* Backdrop Android */}
+                    {Platform.OS === 'android' && (
+                        <DateTimePicker
+                            value={pickerDate}
+                            mode="date"
+                            display="default"
+                            maximumDate={new Date()}
+                            onChange={handlePickerChange}
+                        />
+                    )}
+
+                    {/* iOS: inline picker với overlay */}
+                    {Platform.OS === 'ios' && (
+                        <View style={{
+                            marginTop: 8,
+                            borderRadius: appTheme.radius.lg,
+                            borderWidth: 1,
+                            borderColor: appTheme.colors.border,
+                            overflow: 'hidden',
+                            backgroundColor: appTheme.colors.surfaceSoft,
+                        }}>
+                            <DateTimePicker
+                                value={pickerDate}
+                                mode="date"
+                                display="spinner"
+                                maximumDate={new Date()}
+                                onChange={handlePickerChange}
+                                locale="vi"
+                            />
+                            <Pressable
+                                onPress={() => setShowPicker(false)}
+                                style={{
+                                    alignItems: 'center',
+                                    paddingVertical: 12,
+                                    borderTopWidth: 1,
+                                    borderTopColor: appTheme.colors.border,
+                                    backgroundColor: appTheme.colors.surface,
+                                }}
+                            >
+                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.primary}>
+                                    Xác nhận
+                                </Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </>
+            )}
+        </YStack>
+    );
+}

@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
 const routes = require('./routes');
+const swaggerDocument = require('./config/swagger');
 
 const app = express();
 const port = process.env.PORT || 9999;
@@ -14,6 +16,9 @@ app.use(cors());
 app.get('/', (req, res) => {
     res.json({ message: 'Backend up and running' });
 });
+
+// API documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Routes
 app.use('/', routes);
