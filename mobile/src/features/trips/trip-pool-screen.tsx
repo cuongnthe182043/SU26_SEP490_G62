@@ -25,7 +25,7 @@ export function TripPoolScreen() {
     const { showToast }   = useToast();
 
     const { claim } = useClaimTrip((trip) => {
-        showToast({ type: 'success', message: `Chuyến #${trip.id} đã được gán cho bạn!` });
+        showToast({ type: 'success', message: `Đơn hàng #${trip.order_id} đã được nhận!` });
         refresh();
         setClaimingId(null);
         router.push('/active-trip');
@@ -34,17 +34,17 @@ export function TripPoolScreen() {
     const handleClaim = useCallback(
         async (trip: TripPoolItem) => {
             if (hasActiveTrip) {
-                showToast({ type: 'warning', message: 'Bạn đang có chuyến đang hoạt động' });
+                showToast({ type: 'warning', message: 'Bạn đang có đơn hàng đang thực hiện' });
                 return;
             }
             const ok = await showConfirm({
-                title: 'Nhận chuyến',
-                message: `Chuyến #${trip.id}\n${trip.pickup_address} → ${trip.delivery_address}`,
-                confirmLabel: 'Nhận chuyến',
+                title: 'Nhận đơn hàng',
+                message: `Đơn #${trip.order_id} — ${trip.total_legs} chuyến\n${trip.pickup_address} → ${trip.delivery_address}`,
+                confirmLabel: 'Nhận đơn hàng',
             });
             if (!ok) return;
-            setClaimingId(trip.id);
-            const result = await claim(trip.id);
+            setClaimingId(trip.order_id);
+            const result = await claim(trip.order_id);
             if (!result) setClaimingId(null);
         },
         [hasActiveTrip, claim],
@@ -53,7 +53,7 @@ export function TripPoolScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
-            <ScreenHeader title="Chuyến có sẵn" showBack />
+            <ScreenHeader title="Đơn hàng có sẵn" showBack />
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{
@@ -72,7 +72,7 @@ export function TripPoolScreen() {
             >
                 {/* Trip count */}
                 <AppText variant="caption" tone="muted">
-                    {trips.length} chuyến phù hợp nhóm xe của bạn
+                    {trips.length} đơn hàng phù hợp nhóm xe của bạn
                 </AppText>
 
                 {/* Active trip warning */}
@@ -89,10 +89,10 @@ export function TripPoolScreen() {
                         <AlertTriangle size={16} color={appTheme.colors.warningText} />
                         <YStack flex={1}>
                             <Text fontSize={12} fontWeight="900" color={appTheme.colors.warningText}>
-                                Bạn đang có chuyến hoạt động
+                                Bạn đang có đơn hàng đang thực hiện
                             </Text>
                             <Text fontSize={11} color={appTheme.colors.warningTextMuted}>
-                                Hoàn thành chuyến hiện tại để nhận chuyến mới
+                                Hoàn thành tất cả chuyến trong đơn để nhận đơn mới
                             </Text>
                         </YStack>
                     </XStack>
@@ -118,13 +118,13 @@ export function TripPoolScreen() {
                     </YStack>
                 ) : null}
 
-                {/* Trip list */}
+                {/* Order list */}
                 {trips.map((trip) => (
                     <TripCard
-                        key={trip.id}
+                        key={trip.order_id}
                         trip={trip}
                         onClaim={() => handleClaim(trip)}
-                        isClaimLoading={claimingId === trip.id}
+                        isClaimLoading={claimingId === trip.order_id}
                         claimDisabled={hasActiveTrip}
                     />
                 ))}

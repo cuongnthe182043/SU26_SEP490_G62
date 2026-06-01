@@ -94,10 +94,10 @@ function ActiveTripBanner({ onPress }: { onPress: () => void }) {
                         </XStack>
                         <YStack flex={1} gap={2}>
                             <Text fontSize={12} fontWeight="900" color="rgba(255,255,255,0.75)">
-                                CHUYẾN ĐANG HOẠT ĐỘNG
+                                ĐƠN #{trip.order_id} — CHUYẾN {trip.shipment_index}/{trip.max_shipment_index}
                             </Text>
                             <Text fontSize={18} fontWeight="900" color={appTheme.colors.surface} lineHeight={24}>
-                                #{trip.id} — {trip.cargo_name ?? 'Hàng hóa'}
+                                {trip.cargo_name ?? 'Hàng hóa'}
                             </Text>
                         </YStack>
                     </XStack>
