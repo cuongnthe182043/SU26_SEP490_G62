@@ -161,7 +161,7 @@ export default function Orders({ user, onLogout }) {
             </svg>
           </button>
         </div>
-      </</aside>
+      </aside>
 
       {/* Main Container */}
       <main className="main-content">
