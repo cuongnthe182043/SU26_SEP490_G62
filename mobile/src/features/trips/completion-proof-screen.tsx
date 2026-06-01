@@ -19,7 +19,7 @@ export function CompletionProofScreen() {
     const cameraRef = useRef<CameraView>(null);
 
     const { isUploading, error, completeWithProof } = useCompletionProof(() => {
-        router.replace('/driver-home');
+        router.replace('/(tabs)');
     });
 
     const takePicture = useCallback(async () => {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
+import { KeyboardSafeScrollView } from '@/components/keyboard-safe-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -137,14 +138,13 @@ export function EditProfileScreen() {
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
             <ScreenHeader title="Chỉnh sửa hồ sơ" showBack />
-            <ScrollView
+            <KeyboardSafeScrollView
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
                     paddingTop: 20,
                     paddingBottom: appTheme.spacing.screenBottom,
                     gap: 16,
                 }}
-                keyboardShouldPersistTaps="handled"
             >
                 <FormField
                     label="Họ và tên"
@@ -204,7 +204,7 @@ export function EditProfileScreen() {
                 <AppButton tone="primary" isLoading={isLoading} onPress={handleSave} style={{ marginTop: 8 }}>
                     Lưu thay đổi
                 </AppButton>
-            </ScrollView>
+            </KeyboardSafeScrollView>
         </View>
     );
 }
