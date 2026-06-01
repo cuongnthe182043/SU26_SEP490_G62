@@ -1,12 +1,19 @@
 import { API_BASE_URL } from '@/constants/api';
 import { ApiError } from '@/lib/api-error';
+import { tokenStorage } from '@/services/token-storage';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | object | null;
 };
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const token = await tokenStorage.getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers = new Headers(options.headers);
+  const authHeaders = await getAuthHeaders();
+  const headers = new Headers({ ...authHeaders, ...(options.headers as Record<string, string> | undefined) });
 
   const rawBody = options.body;
   let body: BodyInit | null | undefined;
@@ -33,9 +40,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const apiClient = {
-  post: <T>(path: string, body: object) =>
-    request<T>(path, {
-      method: 'POST',
-      body,
-    }),
+  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
+  post: <T>(path: string, body: object) => request<T>(path, { method: 'POST', body }),
+  patch: <T>(path: string, body: object) => request<T>(path, { method: 'PATCH', body }),
+  postForm: <T>(path: string, formData: FormData) =>
+    request<T>(path, { method: 'POST', body: formData }),
 };
