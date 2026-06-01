@@ -3,15 +3,26 @@ const pool = require('../config/database');
 const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address', 'city', 'country'];
 
 const getAccountByEmail = async (email) => {
+    const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
-        `SELECT a.id, a.email, a.password_hash, p.full_name, p.phone, r.name as role
+        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_verified, a.last_login_at, a.created_at, a.updated_at
          FROM accounts a
-         JOIN profiles p ON a.id = p.id
-         JOIN roles r ON p.role_id = r.id
-         WHERE a.email = $1 AND p.is_active = TRUE`,
-        [email],
+         JOIN roles r ON a.role_id = r.id
+         WHERE LOWER(a.email) = $1`,
+        [normalizedEmail],
     );
     return result.rows[0];
+};
+
+const getProfileByAccountId = async (accountId) => {
+    const result = await pool.query(
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role
+         FROM profiles p
+         LEFT JOIN roles r ON p.role_id = r.id
+         WHERE p.id = $1`,
+        [accountId],
+    );
+    return result.rows[0] ?? null;
 };
 
 const getProfileWithRole = async (profileId) => {
@@ -101,6 +112,7 @@ const getProfileById = async (profileId) => {
 
 module.exports = {
     getAccountByEmail,
+    getProfileByAccountId,
     getProfileWithRole,
     getFullProfile,
     updateProfile,
