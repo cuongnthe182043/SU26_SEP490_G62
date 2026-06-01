@@ -2,96 +2,62 @@ import React, { useEffect, useMemo, useState } from "react";
 import Login from "./pages/Login";
 import "./styles/Coordinator.css";
 
-const defaultTrips = [
-  {
-    id: "#VL-8829",
-    title: "Điện tử dễ vỡ",
-    status: "Mới",
-    pickup: "123 Nguyễn Huệ, Quận 1, TP.HCM",
-    delivery: "456 Lê Lợi, Quận 3, TP.HCM",
-    weight: "500kg",
-    cargoType: "Điện tử",
-  },
-  {
-    id: "#VL-9104",
-    title: "Hàng dệt may số lượng lớn",
-    status: "Đang chờ",
-    pickup: "Kho hàng Tân Sơn Nhất",
-    delivery: "789 Võ Văn Kiệt, Quận 5, TP.HCM",
-    weight: "1,200kg",
-    cargoType: "Phổ thông",
-  },
-  {
-    id: "#VL-8842",
-    title: "Vật tư y tế khẩn cấp",
-    status: "Mới",
-    pickup: "Phú Mỹ Hưng, Quận 7",
-    delivery: "Thủ Thiêm, TP. Thủ Đức",
-    weight: "150kg",
-    cargoType: "Y tế",
-  },
-];
-
-const sampleSpreadsheetRows = [
-  {
-    date: "04/05/2026",
-    checkIn: "1",
-    plate: "29H-961.45",
-    driver: "Toàn",
-    customer: "",
-    route: "Xuân Đỉnh x4c",
-    distance: "",
-    fare: "1.400.000 đ",
-    ticket: "",
-    paid: "x",
-    driverIncome: "1.400.000 đ",
-    fuel: "",
-    advance: "",
-    note: "",
-    revenue1: "",
-    revenue2: "1.400.000 đ",
-  },
-  {
-    date: "04/05/2026",
-    checkIn: "",
-    plate: "29H-961.45",
-    driver: "Toàn",
-    customer: "",
-    route: "Hà Nội - Thanh Hóa",
-    distance: "",
-    fare: "3.000.000 đ",
-    ticket: "",
-    paid: "x",
-    driverIncome: "3.000.000 đ",
-    fuel: "",
-    advance: "",
-    note: "",
-    revenue1: "",
-    revenue2: "3.000.000 đ",
-  },
-];
-
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [trips, setTrips] = useState(defaultTrips);
-  const [rows, setRows] = useState(sampleSpreadsheetRows);
+  const [trips, setTrips] = useState([]);
+  const [rows, setRows] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) return;
-    try {
-      setUser(JSON.parse(storedUser));
-    } catch (err) {
-      console.error("Failed to parse user data:", err);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setLoadingUser(false);
+      return;
     }
+
+    const loadCurrentUser = async () => {
+      try {
+        const response = await fetch(`${apiBase}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Không thể lấy thông tin user.");
+        }
+        setUser(data);
+        setAccessDenied(Number(data.role_id) !== 3);
+        localStorage.setItem("user", JSON.stringify(data));
+      } catch (err) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      } finally {
+        setLoadingUser(false);
+      }
+    };
+
+    loadCurrentUser();
   }, []);
 
-  const handleLoginSuccess = (userData) => setUser(userData);
+  const handleLoginSuccess = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const response = await fetch(`${apiBase}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setUser(data);
+      setAccessDenied(Number(data.role_id) !== 3);
+      localStorage.setItem("user", JSON.stringify(data));
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -138,8 +104,20 @@ export default function App() {
     }
   };
 
+  if (loadingUser) {
+    return <main className="loading-screen">Đang tải thông tin đăng nhập...</main>;
+  }
+
   if (!user) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (accessDenied) {
+    return (
+      <main className="loading-screen">
+        Tài khoản này không có quyền vào trang coordinator. Chỉ role_id = 3 được phép.
+      </main>
+    );
   }
 
   return (
@@ -218,7 +196,13 @@ export default function App() {
         {message && <div className="notice">{message}</div>}
 
         <section className="trip-grid">
-          {filteredTrips.map((trip) => (
+          {filteredTrips.length === 0 ? (
+            <article className="empty-state">
+              <h3>Chưa có đơn hàng nào</h3>
+              <p>Hãy tạo đơn mới hoặc import file Excel để nạp dữ liệu.</p>
+            </article>
+          ) : (
+            filteredTrips.map((trip) => (
             <article className="trip-card" key={trip.id}>
               <div className="trip-head">
                 <span className="trip-id">{trip.id}</span>
@@ -255,7 +239,8 @@ export default function App() {
                 <button className="ghost-btn">⋯</button>
               </div>
             </article>
-          ))}
+            ))
+          )}
         </section>
 
         <section className="spreadsheet-panel">
@@ -290,7 +275,11 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan="16">Chưa có dữ liệu Excel được import.</td>
+                  </tr>
+                ) : rows.map((row, index) => (
                   <tr key={`${row.date}-${index}`}>
                     <td>{row.date}</td>
                     <td>{row.checkIn}</td>

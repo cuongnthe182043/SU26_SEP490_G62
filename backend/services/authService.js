@@ -56,6 +56,7 @@ const login = async (email, password) => {
             email: account.email,
             full_name: profile?.full_name ?? null,
             phone: profile?.phone ?? null,
+            role_id: profile?.role_id ?? account.role_id ?? null,
             role,
         }
     };
