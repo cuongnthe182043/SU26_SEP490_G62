@@ -1,8 +1,10 @@
 import { apiClient } from '@/lib/api-client';
 import type {
     ActiveTripResponse,
+    CancelDeliveryResponse,
     ClaimTripResponse,
     CompleteTripResponse,
+    ReleaseTripResponse,
     TripPoolResponse,
     TripStatus,
     UpdateStatusResponse,
@@ -22,6 +24,9 @@ export const tripService = {
     completeWithProof: (tripId: number, formData: FormData) =>
         apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, formData),
 
-    completeNoProof: (tripId: number) =>
-        apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, new FormData()),
+    cancelDelivery: (tripId: number, reason: string) =>
+        apiClient.post<CancelDeliveryResponse>(`/api/trips/${tripId}/cancel-delivery`, { reason }),
+
+    releaseTrip: (tripId: number, reason?: string) =>
+        apiClient.post<ReleaseTripResponse>(`/api/trips/${tripId}/release`, { reason }),
 };
