@@ -11,18 +11,18 @@ INSERT INTO roles (id, name) VALUES
 (4, 'driver')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
--- Vital Fix: Advance sequence counter for Identity Columns after manual overrides
-ALTER TABLE roles ALTER COLUMN id RESTART WITH 5;
-
 --------------------------------------------------------------------------------
 -- 2. SECURE AUTHENTICATION ACCOUNTS
 --------------------------------------------------------------------------------
-INSERT INTO accounts (email, password_hash, is_verified) VALUES
-('admin@example.com', crypt('admin123', gen_salt('bf')), TRUE),
-('coordinator@example.com', crypt('coord123', gen_salt('bf')), TRUE),
-('accountant@example.com', crypt('acct123', gen_salt('bf')), TRUE),
-('driver1@example.com', crypt('driver123', gen_salt('bf')), TRUE)
-ON CONFLICT (email) DO NOTHING;
+INSERT INTO accounts (email, password_hash, role_id, is_verified) VALUES
+('admin@example.com', crypt('admin123', gen_salt('bf')), 1, TRUE),
+('coordinator@example.com', crypt('coord123', gen_salt('bf')), 2, TRUE),
+('accountant@example.com', crypt('acct123', gen_salt('bf')), 3, TRUE),
+('driver1@example.com', crypt('driver123', gen_salt('bf')), 4, TRUE)
+ON CONFLICT (email) DO UPDATE
+SET password_hash = EXCLUDED.password_hash,
+    role_id = EXCLUDED.role_id,
+    is_verified = EXCLUDED.is_verified;
 
 --------------------------------------------------------------------------------
 -- 3. USER PROFILES
@@ -31,21 +31,22 @@ WITH account_data AS (
     SELECT id, email FROM accounts 
     WHERE email IN ('admin@example.com', 'coordinator@example.com', 'accountant@example.com', 'driver1@example.com')
 )
-INSERT INTO profiles (id, full_name, email, phone, role_id, is_active) 
+INSERT INTO profiles (id, full_name, phone, role_id, is_active) 
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', 'admin@example.com', '0901234560', 1, TRUE),
-    ((SELECT id FROM account_data WHERE email = 'coordinator@example.com'), 'Nguyen Coordinator', 'coordinator@example.com', '0901234561', 2, TRUE),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', 'accountant@example.com', '0901234562', 3, TRUE),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', 'driver1@example.com', '0901234563', 4, TRUE)
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', 1, TRUE),
+    ((SELECT id FROM account_data WHERE email = 'coordinator@example.com'), 'Nguyen Coordinator', '0901234561', 2, TRUE),
+    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', 3, TRUE),
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 --------------------------------------------------------------------------------
 -- 4. DRIVER LOGISTICS SPECIFICS
 --------------------------------------------------------------------------------
-INSERT INTO drivers (profile_id, license_number, license_expiry_date, base_salary, revenue_share_percent, joined_at)
-SELECT p.id, 'DL123456', '2027-12-31', 5000000, 15, '2023-01-01'
+INSERT INTO drivers (profile_id, license_number, license_expiry_date, hire_date, revenue_share_percent)
+SELECT p.id, 'DL123456', '2027-12-31', '2023-01-01', 15
 FROM profiles p
-WHERE p.role_id = 4 AND p.email = 'driver1@example.com'
+JOIN accounts a ON a.id = p.id
+WHERE p.role_id = 4 AND a.email = 'driver1@example.com'
 ON CONFLICT (profile_id) DO NOTHING;
 
 --------------------------------------------------------------------------------
@@ -70,22 +71,22 @@ WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654324');
 --------------------------------------------------------------------------------
 -- 6. VEHICLE GROUPS DEFINITIONS
 --------------------------------------------------------------------------------
-INSERT INTO vehicle_groups (name, max_load_weight, fixed_price_per_km, depreciation_per_km) 
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km) 
 SELECT 'Small Van (1-2 tấn)', 2000, 10000, 500
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight, fixed_price_per_km, depreciation_per_km)
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
 SELECT 'Medium Truck (2-5 tấn)', 5000, 15000, 800
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight, fixed_price_per_km, depreciation_per_km)
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
 SELECT 'Large Truck (5-10 tấn)', 10000, 25000, 1200
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)');
 
 --------------------------------------------------------------------------------
 -- 7. FLEET VEHICLES
 --------------------------------------------------------------------------------
-INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity, manufacture_year, status) VALUES
+INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status) VALUES
 ('51-A12345', 1, 'Toyota', 'Hiace', 2000, 2021, 'available'),
 ('51-B67890', 2, 'Hino', 'FC', 5000, 2020, 'available'),
 ('51-C11111', 3, 'Hyundai', 'HD120S', 10000, 2019, 'maintenance'),
@@ -100,6 +101,14 @@ SET assigned_driver_id = p.id
 FROM profiles p
 WHERE p.role_id = 4 AND v.plate_number = '51-A12345'
 AND v.assigned_driver_id IS NULL;
+
+UPDATE drivers d
+SET vehicle_id = v.id
+FROM vehicles v, profiles p
+WHERE p.role_id = 4
+AND p.id = d.profile_id
+AND v.plate_number = '51-A12345'
+AND d.vehicle_id IS NULL;
 
 --------------------------------------------------------------------------------
 -- 9. PARTNERS / SUB-CONTRACTORS
@@ -119,7 +128,7 @@ WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietn
 --------------------------------------------------------------------------------
 -- 10. ORDERS
 --------------------------------------------------------------------------------
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
+INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
 SELECT c.id, p.id, 'Electronics Package', 50.0, '123 Nguyen Hue, HCMC', '456 Le Loi, HCMC', 500000, 'cash', 'pending', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = 2
@@ -127,7 +136,7 @@ WHERE c.customer_type = 'individual' AND c.phone = '0987654321'
 AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Electronics Package' AND pickup_address = '123 Nguyen Hue, HCMC')
 LIMIT 1;
 
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
+INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
 SELECT c.id, p.id, 'Furniture Set', 200.0, '789 Tran Hung Dao, HCMC', '321 Nguyen Trai, HCMC', 1500000, 'bank_transfer', 'assigned', 'Large furniture item'
 FROM customers c
 JOIN profiles p ON p.role_id = 2
@@ -138,8 +147,8 @@ LIMIT 1;
 --------------------------------------------------------------------------------
 -- 11. SHIPMENTS
 --------------------------------------------------------------------------------
-INSERT INTO order_shipments (order_id, shipment_index, pickup_address, delivery_address, cargo_weight, status)
-SELECT o.id, 1, o.pickup_address, o.delivery_address, o.cargo_weight, 'pending'
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 1, 1, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'available'
 FROM orders o
 WHERE o.status = 'pending'
 AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
@@ -147,44 +156,45 @@ AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os
 --------------------------------------------------------------------------------
 -- 12. SHIPMENT ASSIGNMENTS
 --------------------------------------------------------------------------------
-INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assigned_at)
-SELECT os.id, p.id, v.id, NOW()
+INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assignment_type, assigned_at)
+SELECT os.id, p.id, v.id, 'coordinator_assign', NOW()
 FROM order_shipments os
 JOIN profiles p ON p.role_id = 4
 JOIN vehicles v ON v.status = 'available' AND v.vehicle_group_id = 1
-WHERE os.status = 'pending'
+WHERE os.status = 'available'
 AND NOT EXISTS (SELECT 1 FROM shipment_assignments sa WHERE sa.shipment_id = os.id)
 LIMIT 1;
 
 --------------------------------------------------------------------------------
 -- 13. BONUS RULES
 --------------------------------------------------------------------------------
-INSERT INTO bonus_rules (vehicle_group_id, title, reward_amount, conditions)
-SELECT 1, 'Small Van Weekly Bonus', 500000, 'Complete 10 trips without incident'
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT 1, 'Small Van Weekly Bonus', 'kpi', 500000, '{"description":"Complete 10 trips without incident"}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Small Van Weekly Bonus');
 
-INSERT INTO bonus_rules (vehicle_group_id, title, reward_amount, conditions)
-SELECT 2, 'Medium Truck Monthly Bonus', 2000000, 'Complete 50 trips with 95%+ on-time rate'
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT 2, 'Medium Truck Monthly Bonus', 'kpi', 2000000, '{"description":"Complete 50 trips with 95%+ on-time rate"}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Medium Truck Monthly Bonus');
 
-INSERT INTO bonus_rules (vehicle_group_id, title, reward_amount, conditions)
-SELECT 3, 'Large Truck Monthly Bonus', 3000000, 'Complete 40 trips with 98%+ on-time rate'
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT 3, 'Large Truck Monthly Bonus', 'kpi', 3000000, '{"description":"Complete 40 trips with 98%+ on-time rate"}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Large Truck Monthly Bonus');
 
 --------------------------------------------------------------------------------
 -- 14. DRIVER PERFORMANCE / KPI RECORDS
 --------------------------------------------------------------------------------
-INSERT INTO kpi_records (driver_id, month, year, completed_shipments, total_revenue, late_deliveries)
-SELECT p.id, 5, 2026, 12, 15000000, 1
+INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, late_deliveries)
+SELECT p.id, 1, 5, 2026, 12, 15000000, 1
 FROM profiles p
-WHERE p.role_id = 4 AND p.email = 'driver1@example.com'
+JOIN accounts a ON a.id = p.id
+WHERE p.role_id = 4 AND a.email = 'driver1@example.com'
 ON CONFLICT DO NOTHING;
 
 --------------------------------------------------------------------------------
 -- 15. MAINTENANCE MANAGEMENT
 --------------------------------------------------------------------------------
 INSERT INTO maintenance_records (vehicle_id, maintenance_type, description, cost, maintenance_date)
-SELECT v.id, 'Routine Maintenance', 'Oil change, filter replacement', 500000, '2026-05-15'
+SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15'
 FROM vehicles v
 WHERE v.plate_number = '51-C11111'
 AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id AND mr.maintenance_date = '2026-05-15');

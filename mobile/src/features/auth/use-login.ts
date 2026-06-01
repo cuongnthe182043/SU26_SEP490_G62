@@ -27,12 +27,11 @@ export function useLogin() {
       setState({ isLoading: false, error: null, user: result.user });
       return result;
     } catch (error) {
-      const message =
-        error instanceof ApiError && error.status === 401
-          ? 'Email ho\u1eb7c m\u1eadt kh\u1ea9u kh\u00f4ng \u0111\u00fang.'
-          : error instanceof Error
-            ? error.message
-            : '\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i. Vui l\u00f2ng th\u1eed l\u1ea1i.';
+      const message = error instanceof ApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : '\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i. Vui l\u00f2ng th\u1eed l\u1ea1i.';
 
       setState({ isLoading: false, error: message, user: null });
       return null;
