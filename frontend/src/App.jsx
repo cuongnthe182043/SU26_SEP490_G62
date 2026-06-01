@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Login from "./pages/Login";
+import Orders from "./pages/Orders";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -30,9 +31,6 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2>Welcome, {user.email}</h2>
-      <button onClick={handleLogout}>Logout</button>
-    </div>
+    <Orders user={user} onLogout={handleLogout} />
   );
 }
