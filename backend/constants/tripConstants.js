@@ -22,6 +22,7 @@ const ACTIVE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.LOADED,
     SHIPMENT_STATUS.TRANSIT,
     SHIPMENT_STATUS.ARRIVED,
+    SHIPMENT_STATUS.CANCELLED, // driver đang trả hàng về
     SHIPMENT_STATUS.RETURNING,
 ]);
 
@@ -42,7 +43,15 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
     [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
     [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED],
+    // Khi không thể giao (CANCELLED with reason): driver xác nhận đã trả hàng → COMPLETED
+    [SHIPMENT_STATUS.CANCELLED]: [SHIPMENT_STATUS.COMPLETED],
 });
+
+// Các trạng thái cho phép hủy chuyến sớm (release về pool)
+const RELEASABLE_STATUSES = Object.freeze([
+    SHIPMENT_STATUS.CLAIMED,
+    SHIPMENT_STATUS.PICKING,
+]);
 
 // Status → lifecycle timestamp column
 const STATUS_TIMESTAMP_COL = Object.freeze({
@@ -59,6 +68,7 @@ module.exports = {
     ASSIGNMENT_TYPE,
     ACTIVE_STATUSES,
     CANCELLABLE_STATUSES,
+    RELEASABLE_STATUSES,
     ALLOWED_TRANSITIONS,
     STATUS_TIMESTAMP_COL,
 };

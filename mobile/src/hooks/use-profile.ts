@@ -13,12 +13,12 @@ export function useProfile() {
     const [state, setState] = useState<State>({ profile: null, isLoading: true, error: null });
 
     const fetch = useCallback(async () => {
-        setState((s) => ({ ...s, isLoading: true, error: null }));
+        setState((s) => ({ ...s, isLoading: s.profile === null, error: null }));
         try {
             const { profile } = await profileService.getMyProfile();
             setState({ profile, isLoading: false, error: null });
         } catch (err) {
-            setState({ profile: null, isLoading: false, error: err instanceof Error ? err.message : 'Lỗi tải hồ sơ' });
+            setState((s) => ({ ...s, isLoading: false, error: err instanceof Error ? err.message : 'Lỗi tải hồ sơ' }));
         }
     }, []);
 

@@ -10,20 +10,20 @@ export type TripStatus =
     | 'failed'
     | 'returning';
 
+// Pool hiển thị ORDER (không phải từng shipment riêng lẻ).
+// Driver nhận cả order, hệ thống tự kích hoạt từng leg theo thứ tự.
 export type TripPoolItem = {
-    id: number;
     order_id: number;
-    shipment_index: number;
-    vehicle_group_id: number;
-    pickup_address: string;
-    delivery_address: string;
-    cargo_weight_kg: string | null;
-    estimated_price: string | null;
-    status: TripStatus;
-    notes: string | null;
-    version: number;
-    created_at: string;
     cargo_name: string | null;
+    order_notes: string | null;
+    payment_type: string | null;
+    pickup_address: string;          // điểm lấy hàng của leg đầu tiên
+    delivery_address: string;        // điểm giao của leg cuối cùng
+    total_cargo_weight_kg: string | null;
+    total_estimated_price: string | null;
+    total_legs: number;              // tổng số chuyến trong order
+    created_at: string;
+    vehicle_group_id: number;
     vehicle_group_name: string;
     max_load_weight_kg: string | null;
 };
@@ -76,7 +76,17 @@ export type CompleteTripResponse = {
     trip: ActiveTrip;
 };
 
-// Status → Vietnamese label
+export type CancelDeliveryResponse = {
+    message: string;
+    trip: ActiveTrip;
+};
+
+export type ReleaseTripResponse = {
+    message: string;
+    order_id: number;
+    released: boolean;
+};
+
 export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
     available: 'Chờ nhận',
     claimed: 'Đã nhận',
@@ -90,7 +100,6 @@ export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
     returning: 'Đang hoàn hàng',
 };
 
-// What status comes next (driver action)
 export type NextAction = {
     label: string;
     nextStatus: TripStatus;
@@ -98,10 +107,10 @@ export type NextAction = {
 };
 
 export const NEXT_ACTIONS: Partial<Record<TripStatus, NextAction>> = {
-    claimed: { label: 'Bắt đầu lấy hàng', nextStatus: 'picking', tone: 'primary' },
-    picking: { label: 'Xác nhận đã lấy hàng', nextStatus: 'loaded', tone: 'primary' },
-    loaded: { label: 'Bắt đầu vận chuyển', nextStatus: 'transit', tone: 'primary' },
-    transit: { label: 'Xác nhận đã đến', nextStatus: 'arrived', tone: 'primary' },
-    failed: { label: 'Bắt đầu hoàn hàng', nextStatus: 'returning', tone: 'secondary' },
-    returning: { label: 'Hoàn thành hoàn hàng', nextStatus: 'completed', tone: 'secondary' },
+    claimed:   { label: 'Bắt đầu lấy hàng',     nextStatus: 'picking',   tone: 'primary'   },
+    picking:   { label: 'Xác nhận đã lấy hàng',  nextStatus: 'loaded',    tone: 'primary'   },
+    loaded:    { label: 'Bắt đầu vận chuyển',     nextStatus: 'transit',   tone: 'primary'   },
+    transit:   { label: 'Xác nhận đã đến',        nextStatus: 'arrived',   tone: 'primary'   },
+    failed:    { label: 'Bắt đầu hoàn hàng',      nextStatus: 'returning', tone: 'secondary' },
+    returning: { label: 'Hoàn thành hoàn hàng',   nextStatus: 'completed', tone: 'secondary' },
 };

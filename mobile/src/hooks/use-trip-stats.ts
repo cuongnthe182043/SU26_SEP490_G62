@@ -18,12 +18,12 @@ export function useTripStats() {
     const [state, setState] = useState<State>({ stats: null, isLoading: true });
 
     const fetch = useCallback(async () => {
-        setState((s) => ({ ...s, isLoading: true }));
+        setState((s) => ({ ...s, isLoading: s.stats === null }));
         try {
             const { stats } = await apiClient.get<{ stats: TripStats }>('/api/trips/stats');
             setState({ stats, isLoading: false });
         } catch {
-            setState({ stats: null, isLoading: false });
+            setState((s) => ({ ...s, isLoading: false }));
         }
     }, []);
 
