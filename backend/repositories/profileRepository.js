@@ -104,7 +104,10 @@ const updateLastLogin = async (accountId) => {
 
 const getProfileById = async (profileId) => {
     const result = await pool.query(
-        'SELECT id, full_name, email, phone, role_id, is_active FROM profiles WHERE id = $1',
+        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, p.is_active
+         FROM profiles p
+         JOIN accounts a ON a.id = p.id
+         WHERE p.id = $1`,
         [profileId],
     );
     return result.rows[0];
