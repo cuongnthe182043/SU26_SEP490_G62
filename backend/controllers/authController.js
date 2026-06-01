@@ -13,7 +13,9 @@ const login = async (req, res) => {
         });
     } catch (err) {
         console.error('Login error:', err);
-        res.status(401).json({ error: err.message });
+        const status = Number.isInteger(err.status) ? err.status : 500;
+        const message = status === 500 ? 'Internal server error' : err.message;
+        res.status(status).json({ error: message });
     }
 };
 
