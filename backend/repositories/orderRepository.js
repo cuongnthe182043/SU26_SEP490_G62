@@ -6,6 +6,8 @@ const pool = require('../config/database');
 const getAllOrders = async (filters = {}) => {
     let query = `
         SELECT o.*, 
+               CASE WHEN o.payment_type = 'client_credit' THEN 'debt' ELSE o.payment_type END as payment_type,
+               o.cargo_weight_kg as cargo_weight,
                c.full_name as customer_name, 
                c.company_name as customer_company, 
                c.phone as customer_phone,
@@ -74,15 +76,18 @@ const createOrder = async (orderData) => {
             company_name: orderData.customer_company,
         });
 
+        // Map frontend 'debt' payment type to database 'client_credit' check constraint
+        const dbPaymentType = orderData.payment_type === 'debt' ? 'client_credit' : orderData.payment_type;
+
         // Insert order
         const orderQuery = `
             INSERT INTO orders (
-                customer_id, created_by, cargo_name, cargo_weight, 
+                customer_id, created_by, cargo_name, cargo_weight_kg, 
                 pickup_address, delivery_address, estimated_price, 
                 payment_type, status, notes
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING *
+            RETURNING *, cargo_weight_kg as cargo_weight
         `;
         const orderParams = [
             customerId,
@@ -92,20 +97,22 @@ const createOrder = async (orderData) => {
             orderData.pickup_address,
             orderData.delivery_address,
             orderData.estimated_price || 0,
-            orderData.payment_type || 'cash',
+            dbPaymentType || 'cash',
             orderData.status || 'pending',
             orderData.notes || ''
         ];
 
         const orderResult = await client.query(orderQuery, orderParams);
-        
-        // Create an automatic shipment for this order (1-to-1 default)
         const newOrder = orderResult.rows[0];
+        
+        // Create an automatic shipment for this order (1-to-1 default). 
+        // Note: vehicle_group_id is required NOT NULL in new DB schema, defaulting to 1 (Small Van)
+        // Note: default status is 'available' instead of 'pending'
         const shipmentQuery = `
-            INSERT INTO order_shipments (order_id, shipment_index, pickup_address, delivery_address, cargo_weight, status)
-            VALUES ($1, 1, $2, $3, $4, 'pending')
+            INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, status)
+            VALUES ($1, 1, 1, $2, $3, $4, 'available')
         `;
-        await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight]);
+        await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight_kg]);
 
         // Create an automatic debt tracking entry for this order
         const debtQuery = `
@@ -148,15 +155,18 @@ const bulkCreateOrders = async (ordersArray, createdByUserId) => {
                 company_name: order.customer_company || null,
             });
 
+            // Map frontend 'debt' payment type to database 'client_credit' check constraint
+            const dbPaymentType = order.payment_type === 'debt' ? 'client_credit' : order.payment_type;
+
             // Insert order
             const orderQuery = `
                 INSERT INTO orders (
-                    customer_id, created_by, cargo_name, cargo_weight, 
+                    customer_id, created_by, cargo_name, cargo_weight_kg, 
                     pickup_address, delivery_address, estimated_price, 
                     payment_type, status, notes
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
-                RETURNING *
+                RETURNING *, cargo_weight_kg as cargo_weight
             `;
             const orderParams = [
                 customerId,
@@ -166,19 +176,19 @@ const bulkCreateOrders = async (ordersArray, createdByUserId) => {
                 order.pickup_address || 'Địa điểm mặc định',
                 order.delivery_address || 'Địa điểm mặc định',
                 order.estimated_price || 0,
-                order.payment_type || 'cash',
+                dbPaymentType || 'cash',
                 order.notes || 'Imported via Excel'
             ];
 
             const orderResult = await client.query(orderQuery, orderParams);
             const newOrder = orderResult.rows[0];
             
-            // Create corresponding shipment
+            // Create corresponding shipment. vehicle_group_id default = 1, status default = 'available'
             const shipmentQuery = `
-                INSERT INTO order_shipments (order_id, shipment_index, pickup_address, delivery_address, cargo_weight, status)
-                VALUES ($1, 1, $2, $3, $4, 'pending')
+                INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, status)
+                VALUES ($1, 1, 1, $2, $3, $4, 'available')
             `;
-            await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight]);
+            await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight_kg]);
             
             // Create automatic debt entry
             const debtQuery = `
