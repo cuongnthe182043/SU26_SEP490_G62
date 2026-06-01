@@ -1,0 +1,14 @@
+const UPLOAD = Object.freeze({
+    MAX_FILE_SIZE_BYTES: 10 * 1024 * 1024,      // 10 MB
+    IMAGE_MAX_WIDTH: 1200,
+    CLOUDINARY_QUALITY: 'auto:good',
+    ALLOWED_FORMATS: ['jpg', 'jpeg', 'png', 'webp'],
+    FOLDERS: {
+        PROOF:    'g62/completion-proofs',
+        RECEIPT:  'g62/receipts',
+        INCIDENT: 'g62/incidents',
+        AVATAR:   'g62/avatars',
+    },
+});
+
+module.exports = { UPLOAD };
