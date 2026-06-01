@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const getPaymentsByOrderId = async (orderId) => {
     const query = `
         SELECT p.*, pr.full_name as creator_name
-        FROM payments p
+        FROM debt_payments p
         JOIN debts d ON p.debt_id = d.id
         LEFT JOIN profiles pr ON p.created_by = pr.id
         WHERE d.order_id = $1
@@ -56,9 +56,9 @@ const recordPayment = async (orderId, { amount, paymentMethod, notes, createdBy 
             throw new Error(`Số tiền thanh toán (${numericAmount.toLocaleString()}đ) vượt quá dư nợ còn lại (${remainingDebt.toLocaleString()}đ)`);
         }
 
-        // 2. Insert payment record
+        // 2. Insert payment record into debt_payments
         const paymentQuery = `
-            INSERT INTO payments (debt_id, amount, payment_method, paid_at, created_by, notes)
+            INSERT INTO debt_payments (debt_id, amount, payment_method, paid_at, created_by, notes)
             VALUES ($1, $2, $3, NOW(), $4, $5)
             RETURNING *
         `;
@@ -85,9 +85,9 @@ const recordPayment = async (orderId, { amount, paymentMethod, notes, createdBy 
             [newPaidAmount, newStatus, createdBy, `Cập nhật thanh toán: Đã thu ${newPaidAmount.toLocaleString()}đ`, debt.id]
         );
 
-        // 4. Update customer debt if payment type is 'debt' (reducing their outstanding debt liability)
+        // 4. Update customer debt if payment type is 'client_credit' or 'debt'
         const orderResult = await client.query('SELECT payment_type, customer_id FROM orders WHERE id = $1', [orderId]);
-        if (orderResult.rows.length > 0 && orderResult.rows[0].payment_type === 'debt') {
+        if (orderResult.rows.length > 0 && (orderResult.rows[0].payment_type === 'debt' || orderResult.rows[0].payment_type === 'client_credit')) {
             const customerId = orderResult.rows[0].customer_id;
             await client.query(
                 `UPDATE customers 
