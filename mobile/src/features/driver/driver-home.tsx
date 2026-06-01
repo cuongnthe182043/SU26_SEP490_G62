@@ -1,0 +1,253 @@
+import { Bell, ChevronRight, MapPin, Package, PackageCheck, Truck } from 'lucide-react-native';
+import { ActivityIndicator, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
+
+import { AppButton } from '@/components/app-button';
+import { StatCard } from '@/components/stat-card';
+import { TripStatusBadge } from '@/components/trip-status-badge';
+import { appTheme } from '@/theme/app-theme';
+import { useActiveTrip } from '@/hooks/use-active-trip';
+import { useProfile } from '@/hooks/use-profile';
+import { useTripStats } from '@/hooks/use-trip-stats';
+import type { TripStatus } from '@/types/trip';
+
+// ─── Active trip banner ───────────────────────────────────────────────────────
+
+function ActiveTripBanner({ onPress }: { onPress: () => void }) {
+    const { trip, isLoading } = useActiveTrip();
+
+    if (isLoading) {
+        return (
+            <YStack
+                padding="$5"
+                borderRadius={appTheme.radius.xl}
+                backgroundColor={appTheme.colors.surfaceSoft}
+                borderWidth={1}
+                borderColor={appTheme.colors.border}
+                minHeight={100}
+                alignItems="center"
+                justifyContent="center"
+            >
+                <ActivityIndicator color={appTheme.colors.primary} />
+            </YStack>
+        );
+    }
+
+    if (!trip) {
+        return (
+            <Pressable onPress={() => router.push('/trip-pool')} style={{ borderRadius: appTheme.radius.xl }}>
+                <YStack
+                    padding="$5"
+                    borderRadius={appTheme.radius.xl}
+                    borderWidth={1.5}
+                    borderColor={appTheme.colors.border}
+                    borderStyle="dashed"
+                    alignItems="center"
+                    justifyContent="center"
+                    gap="$2"
+                    minHeight={100}
+                >
+                    <XStack
+                        width={48} height={48} borderRadius={18}
+                        backgroundColor={appTheme.colors.primarySoft}
+                        alignItems="center" justifyContent="center"
+                    >
+                        <Package size={24} color={appTheme.colors.primary} />
+                    </XStack>
+                    <Text fontSize={14} fontWeight="900" color={appTheme.colors.primary}>
+                        Chưa có chuyến — Nhận chuyến ngay
+                    </Text>
+                    <Text fontSize={12} color={appTheme.colors.textMuted}>
+                        Xem danh sách chuyến phù hợp với xe của bạn
+                    </Text>
+                </YStack>
+            </Pressable>
+        );
+    }
+
+    return (
+        <Pressable onPress={onPress} style={{ borderRadius: appTheme.radius.xl }}>
+            <YStack
+                gap="$4"
+                padding="$5"
+                borderRadius={appTheme.radius.xl}
+                backgroundColor={appTheme.colors.primary}
+                overflow="hidden"
+            >
+                <XStack
+                    position="absolute" right={-36} top={-40}
+                    width={132} height={132} borderRadius={66}
+                    backgroundColor="rgba(255,255,255,0.12)"
+                />
+
+                <XStack alignItems="center" justifyContent="space-between">
+                    <XStack alignItems="center" gap="$3" flex={1}>
+                        <XStack
+                            width={48} height={48} borderRadius={18}
+                            alignItems="center" justifyContent="center"
+                            backgroundColor="rgba(255,255,255,0.18)"
+                        >
+                            <Truck size={24} color={appTheme.colors.surface} />
+                        </XStack>
+                        <YStack flex={1} gap={2}>
+                            <Text fontSize={12} fontWeight="900" color="rgba(255,255,255,0.75)">
+                                CHUYẾN ĐANG HOẠT ĐỘNG
+                            </Text>
+                            <Text fontSize={18} fontWeight="900" color={appTheme.colors.surface} lineHeight={24}>
+                                #{trip.id} — {trip.cargo_name ?? 'Hàng hóa'}
+                            </Text>
+                        </YStack>
+                    </XStack>
+                    <TripStatusBadge status={trip.status as TripStatus} />
+                </XStack>
+
+                <XStack gap="$3">
+                    <YStack flex={1} gap={2}>
+                        <Text fontSize={11} color="rgba(255,255,255,0.65)">ĐIỂM LẤY</Text>
+                        <Text fontSize={13} fontWeight="800" color={appTheme.colors.surface} numberOfLines={1}>
+                            {trip.pickup_address}
+                        </Text>
+                    </YStack>
+                    <YStack flex={1} gap={2}>
+                        <Text fontSize={11} color="rgba(255,255,255,0.65)">ĐIỂM GIAO</Text>
+                        <Text fontSize={13} fontWeight="800" color={appTheme.colors.surface} numberOfLines={1}>
+                            {trip.delivery_address}
+                        </Text>
+                    </YStack>
+                </XStack>
+
+                <AppButton tone="secondary" onPress={onPress}>
+                    Xem chi tiết chuyến
+                </AppButton>
+            </YStack>
+        </Pressable>
+    );
+}
+
+// ─── Home screen ──────────────────────────────────────────────────────────────
+
+export function DriverHomeScreen() {
+    const insets = useSafeAreaInsets();
+    const { profile, isLoading: profileLoading } = useProfile();
+    const { stats } = useTripStats();
+
+    const displayName = profileLoading
+        ? '...'
+        : (profile?.full_name ?? 'Tài xế');
+
+    return (
+        <>
+            <StatusBar style="dark" />
+            <ScrollView
+                flex={1}
+                backgroundColor={appTheme.colors.background}
+                contentInsetAdjustmentBehavior="automatic"
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    paddingHorizontal: appTheme.spacing.screenX,
+                    paddingTop: insets.top + 16,
+                    paddingBottom: appTheme.spacing.screenBottom,
+                    gap: 20,
+                }}
+            >
+                {/* Greeting */}
+                <XStack alignItems="center" justifyContent="space-between">
+                    <YStack gap={2}>
+                        <Text fontSize={14} color={appTheme.colors.textMuted}>Xin chào</Text>
+                        <Text fontSize={26} lineHeight={32} fontWeight="900" color={appTheme.colors.text}>
+                            {displayName}
+                        </Text>
+                    </YStack>
+                    <XStack
+                        width={46} height={46} borderRadius={18}
+                        alignItems="center" justifyContent="center"
+                        backgroundColor={appTheme.colors.primarySoft}
+                    >
+                        <Bell size={21} color={appTheme.colors.primary} />
+                    </XStack>
+                </XStack>
+
+                {/* Active trip banner */}
+                <ActiveTripBanner onPress={() => router.push('/active-trip')} />
+
+                {/* Quick stats */}
+                <XStack gap="$3" flexWrap="wrap">
+                    <StatCard
+                        value={stats ? String(stats.today_total) : '—'}
+                        label="Chuyến hôm nay"
+                    />
+                    <StatCard
+                        value={stats ? String(stats.today_completed) : '—'}
+                        label="Hoàn thành"
+                    />
+                    <StatCard
+                        value={stats ? String(stats.month_completed) : '—'}
+                        label="HT tháng này"
+                    />
+                </XStack>
+
+                {/* Quick actions */}
+                <YStack gap={10}>
+                    <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
+                        Thao tác nhanh
+                    </Text>
+
+                    <Pressable onPress={() => router.push('/trip-pool')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.primarySoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <PackageCheck size={22} color={appTheme.colors.primary} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Danh sách chuyến
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Xem và nhận chuyến phù hợp nhóm xe
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/active-trip')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.successSoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <MapPin size={22} color={appTheme.colors.success} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Chuyến hiện tại
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Quản lý và cập nhật trạng thái chuyến
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+                </YStack>
+            </ScrollView>
+        </>
+    );
+}

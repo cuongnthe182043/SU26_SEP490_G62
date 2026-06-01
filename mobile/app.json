@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "sep490g62",
+    "slug": "sep490g62",
     "scheme": "g62mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,21 +14,53 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.g62.mobile",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.g62.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ứng dụng cần truy cập camera để chụp ảnh xác nhận giao hàng."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần truy cập thư viện ảnh để cập nhật ảnh đại diện.",
+          "cameraPermission": "Ứng dụng cần truy cập camera để chụp ảnh đại diện."
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3b773e4e-dae2-4492-8ae0-4986a560b3bf"
+      }
+    },
+    "owner": "sep490g62",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3b773e4e-dae2-4492-8ae0-4986a560b3bf"
+    }
   }
 }
