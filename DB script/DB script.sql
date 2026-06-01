@@ -37,6 +37,11 @@ CREATE TABLE profiles (
     phone       TEXT UNIQUE,
     role_id     SMALLINT NOT NULL REFERENCES roles(id),
     avatar_url  TEXT,
+    dob         DATE,
+    gender      TEXT CHECK (gender IN ('male', 'female', 'other')),
+    address     TEXT,
+    city        TEXT,
+    country     TEXT NOT NULL DEFAULT 'VN',
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()

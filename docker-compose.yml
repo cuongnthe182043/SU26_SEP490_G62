@@ -1,11 +1,11 @@
 services:
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: SEP490
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: "12345"
+      POSTGRES_DB:       SEP490
     volumes:
       - db_data:/var/lib/postgresql/data
       - './DB script:/docker-entrypoint-initdb.d'
@@ -13,20 +13,33 @@ services:
       - "5432:5432"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d SEP490"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "9999:9999"
     env_file:
       - ./backend/.env
     environment:
-      - DB_HOST=db
+      # Override để trỏ vào service db nội bộ, không dùng localhost
+      DB_HOST:     db
+      DB_PORT:     "5432"
+      DB_NAME:     SEP490
+      DB_USER:     postgres
+      DB_PASSWORD: "12345"
+      DB_SSL:      "false"
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
 
@@ -34,8 +47,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "4173:4173"
+      - "5173:5173"
     environment:
       - VITE_API_BASE_URL=http://localhost:9999
     depends_on:
