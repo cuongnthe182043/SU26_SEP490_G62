@@ -33,7 +33,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new ApiError(payload?.error ?? 'Không thể kết nối đến máy chủ.', response.status);
+    throw new ApiError(payload?.error ?? payload?.message ?? 'Không thể kết nối đến máy chủ.', response.status);
   }
 
   return payload as T;

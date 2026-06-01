@@ -17,12 +17,15 @@ ALTER TABLE roles ALTER COLUMN id RESTART WITH 5;
 --------------------------------------------------------------------------------
 -- 2. SECURE AUTHENTICATION ACCOUNTS
 --------------------------------------------------------------------------------
-INSERT INTO accounts (email, password_hash, is_verified) VALUES
-('admin@example.com', crypt('admin123', gen_salt('bf')), TRUE),
-('coordinator@example.com', crypt('coord123', gen_salt('bf')), TRUE),
-('accountant@example.com', crypt('acct123', gen_salt('bf')), TRUE),
-('driver1@example.com', crypt('driver123', gen_salt('bf')), TRUE)
-ON CONFLICT (email) DO NOTHING;
+INSERT INTO accounts (email, password_hash, role_id, is_verified) VALUES
+('admin@example.com', crypt('admin123', gen_salt('bf')), 1, TRUE),
+('coordinator@example.com', crypt('coord123', gen_salt('bf')), 2, TRUE),
+('accountant@example.com', crypt('acct123', gen_salt('bf')), 3, TRUE),
+('driver1@example.com', crypt('driver123', gen_salt('bf')), 4, TRUE)
+ON CONFLICT (email) DO UPDATE
+SET password_hash = EXCLUDED.password_hash,
+    role_id = EXCLUDED.role_id,
+    is_verified = EXCLUDED.is_verified;
 
 --------------------------------------------------------------------------------
 -- 3. USER PROFILES

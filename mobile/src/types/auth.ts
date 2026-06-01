@@ -3,7 +3,7 @@ export type UserRole = 'manager' | 'coordinator' | 'accountant' | 'driver';
 export type AuthUser = {
   id: number;
   email: string;
-  full_name: string;
+  full_name: string | null;
   phone: string | null;
   role: UserRole;
 };
