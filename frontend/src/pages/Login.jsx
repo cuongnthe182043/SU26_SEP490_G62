@@ -67,7 +67,7 @@ export default function Login({ onLoginSuccess }) {
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       if (remember) localStorage.setItem("rememberEmail", email);
-      if (onLoginSuccess) onLoginSuccess(user);
+      if (onLoginSuccess) await onLoginSuccess(user);
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
