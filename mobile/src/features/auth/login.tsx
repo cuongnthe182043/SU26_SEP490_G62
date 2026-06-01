@@ -9,10 +9,11 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react-native";
-import { ScrollView, Text, XStack, YStack } from "tamagui";
+import { Text, XStack, YStack } from "tamagui";
 
 import { AppButton } from "@/components/app-button";
 import { FormField } from "@/components/form-field";
+import { KeyboardSafeScrollView } from "@/components/keyboard-safe-scroll-view";
 import { appTheme } from "@/theme/app-theme";
 
 import {
@@ -51,11 +52,8 @@ const handleSubmit = async () => {
   return (
     <>
       <StatusBar style="dark" />
-      <ScrollView
-        flex={1}
-        backgroundColor={appTheme.colors.background}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
+      <KeyboardSafeScrollView
+        style={{ backgroundColor: appTheme.colors.background }}
         contentContainerStyle={{
           flexGrow: 1,
           paddingHorizontal: appTheme.spacing.screenX,
@@ -229,7 +227,7 @@ const handleSubmit = async () => {
             </Text>
           </YStack>
         </YStack>
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </>
   );
 }
