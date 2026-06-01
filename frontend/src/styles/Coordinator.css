@@ -110,6 +110,15 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
+.empty-state {
+  grid-column: 1 / -1;
+  background: rgba(255,255,255,0.8);
+  border: 1px dashed rgba(20, 30, 70, 0.2);
+  border-radius: 18px;
+  padding: 28px;
+}
+.empty-state h3 { margin: 0 0 8px; }
+.empty-state p { margin: 0; color: #5d6475; }
 .trip-card {
   background: #fff;
   border: 1px solid rgba(20, 30, 70, 0.12);
@@ -161,6 +170,13 @@
 table { width: 100%; border-collapse: collapse; min-width: 1400px; font-size: 13px; }
 th, td { border: 1px solid #d7dce8; padding: 10px 12px; text-align: left; white-space: nowrap; }
 th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
+.loading-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font: 600 18px/1.4 Inter, system-ui, sans-serif;
+  color: #18227f;
+}
 
 @media (max-width: 1200px) {
   .trip-grid { grid-template-columns: 1fr 1fr; }
