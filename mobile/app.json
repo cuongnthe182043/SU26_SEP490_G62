@@ -32,7 +32,21 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ứng dụng cần truy cập camera để chụp ảnh xác nhận giao hàng."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần truy cập thư viện ảnh để cập nhật ảnh đại diện.",
+          "cameraPermission": "Ứng dụng cần truy cập camera để chụp ảnh đại diện."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "router": {},

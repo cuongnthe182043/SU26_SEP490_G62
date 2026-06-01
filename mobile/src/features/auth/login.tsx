@@ -44,7 +44,7 @@ const handleSubmit = async () => {
   const result = await login(email, password);
   if (result) {
     setPassword('');
-    router.replace('/driver-home');
+    router.replace('/(tabs)');
   }
 };
 
@@ -192,9 +192,9 @@ const handleSubmit = async () => {
                 <YStack
                   padding="$3"
                   borderRadius={appTheme.radius.sm}
-                  backgroundColor="#FEF2F2"
+                  backgroundColor={appTheme.colors.dangerSoft}
                   borderWidth={1}
-                  borderColor="#FECACA"
+                  borderColor={appTheme.colors.dangerBorder}
                 >
                   <Text
                     selectable
