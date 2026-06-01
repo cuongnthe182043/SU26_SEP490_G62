@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { tripService } from '@/services/trip-service';
 import type { ActiveTrip } from '@/types/trip';
 
@@ -22,7 +23,8 @@ export function useActiveTrip() {
         }
     }, []);
 
-    useEffect(() => { fetch(); }, [fetch]);
+    // Refresh mỗi khi màn hình được focus
+    useFocusEffect(useCallback(() => { fetch(); }, [fetch]));
 
     return { ...state, refresh: fetch };
 }
