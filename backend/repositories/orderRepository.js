@@ -3,18 +3,8 @@ const pool = require('../config/database');
 /**
  * Get all orders with customer details
  */
-const getAllOrders = async (filters = {}) => {
-    let query = `
-        SELECT o.*, 
-               CASE WHEN o.payment_type = 'client_credit' THEN 'debt' ELSE o.payment_type END as payment_type,
-               o.cargo_weight_kg as cargo_weight,
-               c.full_name as customer_name, 
-               c.company_name as customer_company, 
-               c.phone as customer_phone,
-               d.id as debt_id,
-               d.status as debt_status,
-               d.total_amount as debt_total,
-               d.paid_amount as debt_paid
+const getAllOrders = async (filters = {}, page = null, limit = null) => {
+    let baseQuery = `
         FROM orders o
         LEFT JOIN customers c ON o.customer_id = c.id
         LEFT JOIN debts d ON o.id = d.order_id
@@ -33,13 +23,48 @@ const getAllOrders = async (filters = {}) => {
     }
 
     if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
+        baseQuery += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ' ORDER BY o.created_at DESC';
+    // 1. Get total items count for pagination
+    const countQuery = `SELECT COUNT(o.id) ${baseQuery}`;
+    const countResult = await pool.query(countQuery, params);
+    const totalItems = parseInt(countResult.rows[0].count);
+
+    // 2. Build the main paginated query
+    let query = `
+        SELECT o.*, 
+               CASE WHEN o.payment_type = 'client_credit' THEN 'debt' ELSE o.payment_type END as payment_type,
+               o.cargo_weight_kg as cargo_weight,
+               c.full_name as customer_name, 
+               c.company_name as customer_company, 
+               c.phone as customer_phone,
+               d.id as debt_id,
+               d.status as debt_status,
+               d.total_amount as debt_total,
+               d.paid_amount as debt_paid
+        ${baseQuery}
+        ORDER BY o.created_at DESC
+    `;
+
+    if (page !== null && limit !== null) {
+        const offset = (page - 1) * limit;
+        params.push(limit);
+        query += ` LIMIT $${params.length}`;
+        params.push(offset);
+        query += ` OFFSET $${params.length}`;
+    }
 
     const result = await pool.query(query, params);
-    return result.rows;
+    const totalPages = limit ? Math.ceil(totalItems / limit) : 1;
+
+    return {
+        orders: result.rows,
+        totalItems,
+        totalPages,
+        currentPage: page || 1,
+        limit: limit || totalItems
+    };
 };
 
 /**

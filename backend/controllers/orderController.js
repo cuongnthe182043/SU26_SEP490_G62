@@ -10,8 +10,12 @@ const getOrders = async (req, res) => {
             status: req.query.status,
             search: req.query.search,
         };
-        const orders = await orderRepository.getAllOrders(filters);
-        res.json(orders);
+
+        const page = req.query.page ? Number(req.query.page) : null;
+        const limit = req.query.limit ? Number(req.query.limit) : null;
+
+        const result = await orderRepository.getAllOrders(filters, page, limit);
+        res.json(result);
     } catch (err) {
         console.error('Error fetching orders:', err);
         res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
