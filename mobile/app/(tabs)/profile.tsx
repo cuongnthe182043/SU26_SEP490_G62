@@ -6,6 +6,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { AppText } from '@/components/app-text';
+import { ProfileSkeleton } from '@/components/skeleton';
 import { appTheme } from '@/theme/app-theme';
 import { useLogout } from '@/hooks/use-logout';
 import { useProfile } from '@/hooks/use-profile';
@@ -86,33 +87,31 @@ export default function ProfileTab() {
             <ScreenHeader title="Hồ sơ & Cài đặt" />
             <ScrollView contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}>
 
-                {/* Avatar + tên */}
-                <YStack alignItems="center" paddingVertical={28} gap={12}>
-                    <Pressable onPress={handlePickAvatar} style={{ position: 'relative' }}>
-                        {profile?.avatar_url ? (
-                            <Image source={{ uri: profile.avatar_url }}
-                                style={{ width: 80, height: 80, borderRadius: 28 }} />
-                        ) : (
-                            <XStack width={80} height={80} borderRadius={28}
-                                backgroundColor={appTheme.colors.primarySoft}
-                                alignItems="center" justifyContent="center">
-                                <User size={36} color={appTheme.colors.primary} />
+                {isLoading ? <ProfileSkeleton /> : <>
+                    {/* Avatar + tên */}
+                    <YStack alignItems="center" paddingVertical={28} gap={12}>
+                        <Pressable onPress={handlePickAvatar} style={{ position: 'relative' }}>
+                            {profile?.avatar_url ? (
+                                <Image source={{ uri: profile.avatar_url }}
+                                    style={{ width: 80, height: 80, borderRadius: 28 }} />
+                            ) : (
+                                <XStack width={80} height={80} borderRadius={28}
+                                    backgroundColor={appTheme.colors.primarySoft}
+                                    alignItems="center" justifyContent="center">
+                                    <User size={36} color={appTheme.colors.primary} />
+                                </XStack>
+                            )}
+                            <XStack position="absolute" bottom={0} right={0}
+                                width={26} height={26} borderRadius={13}
+                                backgroundColor={appTheme.colors.primary}
+                                alignItems="center" justifyContent="center"
+                                borderWidth={2} borderColor={appTheme.colors.background}>
+                                {avatarLoading
+                                    ? <ActivityIndicator size="small" color={appTheme.colors.surface} />
+                                    : <Camera size={13} color={appTheme.colors.surface} />}
                             </XStack>
-                        )}
-                        <XStack position="absolute" bottom={0} right={0}
-                            width={26} height={26} borderRadius={13}
-                            backgroundColor={appTheme.colors.primary}
-                            alignItems="center" justifyContent="center"
-                            borderWidth={2} borderColor={appTheme.colors.background}>
-                            {avatarLoading
-                                ? <ActivityIndicator size="small" color={appTheme.colors.surface} />
-                                : <Camera size={13} color={appTheme.colors.surface} />}
-                        </XStack>
-                    </Pressable>
+                        </Pressable>
 
-                    {isLoading ? (
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                    ) : (
                         <YStack alignItems="center" gap={2}>
                             <AppText variant="bodyStrong">{profile?.full_name ?? '—'}</AppText>
                             <AppText variant="caption" tone="muted">{profile?.email ?? '—'}</AppText>
@@ -124,38 +123,38 @@ export default function ProfileTab() {
                                 </Text>
                             </XStack>
                         </YStack>
-                    )}
-                </YStack>
+                    </YStack>
 
-                {/* Tài khoản */}
-                <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
-                    borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden" marginBottom={14}>
-                    <XStack paddingHorizontal={16} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft}>
-                        <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>TÀI KHOẢN</Text>
-                    </XStack>
-                    <MenuRow icon={<User size={17} color={appTheme.colors.primary} />}
-                        label="Thông tin cá nhân" onPress={handleOpenProfile} />
-                    <XStack height={1} backgroundColor={appTheme.colors.border} marginLeft={64} />
-                    <MenuRow icon={<Shield size={17} color={appTheme.colors.primary} />}
-                        label="Bảo mật" onPress={() => {}} />
-                </YStack>
+                    {/* Tài khoản */}
+                    <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
+                        borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden" marginBottom={14}>
+                        <XStack paddingHorizontal={16} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft}>
+                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>TÀI KHOẢN</Text>
+                        </XStack>
+                        <MenuRow icon={<User size={17} color={appTheme.colors.primary} />}
+                            label="Thông tin cá nhân" onPress={handleOpenProfile} />
+                        <XStack height={1} backgroundColor={appTheme.colors.border} marginLeft={64} />
+                        <MenuRow icon={<Shield size={17} color={appTheme.colors.primary} />}
+                            label="Bảo mật" onPress={() => {}} />
+                    </YStack>
 
-                {/* Hệ thống */}
-                <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
-                    borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden" marginBottom={14}>
-                    <XStack paddingHorizontal={16} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft}>
-                        <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>HỆ THỐNG</Text>
-                    </XStack>
-                    <MenuRow icon={<Settings size={17} color={appTheme.colors.primary} />}
-                        label="Cài đặt ứng dụng" onPress={() => {}} />
-                </YStack>
+                    {/* Hệ thống */}
+                    <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
+                        borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden" marginBottom={14}>
+                        <XStack paddingHorizontal={16} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft}>
+                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>HỆ THỐNG</Text>
+                        </XStack>
+                        <MenuRow icon={<Settings size={17} color={appTheme.colors.primary} />}
+                            label="Cài đặt ứng dụng" onPress={() => {}} />
+                    </YStack>
 
-                {/* Đăng xuất */}
-                <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
-                    borderWidth={1} borderColor={appTheme.colors.dangerBorder} overflow="hidden">
-                    <MenuRow icon={<LogOut size={17} color={appTheme.colors.danger} />}
-                        label="Đăng xuất" onPress={confirmLogout} danger loading={isLoggingOut} />
-                </YStack>
+                    {/* Đăng xuất */}
+                    <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
+                        borderWidth={1} borderColor={appTheme.colors.dangerBorder} overflow="hidden">
+                        <MenuRow icon={<LogOut size={17} color={appTheme.colors.danger} />}
+                            label="Đăng xuất" onPress={confirmLogout} danger loading={isLoggingOut} />
+                    </YStack>
+                </>}
             </ScrollView>
         </View>
     );

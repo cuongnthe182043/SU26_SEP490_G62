@@ -16,13 +16,14 @@ const ASSIGNMENT_TYPE = Object.freeze({
     COORDINATOR_ASSIGN: 'coordinator_assign',
 });
 
+// CANCELLED is terminal — driver is freed after cancellation (not active)
+// RETURNING is active — driver is returning cargo to pickup point
 const ACTIVE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
     SHIPMENT_STATUS.PICKING,
     SHIPMENT_STATUS.LOADED,
     SHIPMENT_STATUS.TRANSIT,
     SHIPMENT_STATUS.ARRIVED,
-    SHIPMENT_STATUS.CANCELLED, // driver đang trả hàng về
     SHIPMENT_STATUS.RETURNING,
 ]);
 
@@ -34,17 +35,16 @@ const CANCELLABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.ARRIVED,
 ]);
 
-// Strict forward-only transitions
+// Strict forward-only transitions via PATCH /status endpoint
+// ARRIVED→COMPLETED goes through POST /complete (completeWithProof)
 const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.CLAIMED]:   [SHIPMENT_STATUS.PICKING],
     [SHIPMENT_STATUS.PICKING]:   [SHIPMENT_STATUS.LOADED],
     [SHIPMENT_STATUS.LOADED]:    [SHIPMENT_STATUS.TRANSIT],
     [SHIPMENT_STATUS.TRANSIT]:   [SHIPMENT_STATUS.ARRIVED],
-    [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
-    [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
-    [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED],
-    // Khi không thể giao (CANCELLED with reason): driver xác nhận đã trả hàng → COMPLETED
-    [SHIPMENT_STATUS.CANCELLED]: [SHIPMENT_STATUS.COMPLETED],
+    [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],    // giao thất bại
+    [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING], // bắt đầu hoàn hàng
+    [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED], // hoàn thành hoàn hàng
 });
 
 // Các trạng thái cho phép hủy chuyến sớm (release về pool)

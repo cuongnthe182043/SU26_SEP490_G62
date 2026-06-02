@@ -1,11 +1,12 @@
 import { Bell, ChevronRight, MapPin, Package, PackageCheck, Truck } from 'lucide-react-native';
-import { ActivityIndicator, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
+import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton';
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
@@ -20,20 +21,7 @@ function ActiveTripBanner({ onPress }: { onPress: () => void }) {
     const { trip, isLoading } = useActiveTrip();
 
     if (isLoading) {
-        return (
-            <YStack
-                padding="$5"
-                borderRadius={appTheme.radius.xl}
-                backgroundColor={appTheme.colors.surfaceSoft}
-                borderWidth={1}
-                borderColor={appTheme.colors.border}
-                minHeight={100}
-                alignItems="center"
-                justifyContent="center"
-            >
-                <ActivityIndicator color={appTheme.colors.primary} />
-            </YStack>
-        );
+        return <ActiveTripBannerSkeleton />;
     }
 
     if (!trip) {
@@ -174,20 +162,15 @@ export function DriverHomeScreen() {
                 <ActiveTripBanner onPress={() => router.push('/active-trip')} />
 
                 {/* Quick stats */}
-                <XStack gap="$3" flexWrap="wrap">
-                    <StatCard
-                        value={stats ? String(stats.today_total) : '—'}
-                        label="Chuyến hôm nay"
-                    />
-                    <StatCard
-                        value={stats ? String(stats.today_completed) : '—'}
-                        label="Hoàn thành"
-                    />
-                    <StatCard
-                        value={stats ? String(stats.month_completed) : '—'}
-                        label="HT tháng này"
-                    />
-                </XStack>
+                {stats ? (
+                    <XStack gap="$3" flexWrap="wrap">
+                        <StatCard value={String(stats.today_total)}     label="Chuyến hôm nay" />
+                        <StatCard value={String(stats.today_completed)}  label="Hoàn thành" />
+                        <StatCard value={String(stats.month_completed)}  label="HT tháng này" />
+                    </XStack>
+                ) : (
+                    <StatRowSkeleton />
+                )}
 
                 {/* Quick actions */}
                 <YStack gap={10}>

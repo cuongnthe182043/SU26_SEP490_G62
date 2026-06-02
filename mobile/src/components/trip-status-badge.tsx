@@ -12,7 +12,7 @@ type StatusConfig = {
 const c = appTheme.colors;
 
 const STATUS_CONFIG: Record<TripStatus, StatusConfig> = {
-    available:  { bg: c.successSoft,         text: c.successText,        dot: c.success },
+    available:  { bg: c.successSoft,          text: c.successText,        dot: c.success },
     claimed:    { bg: c.primarySoft,          text: c.primary,            dot: c.primary },
     picking:    { bg: c.statusPickingSoft,    text: c.statusPickingText,  dot: c.statusPicking },
     loaded:     { bg: c.statusPickingSoft,    text: c.statusPickingText,  dot: c.statusPicking },

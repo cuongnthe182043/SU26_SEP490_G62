@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
-    AlertTriangle, Camera, CheckCircle,
-    MapPin, Package, RotateCcw, Trash2, X, XCircle,
+    AlertTriangle, Camera, CheckCircle, ChevronDown,
+    MapPin, Package, PlusCircle, RotateCcw, Trash2, X, XCircle,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -15,12 +15,341 @@ import { ScreenHeader } from '@/components/screen-header';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
 import { useActiveTrip } from '@/hooks/use-active-trip';
-import { useCancelDelivery } from '@/hooks/use-cancel-delivery';
 import { useCompletionProof } from '@/hooks/use-completion-proof';
 import { useReleaseTrip } from '@/hooks/use-release-trip';
+import { useShipmentExpenses } from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle } from '@/hooks/use-trip-lifecycle';
-import type { ActiveTrip, TripStatus } from '@/types/trip';
-import { NEXT_ACTIONS } from '@/types/trip';
+import { tripService } from '@/services/trip-service';
+import { ActiveTripSkeleton } from '@/components/skeleton';
+import type { ActiveTrip, Expense, ExpenseType, TripStatus } from '@/types/trip';
+import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
+
+// States where driver can add expenses
+const EXPENSE_ALLOWED_STATUSES: TripStatus[] = [
+    'claimed', 'picking', 'loaded', 'transit', 'arrived', 'failed', 'returning',
+];
+
+const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'repair', 'other'];
+
+// ─── Expense form modal ───────────────────────────────────────────────────────
+
+function ExpenseFormModal({
+    visible,
+    shipmentId,
+    onClose,
+    onSuccess,
+}: {
+    visible: boolean;
+    shipmentId: number;
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const [expenseType, setExpenseType] = useState<ExpenseType>('fuel');
+    const [amount, setAmount]           = useState('');
+    const [description, setDescription] = useState('');
+    const [receiptUri, setReceiptUri]   = useState<string | null>(null);
+    const [showCamera, setShowCamera]   = useState(false);
+    const [showTypePicker, setShowTypePicker] = useState(false);
+    const [isSubmitting, setSubmitting] = useState(false);
+    const [formError, setFormError]     = useState<string | null>(null);
+
+    const [permission, requestPermission] = useCameraPermissions();
+    const cameraRef = useRef<CameraView>(null);
+
+    const reset = () => {
+        setExpenseType('fuel');
+        setAmount('');
+        setDescription('');
+        setReceiptUri(null);
+        setShowCamera(false);
+        setShowTypePicker(false);
+        setFormError(null);
+    };
+
+    const handleClose = () => {
+        reset();
+        onClose();
+    };
+
+    const openCamera = async () => {
+        if (!permission?.granted) {
+            const res = await requestPermission();
+            if (!res.granted) {
+                Alert.alert('Cần quyền camera', 'Vui lòng cấp quyền camera trong cài đặt.');
+                return;
+            }
+        }
+        setShowCamera(true);
+    };
+
+    const handleCapture = async () => {
+        if (!cameraRef.current) return;
+        try {
+            const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+            if (photo?.uri) {
+                setReceiptUri(photo.uri);
+                setShowCamera(false);
+            }
+        } catch {
+            Alert.alert('Lỗi', 'Không thể chụp ảnh, vui lòng thử lại.');
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!receiptUri) { setFormError('Vui lòng chụp ảnh biên lai'); return; }
+        const amt = Number(amount.replace(/[^0-9]/g, ''));
+        if (!amt || amt <= 0) { setFormError('Số tiền phải lớn hơn 0'); return; }
+
+        setFormError(null);
+        setSubmitting(true);
+        try {
+            const formData = new FormData();
+            formData.append('shipmentId', String(shipmentId));
+            formData.append('expenseType', expenseType);
+            formData.append('amount', String(amt));
+            if (description.trim()) formData.append('description', description.trim());
+
+            const filename = receiptUri.split('/').pop() ?? 'receipt.jpg';
+            const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+            formData.append('receipt', { uri: receiptUri, name: filename, type: mimeMap[ext] ?? 'image/jpeg' } as unknown as Blob);
+
+            await tripService.createExpense(formData);
+            reset();
+            onSuccess();
+        } catch (err) {
+            setFormError(err instanceof Error ? err.message : 'Không thể thêm chi phí');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Camera modal (full-screen) rendered inside form modal
+    if (showCamera) {
+        return (
+            <Modal visible animationType="slide" statusBarTranslucent onRequestClose={() => setShowCamera(false)}>
+                <View style={cam.container}>
+                    <StatusBar style="light" />
+                    <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+                    <View style={cam.frame} pointerEvents="none">
+                        <View style={[cam.corner, cam.TL]} /><View style={[cam.corner, cam.TR]} />
+                        <View style={[cam.corner, cam.BL]} /><View style={[cam.corner, cam.BR]} />
+                    </View>
+                    <View style={cam.topBar}>
+                        <XStack paddingHorizontal={20} paddingTop={56} paddingBottom={14} alignItems="center" gap={12}>
+                            <Pressable onPress={() => setShowCamera(false)} hitSlop={12} style={cam.iconBtn}>
+                                <X size={20} color="#fff" />
+                            </Pressable>
+                            <Text fontSize={15} fontWeight="900" color="#fff">Chụp ảnh biên lai</Text>
+                        </XStack>
+                    </View>
+                    <View style={cam.shutterBar}>
+                        <Text style={cam.guide}>Đảm bảo ảnh rõ nét trước khi chụp</Text>
+                        <Pressable onPress={handleCapture} style={cam.shutter}>
+                            <View style={cam.shutterInner}><Camera size={28} color={appTheme.colors.primary} /></View>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+            <View style={ef.overlay}>
+                <View style={ef.sheet}>
+                    {/* Header */}
+                    <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
+                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>Thêm chi phí phát sinh</Text>
+                        <Pressable onPress={handleClose} hitSlop={10}><X size={20} color={appTheme.colors.textMuted} /></Pressable>
+                    </XStack>
+
+                    {/* Expense type */}
+                    <YStack gap={6} marginBottom={14}>
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>LOẠI CHI PHÍ</Text>
+                        <Pressable onPress={() => setShowTypePicker(v => !v)} style={ef.select}>
+                            <Text fontSize={14} color={appTheme.colors.text} fontWeight="700">{EXPENSE_TYPE_LABEL[expenseType]}</Text>
+                            <ChevronDown size={16} color={appTheme.colors.textMuted} />
+                        </Pressable>
+                        {showTypePicker ? (
+                            <YStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden">
+                                {EXPENSE_TYPES.map((t) => (
+                                    <Pressable
+                                        key={t}
+                                        onPress={() => { setExpenseType(t); setShowTypePicker(false); }}
+                                        style={[ef.typeOption, t === expenseType && ef.typeOptionActive]}
+                                    >
+                                        <Text fontSize={14} fontWeight={t === expenseType ? '900' : '600'}
+                                            color={t === expenseType ? appTheme.colors.primary : appTheme.colors.text}>
+                                            {EXPENSE_TYPE_LABEL[t]}
+                                        </Text>
+                                        {t === expenseType ? <CheckCircle size={16} color={appTheme.colors.primary} /> : null}
+                                    </Pressable>
+                                ))}
+                            </YStack>
+                        ) : null}
+                    </YStack>
+
+                    {/* Amount */}
+                    <YStack gap={6} marginBottom={14}>
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>SỐ TIỀN (VNĐ)</Text>
+                        <TextInput
+                            style={ef.input}
+                            value={amount}
+                            onChangeText={setAmount}
+                            placeholder="Ví dụ: 150000"
+                            placeholderTextColor={appTheme.colors.textMuted}
+                            keyboardType="numeric"
+                        />
+                    </YStack>
+
+                    {/* Description */}
+                    <YStack gap={6} marginBottom={14}>
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>GHI CHÚ (tùy chọn)</Text>
+                        <TextInput
+                            style={[ef.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                            value={description}
+                            onChangeText={setDescription}
+                            placeholder="Mô tả chi phí..."
+                            placeholderTextColor={appTheme.colors.textMuted}
+                            multiline
+                            numberOfLines={2}
+                        />
+                    </YStack>
+
+                    {/* Receipt photo */}
+                    <YStack gap={6} marginBottom={16}>
+                        <XStack alignItems="center" gap={6}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>ẢNH BIÊN LAI</Text>
+                            <View style={styles.requiredBadge}>
+                                <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
+                            </View>
+                        </XStack>
+                        {receiptUri ? (
+                            <XStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
+                                overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}>
+                                <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                                <YStack flex={1} paddingHorizontal={12} gap={4}>
+                                    <XStack alignItems="center" gap={6}>
+                                        <View style={styles.doneDot} />
+                                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>Đã chụp biên lai</Text>
+                                    </XStack>
+                                    <Pressable onPress={openCamera} style={styles.retakeRow}>
+                                        <Camera size={12} color={appTheme.colors.primary} />
+                                        <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
+                                    </Pressable>
+                                </YStack>
+                                <Pressable onPress={() => setReceiptUri(null)} hitSlop={8} style={styles.deleteBtn}>
+                                    <Trash2 size={18} color={appTheme.colors.danger} />
+                                </Pressable>
+                            </XStack>
+                        ) : (
+                            <Pressable onPress={openCamera} style={ef.captureBtn}>
+                                <Camera size={20} color={appTheme.colors.primary} />
+                                <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>Chụp ảnh biên lai</Text>
+                            </Pressable>
+                        )}
+                    </YStack>
+
+                    {/* Error */}
+                    {formError ? (
+                        <XStack padding={10} borderRadius={8} backgroundColor={appTheme.colors.dangerSoft}
+                            borderWidth={1} borderColor={appTheme.colors.dangerBorder} marginBottom={12}>
+                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{formError}</Text>
+                        </XStack>
+                    ) : null}
+
+                    {/* Submit */}
+                    <XStack gap={10}>
+                        <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
+                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[rm.btn, rm.confirmBtn, { backgroundColor: appTheme.colors.primary }, isSubmitting && { opacity: 0.6 }]}
+                            onPress={handleSubmit}
+                            disabled={isSubmitting}
+                        >
+                            <Text fontSize={14} fontWeight="900" color="#fff">
+                                {isSubmitting ? 'Đang lưu...' : 'Lưu chi phí'}
+                            </Text>
+                        </Pressable>
+                    </XStack>
+                </View>
+            </View>
+        </Modal>
+    );
+}
+
+// ─── Expense list section ─────────────────────────────────────────────────────
+
+function ExpenseSection({
+    expenses,
+    canAdd,
+    onAdd,
+}: {
+    expenses: Expense[];
+    canAdd: boolean;
+    onAdd: () => void;
+}) {
+    const fmt = (v: string) =>
+        new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
+
+    const total = expenses.reduce((s, e) => s + Number(e.amount), 0);
+
+    return (
+        <YStack borderRadius={appTheme.radius.lg} borderWidth={1} borderColor={appTheme.colors.border}
+            backgroundColor={appTheme.colors.surface} overflow="hidden">
+            {/* Header */}
+            <XStack paddingHorizontal={16} paddingVertical={11} backgroundColor={appTheme.colors.surfaceSoft}
+                justifyContent="space-between" alignItems="center">
+                <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>CHI PHÍ PHÁT SINH</Text>
+                {expenses.length > 0 ? (
+                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{fmt(String(total))}</Text>
+                ) : null}
+            </XStack>
+
+            <YStack padding={14} gap={10}>
+                {expenses.length === 0 ? (
+                    <Text fontSize={13} color={appTheme.colors.textMuted} textAlign="center" paddingVertical={4}>
+                        Chưa có chi phí nào
+                    </Text>
+                ) : (
+                    expenses.map((e) => (
+                        <XStack key={e.id} gap={10} alignItems="flex-start">
+                            <YStack flex={1} gap={2}>
+                                <XStack alignItems="center" gap={6}>
+                                    <Text fontSize={13} fontWeight="800" color={appTheme.colors.text}>
+                                        {EXPENSE_TYPE_LABEL[e.expense_type]}
+                                    </Text>
+                                    <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
+                                        {fmt(e.amount)}
+                                    </Text>
+                                </XStack>
+                                {e.description ? (
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>{e.description}</Text>
+                                ) : null}
+                                {e.receipt_urls.length > 0 ? (
+                                    <XStack gap={6} marginTop={4} flexWrap="wrap">
+                                        {e.receipt_urls.map((url, i) => (
+                                            <Image key={i} source={{ uri: url }} style={{ width: 56, height: 56, borderRadius: 8 }} resizeMode="cover" />
+                                        ))}
+                                    </XStack>
+                                ) : null}
+                            </YStack>
+                        </XStack>
+                    ))
+                )}
+
+                {canAdd ? (
+                    <Pressable onPress={onAdd} style={ef.addBtn}>
+                        <PlusCircle size={16} color={appTheme.colors.primary} />
+                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>Thêm chi phí</Text>
+                    </Pressable>
+                ) : null}
+            </YStack>
+        </YStack>
+    );
+}
 
 // ─── Status progress stepper ─────────────────────────────────────────────────
 
@@ -43,18 +372,17 @@ const STATUS_ACCENT: Partial<Record<TripStatus, { bg: string; text: string; bord
     completed: { bg: appTheme.colors.successSoft,  text: appTheme.colors.success,     border: '#a7f3d0' },
     failed:    { bg: '#fee2e2',                    text: appTheme.colors.danger,      border: '#fca5a5' },
     returning: { bg: appTheme.colors.surfaceSoft,  text: appTheme.colors.textMuted,   border: appTheme.colors.border },
-    cancelled: { bg: '#fff7ed',                    text: '#c2410c',                   border: '#fed7aa' },
+    cancelled: { bg: '#f3f4f6',                    text: appTheme.colors.textMuted,   border: appTheme.colors.border },
 };
 
 const STATUS_BANNER: Partial<Record<TripStatus, { icon: React.ReactNode; text: string }>> = {
-    claimed:   { icon: <MapPin size={14} color={appTheme.colors.primary} />,      text: 'Di chuyển đến điểm lấy hàng' },
-    picking:   { icon: <Package size={14} color={appTheme.colors.warningText} />, text: 'Đang bốc xếp hàng lên xe' },
-    loaded:    { icon: <Package size={14} color={appTheme.colors.warningText} />, text: 'Hàng đã lên xe — sẵn sàng khởi hành' },
-    transit:   { icon: <MapPin size={14} color={appTheme.colors.primary} />,      text: 'Đang vận chuyển đến điểm giao' },
-    arrived:   { icon: <CheckCircle size={14} color={appTheme.colors.success} />, text: 'Đã đến — chụp ảnh biên lai rồi hoàn thành' },
-    failed:    { icon: <AlertTriangle size={14} color={appTheme.colors.danger} />, text: 'Giao hàng thất bại — bắt đầu hoàn hàng' },
-    returning: { icon: <MapPin size={14} color={appTheme.colors.textMuted} />,    text: 'Đang hoàn hàng về điểm lấy' },
-    cancelled: { icon: <RotateCcw size={14} color="#c2410c" />,                   text: 'Không thể giao — Trả hàng về điểm lấy hàng ban đầu' },
+    claimed:   { icon: <MapPin size={14} color={appTheme.colors.primary} />,       text: 'Di chuyển đến điểm lấy hàng' },
+    picking:   { icon: <Package size={14} color={appTheme.colors.warningText} />,  text: 'Đang bốc xếp hàng lên xe' },
+    loaded:    { icon: <Package size={14} color={appTheme.colors.warningText} />,  text: 'Hàng đã lên xe — sẵn sàng khởi hành' },
+    transit:   { icon: <MapPin size={14} color={appTheme.colors.primary} />,       text: 'Đang vận chuyển đến điểm giao' },
+    arrived:   { icon: <CheckCircle size={14} color={appTheme.colors.success} />,  text: 'Đã đến — chụp ảnh biên lai rồi hoàn thành' },
+    failed:    { icon: <AlertTriangle size={14} color={appTheme.colors.danger} />, text: 'Giao hàng thất bại — bắt đầu hoàn hàng về' },
+    returning: { icon: <RotateCcw size={14} color={appTheme.colors.textMuted} />,  text: 'Đang hoàn hàng về điểm lấy hàng ban đầu' },
 };
 
 function StatusStepper({ status }: { status: TripStatus }) {
@@ -363,23 +691,29 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [proofUri,   setProofUri]       = useState<string | null>(null);
     const [cameraTarget, setCameraTarget] = useState<'receipt' | 'proof' | null>(null);
 
-    // Reason modal state
-    const [reasonModal, setReasonModal] = useState<'cancel-delivery' | 'release-trip' | null>(null);
+    // Reason modal — only for early release (claimed/picking)
+    const [showReleaseModal, setShowReleaseModal] = useState(false);
+
+    // Expense form modal
+    const [showExpenseForm, setShowExpenseForm] = useState(false);
 
     const { isUploading, error: proofError, completeWithProof } = useCompletionProof(() => {
         router.replace('/(tabs)');
     });
 
-    const { isLoading: cancelLoading, cancelDelivery } = useCancelDelivery(() => refresh());
-    const { isLoading: releaseLoading, releaseTrip }   = useReleaseTrip(() => router.replace('/(tabs)'));
+    const { isLoading: releaseLoading, releaseTrip } = useReleaseTrip(() => router.replace('/(tabs)'));
 
-    const isWorking    = lifecycleLoading || isUploading || cancelLoading || releaseLoading;
+    // Expenses
+    const { expenses, load: loadExpenses } = useShipmentExpenses(trip.id);
+    useEffect(() => { void loadExpenses(); }, [loadExpenses]);
+
+    const isWorking    = lifecycleLoading || isUploading || releaseLoading;
     const nextAction   = NEXT_ACTIONS[trip.status as TripStatus];
     const accent       = STATUS_ACCENT[trip.status as TripStatus];
     const banner       = STATUS_BANNER[trip.status as TripStatus];
     const isArrived    = trip.status === 'arrived';
-    const isCancelled  = trip.status === 'cancelled';
     const isReleasable = trip.status === 'claimed' || trip.status === 'picking';
+    const canAddExpense = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
 
     const allPhotosDone = isArrived && !!receiptUri && (!trip.is_final_shipment || !!proofUri);
 
@@ -404,8 +738,15 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         completeWithProof(trip.id, receiptUri, proofUri ?? undefined);
     };
 
-    const handleConfirmReturn = () => {
-        advance(trip.id, 'completed');
+    const handleMarkFailed = () => {
+        Alert.alert(
+            'Xác nhận giao thất bại',
+            'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
+            [
+                { text: 'Hủy', style: 'cancel' },
+                { text: 'Xác nhận', style: 'destructive', onPress: () => advance(trip.id, 'failed') },
+            ],
+        );
     };
 
     return (
@@ -486,6 +827,13 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     {trip.notes ? <InfoRow label="Ghi chú" value={trip.notes} /> : null}
                 </SectionCard>
 
+                {/* ── Expenses ── */}
+                <ExpenseSection
+                    expenses={expenses}
+                    canAdd={canAddExpense}
+                    onAdd={() => setShowExpenseForm(true)}
+                />
+
                 {/* ── Final shipment badge ── */}
                 {trip.is_final_shipment ? (
                     <XStack padding={12} borderRadius={appTheme.radius.sm}
@@ -500,30 +848,22 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </XStack>
                 ) : null}
 
-                {/* ── CANCELLED: return guidance banner ── */}
-                {isCancelled ? (
+                {/* ── RETURNING: guidance banner showing where to return ── */}
+                {trip.status === 'returning' ? (
                     <YStack
-                        padding={14} borderRadius={appTheme.radius.lg} gap={10}
-                        borderWidth={1.5} borderColor="#fed7aa"
-                        backgroundColor="#fff7ed"
+                        padding={14} borderRadius={appTheme.radius.lg} gap={6}
+                        borderWidth={1} borderColor={appTheme.colors.border}
+                        backgroundColor={appTheme.colors.surfaceSoft}
                     >
-                        <XStack gap={10} alignItems="flex-start">
-                            <XStack width={36} height={36} borderRadius={12}
-                                backgroundColor="#ffedd5"
-                                alignItems="center" justifyContent="center"
-                            >
-                                <RotateCcw size={18} color="#c2410c" />
-                            </XStack>
-                            <YStack flex={1} gap={3}>
-                                <Text fontSize={14} fontWeight="900" color="#c2410c">Cần trả hàng về</Text>
-                                <Text fontSize={12} color="#92400e" lineHeight={17}>
-                                    Đơn hàng không thể giao được. Vui lòng chở hàng quay lại điểm lấy hàng ban đầu và xác nhận sau khi đã trả xong.
-                                </Text>
-                                <Text fontSize={12} fontWeight="700" color="#78350f" marginTop={4}>
-                                    Điểm lấy (trả hàng về): {trip.pickup_address}
-                                </Text>
-                            </YStack>
+                        <XStack gap={8} alignItems="center">
+                            <RotateCcw size={14} color={appTheme.colors.textMuted} />
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
+                                Điểm trả hàng về:
+                            </Text>
                         </XStack>
+                        <Text fontSize={13} color={appTheme.colors.text} lineHeight={18}>
+                            {trip.pickup_address}
+                        </Text>
                     </YStack>
                 ) : null}
 
@@ -567,8 +907,8 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
                 {/* ── Action buttons ── */}
                 <YStack gap={10}>
-                    {/* Normal lifecycle advance (skip for arrived and cancelled) */}
-                    {nextAction && !isArrived && !isCancelled ? (
+                    {/* Normal lifecycle advance (skip for ARRIVED) */}
+                    {nextAction && !isArrived ? (
                         <LifecycleActionButton
                             label={nextAction.label}
                             tone={nextAction.tone}
@@ -577,7 +917,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         />
                     ) : null}
 
-                    {/* ARRIVED: complete button */}
+                    {/* ARRIVED: complete trip (requires photo) */}
                     {isArrived ? (
                         <LifecycleActionButton
                             label={isUploading ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
@@ -589,25 +929,14 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         />
                     ) : null}
 
-                    {/* ARRIVED: cannot deliver → reason required → CANCELLED */}
+                    {/* ARRIVED: mark failed → FAILED → RETURNING → COMPLETED */}
                     {isArrived ? (
                         <LifecycleActionButton
                             label="Không thể giao hàng"
                             tone="danger"
-                            onPress={() => setReasonModal('cancel-delivery')}
-                            isLoading={cancelLoading}
-                            icon={<XCircle size={16} color={appTheme.colors.danger} />}
-                        />
-                    ) : null}
-
-                    {/* CANCELLED: confirm goods returned to pickup */}
-                    {isCancelled ? (
-                        <LifecycleActionButton
-                            label="Xác nhận đã trả hàng về"
-                            tone="secondary"
-                            onPress={handleConfirmReturn}
+                            onPress={handleMarkFailed}
                             isLoading={lifecycleLoading}
-                            icon={<CheckCircle size={16} color={appTheme.colors.textMuted} />}
+                            icon={<XCircle size={16} color={appTheme.colors.danger} />}
                         />
                     ) : null}
 
@@ -616,7 +945,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         <LifecycleActionButton
                             label="Hủy chuyến"
                             tone="danger"
-                            onPress={() => setReasonModal('release-trip')}
+                            onPress={() => setShowReleaseModal(true)}
                             isLoading={releaseLoading}
                             icon={<X size={16} color={appTheme.colors.danger} />}
                         />
@@ -636,34 +965,30 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 onClose={() => setCameraTarget(null)}
             />
 
-            {/* ── Reason modals ── */}
+            {/* ── Release trip modal (CLAIMED / PICKING only) ── */}
             <ReasonModal
-                visible={reasonModal === 'cancel-delivery'}
-                title="Không thể giao hàng"
-                description="Vui lòng cho biết lý do không thể giao hàng. Lý do này sẽ được ghi nhận vào hệ thống."
-                placeholder="Ví dụ: Khách hàng không có mặt, không liên lạc được..."
-                required
-                confirmLabel="Xác nhận không giao được"
-                confirmDanger
-                onConfirm={(reason) => {
-                    setReasonModal(null);
-                    cancelDelivery(trip.id, reason);
-                }}
-                onClose={() => setReasonModal(null)}
-            />
-
-            <ReasonModal
-                visible={reasonModal === 'release-trip'}
+                visible={showReleaseModal}
                 title="Hủy chuyến"
                 description="Xác nhận hủy chuyến này? Đơn hàng sẽ được trả về pool để tài xế khác nhận."
                 placeholder="Lý do hủy (tùy chọn, ví dụ: xe hỏng đột xuất...)"
                 confirmLabel="Xác nhận hủy chuyến"
                 confirmDanger
                 onConfirm={(reason) => {
-                    setReasonModal(null);
+                    setShowReleaseModal(false);
                     releaseTrip(trip.id, reason || undefined);
                 }}
-                onClose={() => setReasonModal(null)}
+                onClose={() => setShowReleaseModal(false)}
+            />
+
+            {/* ── Expense form modal ── */}
+            <ExpenseFormModal
+                visible={showExpenseForm}
+                shipmentId={trip.id}
+                onClose={() => setShowExpenseForm(false)}
+                onSuccess={() => {
+                    setShowExpenseForm(false);
+                    void loadExpenses();
+                }}
             />
         </View>
     );
@@ -678,9 +1003,13 @@ export function ActiveTripScreen() {
         return (
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
                 <ScreenHeader title="Chuyến hiện tại" showBack />
-                <YStack flex={1} alignItems="center" justifyContent="center">
-                    <AppText variant="body" tone="muted">Đang tải chuyến...</AppText>
-                </YStack>
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}
+                    scrollEnabled={false}
+                >
+                    <ActiveTripSkeleton />
+                </ScrollView>
             </View>
         );
     }
@@ -723,6 +1052,53 @@ const styles = StyleSheet.create({
     requiredBadge: {
         paddingHorizontal: 6, paddingVertical: 2,
         borderRadius: 6, backgroundColor: '#fee2e2',
+    },
+});
+
+const ef = StyleSheet.create({
+    overlay: {
+        flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    sheet: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 24, borderTopRightRadius: 24,
+        padding: 24, paddingBottom: 40,
+    },
+    select: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        borderWidth: 1.5, borderColor: appTheme.colors.border, borderRadius: 10,
+        paddingHorizontal: 14, paddingVertical: 12,
+        backgroundColor: appTheme.colors.surface,
+    },
+    typeOption: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        paddingHorizontal: 14, paddingVertical: 12,
+        backgroundColor: appTheme.colors.surface,
+        borderBottomWidth: 1, borderBottomColor: appTheme.colors.border,
+    },
+    typeOptionActive: {
+        backgroundColor: appTheme.colors.primarySoft,
+    },
+    input: {
+        borderWidth: 1.5, borderRadius: 10,
+        paddingHorizontal: 14, paddingVertical: 12,
+        fontSize: 14, color: appTheme.colors.text,
+        borderColor: appTheme.colors.border,
+        backgroundColor: appTheme.colors.surface,
+    },
+    captureBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        padding: 14, borderRadius: 10,
+        borderWidth: 1.5, borderStyle: 'dashed', borderColor: appTheme.colors.primaryMuted,
+        backgroundColor: appTheme.colors.primarySoft,
+        justifyContent: 'center',
+    },
+    addBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        gap: 8, paddingVertical: 10,
+        borderRadius: 10, borderWidth: 1.5, borderStyle: 'dashed',
+        borderColor: appTheme.colors.primaryMuted, backgroundColor: appTheme.colors.primarySoft,
     },
 });
 
