@@ -18,8 +18,9 @@ const getDriverVehicleGroupId = async (driverId) => {
 };
 
 // Pool hiển thị ORDERS (không phải shipments riêng lẻ).
-// Điều kiện: tất cả shipments trong order phải available + chưa có owner.
-const getAvailableOrders = async (vehicleGroupId) => {
+// Trả về TẤT CẢ orders available — không lọc theo vehicle_group.
+// Metadata vehicle_group lấy từ leg đầu tiên của order.
+const getAvailableOrders = async () => {
     const result = await pool.query(
         `SELECT
             o.id            AS order_id,
@@ -50,18 +51,20 @@ const getAvailableOrders = async (vehicleGroupId) => {
             vg.name         AS vehicle_group_name,
             vg.max_load_weight_kg
          FROM orders o
-         JOIN order_shipments os ON os.order_id = o.id
-         JOIN vehicle_groups vg ON os.vehicle_group_id = vg.id
-         WHERE os.vehicle_group_id = $1
-           AND NOT EXISTS (
+         JOIN order_shipments first_leg
+              ON  first_leg.order_id       = o.id
+              AND first_leg.shipment_index = (
+                  SELECT MIN(si.shipment_index)
+                  FROM order_shipments si
+                  WHERE si.order_id = o.id
+              )
+         JOIN vehicle_groups vg ON first_leg.vehicle_group_id = vg.id
+         WHERE NOT EXISTS (
                SELECT 1 FROM order_shipments oc
                WHERE oc.order_id = o.id
                  AND (oc.status != 'available' OR oc.owner_driver_id IS NOT NULL)
            )
-         GROUP BY o.id, o.cargo_name, o.notes, o.payment_type, o.created_at,
-                  vg.id, vg.name, vg.max_load_weight_kg
          ORDER BY o.created_at ASC`,
-        [vehicleGroupId],
     );
     return result.rows;
 };
@@ -122,12 +125,26 @@ const getTripById = async (tripId) => {
 
 // Driver nhận cả ORDER: gán owner_driver_id cho tất cả legs,
 // chỉ kích hoạt leg đầu tiên (shipment_index nhỏ nhất) → CLAIMED.
+// Trả về firstShipment khi thành công, null khi order đã được người khác nhận.
 const claimOrder = async (orderId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Lock tất cả rows của order trước, rồi kiểm tra trạng thái
+        // Kiểm tra active trip BÊN TRONG transaction để tránh race giữa 2 claim khác nhau
+        const activeCheck = await client.query(
+            `SELECT id FROM order_shipments
+             WHERE owner_driver_id = $1
+               AND status = ANY($2::text[])
+             LIMIT 1`,
+            [driverId, ACTIVE_STATUSES],
+        );
+        if (activeCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw new Error('ACTIVE_TRIP'); // caller maps này → 422
+        }
+
+        // Lock tất cả rows của order, kiểm tra còn claimable không
         const locked = await client.query(
             `SELECT id, status, owner_driver_id
              FROM order_shipments
@@ -135,13 +152,13 @@ const claimOrder = async (orderId, driverId, vehicleId) => {
              FOR UPDATE`,
             [orderId],
         );
-        const total = locked.rows.length;
+        const total     = locked.rows.length;
         const claimable = locked.rows.filter(
             (r) => r.status === 'available' && r.owner_driver_id === null,
         ).length;
         if (total === 0 || total !== claimable) {
             await client.query('ROLLBACK');
-            return null; // order đã được nhận hoặc không tồn tại
+            return null; // order đã được nhận → caller throw ALREADY_CLAIMED
         }
 
         // Gán owner_driver_id cho TẤT CẢ legs (giữ status=available cho các leg sau)
@@ -398,10 +415,146 @@ const getDriverVehicleId = async (driverId) => {
     return result.rows[0]?.vehicle_id ?? null;
 };
 
+// Lịch sử đơn hàng: tất cả orders driver từng nhận, sắp xếp theo ngày nhận giảm dần
+const getDriverOrderHistory = async (driverId, { limit = 30, offset = 0 } = {}) => {
+    const result = await pool.query(
+        `SELECT
+            o.id            AS order_id,
+            o.cargo_name,
+            o.notes         AS order_notes,
+            o.payment_type,
+            o.status        AS order_status,
+            o.created_at,
+            (SELECT os1.pickup_address
+             FROM order_shipments os1
+             WHERE os1.order_id = o.id
+             ORDER BY os1.shipment_index ASC LIMIT 1)               AS pickup_address,
+            (SELECT os2.delivery_address
+             FROM order_shipments os2
+             WHERE os2.order_id = o.id
+             ORDER BY os2.shipment_index DESC LIMIT 1)              AS delivery_address,
+            COUNT(os.id)::int                                        AS total_legs,
+            (COUNT(os.id) FILTER (WHERE os.status = 'completed'))::int AS completed_legs,
+            SUM(os.estimated_price)                                  AS total_estimated_price,
+            MIN(os.claimed_at)                                       AS first_claimed_at,
+            (MAX(os.completed_at) FILTER (WHERE os.status = 'completed')) AS last_completed_at,
+            COUNT(*) OVER()::int                                     AS total_count
+         FROM orders o
+         JOIN order_shipments os ON os.order_id = o.id AND os.owner_driver_id = $1
+         GROUP BY o.id, o.cargo_name, o.notes, o.payment_type, o.status, o.created_at
+         ORDER BY MIN(os.claimed_at) DESC NULLS LAST, o.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [driverId, limit, offset],
+    );
+    const total = Number(result.rows[0]?.total_count ?? 0);
+    const rows  = result.rows.map(({ total_count, ...rest }) => rest);
+    return { rows, total };
+};
+
+// Chi tiết order chưa được nhận (pool preview) — không cần driver ownership
+const getAvailableOrderDetail = async (orderId) => {
+    const orderRes = await pool.query(
+        `SELECT
+            o.id,
+            o.cargo_name,
+            o.notes,
+            o.payment_type,
+            o.status,
+            o.created_at,
+            (SELECT SUM(os.estimated_price) FROM order_shipments os WHERE os.order_id = o.id)::text AS total_estimated_price,
+            (SELECT SUM(os.cargo_weight_kg)  FROM order_shipments os WHERE os.order_id = o.id)::text AS total_cargo_weight_kg,
+            (SELECT COUNT(*)::int            FROM order_shipments os WHERE os.order_id = o.id)        AS total_legs
+         FROM orders o
+         WHERE o.id = $1 AND o.status = 'available'`,
+        [orderId],
+    );
+    if (!orderRes.rows[0]) return null;
+
+    const shipmentsRes = await pool.query(
+        `SELECT
+            os.id,
+            os.shipment_index,
+            os.pickup_address,
+            os.delivery_address,
+            os.cargo_weight_kg::text,
+            os.estimated_price::text,
+            os.notes,
+            vg.name AS vehicle_group_name
+         FROM order_shipments os
+         JOIN vehicle_groups vg ON os.vehicle_group_id = vg.id
+         WHERE os.order_id = $1
+           AND os.status = 'available'
+           AND os.owner_driver_id IS NULL
+         ORDER BY os.shipment_index ASC`,
+        [orderId],
+    );
+
+    return {
+        order:     orderRes.rows[0],
+        shipments: shipmentsRes.rows,
+    };
+};
+
+// Chi tiết order + tất cả shipment legs + ảnh của driver này
+const getOrderWithShipments = async (orderId, driverId) => {
+    const orderRes = await pool.query(
+        `SELECT id, cargo_name, notes, payment_type, status, created_at
+         FROM orders WHERE id = $1`,
+        [orderId],
+    );
+    if (!orderRes.rows[0]) return null;
+
+    const shipmentsRes = await pool.query(
+        `SELECT
+            os.id,
+            os.order_id,
+            os.shipment_index,
+            os.pickup_address,
+            os.delivery_address,
+            os.cargo_weight_kg,
+            os.estimated_price,
+            os.actual_price,
+            os.status,
+            os.notes,
+            os.cancel_reason,
+            os.claimed_at,
+            os.picking_at,
+            os.loaded_at,
+            os.transit_at,
+            os.arrived_at,
+            os.completed_at,
+            os.cancelled_at,
+            (SELECT COALESCE(json_agg(sr.file_url ORDER BY sr.captured_at), '[]'::json)
+             FROM shipment_receipts sr
+             WHERE sr.shipment_id = os.id)                    AS receipt_urls,
+            (SELECT cp.file_url
+             FROM completion_proofs cp
+             WHERE cp.shipment_id = os.id)                    AS proof_url
+         FROM order_shipments os
+         WHERE os.order_id = $1 AND os.owner_driver_id = $2
+         ORDER BY os.shipment_index ASC`,
+        [orderId, driverId],
+    );
+    if (!shipmentsRes.rows.length) return null;
+
+    return {
+        order:     orderRes.rows[0],
+        shipments: shipmentsRes.rows,
+    };
+};
+
+const getAllVehicleGroups = async () => {
+    const result = await pool.query(
+        `SELECT id, name FROM vehicle_groups ORDER BY id ASC`,
+    );
+    return result.rows;
+};
+
 module.exports = {
     getDriverVehicleGroupId,
     getDriverVehicleId,
     getAvailableOrders,
+    getAllVehicleGroups,
     getActiveTrip,
     getTripById,
     claimOrder,
@@ -412,4 +565,7 @@ module.exports = {
     saveShipmentReceipt,
     saveCompletionProof,
     getDriverStats,
+    getDriverOrderHistory,
+    getAvailableOrderDetail,
+    getOrderWithShipments,
 };

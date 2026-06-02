@@ -8,6 +8,7 @@ const UPLOAD = Object.freeze({
         RECEIPT:  'g62/receipts',
         INCIDENT: 'g62/incidents',
         AVATAR:   'g62/avatars',
+        EXPENSE:  'g62/expenses',
     },
 });
 

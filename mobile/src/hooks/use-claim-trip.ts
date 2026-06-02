@@ -1,30 +1,29 @@
 import { useState } from 'react';
+
+import { ApiError } from '@/lib/api-error';
 import { tripService } from '@/services/trip-service';
 import type { ActiveTrip } from '@/types/trip';
 
-type State = {
-    isLoading: boolean;
-    error: string | null;
-};
+type ClaimResult =
+    | { ok: true; trip: ActiveTrip }
+    | { ok: false; message: string; alreadyClaimed: boolean };
 
-export function useClaimTrip(onSuccess?: (trip: ActiveTrip) => void) {
-    const [state, setState] = useState<State>({ isLoading: false, error: null });
+export function useClaimTrip() {
+    const [isLoading, setIsLoading] = useState(false);
 
-    const claim = async (tripId: number) => {
-        setState({ isLoading: true, error: null });
+    const claim = async (orderId: number): Promise<ClaimResult> => {
+        setIsLoading(true);
         try {
-            const { trip } = await tripService.claim(tripId);
-            setState({ isLoading: false, error: null });
-            onSuccess?.(trip);
-            return trip;
+            const { trip } = await tripService.claim(orderId);
+            return { ok: true, trip };
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Không thể nhận chuyến';
-            setState({ isLoading: false, error: message });
-            return null;
+            const message = err instanceof Error ? err.message : 'Không thể nhận đơn hàng';
+            const alreadyClaimed = err instanceof ApiError && err.status === 409;
+            return { ok: false, message, alreadyClaimed };
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const clearError = () => setState((s) => ({ ...s, error: null }));
-
-    return { ...state, claim, clearError };
+    return { isLoading, claim };
 }
