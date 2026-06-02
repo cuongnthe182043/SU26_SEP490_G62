@@ -1,3 +1,5 @@
+import { Alert } from 'react-native';
+import { router } from 'expo-router';
 import { API_BASE_URL } from '@/constants/api';
 import { ApiError } from '@/lib/api-error';
 import { tokenStorage } from '@/services/token-storage';
@@ -9,6 +11,21 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await tokenStorage.getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+let isRedirectingToLogin = false;
+
+async function handleUnauthorized(): Promise<void> {
+  if (isRedirectingToLogin) return;
+  isRedirectingToLogin = true;
+  await tokenStorage.removeToken();
+  Alert.alert(
+    'Phiên đăng nhập hết hạn',
+    'Vui lòng đăng nhập lại để tiếp tục.',
+    [{ text: 'Đăng nhập', onPress: () => { isRedirectingToLogin = false; } }],
+    { cancelable: false },
+  );
+  router.replace('/');
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -31,6 +48,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   const payload = await response.json().catch(() => null);
+
+  if (response.status === 401) {
+    await handleUnauthorized();
+    throw new ApiError('Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.', 401);
+  }
 
   if (!response.ok) {
     throw new ApiError(payload?.error ?? payload?.message ?? 'Không thể kết nối đến máy chủ.', response.status);

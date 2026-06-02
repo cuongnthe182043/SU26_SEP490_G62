@@ -49,9 +49,12 @@ function handleUpload(middleware) {
  *       200:
  *         description: today_total, today_completed, month_completed
  */
-router.get('/stats', driverOnly, tripController.getDriverStats);
+router.get('/stats',   driverOnly, tripController.getDriverStats);
+router.get('/history', driverOnly, tripController.getOrderHistory);
+router.get('/orders/:orderId', driverOnly, tripController.getOrderDetail);
 
 router.get('/pool', driverOnly, tripController.getTripPool);
+router.get('/pool/:orderId', driverOnly, tripController.getAvailableOrderDetail);
 
 /**
  * @swagger
@@ -113,7 +116,7 @@ router.post('/:id/claim', driverOnly, tripController.claimTrip);
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [picking, loaded, transit, arrived, failed, returning, cancelled]
+ *                 enum: [picking, loaded, transit, arrived, failed, returning]
  *     responses:
  *       200:
  *         description: Cập nhật thành công
