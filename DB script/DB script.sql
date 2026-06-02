@@ -29,7 +29,7 @@ CREATE TABLE accounts (
     email           TEXT UNIQUE NOT NULL,
     password_hash   TEXT NOT NULL,
     role_id         INT NOT NULL REFERENCES roles(id),
-    is_verified     BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -46,7 +46,6 @@ CREATE TABLE profiles (
     address     TEXT,
     city        TEXT,
     country     TEXT NOT NULL DEFAULT 'VN',
-    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -617,15 +616,15 @@ ON CONFLICT (name) DO NOTHING;
 --------------------------------------------------------------------------------
 -- 2. SECURE AUTHENTICATION ACCOUNTS
 --------------------------------------------------------------------------------
-INSERT INTO accounts (email, password_hash, role_id, is_verified) VALUES
-('admin@example.com', crypt('admin123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'), TRUE),
-('coordinator@example.com', crypt('coord123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
-('accountant@example.com', crypt('acct123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
-('driver1@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE)
+INSERT INTO accounts (email, password_hash, role_id, is_active) VALUES
+    ('admin@example.com', crypt('admin123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'), TRUE),
+    ('coordinator@example.com', crypt('coord123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+    ('accountant@example.com', crypt('acct123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
+    ('driver1@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE)
 ON CONFLICT (email) DO UPDATE
 SET password_hash = EXCLUDED.password_hash,
     role_id = EXCLUDED.role_id,
-    is_verified = EXCLUDED.is_verified;
+    is_active = EXCLUDED.is_active;
 
 --------------------------------------------------------------------------------
 -- 3. USER PROFILES
@@ -634,12 +633,12 @@ WITH account_data AS (
     SELECT id, email FROM accounts 
     WHERE email IN ('admin@example.com', 'coordinator@example.com', 'accountant@example.com', 'driver1@example.com')
 )
-INSERT INTO profiles (id, full_name, phone, role_id, is_active) 
+INSERT INTO profiles (id, full_name, phone, role_id) 
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'coordinator@example.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver'), TRUE)
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
+    ((SELECT id FROM account_data WHERE email = 'coordinator@example.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator')),
+    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant')),
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver'))
 ON CONFLICT (id) DO NOTHING;
 
 --------------------------------------------------------------------------------
@@ -811,12 +810,12 @@ AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id 
 --------------------------------------------------------------------------------
 
 -- Driver 2
-INSERT INTO accounts (email, password_hash, role_id, is_verified)
+INSERT INTO accounts (email, password_hash, role_id, is_active)
 VALUES ('driver2@example.com', crypt('driver123', gen_salt('bf')), 100003, TRUE)
 ON CONFLICT (email) DO NOTHING;
 
-INSERT INTO profiles (id, full_name, phone, role_id, is_active)
-SELECT id, 'Tran Tài Xế Hai', '0901234564', 100003, TRUE
+INSERT INTO profiles (id, full_name, phone, role_id)
+SELECT id, 'Tran Tài Xế Hai', '0901234564', 100003
 FROM accounts WHERE email = 'driver2@example.com'
 ON CONFLICT (id) DO NOTHING;
 
@@ -826,12 +825,12 @@ FROM accounts WHERE email = 'driver2@example.com'
 ON CONFLICT (profile_id) DO NOTHING;
 
 -- Driver 3
-INSERT INTO accounts (email, password_hash, role_id, is_verified)
+INSERT INTO accounts (email, password_hash, role_id, is_active)
 VALUES ('driver3@example.com', crypt('driver123', gen_salt('bf')), 100003, TRUE)
 ON CONFLICT (email) DO NOTHING;
 
-INSERT INTO profiles (id, full_name, phone, role_id, is_active)
-SELECT id, 'Pham Tài Xế Ba', '0901234565', 100003, TRUE
+INSERT INTO profiles (id, full_name, phone, role_id)
+SELECT id, 'Pham Tài Xế Ba', '0901234565', 100003
 FROM accounts WHERE email = 'driver3@example.com'
 ON CONFLICT (id) DO NOTHING;
 
