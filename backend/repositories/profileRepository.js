@@ -5,7 +5,7 @@ const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address',
 const getAccountByEmail = async (email) => {
     const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
-        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_verified, a.last_login_at, a.created_at, a.updated_at
+        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_active, a.last_login_at, a.created_at, a.updated_at
          FROM accounts a
          JOIN roles r ON a.role_id = r.id
          WHERE LOWER(a.email) = $1`,
@@ -14,10 +14,22 @@ const getAccountByEmail = async (email) => {
     return result.rows[0];
 };
 
+const getAccountById = async (accountId) => {
+    const result = await pool.query(
+        `SELECT a.id, a.email, a.role_id, r.name AS role, a.is_active
+         FROM accounts a
+         JOIN roles r ON a.role_id = r.id
+         WHERE a.id = $1`,
+        [accountId],
+    );
+    return result.rows[0] ?? null;
+};
+
 const getProfileByAccountId = async (accountId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, p.is_active
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active
          FROM profiles p
+         JOIN accounts a ON p.id = a.id
          LEFT JOIN roles r ON p.role_id = r.id
          WHERE p.id = $1`,
         [accountId],
@@ -27,7 +39,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, p.is_active
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, a.is_active
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -53,7 +65,7 @@ const getFullProfile = async (userId) => {
             p.address,
             p.city,
             p.country,
-            p.is_active,
+            a.is_active,
             p.created_at,
             p.updated_at
          FROM profiles p
@@ -104,7 +116,7 @@ const updateLastLogin = async (accountId) => {
 
 const getProfileById = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, p.is_active
+        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, a.is_active
          FROM profiles p
          JOIN accounts a ON a.id = p.id
          WHERE p.id = $1`,
@@ -115,7 +127,7 @@ const getProfileById = async (profileId) => {
 
 const getAllUsers = async () => {
     const result = await pool.query(
-        `SELECT a.id, a.email, p.full_name, p.phone, r.name AS role, p.is_active, a.is_verified, a.last_login_at
+        `SELECT a.id, a.email, p.full_name, p.phone, r.name AS role, a.is_active, a.last_login_at
          FROM accounts a
          JOIN profiles p ON a.id = p.id
          JOIN roles r ON a.role_id = r.id
@@ -135,15 +147,15 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone) => 
         await client.query('BEGIN');
         
         const accountResult = await client.query(
-            `INSERT INTO accounts (email, password_hash, role_id, is_verified) 
+            `INSERT INTO accounts (email, password_hash, role_id, is_active) 
              VALUES ($1, $2, $3, true) RETURNING id`,
             [email.toLowerCase(), passwordHash, roleId]
         );
         const accountId = accountResult.rows[0].id;
         
         await client.query(
-            `INSERT INTO profiles (id, full_name, phone, role_id, is_active) 
-             VALUES ($1, $2, $3, $4, true)`,
+            `INSERT INTO profiles (id, full_name, phone, role_id) 
+             VALUES ($1, $2, $3, $4)`,
             [accountId, fullName, phone, roleId]
         );
         
@@ -186,13 +198,14 @@ const adminUpdateUser = async (userId, data, roleId) => {
 
 const adminToggleUserStatus = async (userId, isActive) => {
     await pool.query(
-        `UPDATE profiles SET is_active = $1, updated_at = NOW() WHERE id = $2`,
+        `UPDATE accounts SET is_active = $1, updated_at = NOW() WHERE id = $2`,
         [isActive, userId]
     );
 };
 
 module.exports = {
     getAccountByEmail,
+    getAccountById,
     getProfileByAccountId,
     getProfileWithRole,
     getFullProfile,
