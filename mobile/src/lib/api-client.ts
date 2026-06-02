@@ -1,6 +1,8 @@
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
+
 import { API_BASE_URL } from '@/constants/api';
+import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { ApiError } from '@/lib/api-error';
 import { tokenStorage } from '@/services/token-storage';
 
@@ -17,23 +19,30 @@ let isRedirectingToLogin = false;
 
 async function handleUnauthorized(): Promise<void> {
   if (isRedirectingToLogin) return;
+
   isRedirectingToLogin = true;
   await tokenStorage.removeToken();
+
   Alert.alert(
     'Phiên đăng nhập hết hạn',
-    'Vui lòng đăng nhập lại để tiếp tục.',
+    ERROR_MESSAGES.sessionExpired,
     [{ text: 'Đăng nhập', onPress: () => { isRedirectingToLogin = false; } }],
     { cancelable: false },
   );
-  router.replace('/');
+
+  router.replace('/login');
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const authHeaders = await getAuthHeaders();
-  const headers = new Headers({ ...authHeaders, ...(options.headers as Record<string, string> | undefined) });
+  const headers = new Headers({
+    ...authHeaders,
+    ...(options.headers as Record<string, string> | undefined),
+  });
 
   const rawBody = options.body;
   let body: BodyInit | null | undefined;
+
   if (rawBody && typeof rawBody === 'object' && !(rawBody instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
     body = JSON.stringify(rawBody);
@@ -41,21 +50,27 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body = rawBody as BodyInit | null | undefined;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-    body: body as BodyInit | null | undefined,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      body,
+    });
+  } catch {
+    throw new ApiError(ERROR_MESSAGES.network, 0);
+  }
 
   const payload = await response.json().catch(() => null);
 
   if (response.status === 401) {
     await handleUnauthorized();
-    throw new ApiError('Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.', 401);
+    throw new ApiError(ERROR_MESSAGES.sessionExpired, 401);
   }
 
   if (!response.ok) {
-    throw new ApiError(payload?.error ?? payload?.message ?? 'Không thể kết nối đến máy chủ.', response.status);
+    throw new ApiError(payload?.error ?? payload?.message ?? ERROR_MESSAGES.network, response.status);
   }
 
   return payload as T;

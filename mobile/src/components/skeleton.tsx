@@ -1,13 +1,4 @@
-/**
- * Skeleton loading system — shimmer animated placeholders.
- *
- * Usage:
- *   import { TripCardSkeleton, TripPoolSkeleton } from '@/components/skeleton';
- *
- * All skeletons share one global shimmer animation so they move in sync.
- * To add a new screen skeleton: compose SkeletonBox / SkeletonLine in a new
- * exported function that mirrors the real screen's visual structure.
- */
+
 
 import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
@@ -15,7 +6,6 @@ import type { DimensionValue, ViewStyle } from 'react-native';
 import { XStack, YStack } from 'tamagui';
 import { appTheme } from '@/theme/app-theme';
 
-// ─── Shared shimmer ───────────────────────────────────────────────────────────
 
 const shimmerAnim = new Animated.Value(0);
 let _shimmerStarted = false;
@@ -33,7 +23,6 @@ function ensureShimmer() {
     ).start();
 }
 
-// ─── Base SkeletonBox ─────────────────────────────────────────────────────────
 
 type BoxProps = {
     height: number;
