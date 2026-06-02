@@ -6,13 +6,15 @@ const authRoutes        = require('./authRoutes');
 const tripRoutes        = require('./tripRoutes');
 const profileRoutes     = require('./profileRoutes');
 const coordinatorRoutes = require('./coordinatorRoutes');
-const expenseRoutes     = require('./expenseRoutes');
+const orderRoutes = require('./orderRoutes');
+const driverRoutes = require('./driverRoutes');
 
 // Register route modules
 router.use('/auth', authRoutes);
 router.use('/api/trips', tripRoutes);
 router.use('/api/profile', profileRoutes);
 router.use('/api/coordinator', coordinatorRoutes);
-router.use('/api/expenses', expenseRoutes);
+router.use('/api/orders', orderRoutes);
+router.use('/api/drivers', driverRoutes);
 
 module.exports = router;
