@@ -19,6 +19,24 @@ const login = async (req, res) => {
     }
 };
 
+// POST /auth/google
+const googleLogin = async (req, res) => {
+    try {
+        const { credential } = req.body;
+        const result = await authService.loginWithGoogle(credential);
+
+        res.json({
+            message: 'Google login successful',
+            ...result,
+        });
+    } catch (err) {
+        console.error('Google login error:', err);
+        const status = Number.isInteger(err.status) ? err.status : 500;
+        const message = status === 500 ? 'Internal server error' : err.message;
+        res.status(status).json({ error: message });
+    }
+};
+
 // GET /auth/me (protected endpoint)
 const getCurrentUser = async (req, res) => {
     try {
@@ -43,6 +61,7 @@ const getAllRoles = async (req, res) => {
 
 module.exports = {
     login,
+    googleLogin,
     getCurrentUser,
     getAllRoles,
 };
