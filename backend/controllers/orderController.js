@@ -9,6 +9,23 @@ const listOrders = async (_req, res) => {
     }
 };
 
+const importOrders = async (req, res) => {
+    try {
+        if (!req.file?.buffer) {
+            return res.status(400).json({ error: 'Vui lòng upload file Excel' });
+        }
+
+        const result = await orderService.importOrdersFromExcel(req.user.userId, req.file.buffer);
+        res.status(201).json({
+            message: `Đã import ${result.length} đơn hàng từ Excel`,
+            imported: result.length,
+            orders: result,
+        });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
 const createOrder = async (req, res) => {
     try {
         const result = await orderService.createOrder(req.user.userId, req.body);
@@ -22,4 +39,18 @@ const createOrder = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders };
+const updateOrder = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const updatedOrder = await orderService.updateOrder(orderId, req.body);
+        if (!updatedOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
+
+        res.json({ message: 'Cập nhật đơn hàng thành công', order: updatedOrder });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = { createOrder, listOrders, importOrders, updateOrder };
