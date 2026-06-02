@@ -128,16 +128,18 @@ WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietn
 --------------------------------------------------------------------------------
 -- 10. ORDERS
 --------------------------------------------------------------------------------
+-- Order 1: available — visible in driver trip pool
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
-SELECT c.id, p.id, 'Electronics Package', 50.0, '123 Nguyen Hue, HCMC', '456 Le Loi, HCMC', 500000, 'cash', 'pending', 'Fragile - Handle with care'
+SELECT c.id, p.id, 'Electronics Package', 50.0, '123 Nguyen Hue, HCMC', '456 Le Loi, HCMC', 500000, 'cash', 'available', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = 2
 WHERE c.customer_type = 'individual' AND c.phone = '0987654321'
 AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Electronics Package' AND pickup_address = '123 Nguyen Hue, HCMC')
 LIMIT 1;
 
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
-SELECT c.id, p.id, 'Furniture Set', 200.0, '789 Tran Hung Dao, HCMC', '321 Nguyen Trai, HCMC', 1500000, 'bank_transfer', 'assigned', 'Large furniture item'
+-- Order 2: completed — appears in driver history
+INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes, completed_at)
+SELECT c.id, p.id, 'Furniture Set', 200.0, '789 Tran Hung Dao, HCMC', '321 Nguyen Trai, HCMC', 1500000, 'bank_transfer', 'completed', 'Large furniture item', NOW() - INTERVAL '1 day'
 FROM customers c
 JOIN profiles p ON p.role_id = 2
 WHERE c.customer_type = 'business' AND c.phone = '0987654322'
@@ -147,20 +149,32 @@ LIMIT 1;
 --------------------------------------------------------------------------------
 -- 11. SHIPMENTS
 --------------------------------------------------------------------------------
+-- Shipment for order 1 (available — visible in pool, no owner)
 INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status)
 SELECT o.id, 1, 1, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'available'
 FROM orders o
-WHERE o.status = 'pending'
+WHERE o.status = 'available' AND o.cargo_name = 'Electronics Package'
+AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
+
+-- Shipment for order 2 (completed — owned by driver1, shows in history)
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, claimed_at, completed_at)
+SELECT o.id, 1, 1, drv.id, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'completed',
+       NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day'
+FROM orders o
+JOIN accounts a ON a.email = 'driver1@example.com'
+JOIN profiles drv ON drv.id = a.id
+WHERE o.status = 'completed' AND o.cargo_name = 'Furniture Set'
 AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
 --------------------------------------------------------------------------------
--- 12. SHIPMENT ASSIGNMENTS
+-- 12. SHIPMENT ASSIGNMENTS (coordinator_assign records for order 1)
 --------------------------------------------------------------------------------
 INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assignment_type, assigned_at)
 SELECT os.id, p.id, v.id, 'coordinator_assign', NOW()
 FROM order_shipments os
 JOIN profiles p ON p.role_id = 4
-JOIN vehicles v ON v.status = 'available' AND v.vehicle_group_id = 1
+JOIN accounts a ON a.id = p.id AND a.email = 'driver1@example.com'
+JOIN vehicles v ON v.plate_number = '51-A12345'
 WHERE os.status = 'available'
 AND NOT EXISTS (SELECT 1 FROM shipment_assignments sa WHERE sa.shipment_id = os.id)
 LIMIT 1;

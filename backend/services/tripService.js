@@ -6,10 +6,12 @@ const {
     RELEASABLE_STATUSES,
 } = require('../constants/tripConstants');
 
-const getTripPool = async (driverId) => {
-    const vehicleGroupId = await tripRepository.getDriverVehicleGroupId(driverId);
-    if (!vehicleGroupId) throw new Error('Tài xế chưa được gán xe');
-    return tripRepository.getAvailableOrders(vehicleGroupId);
+const getTripPool = async (_driverId) => {
+    const [trips, vehicleGroups] = await Promise.all([
+        tripRepository.getAvailableOrders(),
+        tripRepository.getAllVehicleGroups(),
+    ]);
+    return { trips, vehicleGroups };
 };
 
 const getActiveTrip = async (driverId) => {
@@ -17,15 +19,20 @@ const getActiveTrip = async (driverId) => {
 };
 
 const claimTrip = async (orderId, driverId) => {
-    const activeTrip = await tripRepository.getActiveTrip(driverId);
-    if (activeTrip) throw new Error('Bạn đang có chuyến đang hoạt động, không thể nhận thêm đơn hàng mới');
-
-    const vehicleGroupId = await tripRepository.getDriverVehicleGroupId(driverId);
-    if (!vehicleGroupId) throw new Error('Tài xế chưa được gán xe');
-
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);
-    const claimed = await tripRepository.claimOrder(orderId, driverId, vehicleId);
-    if (!claimed) throw new Error('Đơn hàng đã được nhận bởi tài xế khác');
+    if (!vehicleId) throw new Error('Tài xế chưa được gán xe');
+
+    // Việc kiểm tra active trip & lock order xảy ra trong 1 transaction ở repository
+    let claimed;
+    try {
+        claimed = await tripRepository.claimOrder(orderId, driverId, vehicleId);
+    } catch (err) {
+        if (err.message === 'ACTIVE_TRIP') {
+            throw new Error('Bạn đang có chuyến đang hoạt động, không thể nhận thêm đơn hàng mới');
+        }
+        throw err;
+    }
+    if (!claimed) throw new Error('ALREADY_CLAIMED:Đơn hàng đã được tài xế khác nhận');
     return claimed;
 };
 
@@ -104,6 +111,32 @@ const getDriverStats = async (driverId) => {
     return tripRepository.getDriverStats(driverId);
 };
 
+const getOrderHistory = async (driverId, page = 1, limit = 30) => {
+    const offset = (page - 1) * limit;
+    const { rows, total } = await tripRepository.getDriverOrderHistory(driverId, { limit, offset });
+    return {
+        orders: rows,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        },
+    };
+};
+
+const getAvailableOrderDetail = async (orderId) => {
+    const detail = await tripRepository.getAvailableOrderDetail(orderId);
+    if (!detail) throw new Error('Đơn hàng không tồn tại hoặc đã được nhận');
+    return detail;
+};
+
+const getOrderDetail = async (orderId, driverId) => {
+    const detail = await tripRepository.getOrderWithShipments(orderId, driverId);
+    if (!detail) throw new Error('Đơn hàng không tồn tại hoặc bạn không có quyền xem');
+    return detail;
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -113,4 +146,7 @@ module.exports = {
     releaseTrip,
     completeTrip,
     getDriverStats,
+    getOrderHistory,
+    getAvailableOrderDetail,
+    getOrderDetail,
 };

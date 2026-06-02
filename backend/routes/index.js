@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 
 // Import all route modules
-const authRoutes    = require('./authRoutes');
-const tripRoutes    = require('./tripRoutes');
-const profileRoutes = require('./profileRoutes');
+const authRoutes        = require('./authRoutes');
+const tripRoutes        = require('./tripRoutes');
+const profileRoutes     = require('./profileRoutes');
 const coordinatorRoutes = require('./coordinatorRoutes');
 const orderRoutes = require('./orderRoutes');
 const driverRoutes = require('./driverRoutes');
