@@ -1,19 +1,18 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
-import { tokenStorage } from '@/services/token-storage';
+import { useAuthSession } from '@/providers/auth-provider';
 import { useConfirm } from '@/providers/ui-provider';
 
 export function useLogout() {
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const { showConfirm } = useConfirm();
+    const { signOut } = useAuthSession();
 
     const logout = async () => {
         setIsLoggingOut(true);
         try {
-            await tokenStorage.removeToken();
+            await signOut();
         } finally {
             setIsLoggingOut(false);
-            router.replace('/login');
         }
     };
 
