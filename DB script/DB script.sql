@@ -812,11 +812,11 @@ AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id 
 
 -- Driver 2
 INSERT INTO accounts (email, password_hash, role_id, is_verified)
-VALUES ('driver2@example.com', crypt('driver123', gen_salt('bf')), 4, TRUE)
+VALUES ('driver2@example.com', crypt('driver123', gen_salt('bf')), 100003, TRUE)
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO profiles (id, full_name, phone, role_id, is_active)
-SELECT id, 'Tran Tài Xế Hai', '0901234564', 4, TRUE
+SELECT id, 'Tran Tài Xế Hai', '0901234564', 100003, TRUE
 FROM accounts WHERE email = 'driver2@example.com'
 ON CONFLICT (id) DO NOTHING;
 
@@ -827,11 +827,11 @@ ON CONFLICT (profile_id) DO NOTHING;
 
 -- Driver 3
 INSERT INTO accounts (email, password_hash, role_id, is_verified)
-VALUES ('driver3@example.com', crypt('driver123', gen_salt('bf')), 4, TRUE)
+VALUES ('driver3@example.com', crypt('driver123', gen_salt('bf')), 100003, TRUE)
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO profiles (id, full_name, phone, role_id, is_active)
-SELECT id, 'Pham Tài Xế Ba', '0901234565', 4, TRUE
+SELECT id, 'Pham Tài Xế Ba', '0901234565', 100003, TRUE
 FROM accounts WHERE email = 'driver3@example.com'
 ON CONFLICT (id) DO NOTHING;
 
@@ -852,7 +852,7 @@ WHERE profile_id = (SELECT id FROM accounts WHERE email = 'driver2@example.com')
 
 -- Xe mới cho driver3 (vehicle_group_id=1, cùng nhóm)
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status)
-VALUES ('51-E33333', 1, 'Ford', 'Transit', 2000, 2023, 'available')
+VALUES ('51-E33333',  (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Ford', 'Transit', 2000, 2023, 'available')
 ON CONFLICT (plate_number) DO NOTHING;
 
 UPDATE vehicles
@@ -882,7 +882,7 @@ SELECT
     'transit',
     'Hàng nặng, chia 3 chuyến xe tải nhỏ. Cẩn thận khi bốc xếp.'
 FROM customers c
-JOIN profiles p ON p.role_id = 2
+JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654322'
 AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Máy móc công nghiệp - Lô A')
 LIMIT 1;
@@ -895,7 +895,7 @@ INSERT INTO order_shipments (
     claimed_at, picking_at, loaded_at, transit_at, arrived_at, completed_at
 )
 SELECT
-    o.id, 1, 1,
+    o.id, 1,(SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     (SELECT id FROM accounts WHERE email = 'driver1@example.com'),
     'KCN Tân Bình, 25 Tân Thắng, Q. Tân Phú, HCM',
     'Trạm trung chuyển Bình Chánh, Nguyễn Hữu Trí, HCM',
@@ -921,7 +921,7 @@ INSERT INTO order_shipments (
     claimed_at, picking_at, loaded_at, transit_at, arrived_at
 )
 SELECT
-    o.id, 2, 1,
+    o.id, 2, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     (SELECT id FROM accounts WHERE email = 'driver2@example.com'),
     'KCN Tân Bình, 25 Tân Thắng, Q. Tân Phú, HCM',
     'Trạm trung chuyển Bình Chánh, Nguyễn Hữu Trí, HCM',
@@ -946,7 +946,7 @@ INSERT INTO order_shipments (
     cargo_weight_kg, estimated_price, status, version, notes
 )
 SELECT
-    o.id, 3, 1, NULL,
+    o.id, 3, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), NULL,
     'KCN Tân Bình, 25 Tân Thắng, Q. Tân Phú, HCM',
     'KCN Long An, QL1A, Huyện Bến Lức, Long An',
     1500.00, 5000000, 'available', 0,
@@ -1019,7 +1019,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654323'),  -- Tran Van Binh
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),            -- coordinator
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),            -- coordinator
     'Thiết bị điện tử',
     320.00,
     '123 Xô Viết Nghệ Tĩnh, Phường 26, Quận Bình Thạnh, TP.HCM',
@@ -1044,7 +1044,7 @@ SELECT
     '45 Lê Lợi, Phường Bến Nghé, Quận 1, TP.HCM',
     160.00, 850000.00,
     'available', NULL,
-    1, 'Lô A — thiết bị màn hình'
+    (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Lô A — thiết bị màn hình'
 FROM orders o
 WHERE o.cargo_name = 'Thiết bị điện tử'
   AND NOT EXISTS (
@@ -1064,7 +1064,7 @@ SELECT
     '89 Nguyễn Thị Thập, Phường Tân Quy, Quận 7, TP.HCM',
     160.00, 950000.00,
     'available', NULL,
-    1, 'Lô B — thiết bị CPU & phụ kiện'
+    (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Lô B — thiết bị CPU & phụ kiện'
 FROM orders o
 WHERE o.cargo_name = 'Thiết bị điện tử'
   AND NOT EXISTS (
@@ -1080,7 +1080,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654324'),  -- XYZ Trading
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Đồ nội thất văn phòng',
     780.00,
     '15 Tân Thới Nhất, Phường Tân Thới Nhất, Quận 12, TP.HCM',
@@ -1105,7 +1105,7 @@ SELECT
     '270 Cộng Hòa, Phường 13, Quận Tân Bình, TP.HCM',
     260.00, 1100000.00,
     'available', NULL,
-    1, 'Đợt 1 — bàn làm việc'
+    (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Đợt 1 — bàn làm việc'
 FROM orders o
 WHERE o.cargo_name = 'Đồ nội thất văn phòng'
   AND NOT EXISTS (
@@ -1125,7 +1125,7 @@ SELECT
     '34 Phan Đình Phùng, Phường 2, Quận Phú Nhuận, TP.HCM',
     260.00, 900000.00,
     'available', NULL,
-    1, 'Đợt 2 — ghế xoay & tủ hồ sơ'
+    (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Đợt 2 — ghế xoay & tủ hồ sơ'
 FROM orders o
 WHERE o.cargo_name = 'Đồ nội thất văn phòng'
   AND NOT EXISTS (
@@ -1145,7 +1145,7 @@ SELECT
     '12 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM',
     260.00, 1200000.00,
     'available', NULL,
-    1, 'Đợt 3 — sofa & kệ trang trí'
+    (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'), 'Đợt 3 — sofa & kệ trang trí'
 FROM orders o
 WHERE o.cargo_name = 'Đồ nội thất văn phòng'
   AND NOT EXISTS (
@@ -1165,7 +1165,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654321'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Vật tư xây dựng',
     850.00,
     '120 Đinh Tiên Hoàng, Phường 3, Quận Bình Thạnh, TP.HCM',
@@ -1186,7 +1186,7 @@ SELECT
     '120 Đinh Tiên Hoàng, Phường 3, Quận Bình Thạnh, TP.HCM',
     '56 Hoàng Diệu, Phường 12, Quận 4, TP.HCM',
     850.00, 1200000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Toàn bộ vật tư — 1 chuyến giao thẳng'
 FROM orders o
 WHERE o.cargo_name = 'Vật tư xây dựng'
@@ -1200,7 +1200,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654322'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Thực phẩm đông lạnh',
     440.00,
     '800 Hồng Bàng, Phường 9, Quận 6, TP.HCM',
@@ -1221,7 +1221,7 @@ SELECT
     '800 Hồng Bàng, Phường 9, Quận 6, TP.HCM',
     '15 Lý Thường Kiệt, Phường 7, Quận Tân Bình, TP.HCM',
     220.00, 780000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Lô 1 — thịt gà & hải sản'
 FROM orders o
 WHERE o.cargo_name = 'Thực phẩm đông lạnh'
@@ -1237,7 +1237,7 @@ SELECT
     '15 Lý Thường Kiệt, Phường 7, Quận Tân Bình, TP.HCM',
     '290 Nam Kỳ Khởi Nghĩa, Phường 8, Quận 3, TP.HCM',
     220.00, 820000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Lô 2 — rau củ quả đông lạnh'
 FROM orders o
 WHERE o.cargo_name = 'Thực phẩm đông lạnh'
@@ -1251,7 +1251,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654323'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Phụ tùng ô tô',
     1200.00,
     '60 Võ Thị Sáu, Phường Võ Thị Sáu, Quận 3, TP.HCM',
@@ -1272,7 +1272,7 @@ SELECT
     '60 Võ Thị Sáu, Phường Võ Thị Sáu, Quận 3, TP.HCM',
     '275 Nguyễn Thị Minh Khai, Phường 5, Quận 3, TP.HCM',
     400.00, 950000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Đợt 1 — lốp xe & vành mâm'
 FROM orders o
 WHERE o.cargo_name = 'Phụ tùng ô tô'
@@ -1288,7 +1288,7 @@ SELECT
     '275 Nguyễn Thị Minh Khai, Phường 5, Quận 3, TP.HCM',
     '45 Phan Văn Trị, Phường 10, Quận Gò Vấp, TP.HCM',
     400.00, 1050000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Đợt 2 — động cơ & hộp số'
 FROM orders o
 WHERE o.cargo_name = 'Phụ tùng ô tô'
@@ -1304,7 +1304,7 @@ SELECT
     '45 Phan Văn Trị, Phường 10, Quận Gò Vấp, TP.HCM',
     '98 Nguyễn Oanh, Phường 17, Quận Gò Vấp, TP.HCM',
     400.00, 880000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Đợt 3 — phụ kiện điện & đèn xe'
 FROM orders o
 WHERE o.cargo_name = 'Phụ tùng ô tô'
@@ -1318,7 +1318,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654324'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Dược phẩm & thiết bị y tế',
     180.00,
     '8 Yersin, Phường Nguyễn Thái Bình, Quận 1, TP.HCM',
@@ -1339,7 +1339,7 @@ SELECT
     '8 Yersin, Phường Nguyễn Thái Bình, Quận 1, TP.HCM',
     '201 Nguyễn Chí Thanh, Phường 12, Quận 5, TP.HCM',
     180.00, 650000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Thuốc & dụng cụ phẫu thuật — giao gấp'
 FROM orders o
 WHERE o.cargo_name = 'Dược phẩm & thiết bị y tế'
@@ -1353,7 +1353,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654321'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Hàng thời trang & may mặc',
     290.00,
     '550 Sư Vạn Hạnh, Phường 12, Quận 10, TP.HCM',
@@ -1374,7 +1374,7 @@ SELECT
     '550 Sư Vạn Hạnh, Phường 12, Quận 10, TP.HCM',
     '30 Đinh Tiên Hoàng, Phường Đa Kao, Quận 1, TP.HCM',
     145.00, 540000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Lô 1 — áo & quần nam'
 FROM orders o
 WHERE o.cargo_name = 'Hàng thời trang & may mặc'
@@ -1390,7 +1390,7 @@ SELECT
     '30 Đinh Tiên Hoàng, Phường Đa Kao, Quận 1, TP.HCM',
     '88 Lê Văn Sỹ, Phường 13, Quận Phú Nhuận, TP.HCM',
     145.00, 580000.00,
-    'available', NULL, 1,
+    'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)'),
     'Lô 2 — đầm & phụ kiện nữ'
 FROM orders o
 WHERE o.cargo_name = 'Hàng thời trang & may mặc'
@@ -1408,7 +1408,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654322'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Máy móc sản xuất',
     3200.00,
     '18 Quốc lộ 1A, Phường Bình Hưng Hòa, Quận Bình Tân, TP.HCM',
@@ -1427,7 +1427,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 1,
     '18 Quốc lộ 1A, Phường Bình Hưng Hòa, Quận Bình Tân, TP.HCM',
     '200 Nguyễn Văn Linh, Phường Tân Thuận Tây, Quận 7, TP.HCM',
-    1600.00, 3500000.00, 'available', NULL, 2, 'Đợt 1 — động cơ điện'
+    1600.00, 3500000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)'), 'Đợt 1 — động cơ điện'
 FROM orders o WHERE o.cargo_name = 'Máy móc sản xuất'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
@@ -1439,7 +1439,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 2,
     '200 Nguyễn Văn Linh, Phường Tân Thuận Tây, Quận 7, TP.HCM',
     'Khu công nghiệp Hiệp Phước, Nhà Bè, TP.HCM',
-    1600.00, 3800000.00, 'available', NULL, 2, 'Đợt 2 — băng tải & khung giá đỡ'
+    1600.00, 3800000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)'), 'Đợt 2 — băng tải & khung giá đỡ'
 FROM orders o WHERE o.cargo_name = 'Máy móc sản xuất'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 2);
 
@@ -1451,7 +1451,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654324'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Thiết bị công nghiệp nặng',
     2800.00,
     'Cảng Cát Lái, Quận 2, TP.HCM',
@@ -1470,7 +1470,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 1,
     'Cảng Cát Lái, Quận 2, TP.HCM',
     'KCN Sóng Thần, Dĩ An, Bình Dương',
-    2800.00, 5200000.00, 'available', NULL, 2, 'Giao thẳng — có chứng từ hải quan'
+    2800.00, 5200000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)'), 'Giao thẳng — có chứng từ hải quan'
 FROM orders o WHERE o.cargo_name = 'Thiết bị công nghiệp nặng'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
@@ -1482,7 +1482,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654323'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Vật liệu xây dựng công trình',
     8500.00,
     'Mỏ đá Long An, Huyện Đức Hòa, Long An',
@@ -1501,7 +1501,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 1,
     'Mỏ đá Long An, Huyện Đức Hòa, Long An',
     'Trạm trung chuyển Bình Chánh, TP.HCM',
-    2833.00, 4500000.00, 'available', NULL, 3, 'Chuyến 1 — đá 1x2'
+    2833.00, 4500000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)'), 'Chuyến 1 — đá 1x2'
 FROM orders o WHERE o.cargo_name = 'Vật liệu xây dựng công trình'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
@@ -1513,7 +1513,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 2,
     'Trạm trung chuyển Bình Chánh, TP.HCM',
     'Bãi tập kết Quận 8, TP.HCM',
-    2833.00, 3800000.00, 'available', NULL, 3, 'Chuyến 2 — cát mịn'
+    2833.00, 3800000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)'), 'Chuyến 2 — cát mịn'
 FROM orders o WHERE o.cargo_name = 'Vật liệu xây dựng công trình'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 2);
 
@@ -1525,7 +1525,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 3,
     'Bãi tập kết Quận 8, TP.HCM',
     'Công trình Vinhomes Grand Park, Quận 9, TP.HCM',
-    2834.00, 4200000.00, 'available', NULL, 3, 'Chuyến 3 — sỏi xây dựng'
+    2834.00, 4200000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)'), 'Chuyến 3 — sỏi xây dựng'
 FROM orders o WHERE o.cargo_name = 'Vật liệu xây dựng công trình'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 3);
 
@@ -1537,7 +1537,7 @@ INSERT INTO orders (
 )
 SELECT
     (SELECT id FROM customers WHERE phone = '0987654322'),
-    (SELECT id FROM profiles WHERE role_id = 2 LIMIT 1),
+    (SELECT id FROM profiles WHERE role_id = (SELECT id FROM roles WHERE name = 'coordinator') LIMIT 1),
     'Container hàng xuất khẩu',
     9200.00,
     'KCN Tân Bình, TP.HCM',
@@ -1556,7 +1556,7 @@ INSERT INTO order_shipments (
 SELECT o.id, 1,
     'KCN Tân Bình, TP.HCM',
     'Cảng Cát Lái, Quận 2, TP.HCM',
-    9200.00, 8500000.00, 'available', NULL, 3, 'Ưu tiên giao trước 17:00 — tàu cập bến'
+    9200.00, 8500000.00, 'available', NULL, (SELECT id FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)'), 'Ưu tiên giao trước 17:00 — tàu cập bến'
 FROM orders o WHERE o.cargo_name = 'Container hàng xuất khẩu'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 

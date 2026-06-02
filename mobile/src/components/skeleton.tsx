@@ -64,12 +64,15 @@ export function SkeletonBox({ height, width = '100%', borderRadius = 8, style }:
 
 // ─── SkeletonLine — convenience short alias ────────────────────────────────────
 
-export function SkeletonLine({ width = '100%', height = 14, borderRadius = 6 }: {
+type LineProps = {
     width?: DimensionValue;
     height?: number;
     borderRadius?: number;
-}) {
-    return <SkeletonBox height={height} width={width} borderRadius={borderRadius} />;
+    style?: ViewStyle;
+};
+
+export function SkeletonLine({ width = '100%', height = 14, borderRadius = 6, style }: LineProps) {
+    return <SkeletonBox height={height} width={width} borderRadius={borderRadius} style={style} />;
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
