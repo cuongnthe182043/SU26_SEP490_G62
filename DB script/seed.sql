@@ -152,14 +152,14 @@ LIMIT 1;
 --------------------------------------------------------------------------------
 -- Shipment for order 1 (available — visible in pool, no owner)
 INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, 1, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'available'
+SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'available'
 FROM orders o
 WHERE o.status = 'available' AND o.cargo_name = 'Electronics Package'
 AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
 -- Shipment for order 2 (completed — owned by driver1, shows in history)
 INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, claimed_at, completed_at)
-SELECT o.id, 1, 1, drv.id, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'completed',
+SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), drv.id, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'completed',
        NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day'
 FROM orders o
 JOIN accounts a ON a.email = 'driver1@example.com'
@@ -173,7 +173,7 @@ AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os
 INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assignment_type, assigned_at)
 SELECT os.id, p.id, v.id, 'coordinator_assign', NOW()
 FROM order_shipments os
-JOIN profiles p ON p.role_id = 4
+JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'driver')
 JOIN accounts a ON a.id = p.id AND a.email = 'driver1@example.com'
 JOIN vehicles v ON v.plate_number = '51-A12345'
 WHERE os.status = 'available'
