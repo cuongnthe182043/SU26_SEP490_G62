@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import Login from "./pages/Login";
 import Coordinator from "./pages/Coordinator/coordinator";
 
+import Admin from "./pages/Admin/Admin";
+
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
 
 export default function App() {
@@ -59,11 +61,13 @@ export default function App() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  if (Number(user.role_id) == 2) {
-    console.log("User  data:", user)
+  if (user.role === 'manager') {
+    return <Admin user={user} />;
+  }
+
+  if (user.role === 'coordinator') {
     return <Coordinator user={user} />;
   }
   
-  
-  return <main className="loading-screen">Chưa có trang</main>;
+  return <main className="loading-screen">Chưa có trang cho chức vụ này.</main>;
 }
