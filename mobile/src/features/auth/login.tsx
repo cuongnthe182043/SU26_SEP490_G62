@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from "tamagui";
 import { AppButton } from "@/components/app-button";
 import { FormField } from "@/components/form-field";
 import { KeyboardSafeScrollView } from "@/components/keyboard-safe-scroll-view";
+import { useAuthSession } from "@/providers/auth-provider";
 import { appTheme } from "@/theme/app-theme";
 
 import {
@@ -22,7 +23,9 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<LoginFormErrors>({});
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const { error, isLoading, login } = useLogin();
+  const { refreshSession } = useAuthSession();
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0,
@@ -33,8 +36,15 @@ export function LoginScreen() {
     const nextErrors = validateLoginForm(email, password);
     setFormErrors(nextErrors);
     if (hasLoginErrors(nextErrors) || isLoading) return;
+    setSessionError(null);
     const result = await login(email, password);
     if (result) {
+      try {
+        await refreshSession();
+      } catch (nextError) {
+        setSessionError(nextError instanceof Error ? nextError.message : "Không thể tải phiên đăng nhập.");
+        return;
+      }
       setPassword("");
       router.replace("/(tabs)");
     }
@@ -175,7 +185,7 @@ export function LoginScreen() {
               </YStack>
 
               {/* Error banner */}
-              {error ? (
+              {error || sessionError ? (
                 <XStack
                   paddingHorizontal="$3"
                   paddingVertical="$3"
@@ -202,7 +212,7 @@ export function LoginScreen() {
                     fontFamily={appTheme.typography.fontFamily.medium}
                     color={appTheme.colors.dangerText}
                   >
-                    {error}
+                    {error ?? sessionError}
                   </Text>
                 </XStack>
               ) : null}
