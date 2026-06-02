@@ -189,6 +189,10 @@
   padding: 18px;
   max-width: 100%;
 }
+
+.full-table-panel {
+  margin-top: 0;
+}
 .panel-head { justify-content: space-between; margin-bottom: 14px; }
 .panel-head h2 { margin: 0; }
 .panel-head p { margin: 6px 0 0; color: #586074; }
@@ -197,6 +201,27 @@
 table { width: 100%; border-collapse: collapse; min-width: 1400px; font-size: 13px; }
 th, td { border: 1px solid #d7dce8; padding: 10px 12px; text-align: left; white-space: nowrap; }
 th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
+
+.orders-table {
+  min-width: 1200px;
+}
+
+.coordinator-table-shell .content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.table-edit-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(20, 30, 70, 0.16);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  color: #18227f;
+  font-size: 16px;
+}
 .loading-screen {
   min-height: 100vh;
   display: grid;
