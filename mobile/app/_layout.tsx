@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { TamaguiProvider } from 'tamagui';
 
 import tamaguiConfig from '../tamagui.config';
+import { AuthProvider } from '@/providers/auth-provider';
 import { UIProvider } from '@/providers/ui-provider';
 
 export default function RootLayout() {
@@ -18,7 +19,9 @@ export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <UIProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <AuthProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+        </AuthProvider>
       </UIProvider>
     </TamaguiProvider>
   );
