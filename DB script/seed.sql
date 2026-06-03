@@ -15,29 +15,29 @@ ON CONFLICT (name) DO NOTHING;
 --------------------------------------------------------------------------------
 -- 2. SECURE AUTHENTICATION ACCOUNTS
 --------------------------------------------------------------------------------
-INSERT INTO accounts (email, password_hash, role_id, is_verified) VALUES
+INSERT INTO accounts (email, password_hash, role_id, is_active) VALUES
 ('admin@example.com', crypt('admin123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'), TRUE),
-('coordinator@example.com', crypt('coord123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+('ntck005@gmail.com', crypt('coord123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
 ('accountant@example.com', crypt('acct123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
 ('driver1@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE)
 ON CONFLICT (email) DO UPDATE
 SET password_hash = EXCLUDED.password_hash,
     role_id = EXCLUDED.role_id,
-    is_verified = EXCLUDED.is_verified;
+    is_active = EXCLUDED.is_active;
 
 --------------------------------------------------------------------------------
 -- 3. USER PROFILES
 --------------------------------------------------------------------------------
 WITH account_data AS (
     SELECT id, email FROM accounts 
-    WHERE email IN ('admin@example.com', 'coordinator@example.com', 'accountant@example.com', 'driver1@example.com')
+    WHERE email IN ('admin@example.com', 'ntck005@gmail.com', 'accountant@example.com', 'driver1@example.com')
 )
-INSERT INTO profiles (id, full_name, phone, role_id, is_active) 
+INSERT INTO profiles (id, full_name, phone, role_id) 
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'coordinator@example.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver'), TRUE)
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
+    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator')),
+    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant')),
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver'))
 ON CONFLICT (id) DO NOTHING;
 
 --------------------------------------------------------------------------------
