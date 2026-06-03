@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
     AlertTriangle, Camera, CheckCircle, ChevronDown,
-    MapPin, Package, PlusCircle, RotateCcw, Trash2, X, XCircle,
+    History, MapPin, Package, PlusCircle, RotateCcw, Trash2, X, XCircle,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -29,7 +29,7 @@ const EXPENSE_ALLOWED_STATUSES: TripStatus[] = [
     'claimed', 'picking', 'loaded', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'repair', 'other'];
+const EXPENSE_TYPES: ExpenseType[] = [ 'toll', 'parking', 'other'];
 
 // ─── Expense form modal ───────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function ExpenseFormModal({
     onClose: () => void;
     onSuccess: () => void;
 }) {
-    const [expenseType, setExpenseType] = useState<ExpenseType>('fuel');
+    const [expenseType, setExpenseType] = useState<ExpenseType>('toll');
     const [amount, setAmount]           = useState('');
     const [description, setDescription] = useState('');
     const [receiptUri, setReceiptUri]   = useState<string | null>(null);
@@ -57,7 +57,7 @@ function ExpenseFormModal({
     const cameraRef = useRef<CameraView>(null);
 
     const reset = () => {
-        setExpenseType('fuel');
+        setExpenseType('toll');
         setAmount('');
         setDescription('');
         setReceiptUri(null);
@@ -156,14 +156,17 @@ function ExpenseFormModal({
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-            <KeyboardAvoidingView
-                style={{ flex: 1, justifyContent: 'flex-end' }}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            >
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                {/* Backdrop nằm ngoài KAV — không bị ảnh hưởng khi bàn phím mở */}
                 <Pressable
                     style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
                     onPress={handleClose}
                 />
+                {/* KAV chỉ bọc sheet, dùng padding để đẩy sheet lên thay vì co chiều cao */}
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+                    keyboardVerticalOffset={0}
+                >
                 <View style={ef.sheet}>
                     {/* Drag handle */}
                     <View style={ef.handle} />
@@ -291,7 +294,8 @@ function ExpenseFormModal({
                         </XStack>
                     </ScrollView>
                 </View>
-            </KeyboardAvoidingView>
+                </KeyboardAvoidingView>
+            </View>
         </Modal>
     );
 }
@@ -724,10 +728,10 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [showExpenseForm, setShowExpenseForm] = useState(false);
 
     const { isUploading, error: proofError, completeWithProof } = useCompletionProof(() => {
-        router.replace('/(tabs)');
+        router.back();
     });
 
-    const { isLoading: releaseLoading, releaseTrip } = useReleaseTrip(() => router.replace('/(tabs)'));
+    const { isLoading: releaseLoading, releaseTrip } = useReleaseTrip(() => router.back());
 
     // Expenses
     const { expenses, load: loadExpenses } = useShipmentExpenses(trip.id);
@@ -976,6 +980,28 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                             icon={<X size={16} color={appTheme.colors.danger} />}
                         />
                     ) : null}
+
+                    {/* Report incident — available for all active statuses */}
+                    <XStack gap={8}>
+                        <Pressable
+                            style={s2.incidentBtn}
+                            onPress={() => router.push({ pathname: '/report-incident', params: { shipmentId: String(trip.id) } })}
+                        >
+                            <AlertTriangle size={15} color={appTheme.colors.warningText} />
+                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.warningText}>
+                                Báo sự cố
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            style={s2.historyBtn}
+                            onPress={() => router.push('/incident-history')}
+                        >
+                            <History size={15} color={appTheme.colors.textMuted} />
+                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.textMuted}>
+                                Lịch sử
+                            </Text>
+                        </Pressable>
+                    </XStack>
                 </YStack>
             </ScrollView>
 
@@ -1203,5 +1229,20 @@ const cam = StyleSheet.create({
         width: 62, height: 62, borderRadius: 31, backgroundColor: '#fff',
         alignItems: 'center', justifyContent: 'center',
         borderWidth: 2, borderColor: appTheme.colors.primaryMuted,
+    },
+});
+
+const s2 = StyleSheet.create({
+    incidentBtn: {
+        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        paddingVertical: 11, borderRadius: 12,
+        borderWidth: 1.5, borderColor: appTheme.colors.warningBorder,
+        backgroundColor: appTheme.colors.warningSoft,
+    },
+    historyBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12,
+        borderWidth: 1.5, borderColor: appTheme.colors.border,
+        backgroundColor: appTheme.colors.surfaceSoft,
     },
 });
