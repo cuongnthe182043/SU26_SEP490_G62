@@ -12,6 +12,9 @@ import {
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { AppButton } from '@/components/app-button';
+import { AppText }   from '@/components/app-text';
+import { FormField } from '@/components/form-field';
 import { ScreenHeader } from '@/components/screen-header';
 import { appTheme } from '@/theme/app-theme';
 import { useSubmitIncident } from '@/hooks/use-submit-incident';
@@ -453,19 +456,13 @@ export function IncidentFormScreen() {
                     </YStack>
 
                     {/* ── Location ── */}
-                    <YStack gap={6}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            VỊ TRÍ (TUỲ CHỌN)
-                        </Text>
-                        <TextInput
-                            style={s.input}
-                            value={location}
-                            onChangeText={setLocation}
-                            placeholder="Ví dụ: Đường Nguyễn Văn Linh, Q.7, TP.HCM"
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            maxLength={200}
-                        />
-                    </YStack>
+                    <FormField
+                        label="VỊ TRÍ (TUỲ CHỌN)"
+                        value={location}
+                        onChangeText={setLocation}
+                        placeholder="Ví dụ: Đường Nguyễn Văn Linh, Q.7, TP.HCM"
+                        maxLength={200}
+                    />
 
                     {/* ── Images ── */}
                     <ImageGrid
@@ -480,10 +477,10 @@ export function IncidentFormScreen() {
                             padding={12} borderRadius={10}
                             backgroundColor={appTheme.colors.dangerSoft}
                             borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                            gap={8} alignItems="flex-start"
+                            gap={8} alignItems="center"
                         >
-                            <AlertTriangle size={14} color={appTheme.colors.danger} style={{ marginTop: 1 }} />
-                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{error}</Text>
+                            <AlertTriangle size={14} color={appTheme.colors.danger} />
+                            <AppText variant="caption" tone="danger" flex={1}>{error}</AppText>
                         </XStack>
                     ) : null}
 
@@ -492,15 +489,15 @@ export function IncidentFormScreen() {
                         <Pressable style={[s.btn, s.cancelBtn]} onPress={() => router.back()}>
                             <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
                         </Pressable>
-                        <Pressable
-                            style={[s.btn, s.submitBtn, isSubmitting && s.disabled]}
+                        <AppButton
+                            flex={1}
+                            tone="primary"
+                            isLoading={isSubmitting}
                             onPress={handleSubmit}
-                            disabled={isSubmitting}
+                            height={52}
                         >
-                            <Text fontSize={14} fontWeight="900" color="#fff">
-                                {isSubmitting ? 'Đang gửi...' : 'Gửi báo cáo'}
-                            </Text>
-                        </Pressable>
+                            Gửi báo cáo
+                        </AppButton>
                     </XStack>
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -565,8 +562,6 @@ const s = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
     },
     cancelBtn: { backgroundColor: appTheme.colors.surfaceSoft },
-    submitBtn: { backgroundColor: appTheme.colors.primary },
-    disabled:  { opacity: 0.55 },
 });
 
 const cam = StyleSheet.create({
