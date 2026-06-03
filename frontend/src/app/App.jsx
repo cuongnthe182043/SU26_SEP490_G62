@@ -1,8 +1,8 @@
 import React from "react";
 import LoadingScreen from "../components/LoadingScreen";
 import { useAuthSession } from "../hooks/useAuthSession";
-import AdminPage from "../pages/admin/AdminPage";
-import CoordinatorPage from "../pages/coordinator/CoordinatorPage";
+import AdminPage from "../pages/Admin/AdminPage";
+import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
 
 export default function App() {
