@@ -1,5 +1,7 @@
-const pool = require('../config/database');
 const XLSX = require('xlsx');
+const pool = require('../config/database');
+const orderRepository = require('../repositories/orderRepository');
+const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const normalizeNumber = (value) => {
     if (value === undefined || value === null || value === '') return null;
@@ -10,6 +12,50 @@ const normalizeNumber = (value) => {
 
 const safeTrim = (value) => String(value ?? '').trim();
 const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
+
+const normalizeDateInput = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const text = safeTrim(value);
+    const isoLike = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoLike) return text;
+
+    const slashLike = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashLike) {
+        const [, day, month, year] = slashLike;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().slice(0, 10);
+};
+
+const isBeforeToday = (dateText) => {
+    if (!dateText) return false;
+    const inputDate = new Date(`${dateText}T00:00:00`);
+    if (Number.isNaN(inputDate.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return inputDate < today;
+};
+
+const buildNotes = ({ date, checkIn, plate, driverName, customerName, customerPhone, pickupAddress, deliveryAddress, notes }) => {
+    return [
+        date ? `Ngày: ${date}` : '',
+        checkIn ? `Chấm công: ${checkIn}` : '',
+        plate ? `BKS: ${plate}` : '',
+        driverName ? `Lái xe: ${driverName}` : '',
+        customerName ? `Khách hàng: ${customerName}` : '',
+        customerPhone ? `SĐT: ${customerPhone}` : '',
+        pickupAddress ? `Điểm lấy hàng: ${pickupAddress}` : '',
+        deliveryAddress ? `Điểm giao hàng: ${deliveryAddress}` : '',
+        notes ? safeTrim(notes) : '',
+    ].filter(Boolean).join(' | ') || null;
+};
 
 const parseExcelDate = (value) => {
     if (!value) return null;
@@ -33,136 +79,110 @@ const parseExcelDate = (value) => {
 };
 
 const findOrCreateCustomer = async (client, customerName, customerPhone) => {
-    const normalizedPhone = normalizePhone(customerPhone);
-    if (!normalizedPhone) return null;
-
-    const existingCustomer = await client.query(
-        `SELECT id, full_name, phone
-         FROM customers
-         WHERE phone = $1
-         LIMIT 1`,
-        [normalizedPhone],
-    );
-    if (existingCustomer.rows[0]) return existingCustomer.rows[0];
-
-    const createdCustomer = await client.query(
-        `INSERT INTO customers (customer_type, full_name, contact_person, phone)
-         VALUES ('individual', $1, $1, $2)
-         RETURNING id, full_name, phone`,
-        [safeTrim(customerName) || normalizedPhone, normalizedPhone],
-    );
-    return createdCustomer.rows[0];
+    return orderRepository.findOrCreateCustomer(client, customerName, customerPhone, normalizePhone, safeTrim);
 };
 
 const listOrders = async () => {
-    const result = await pool.query(
-        `SELECT
-            o.id,
-            o.customer_id,
-            o.cargo_name,
-            o.cargo_weight_kg,
-            o.pickup_address,
-            o.delivery_address,
-            o.estimated_price,
-            o.status,
-            o.notes,
-            o.created_at,
-            o.updated_at,
-            s.completed_at,
-            c.full_name AS customer_name,
-            c.phone AS customer_phone,
-            d.full_name AS driver_name
-         FROM orders o
-         LEFT JOIN customers c ON c.id = o.customer_id
-         LEFT JOIN LATERAL (
-            SELECT s1.completed_at
-            FROM order_shipments s1
-            WHERE s1.order_id = o.id
-            ORDER BY s1.shipment_index DESC
-            LIMIT 1
-         ) s ON TRUE
-         LEFT JOIN LATERAL (
-            SELECT pr.full_name
-            FROM order_shipments os
-            LEFT JOIN profiles pr ON pr.id = os.owner_driver_id
-            WHERE os.order_id = o.id
-            ORDER BY os.shipment_index ASC
-            LIMIT 1
-         ) d ON TRUE
-         ORDER BY o.created_at DESC`,
-    );
-
-    return result.rows;
+    return orderRepository.listOrders();
 };
 
 const createOrder = async (userId, payload) => {
     const {
+        date,
+        check_in,
+        plate,
+        driver_id,
         customer_name,
         customer_phone,
         cargo_name,
         cargo_weight_kg,
+        vehicle_group_id,
         pickup_address,
         delivery_address,
         estimated_price,
         notes,
     } = payload;
 
-    if (!pickup_address || !delivery_address || !estimated_price) {
+    if (!pickup_address || !delivery_address || estimated_price === undefined || estimated_price === null || estimated_price === '') {
         throw new Error('Thiếu thông tin bắt buộc');
+    }
+
+    const normalizedDate = normalizeDateInput(date);
+    if (normalizedDate && isBeforeToday(normalizedDate)) {
+        throw new Error('Ngày không được trước hôm nay');
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
     const normalizedPrice = normalizeNumber(estimated_price);
-    const client = await pool.connect();
+    const normalizedDriverId = driver_id ? Number(driver_id) : null;
+    let dbClient = null;
 
     try {
-        await client.query('BEGIN');
-        const customer = await findOrCreateCustomer(client, customer_name, customer_phone);
+        dbClient = await pool.connect();
+        await dbClient.query('BEGIN');
+        const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
+        const driver = normalizedDriverId ? await orderRepository.getDriverById(dbClient, normalizedDriverId) : await orderRepository.getDriverByPlate(dbClient, plate);
 
-        const orderResult = await client.query(
-            `INSERT INTO orders
-                (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
-             RETURNING *`,
-            [
-                customer?.id ?? null,
-                userId,
-                safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
-                normalizedWeight,
-                safeTrim(pickup_address),
-                safeTrim(delivery_address),
-                normalizedPrice,
-                [
-                    customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
-                    customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
-                    notes ? safeTrim(notes) : '',
-                ].filter(Boolean).join(' | ') || null,
-            ],
-        );
+        if (driver_id && !driver) {
+            throw new Error('Tài xế không tồn tại');
+        }
 
-        const order = orderResult.rows[0];
-        const shipmentResult = await client.query(
-            `INSERT INTO order_shipments
-                (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
-             VALUES ($1, 1, 1, NULL, $2, $3, $4, $5, 'available', $6, NULL)
-             RETURNING *`,
-            [
-                order.id,
-                order.pickup_address,
-                order.delivery_address,
-                order.cargo_weight_kg,
-                order.estimated_price,
-                order.notes,
-            ],
-        );
+        if (plate && !driver) {
+            throw new Error('BKS không tồn tại hoặc chưa được gán cho tài xế');
+        }
 
-        await client.query('COMMIT');
-        return { order, shipment: shipmentResult.rows[0] };
+        if (plate && driver && driver.plate_number && driver.plate_number !== safeTrim(plate)) {
+            throw new Error('BKS không khớp với tài xế đã chọn');
+        }
+
+        if (normalizedDriverId && plate && driver?.plate_number && driver.plate_number !== safeTrim(plate)) {
+            throw new Error('Chọn BKS hoặc tài xế chưa khớp');
+        }
+
+        const finalDriverId = driver?.id ?? null;
+        const finalVehicleId = driver?.vehicle_id ?? null;
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? 1;
+        const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
+
+        const result = await orderRepository.createOrderWithShipment({
+            client: dbClient,
+            userId,
+            orderData: {
+                customer_id: customer?.id ?? null,
+                cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
+                cargo_weight_kg: normalizedWeight,
+                pickup_address: safeTrim(pickup_address),
+                delivery_address: safeTrim(delivery_address),
+                estimated_price: normalizedPrice,
+                status: shipmentStatus,
+                notes: notes,
+            },
+            shipmentData: {
+                vehicle_group_id: finalVehicleGroupId,
+                owner_driver_id: finalDriverId,
+                pickup_address: safeTrim(pickup_address),
+                delivery_address: safeTrim(delivery_address),
+                cargo_weight_kg: normalizedWeight,
+                estimated_price: normalizedPrice,
+                status: shipmentStatus,
+                notes: notes,
+            },
+            assignmentData: finalDriverId && finalVehicleId ? {
+                driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
+                assigned_by: userId,
+            } : null,
+        });
+
+        await dbClient.query('COMMIT');
+        return result;
     } catch (err) {
-        await client.query('ROLLBACK');
+        if (dbClient) {
+            await dbClient.query('ROLLBACK');
+        }
         throw err;
     } finally {
-        client.release();
+        dbClient?.release?.();
     }
 };
 
@@ -177,27 +197,31 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!rows.length) return [];
 
-    const client = await pool.connect();
+    let dbClient = null;
     const createdOrders = [];
 
     try {
-        await client.query('BEGIN');
+        dbClient = await pool.connect();
+        await dbClient.query('BEGIN');
 
         for (const row of rows) {
             const date = parseExcelDate(row['Ngày'] ?? row.date);
             const checkIn = safeTrim(row['Chấm công'] ?? row.checkIn);
             const plate = safeTrim(row['BKS'] ?? row.plate);
+            const driverName = safeTrim(row['Lái xe'] ?? row.driver);
             const customerName = safeTrim(row['Khách hàng'] ?? row.customer_name);
             const customerPhone = normalizePhone(row['SĐT'] ?? row.phone);
             const pickupAddress = safeTrim(row['Điểm lấy hàng'] ?? row.pickup_address);
             const deliveryAddress = safeTrim(row['Điểm giao hàng'] ?? row.delivery_address);
             const route = safeTrim(row['Hành trình'] ?? row.route);
             const estimatedPrice = normalizeNumber(row['Cước xe'] ?? row.fare);
+            const cargoWeight = normalizeNumber(row['Khối lượng'] ?? row.cargo_weight_kg);
 
             const missing = [];
             if (!date) missing.push('Ngày');
             if (!checkIn) missing.push('Chấm công');
             if (!plate) missing.push('BKS');
+            if (!driverName) missing.push('Tài xế');
             if (!pickupAddress) missing.push('Điểm lấy hàng');
             if (!deliveryAddress) missing.push('Điểm giao hàng');
             if (estimatedPrice === null) missing.push('Cước xe');
@@ -205,52 +229,51 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 throw new Error(`Thiếu thông tin bắt buộc trong file Excel: ${missing.join(', ')}`);
             }
 
-            const customer = await findOrCreateCustomer(client, customerName, customerPhone);
+            const customer = await findOrCreateCustomer(dbClient, customerName, customerPhone);
             const notes = [
                 `Ngày: ${date}`,
                 `Chấm công: ${checkIn}`,
                 `BKS: ${plate}`,
+                `Lái xe: ${driverName}`,
                 customerName ? `Khách hàng: ${customerName}` : '',
                 customerPhone ? `SĐT: ${customerPhone}` : '',
                 route ? `Hành trình: ${route}` : `Hành trình: ${pickupAddress} - ${deliveryAddress}`,
                 row['Doanh thu'] ? `Doanh thu: ${safeTrim(row['Doanh thu'])}` : '',
             ].filter(Boolean).join(' | ');
 
-            const orderResult = await client.query(
-                `INSERT INTO orders
-                    (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
-                 VALUES ($1, $2, $3, NULL, $4, $5, $6, 'pending', $7)
-                 RETURNING *`,
-                [
-                    customer?.id ?? null,
-                    userId,
-                    route || `${pickupAddress} - ${deliveryAddress}`,
-                    pickupAddress,
-                    deliveryAddress,
-                    estimatedPrice,
+            const result = await orderRepository.importOrderWithShipment({
+                client: dbClient,
+                userId,
+                orderData: {
+                    customer_id: customer?.id ?? null,
+                    cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
+                    cargo_weight_kg: cargoWeight,
+                    pickup_address: pickupAddress,
+                    delivery_address: deliveryAddress,
+                    estimated_price: estimatedPrice,
                     notes,
-                ],
-            );
+                },
+                shipmentData: {
+                    pickup_address: pickupAddress,
+                    delivery_address: deliveryAddress,
+                    cargo_weight_kg: cargoWeight,
+                    estimated_price: estimatedPrice,
+                    notes,
+                },
+            });
 
-            const order = orderResult.rows[0];
-            const shipmentResult = await client.query(
-                `INSERT INTO order_shipments
-                    (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
-                 VALUES ($1, 1, 1, NULL, $2, $3, NULL, $4, 'available', $5, NULL)
-                 RETURNING *`,
-                [order.id, pickupAddress, deliveryAddress, estimatedPrice, notes],
-            );
-
-            createdOrders.push({ order, shipment: shipmentResult.rows[0] });
+            createdOrders.push(result);
         }
 
-        await client.query('COMMIT');
+        await dbClient.query('COMMIT');
         return createdOrders;
     } catch (err) {
-        await client.query('ROLLBACK');
+        if (dbClient) {
+            await dbClient.query('ROLLBACK');
+        }
         throw err;
     } finally {
-        client.release();
+        dbClient?.release?.();
     }
 };
 
