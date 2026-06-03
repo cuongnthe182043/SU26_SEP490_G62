@@ -4,65 +4,188 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
-    AlertTriangle, CheckCircle, History,
-    MapPin, Package, RotateCcw, X, XCircle,
+    AlertTriangle, ChevronDown, ChevronUp,
+    CheckCircle, MapPin, Package,
+    PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
+import { Image } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText } from '@/components/app-text';
+import { AppText }             from '@/components/app-text';
 import { LifecycleActionButton } from '@/components/lifecycle-action-button';
-import { ScreenHeader } from '@/components/screen-header';
-import { TripStatusBadge } from '@/components/trip-status-badge';
-import { ActiveTripSkeleton } from '@/components/skeleton';
-import { appTheme } from '@/theme/app-theme';
-import { useActiveTrip } from '@/hooks/use-active-trip';
-import { useCompletionProof } from '@/hooks/use-completion-proof';
-import { useReleaseTrip } from '@/hooks/use-release-trip';
+import { ScreenHeader }        from '@/components/screen-header';
+import { TripStatusBadge }     from '@/components/trip-status-badge';
+import { ActiveTripSkeleton }  from '@/components/skeleton';
+import { appTheme }            from '@/theme/app-theme';
+import { useActiveTrip }       from '@/hooks/use-active-trip';
+import { useCompletionProof }  from '@/hooks/use-completion-proof';
+import { useReleaseTrip }      from '@/hooks/use-release-trip';
 import { useShipmentExpenses } from '@/hooks/use-shipment-expenses';
-import { useTripLifecycle } from '@/hooks/use-trip-lifecycle';
-import type { ActiveTrip, TripStatus } from '@/types/trip';
-import { NEXT_ACTIONS } from '@/types/trip';
+import { useTripLifecycle }    from '@/hooks/use-trip-lifecycle';
+import type { ActiveTrip, Expense, TripStatus } from '@/types/trip';
+import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
-import { CameraModal }      from './components/camera-modal';
-import { ExpenseFormModal }  from './components/expense-form-modal';
-import { ExpenseSection }    from './components/expense-section';
-import { PhotoCaptureCard }  from './components/photo-capture-card';
-import { ReasonModal }       from './components/reason-modal';
+import { CameraModal }     from './components/camera-modal';
+import { ExpenseFormModal } from './components/expense-form-modal';
+import { PhotoCaptureCard } from './components/photo-capture-card';
+import { ReasonModal }     from './components/reason-modal';
 import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status-stepper';
 
-// ─── Allowed statuses for expense reporting ───────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EXPENSE_ALLOWED_STATUSES: TripStatus[] = [
     'claimed', 'picking', 'loaded', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-// ─── Small helper components ──────────────────────────────────────────────────
+const fmt = (v: string | number) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
 
-function InfoRow({ label, value }: { label: string; value: string | null }) {
-    if (!value) return null;
-    return (
-        <XStack justifyContent="space-between" paddingVertical={6}>
-            <Text fontSize={13} color={appTheme.colors.textMuted}>{label}</Text>
-            <Text fontSize={13} fontWeight="800" color={appTheme.colors.text} flex={1} textAlign="right">
-                {value}
-            </Text>
-        </XStack>
-    );
-}
+// ─── Collapsible section ──────────────────────────────────────────────────────
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+function CollapsibleSection({
+    label,
+    badge,
+    defaultOpen = false,
+    children,
+}: {
+    label: string;
+    badge?: string;
+    defaultOpen?: boolean;
+    children: React.ReactNode;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+
     return (
         <YStack
             borderRadius={appTheme.radius.lg} borderWidth={1}
             borderColor={appTheme.colors.border} backgroundColor={appTheme.colors.surface}
             overflow="hidden"
         >
-            <XStack paddingHorizontal={16} paddingVertical={11} backgroundColor={appTheme.colors.surfaceSoft}>
-                <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
-                    {title.toUpperCase()}
-                </Text>
+            <Pressable onPress={() => setOpen(v => !v)}>
+                <XStack
+                    paddingHorizontal={16} paddingVertical={12}
+                    backgroundColor={appTheme.colors.surfaceSoft}
+                    alignItems="center" justifyContent="space-between"
+                >
+                    <XStack alignItems="center" gap={8}>
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            {label.toUpperCase()}
+                        </Text>
+                        {badge ? (
+                            <View style={s.badge}>
+                                <Text fontSize={10} fontWeight="700" color={appTheme.colors.primary}>{badge}</Text>
+                            </View>
+                        ) : null}
+                    </XStack>
+                    {open
+                        ? <ChevronUp size={15} color={appTheme.colors.textMuted} />
+                        : <ChevronDown size={15} color={appTheme.colors.textMuted} />}
+                </XStack>
+            </Pressable>
+            {open ? (
+                <YStack padding={14} gap={8}>{children}</YStack>
+            ) : null}
+        </YStack>
+    );
+}
+
+// ─── Compact route row ────────────────────────────────────────────────────────
+
+function RouteRow({ pickup, delivery, isReturning }: {
+    pickup: string;
+    delivery: string;
+    isReturning?: boolean;
+}) {
+    return (
+        <YStack
+            borderRadius={appTheme.radius.lg} borderWidth={1}
+            borderColor={appTheme.colors.border} backgroundColor={appTheme.colors.surface}
+            paddingHorizontal={14} paddingVertical={12} gap={8}
+        >
+            <XStack alignItems="flex-start" gap={10}>
+                <View style={[s.routeDot, { backgroundColor: appTheme.colors.successSoft, borderColor: appTheme.colors.success }]}>
+                    <MapPin size={11} color={appTheme.colors.success} />
+                </View>
+                <YStack flex={1}>
+                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted}>
+                        {isReturning ? 'ĐIỂM TRẢ HÀNG VỀ' : 'ĐIỂM LẤY'}
+                    </Text>
+                    <Text fontSize={13} color={appTheme.colors.text} lineHeight={18} numberOfLines={2}>
+                        {pickup}
+                    </Text>
+                </YStack>
             </XStack>
-            <YStack padding={16} gap={2}>{children}</YStack>
+
+            {!isReturning ? (
+                <>
+                    <View style={s.routeLine} />
+                    <XStack alignItems="flex-start" gap={10}>
+                        <View style={[s.routeDot, { backgroundColor: appTheme.colors.primarySoft, borderColor: appTheme.colors.primary }]}>
+                            <MapPin size={11} color={appTheme.colors.primary} />
+                        </View>
+                        <YStack flex={1}>
+                            <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted}>ĐIỂM GIAO</Text>
+                            <Text fontSize={13} color={appTheme.colors.text} lineHeight={18} numberOfLines={2}>
+                                {delivery}
+                            </Text>
+                        </YStack>
+                    </XStack>
+                </>
+            ) : null}
+        </YStack>
+    );
+}
+
+// ─── Inline expense list ──────────────────────────────────────────────────────
+
+function ExpenseInlineList({ expenses, canAdd, onAdd }: {
+    expenses: Expense[];
+    canAdd: boolean;
+    onAdd: () => void;
+}) {
+    if (expenses.length === 0 && !canAdd) {
+        return <Text fontSize={12} color={appTheme.colors.textMuted}>Chưa có chi phí nào</Text>;
+    }
+    const total = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+    return (
+        <YStack gap={10}>
+            {expenses.map((e) => (
+                <YStack key={e.id} gap={6}>
+                    <XStack justifyContent="space-between" alignItems="center">
+                        <Text fontSize={13} color={appTheme.colors.text}>{EXPENSE_TYPE_LABEL[e.expense_type]}</Text>
+                        <Text fontSize={13} fontWeight="800" color={appTheme.colors.primary}>{fmt(e.amount)}</Text>
+                    </XStack>
+                    {e.description ? (
+                        <Text fontSize={11} color={appTheme.colors.textMuted}>{e.description}</Text>
+                    ) : null}
+                    {e.receipt_urls.length > 0 ? (
+                        <XStack gap={6} flexWrap="wrap">
+                            {e.receipt_urls.map((url, i) => (
+                                <Image
+                                    key={i}
+                                    source={{ uri: url }}
+                                    style={s.receiptThumb}
+                                    resizeMode="cover"
+                                />
+                            ))}
+                        </XStack>
+                    ) : null}
+                </YStack>
+            ))}
+            {expenses.length > 1 ? (
+                <XStack justifyContent="space-between" paddingTop={6}
+                    borderTopWidth={1} borderTopColor={appTheme.colors.border}>
+                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>Tổng</Text>
+                    <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>{fmt(total)}</Text>
+                </XStack>
+            ) : null}
+            {canAdd ? (
+                <Pressable onPress={onAdd} style={s.addExpenseBtn}>
+                    <PlusCircle size={14} color={appTheme.colors.primary} />
+                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>Thêm chi phí</Text>
+                </Pressable>
+            ) : null}
         </YStack>
     );
 }
@@ -90,6 +213,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const accent        = STATUS_ACCENT[trip.status as TripStatus];
     const banner        = STATUS_BANNER[trip.status as TripStatus];
     const isArrived     = trip.status === 'arrived';
+    const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
     const allPhotosDone = isArrived && !!receiptUri && (!trip.is_final_shipment || !!proofUri);
@@ -105,21 +229,23 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         setCameraTarget(target);
     };
 
-    const handleMarkFailed = () => {
-        Alert.alert(
-            'Xác nhận giao thất bại',
-            'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
-            [
-                { text: 'Hủy', style: 'cancel' },
-                { text: 'Xác nhận', style: 'destructive', onPress: () => advance(trip.id, 'failed') },
-            ],
-        );
-    };
+    const handleMarkFailed = () => Alert.alert(
+        'Xác nhận giao thất bại',
+        'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
+        [
+            { text: 'Hủy', style: 'cancel' },
+            { text: 'Xác nhận', style: 'destructive', onPress: () => advance(trip.id, 'failed') },
+        ],
+    );
+
+    const expenseBadge = expenses.length > 0
+        ? `${expenses.length} khoản · ${fmt(expenses.reduce((s, e) => s + Number(e.amount), 0))}`
+        : undefined;
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <ScreenHeader
-                title={`Đơn #${trip.order_id} — Chuyến ${trip.shipment_index}/${trip.max_shipment_index}`}
+                title={`Đơn #${trip.order_id} · ${trip.shipment_index}/${trip.max_shipment_index}`}
                 showBack
                 right={<TripStatusBadge status={trip.status as TripStatus} />}
             />
@@ -128,120 +254,105 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 style={{ flex: 1 }}
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
-                    paddingTop: 16,
-                    paddingBottom: appTheme.spacing.screenBottom,
-                    gap: 14,
+                    paddingTop: 14,
+                    paddingBottom: appTheme.spacing.screenBottom + 16,
+                    gap: 10,
                 }}
+                showsVerticalScrollIndicator={false}
             >
-                {/* ── Status stepper ── */}
+                {/* ── Status card ── */}
                 <YStack
-                    padding={16} borderRadius={appTheme.radius.lg} gap={14}
+                    padding={14} borderRadius={appTheme.radius.lg} gap={12}
                     borderWidth={1}
                     borderColor={accent?.border ?? appTheme.colors.border}
                     backgroundColor={accent?.bg ?? appTheme.colors.surfaceSoft}
                 >
                     <StatusStepper status={trip.status as TripStatus} />
                     {banner ? (
-                        <XStack
-                            gap={8} alignItems="center" paddingTop={4}
-                            borderTopWidth={1} borderTopColor={accent?.border ?? appTheme.colors.border}
-                        >
+                        <XStack gap={8} alignItems="center" paddingTop={4}
+                            borderTopWidth={1} borderTopColor={accent?.border ?? appTheme.colors.border}>
                             {banner.icon}
-                            <Text fontSize={12} fontWeight="800" color={accent?.text ?? appTheme.colors.text} flex={1}>
+                            <Text fontSize={12} fontWeight="800"
+                                color={accent?.text ?? appTheme.colors.text} flex={1}>
                                 {banner.text}
                             </Text>
                         </XStack>
                     ) : null}
                 </YStack>
 
-                {/* ── Leg info ── */}
-                <Text fontSize={12} color={appTheme.colors.textMuted} fontWeight="700">
-                    {trip.cargo_name ?? 'Hàng hóa'}  •  Chuyến {trip.shipment_index} / {trip.max_shipment_index}
-                </Text>
-
                 {/* ── Route ── */}
-                <SectionCard title="Tuyến đường">
-                    <XStack gap={10} alignItems="flex-start">
-                        <XStack width={28} height={28} borderRadius={10}
-                            backgroundColor={appTheme.colors.successSoft}
-                            alignItems="center" justifyContent="center" marginTop={1}>
-                            <MapPin size={13} color={appTheme.colors.success} />
-                        </XStack>
-                        <YStack flex={1}>
-                            <Text fontSize={11} color={appTheme.colors.textMuted} fontWeight="700">ĐIỂM LẤY</Text>
-                            <Text fontSize={13} color={appTheme.colors.text} lineHeight={18}>{trip.pickup_address}</Text>
-                        </YStack>
-                    </XStack>
-                    <XStack height={1} backgroundColor={appTheme.colors.border} marginVertical={8} marginLeft={38} />
-                    <XStack gap={10} alignItems="flex-start">
-                        <XStack width={28} height={28} borderRadius={10}
-                            backgroundColor={appTheme.colors.primarySoft}
-                            alignItems="center" justifyContent="center" marginTop={1}>
-                            <MapPin size={13} color={appTheme.colors.primary} />
-                        </XStack>
-                        <YStack flex={1}>
-                            <Text fontSize={11} color={appTheme.colors.textMuted} fontWeight="700">ĐIỂM GIAO</Text>
-                            <Text fontSize={13} color={appTheme.colors.text} lineHeight={18}>{trip.delivery_address}</Text>
-                        </YStack>
-                    </XStack>
-                </SectionCard>
-
-                {/* ── Cargo ── */}
-                <SectionCard title="Hàng hóa">
-                    <InfoRow label="Tên hàng"    value={trip.cargo_name} />
-                    <InfoRow label="Trọng lượng" value={trip.cargo_weight_kg ? `${trip.cargo_weight_kg} kg` : null} />
-                    <InfoRow
-                        label="Giá trị"
-                        value={trip.estimated_price
-                            ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
-                                .format(Number(trip.estimated_price))
-                            : null}
-                    />
-                    {trip.notes ? <InfoRow label="Ghi chú" value={trip.notes} /> : null}
-                </SectionCard>
-
-                {/* ── Expenses ── */}
-                <ExpenseSection
-                    expenses={expenses}
-                    canAdd={canAddExpense}
-                    onAdd={() => setShowExpense(true)}
+                <RouteRow
+                    pickup={trip.pickup_address}
+                    delivery={trip.delivery_address}
+                    isReturning={isReturning}
                 />
 
-                {/* ── Final shipment badge ── */}
-                {trip.is_final_shipment ? (
-                    <XStack padding={12} borderRadius={appTheme.radius.sm}
-                        backgroundColor={appTheme.colors.primarySoft}
-                        borderWidth={1} borderColor={appTheme.colors.primaryMuted}
-                        gap={8} alignItems="center"
-                    >
-                        <Package size={16} color={appTheme.colors.primary} />
-                        <Text fontSize={12} fontWeight="800" color={appTheme.colors.primary} flex={1}>
-                            Chuyến cuối — cần thêm ảnh xác nhận hoàn thành đơn hàng
-                        </Text>
-                    </XStack>
-                ) : null}
-
-                {/* ── Returning banner ── */}
-                {trip.status === 'returning' ? (
-                    <YStack padding={14} borderRadius={appTheme.radius.lg} gap={6}
-                        borderWidth={1} borderColor={appTheme.colors.border}
-                        backgroundColor={appTheme.colors.surfaceSoft}
-                    >
-                        <XStack gap={8} alignItems="center">
-                            <RotateCcw size={14} color={appTheme.colors.textMuted} />
-                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>Điểm trả hàng về:</Text>
+                {/* ── Cargo details (collapsible) ── */}
+                <CollapsibleSection
+                    label="Hàng hóa"
+                    badge={trip.cargo_name ?? undefined}
+                >
+                    {trip.cargo_name ? (
+                        <XStack justifyContent="space-between">
+                            <Text fontSize={12} color={appTheme.colors.textMuted}>Tên hàng</Text>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{trip.cargo_name}</Text>
                         </XStack>
-                        <Text fontSize={13} color={appTheme.colors.text} lineHeight={18}>{trip.pickup_address}</Text>
-                    </YStack>
-                ) : null}
+                    ) : null}
+                    {trip.cargo_weight_kg ? (
+                        <XStack justifyContent="space-between">
+                            <Text fontSize={12} color={appTheme.colors.textMuted}>Trọng lượng</Text>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{trip.cargo_weight_kg} kg</Text>
+                        </XStack>
+                    ) : null}
+                    {trip.estimated_price ? (
+                        <XStack justifyContent="space-between">
+                            <Text fontSize={12} color={appTheme.colors.textMuted}>Giá trị</Text>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                {fmt(trip.estimated_price)}
+                            </Text>
+                        </XStack>
+                    ) : null}
+                    {trip.notes ? (
+                        <XStack justifyContent="space-between" alignItems="flex-start" gap={12}>
+                            <Text fontSize={12} color={appTheme.colors.textMuted}>Ghi chú</Text>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}
+                                flex={1} textAlign="right" numberOfLines={3}>{trip.notes}</Text>
+                        </XStack>
+                    ) : null}
+                    {trip.is_final_shipment ? (
+                        <XStack gap={6} alignItems="center" paddingTop={4}
+                            borderTopWidth={1} borderTopColor={appTheme.colors.border}>
+                            <Package size={12} color={appTheme.colors.primary} />
+                            <Text fontSize={11} fontWeight="700" color={appTheme.colors.primary}>
+                                Chuyến cuối của đơn hàng
+                            </Text>
+                        </XStack>
+                    ) : null}
+                </CollapsibleSection>
+
+                {/* ── Expenses (collapsible) ── */}
+                <CollapsibleSection label="Chi phí phát sinh" badge={expenseBadge}>
+                    <ExpenseInlineList
+                        expenses={expenses}
+                        canAdd={canAddExpense}
+                        onAdd={() => setShowExpense(true)}
+                    />
+                </CollapsibleSection>
 
                 {/* ── Photo section (ARRIVED only) ── */}
                 {isArrived ? (
-                    <YStack gap={10}>
-                        <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>Ảnh xác nhận giao hàng</Text>
+                    <YStack
+                        borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.successSoft}
+                        backgroundColor={appTheme.colors.surface}
+                        padding={14} gap={10}
+                    >
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            ẢNH XÁC NHẬN GIAO HÀNG
+                        </Text>
                         <PhotoCaptureCard
                             label="Ảnh biên lai"
-                            sublabel="Biên lai / chữ ký khách nhận hàng"
+                            sublabel="Biên lai / chữ ký khách nhận"
                             uri={receiptUri}
                             required
                             onCapture={() => openCamera('receipt')}
@@ -250,7 +361,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         {trip.is_final_shipment ? (
                             <PhotoCaptureCard
                                 label="Ảnh xác nhận hoàn thành"
-                                sublabel="Hàng hóa đã giao tại điểm giao cuối"
+                                sublabel="Hàng đã giao tại điểm cuối"
                                 uri={proofUri}
                                 required
                                 onCapture={() => openCamera('proof')}
@@ -258,73 +369,56 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                             />
                         ) : null}
                         {proofError ? (
-                            <XStack padding={10} borderRadius={appTheme.radius.sm}
-                                backgroundColor={appTheme.colors.dangerSoft}
-                                borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                            >
-                                <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{proofError}</Text>
-                            </XStack>
+                            <AppText variant="caption" tone="danger">{proofError}</AppText>
                         ) : null}
                     </YStack>
                 ) : null}
 
-                {/* ── Action buttons ── */}
-                <YStack gap={10}>
-                    {nextAction && !isArrived ? (
-                        <LifecycleActionButton
-                            label={nextAction.label}
-                            tone={nextAction.tone}
-                            onPress={() => advance(trip.id, nextAction.nextStatus)}
-                            isLoading={isWorking}
-                        />
-                    ) : null}
+                {/* ── Primary action ── */}
+                {nextAction && !isArrived ? (
+                    <LifecycleActionButton
+                        label={nextAction.label}
+                        tone={nextAction.tone}
+                        onPress={() => advance(trip.id, nextAction.nextStatus)}
+                        isLoading={isWorking}
+                    />
+                ) : null}
 
-                    {isArrived ? (
-                        <LifecycleActionButton
-                            label={isUploading ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
-                            tone="primary"
-                            onPress={() => { if (receiptUri) completeWithProof(trip.id, receiptUri, proofUri ?? undefined); }}
-                            isLoading={isUploading}
-                            disabled={!allPhotosDone}
-                            icon={<CheckCircle size={17} color={allPhotosDone ? appTheme.colors.surface : appTheme.colors.textMuted} />}
-                        />
-                    ) : null}
+                {isArrived ? (
+                    <LifecycleActionButton
+                        label={isUploading ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
+                        tone="primary"
+                        onPress={() => { if (receiptUri) completeWithProof(trip.id, receiptUri, proofUri ?? undefined); }}
+                        isLoading={isUploading}
+                        disabled={!allPhotosDone}
+                        icon={<CheckCircle size={17} color={allPhotosDone ? '#fff' : appTheme.colors.textMuted} />}
+                    />
+                ) : null}
 
+                {/* ── Secondary actions row ── */}
+                <XStack gap={8}>
                     {isArrived ? (
-                        <LifecycleActionButton
-                            label="Không thể giao hàng"
-                            tone="danger"
-                            onPress={handleMarkFailed}
-                            isLoading={lifecycleLoading}
-                            icon={<XCircle size={16} color={appTheme.colors.danger} />}
-                        />
+                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={handleMarkFailed}>
+                            <XCircle size={14} color={appTheme.colors.danger} />
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.danger}>Thất bại</Text>
+                        </Pressable>
                     ) : null}
 
                     {isReleasable ? (
-                        <LifecycleActionButton
-                            label="Hủy chuyến"
-                            tone="danger"
-                            onPress={() => setShowRelease(true)}
-                            isLoading={releaseLoading}
-                            icon={<X size={16} color={appTheme.colors.danger} />}
-                        />
+                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={() => setShowRelease(true)}>
+                            <X size={14} color={appTheme.colors.danger} />
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.danger}>Hủy chuyến</Text>
+                        </Pressable>
                     ) : null}
 
-                    {/* Incident buttons */}
-                    <XStack gap={8}>
-                        <Pressable
-                            style={s.incidentBtn}
-                            onPress={() => router.push({ pathname: '/report-incident', params: { shipmentId: String(trip.id) } })}
-                        >
-                            <AlertTriangle size={15} color={appTheme.colors.warningText} />
-                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.warningText}>Báo sự cố</Text>
-                        </Pressable>
-                        <Pressable style={s.historyBtn} onPress={() => router.push('/incident-history')}>
-                            <History size={15} color={appTheme.colors.textMuted} />
-                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.textMuted}>Lịch sử</Text>
-                        </Pressable>
-                    </XStack>
-                </YStack>
+                    <Pressable
+                        style={[s.secondaryBtn, s.warnBtn, { flex: 1 }]}
+                        onPress={() => router.push({ pathname: '/report-incident', params: { shipmentId: String(trip.id) } })}
+                    >
+                        <AlertTriangle size={14} color={appTheme.colors.warningText} />
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.warningText}>Báo sự cố</Text>
+                    </Pressable>
+                </XStack>
             </ScrollView>
 
             {/* ── Modals ── */}
@@ -343,7 +437,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 visible={showRelease}
                 title="Hủy chuyến"
                 description="Xác nhận hủy chuyến này? Đơn hàng sẽ được trả về pool để tài xế khác nhận."
-                placeholder="Lý do hủy (tùy chọn, ví dụ: xe hỏng đột xuất...)"
+                placeholder="Lý do hủy (tùy chọn)..."
                 confirmLabel="Xác nhận hủy chuyến"
                 confirmDanger
                 onConfirm={(reason) => { setShowRelease(false); releaseTrip(trip.id, reason || undefined); }}
@@ -369,7 +463,8 @@ export function ActiveTripScreen() {
         return (
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
                 <ScreenHeader title="Chuyến hiện tại" showBack />
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }} scrollEnabled={false}>
+                <ScrollView style={{ flex: 1 }} scrollEnabled={false}
+                    contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}>
                     <ActiveTripSkeleton />
                 </ScrollView>
             </View>
@@ -403,16 +498,52 @@ export function ActiveTripScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-    incidentBtn: {
-        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        paddingVertical: 11, borderRadius: 12,
-        borderWidth: 1.5, borderColor: appTheme.colors.warningBorder,
-        backgroundColor: appTheme.colors.warningSoft,
+    // Collapsible badge
+    badge: {
+        paddingHorizontal: 8, paddingVertical: 2,
+        borderRadius: appTheme.radius.pill,
+        backgroundColor: appTheme.colors.primarySoft,
+        borderWidth: 1, borderColor: appTheme.colors.primaryMuted,
     },
-    historyBtn: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12,
-        borderWidth: 1.5, borderColor: appTheme.colors.border,
-        backgroundColor: appTheme.colors.surfaceSoft,
+
+    // Route dots
+    routeDot: {
+        width: 26, height: 26, borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center', justifyContent: 'center',
+        marginTop: 1,
+    },
+    routeLine: {
+        height: 1,
+        backgroundColor: appTheme.colors.border,
+        marginLeft: 36,
+    },
+
+    // Expense receipt thumbnail
+    receiptThumb: { width: 52, height: 52, borderRadius: 8 },
+
+    // Expense add button
+    addExpenseBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingVertical: 8, paddingHorizontal: 12,
+        borderRadius: 10, alignSelf: 'flex-start',
+        borderWidth: 1, borderStyle: 'dashed',
+        borderColor: appTheme.colors.primaryMuted,
+        backgroundColor: appTheme.colors.primarySoft,
+    },
+
+    // Secondary action buttons
+    secondaryBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+        paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12,
+        borderWidth: 1.5,
+    },
+    dangerBtn: {
+        borderColor: appTheme.colors.dangerBorder,
+        backgroundColor: appTheme.colors.dangerSoft,
+    },
+    warnBtn: {
+        borderColor: appTheme.colors.warningBorder,
+        backgroundColor: appTheme.colors.warningSoft,
     },
 });
