@@ -61,7 +61,7 @@ export function TripPoolScreen() {
 
             if (result.ok) {
                 showToast({ type: 'success', message: `Đã nhận đơn hàng #${trip.order_id}` });
-                router.push('/active-trip');
+                router.replace('/active-trip');
             } else if (result.alreadyClaimed) {
                 showToast({ type: 'warning', message: 'Đơn hàng này đã được tài xế khác nhận' });
                 refresh(false); // sync lại, không hiện spinner
