@@ -43,7 +43,7 @@ function buildTripFromOrder(order) {
     id: `#${order.id}`,
     orderId: order.id,
     title: order.cargo_name,
-    status: order.status === "pending" ? "New" : order.status,
+    status: order.status,
     pickup: order.pickup_address,
     delivery: order.delivery_address,
     weight: `${order.cargo_weight_kg ?? ""}kg`,
@@ -263,11 +263,11 @@ export default function CoordinatorPage({ user, onLogout }) {
     setMessageType("info");
 
     const errors = validateForm();
-    if (Object.keys(errors).length > 0) {
-      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
-      setMessageType("error");
-      return;
-    }
+    // if (Object.keys(errors).length > 0) {
+    //   setMessage("Vui lòng kiểm tra các trường bắt buộc.");
+    //   setMessageType("error");
+    //   return;
+    // }
 
     setCreating(true);
 
@@ -367,17 +367,18 @@ export default function CoordinatorPage({ user, onLogout }) {
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
             </label>
             <button className="primary-btn" onClick={() => setCreateOpen(true)}>
-              + Create order
+              + Tạo mới
             </button>
             <div className="avatar">{user?.full_name?.[0] || "A"}</div>
           </div>
         </header>
 
         <section className="hero">
-          <div>
-            <h1>Order list</h1>
+          {/* <div>
+            <h1>Danh sách đơn hàng</h1>
             <p>Manage and dispatch active transport trips.</p>
-          </div>
+          </div> */}
+          <div></div>
           <div className="filters">
             <button
               className={activeTab === "all" ? "filter active" : "filter"}
@@ -385,7 +386,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             >
               All
             </button>
-            <button
+            {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
@@ -396,7 +397,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               onClick={() => setActiveTab("waiting")}
             >
               Waiting
-            </button>
+            </button> */}
           </div>
         </section>
 
@@ -414,7 +415,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               </div>
 
               <form className="create-form" onSubmit={handleCreateOrder}>
-                <div className="sheet-caption full">Order row information</div>
+                <div className="sheet-caption full">Thông tin đơn hàng</div>
 
                 <div className="form-row form-row-3">
                   <label>
@@ -636,7 +637,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 {filteredTrips.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="empty-table-cell">
-                      No orders yet. Create an order or import an Excel file to load data.
+                      Chưa có đơn. Tạo đơn mới hoặc import từ excel
                     </td>
                   </tr>
                 ) : (
@@ -657,7 +658,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{trip.driverName || "Unassigned"}</td>
                       <td>
                         <div className="table-actions">
-                          <button className="assign-btn">+ Assign driver</button>
+                          
                           <button className="table-edit-btn" aria-label="Edit order">
                             ✎
                           </button>
