@@ -5,7 +5,7 @@ type Props = {
     children: ReactNode;
     contentContainerStyle?: ViewStyle;
     style?: ViewStyle;
-    /** Extra bottom padding khi bàn phím hiện — mặc định 24 */
+    /** Extra bottom padding khi bàn phím hiện — mặc định 40 */
     extraPadding?: number;
 };
 
@@ -17,13 +17,13 @@ export function KeyboardSafeScrollView({
     children,
     contentContainerStyle,
     style,
-    extraPadding = 24,
+    extraPadding = 40,
 }: Props) {
     return (
         <KeyboardAvoidingView
             style={[styles.flex, style]}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+            behavior="padding"
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
             <ScrollView
                 style={styles.flex}

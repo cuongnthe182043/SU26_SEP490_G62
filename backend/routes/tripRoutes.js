@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
-const { uploadProof } = require('../middleware/uploadMiddleware');
+const { uploadTripComplete } = require('../middleware/uploadMiddleware');
 const tripController = require('../controllers/tripController');
 
 /**
@@ -49,9 +49,12 @@ function handleUpload(middleware) {
  *       200:
  *         description: today_total, today_completed, month_completed
  */
-router.get('/stats', driverOnly, tripController.getDriverStats);
+router.get('/stats',   driverOnly, tripController.getDriverStats);
+router.get('/history', driverOnly, tripController.getOrderHistory);
+router.get('/orders/:orderId', driverOnly, tripController.getOrderDetail);
 
 router.get('/pool', driverOnly, tripController.getTripPool);
+router.get('/pool/:orderId', driverOnly, tripController.getAvailableOrderDetail);
 
 /**
  * @swagger
@@ -113,7 +116,7 @@ router.post('/:id/claim', driverOnly, tripController.claimTrip);
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [picking, loaded, transit, arrived, failed, returning, cancelled]
+ *                 enum: [picking, loaded, transit, arrived, failed, returning]
  *     responses:
  *       200:
  *         description: Cập nhật thành công
@@ -127,7 +130,7 @@ router.patch('/:id/status', driverOnly, tripController.updateStatus);
  * /api/trips/{id}/complete:
  *   post:
  *     tags: [Trips]
- *     summary: Hoàn thành chuyến (bắt buộc ảnh proof nếu là chuyến cuối của order)
+ *     summary: Hoàn thành chuyến (bắt buộc ảnh biên lai cho mọi trip)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -148,13 +151,80 @@ router.patch('/:id/status', driverOnly, tripController.updateStatus);
  *       200:
  *         description: Hoàn thành thành công
  *       422:
- *         description: Thiếu ảnh proof (chuyến cuối) hoặc sai trạng thái
+ *         description: Thiếu ảnh proof hoặc sai trạng thái
  */
 router.post(
     '/:id/complete',
     driverOnly,
-    handleUpload(uploadProof.single('proof')),
+    handleUpload(uploadTripComplete.fields([
+        { name: 'receipt', maxCount: 1 },
+        { name: 'proof',   maxCount: 1 },
+    ])),
     tripController.completeTrip,
 );
+
+/**
+ * @swagger
+ * /api/trips/{id}/cancel-delivery:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Báo không thể giao hàng (ARRIVED → CANCELLED) — kèm lý do bắt buộc
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Khách hàng không có mặt, không liên lạc được"
+ *     responses:
+ *       200:
+ *         description: Đã ghi nhận, driver vẫn active để xác nhận trả hàng
+ *       400:
+ *         description: Thiếu lý do
+ *       422:
+ *         description: Sai trạng thái
+ */
+router.post('/:id/cancel-delivery', driverOnly, tripController.cancelDelivery);
+
+/**
+ * @swagger
+ * /api/trips/{id}/release:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Hủy chuyến sớm (CLAIMED/PICKING → trả order về pool available)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Xe hỏng đột xuất"
+ *     responses:
+ *       200:
+ *         description: Đã hủy, order về pool
+ *       422:
+ *         description: Không đủ điều kiện hủy chuyến
+ */
+router.post('/:id/release', driverOnly, tripController.releaseTrip);
 
 module.exports = router;
