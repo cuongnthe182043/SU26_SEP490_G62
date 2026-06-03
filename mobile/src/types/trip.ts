@@ -184,13 +184,11 @@ export type PoolOrderDetail = {
 
 export type OrderDetailResponse = OrderDetailData;
 
-export type ExpenseType = 'fuel' | 'toll' | 'parking' | 'repair' | 'other';
+export type ExpenseType ='toll' | 'parking' | 'other';
 
 export const EXPENSE_TYPE_LABEL: Record<ExpenseType, string> = {
-    fuel:    'Nhiên liệu',
     toll:    'Phí cầu đường',
     parking: 'Đỗ xe',
-    repair:  'Sửa chữa',
     other:   'Khác',
 };
 
