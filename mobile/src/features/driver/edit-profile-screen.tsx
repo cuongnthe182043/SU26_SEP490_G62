@@ -17,8 +17,6 @@ import { useUpdateProfile } from '@/hooks/use-update-profile';
 import { useToast } from '@/providers/ui-provider';
 import type { Gender, UpdateProfilePayload } from '@/types/profile';
 
-// ─── Validation ───────────────────────────────────────────────────────────────
-
 const NAME_REGEX  = /^[\p{L}\s]+$/u;
 const PHONE_REGEX = /^\d{10}$/;
 
@@ -39,8 +37,6 @@ function validate(fullName: string, phone: string): FormErrors {
     }
     return errors;
 }
-
-// ─── Gender picker ────────────────────────────────────────────────────────────
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
     { value: 'male',   label: 'Nam' },
@@ -78,8 +74,6 @@ function GenderPicker({ value, onChange }: { value: Gender | null; onChange: (v:
         </YStack>
     );
 }
-
-// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function EditProfileScreen() {
     const params  = useLocalSearchParams<{ data: string }>();
