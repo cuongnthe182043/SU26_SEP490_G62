@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -155,9 +155,18 @@ function ExpenseFormModal({
     }
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-            <View style={ef.overlay}>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+            <KeyboardAvoidingView
+                style={ef.overlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={0}
+            >
                 <View style={ef.sheet}>
+                <ScrollView
+                    contentContainerStyle={ef.sheet}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
                     {/* Header */}
                     <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
                         <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>Thêm chi phí phát sinh</Text>
@@ -274,8 +283,9 @@ function ExpenseFormModal({
                             </Text>
                         </Pressable>
                     </XStack>
+                </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -473,41 +483,51 @@ function ReasonModal({
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-            <View style={rm.overlay}>
-                <View style={rm.card}>
-                    <YStack gap={12}>
-                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>{title}</Text>
-                        {description ? (
-                            <Text fontSize={13} color={appTheme.colors.textMuted} lineHeight={18}>{description}</Text>
-                        ) : null}
-                        <TextInput
-                            style={[rm.input, { borderColor: required && !canConfirm ? appTheme.colors.danger : appTheme.colors.border }]}
-                            value={text}
-                            onChangeText={setText}
-                            placeholder={placeholder}
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            multiline
-                            numberOfLines={3}
-                            textAlignVertical="top"
-                        />
-                        {required && !canConfirm ? (
-                            <Text fontSize={11} color={appTheme.colors.danger}>Vui lòng nhập lý do</Text>
-                        ) : null}
-                        <XStack gap={10}>
-                            <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
-                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[rm.btn, rm.confirmBtn, { backgroundColor: confirmDanger ? appTheme.colors.danger : appTheme.colors.primary }, !canConfirm && { opacity: 0.4 }]}
-                                onPress={handleConfirm}
-                                disabled={!canConfirm}
-                            >
-                                <Text fontSize={14} fontWeight="900" color="#fff">{confirmLabel}</Text>
-                            </Pressable>
-                        </XStack>
-                    </YStack>
-                </View>
-            </View>
+            <KeyboardAvoidingView
+                style={rm.overlay}
+                behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView
+                    contentContainerStyle={rm.scrollContainer}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={rm.card}>
+                        <YStack gap={12}>
+                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>{title}</Text>
+                            {description ? (
+                                <Text fontSize={13} color={appTheme.colors.textMuted} lineHeight={18}>{description}</Text>
+                            ) : null}
+                            <TextInput
+                                style={[rm.input, { borderColor: required && !canConfirm ? appTheme.colors.danger : appTheme.colors.border }]}
+                                value={text}
+                                onChangeText={setText}
+                                placeholder={placeholder}
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                            />
+                            {required && !canConfirm ? (
+                                <Text fontSize={11} color={appTheme.colors.danger}>Vui lòng nhập lý do</Text>
+                            ) : null}
+                            <XStack gap={10}>
+                                <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
+                                    <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[rm.btn, rm.confirmBtn, { backgroundColor: confirmDanger ? appTheme.colors.danger : appTheme.colors.primary }, !canConfirm && { opacity: 0.4 }]}
+                                    onPress={handleConfirm}
+                                    disabled={!canConfirm}
+                                >
+                                    <Text fontSize={14} fontWeight="900" color="#fff">{confirmLabel}</Text>
+                                </Pressable>
+                            </XStack>
+                        </YStack>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -1058,12 +1078,18 @@ const styles = StyleSheet.create({
 const ef = StyleSheet.create({
     overlay: {
         flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
+         alignItems: 'center',
+         padding: 20,
     },
     sheet: {
+        width: '100%',
+        
+        flexGrow: 1,
+        maxHeight: '88%',
         backgroundColor: '#fff',
         borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        padding: 24, paddingBottom: 40,
+        padding: 24, paddingBottom: 20,
     },
     select: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -1105,11 +1131,16 @@ const ef = StyleSheet.create({
 const rm = StyleSheet.create({
     overlay: {
         flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center', alignItems: 'center',
+        justifyContent: 'flex-end', alignItems: 'center',
         padding: 24,
     },
+    scrollContainer: {
+        flexGrow: 1,
+        justifyContent: 'flex-end',
+        paddingTop: 20,
+    },
     card: {
-        width: '100%', backgroundColor: '#fff',
+        width: '100%', maxHeight: '80%', backgroundColor: '#fff',
         borderRadius: 18, padding: 22,
         shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 12,
     },
