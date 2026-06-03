@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { Button } from "antd";
 import "../../styles/admin/UserModal.css";
 
 const initialFormState = {
   email: "",
-  password: "",
   full_name: "",
   phone: "",
   role: "driver",
@@ -16,7 +16,6 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
     if (editingUser) {
       setFormData({
         email: editingUser.email || "",
-        password: "",
         full_name: editingUser.full_name || "",
         phone: editingUser.phone || "",
         role: editingUser.role || "driver",
@@ -57,18 +56,7 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
             {editingUser && <small className="text-muted">Email cannot be changed.</small>}
           </div>
 
-          {!editingUser && (
-            <div className="form-group">
-              <label>Password *</label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          )}
+
 
           <div className="form-group">
             <label>Full name</label>
@@ -95,13 +83,13 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
             </select>
           </div>
 
-          <div className="modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>
+          <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <Button onClick={onClose}>
               Cancel
-            </button>
-            <button type="submit" className="btn-save">
+            </Button>
+            <Button type="primary" htmlType="submit">
               Save
-            </button>
+            </Button>
           </div>
         </form>
       </div>
