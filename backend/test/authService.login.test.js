@@ -1,10 +1,12 @@
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'TEST_SECRET';
+process.env.GG_CLIENT_ID = process.env.GG_CLIENT_ID || 'TEST_GOOGLE_CLIENT_ID';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 const originalLoad = Module._load;
+const originalFetch = global.fetch;
 
 const jwtStub = {
     sign: () => {
@@ -61,6 +63,7 @@ const restoreMocks = () => {
     profileRepositoryStub.updateLastLogin = original.updateLastLogin;
     bcryptStub.compare = original.compare;
     jwtStub.sign = original.sign;
+    global.fetch = originalFetch;
 };
 
 const baseAccount = (overrides = {}) => ({
@@ -69,6 +72,7 @@ const baseAccount = (overrides = {}) => ({
     password_hash: 'hashed-password',
     role_id: 3,
     role: 'Admin',
+    is_active: true,
     ...overrides,
 });
 
@@ -149,6 +153,23 @@ test('throws 401 when password is invalid', async () => {
     assert.equal(updateCalled, false);
 });
 
+test('throws 403 when account is inactive', async () => {
+    let updateCalled = false;
+    profileRepositoryStub.getAccountByEmail = async () => baseAccount({ is_active: false });
+    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
+    profileRepositoryStub.updateLastLogin = async () => {
+        updateCalled = true;
+        return { id: 42 };
+    };
+    bcryptStub.compare = async () => true;
+
+    await assert.rejects(
+        () => authService.login('user@example.com', 'secret'),
+        (err) => err instanceof authService.AuthError && err.status === 403,
+    );
+    assert.equal(updateCalled, false);
+});
+
 test('rejects email input with invalid symbols as not found', async () => {
     const calls = [];
     profileRepositoryStub.getAccountByEmail = async (email) => {
@@ -207,5 +228,86 @@ test('rejects malformed credentials with unicode and symbols', async () => {
         (err) => err instanceof authService.AuthError && err.status === 404,
     );
     assert.equal(updateCalled, false);
+});
+
+test('loginWithGoogle rejects missing credential', async () => {
+    await assert.rejects(
+        () => authService.loginWithGoogle(''),
+        (err) => err instanceof authService.AuthError && err.status === 400,
+    );
+});
+
+test('loginWithGoogle rejects non-matching Google audience', async () => {
+    global.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            aud: 'unexpected-client-id',
+            email: 'user@example.com',
+            email_verified: 'true',
+        }),
+    });
+
+    await assert.rejects(
+        () => authService.loginWithGoogle('credential'),
+        (err) => err instanceof authService.AuthError && err.status === 403,
+    );
+});
+
+test('loginWithGoogle rejects unverified Google email', async () => {
+    global.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            aud: process.env.GG_CLIENT_ID,
+            email: 'user@example.com',
+            email_verified: 'false',
+        }),
+    });
+
+    await assert.rejects(
+        () => authService.loginWithGoogle('credential'),
+        (err) => err instanceof authService.AuthError && err.status === 403,
+    );
+});
+
+test('loginWithGoogle rejects Google accounts that are not provisioned internally', async () => {
+    global.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            aud: process.env.GG_CLIENT_ID,
+            email: 'new-user@example.com',
+            email_verified: 'true',
+        }),
+    });
+    profileRepositoryStub.getAccountByEmail = async () => null;
+
+    await assert.rejects(
+        () => authService.loginWithGoogle('credential'),
+        (err) => err instanceof authService.AuthError && err.status === 403,
+    );
+});
+
+test('loginWithGoogle signs in an existing internal user', async () => {
+    const calls = [];
+    global.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            aud: process.env.GG_CLIENT_ID,
+            email: 'User@Example.com',
+            email_verified: 'true',
+        }),
+    });
+    profileRepositoryStub.getAccountByEmail = async (email) => {
+        calls.push(email);
+        return baseAccount();
+    };
+    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
+    profileRepositoryStub.updateLastLogin = async () => ({ id: 42 });
+    jwtStub.sign = () => 'jwt-token';
+
+    const result = await authService.loginWithGoogle('credential');
+
+    assert.deepEqual(calls, ['user@example.com']);
+    assert.equal(result.token, 'jwt-token');
+    assert.equal(result.user.email, 'User@Example.com');
 });
 
