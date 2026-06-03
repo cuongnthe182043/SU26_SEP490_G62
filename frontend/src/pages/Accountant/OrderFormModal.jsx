@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
-import "../styles/OrderFormModal.css";
+import "../../styles/OrderFormModal.css";
 
 export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   const [activeTab, setActiveTab] = useState("manual"); // "manual" | "excel"

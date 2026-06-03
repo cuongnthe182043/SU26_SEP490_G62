@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Login from "./pages/Login";
-import Orders from "./pages/Orders";
+import Accountant from "./pages/Accountant/accountant";
 import Coordinator from "./pages/Coordinator/coordinator";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
@@ -72,6 +72,6 @@ export default function App() {
   }
 
   return (
-    <Orders user={user} onLogout={handleLogout} />
+    <Accountant user={user} onLogout={handleLogout} />
   );
 }

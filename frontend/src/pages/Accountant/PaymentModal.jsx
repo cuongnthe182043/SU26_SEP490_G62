@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import "../styles/PaymentModal.css";
+import "../../styles/PaymentModal.css";
 
 export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const [amount, setAmount] = useState("");
@@ -101,7 +101,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
         <div className="modal-header">
           <div>
             <h3>Ghi nhận Phiếu thu (Thanh toán)</h3>
-            <span className="order-subtitle">Đơn hàng #VL-{order.id + 8800} &bull; Khách hàng: {order.customer_name}</span>
+            <span className="order-subtitle">Đơn hàng #VL-{order.id} &bull; Khách hàng: {order.customer_name}</span>
           </div>
           <button className="close-btn" onClick={onClose}>&times;</button>
         </div>
