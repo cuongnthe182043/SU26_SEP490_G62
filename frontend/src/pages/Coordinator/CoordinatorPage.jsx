@@ -44,7 +44,7 @@ function buildTripFromOrder(order) {
     id: `#${order.id}`,
     orderId: order.id,
     title: order.cargo_name,
-    status: order.status === "pending" ? "New" : order.status,
+    status: order.status,
     pickup: order.pickup_address,
     delivery: order.delivery_address,
     weight: `${order.cargo_weight_kg ?? ""}kg`,
@@ -86,7 +86,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, [trips]);
 
   useEffect(() => {
-    const loadOrders = async () => {
+    const loadOrders = async () => { 
       try {
         const token = localStorage.getItem("token");
         const data = await apiRequest("/api/orders", { token });
@@ -282,11 +282,11 @@ export default function CoordinatorPage({ user, onLogout }) {
     setMessageType("info");
 
     const errors = validateForm();
-    if (Object.keys(errors).length > 0) {
-      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
-      setMessageType("error");
-      return;
-    }
+    // if (Object.keys(errors).length > 0) {
+    //   setMessage("Vui lòng kiểm tra các trường bắt buộc.");
+    //   setMessageType("error");
+    //   return;
+    // }
 
     setCreating(true);
 
@@ -359,10 +359,10 @@ export default function CoordinatorPage({ user, onLogout }) {
             </div>
           </div>
           <nav className="nav">
-            <button className="nav-item active">Orders</button>
-            <button className="nav-item">Map</button>
+            <button className="nav-item active">Đơn hàng</button>
+            {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button>
+            <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
@@ -377,7 +377,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search order, ID, or route..."
+              placeholder="Tên sản phẩm, điểm lấy hàng, giao hàng, tài xế, trạng thái"
             />
           </div>
           <div className="topbar-actions">
@@ -386,25 +386,26 @@ export default function CoordinatorPage({ user, onLogout }) {
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
             </label>
             <button className="primary-btn" onClick={() => setCreateOpen(true)}>
-              + Create order
+              + Tạo mới
             </button>
             <div className="avatar">{user?.full_name?.[0] || "A"}</div>
           </div>
         </header>
 
         <section className="hero">
-          <div>
-            <h1>Order list</h1>
+          {/* <div>
+            <h1>Danh sách đơn hàng</h1>
             <p>Manage and dispatch active transport trips.</p>
-          </div>
+          </div> */}
+          <div></div>
           <div className="filters">
-            <button
+            {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
               All
-            </button>
-            <button
+            </button> */}
+            {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
@@ -415,7 +416,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               onClick={() => setActiveTab("waiting")}
             >
               Waiting
-            </button>
+            </button> */}
           </div>
         </section>
 
@@ -433,7 +434,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               </div>
 
               <form className="create-form" onSubmit={handleCreateOrder}>
-                <div className="sheet-caption full">Order row information</div>
+                <div className="sheet-caption full">Thông tin đơn hàng</div>
 
                 <div className="form-row form-row-3">
                   <label>
@@ -493,7 +494,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
-                <div className="form-row form-row-2">
+                <div className="form-row form-row-3">
                   <label>
                     <span>SĐT</span>
                     <input
@@ -516,9 +517,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_name}</div>
                     )}
                   </label>
-                </div>
-
-                <div className="form-row form-row-note">
                   <label>
                     <span>Sản phẩm</span>
                     <input
@@ -527,6 +525,10 @@ export default function CoordinatorPage({ user, onLogout }) {
                       placeholder="Không bắt buộc"
                     />
                   </label>
+                </div>
+
+                <div className="form-row form-row-note">
+                  
                 </div>
 
                 <div className="form-row form-row-3">
@@ -676,7 +678,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{trip.driverName || "Unassigned"}</td>
                       <td>
                         <div className="table-actions">
-                          <button className="assign-btn">+ Assign driver</button>
+                          
                           <button className="table-edit-btn" aria-label="Edit order">
                             ✎
                           </button>
