@@ -7,6 +7,7 @@ const emptyForm = {
   driver_id: "",
   customer_name: "",
   customer_phone: "",
+  cargo_name: "",
   cargo_weight_kg: "",
   distance: "",
   pickup_address: "",
@@ -287,6 +288,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           driver_id: form.driver_id || "",
           customer_name: form.customer_name,
           customer_phone: form.customer_phone,
+          cargo_name: form.cargo_name,
           cargo_weight_kg: form.cargo_weight_kg,
           pickup_address: form.pickup_address,
           delivery_address: form.delivery_address,
@@ -498,6 +500,17 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
+                <div className="form-row form-row-note">
+                  <label>
+                    <span>Sản phẩm</span>
+                    <input
+                      value={form.cargo_name}
+                      onChange={(event) => updateField("cargo_name", event.target.value)}
+                      placeholder="Không bắt buộc"
+                    />
+                  </label>
+                </div>
+
                 <div className="form-row form-row-3">
                   <label>
                     <span>Khối lượng</span>
@@ -575,7 +588,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                   </label>
                 </div>
-                
+                {Object.keys(formErrors).length > 0 && (
+                  <div className="full field-error field-error-box">
+                    {Object.entries(formErrors).map(([key, error]) => (
+                      <div key={key}>{error}</div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="form-actions full">
                   <button type="button" className="filter" onClick={() => setCreateOpen(false)}>
@@ -632,7 +651,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>
                         <span className="trip-status">{trip.status}</span>
                       </td>
-                      <td className="table-route-cell">{trip.title}</td>
+                      <td className="table-route-cell">{trip.title || "-"}</td>
                       <td className="table-address-cell">{trip.pickup}</td>
                       <td className="table-address-cell">{trip.delivery}</td>
                       <td>{trip.weight}</td>
