@@ -69,6 +69,7 @@ const baseAccount = (overrides = {}) => ({
     password_hash: 'hashed-password',
     role_id: 3,
     role: 'Admin',
+    is_active: true,
     ...overrides,
 });
 
@@ -145,6 +146,23 @@ test('throws 401 when password is invalid', async () => {
     await assert.rejects(
         () => authService.login('user@example.com', 'wrong-password'),
         (err) => err instanceof authService.AuthError && err.status === 401,
+    );
+    assert.equal(updateCalled, false);
+});
+
+test('throws 403 when account is inactive', async () => {
+    let updateCalled = false;
+    profileRepositoryStub.getAccountByEmail = async () => baseAccount({ is_active: false });
+    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
+    profileRepositoryStub.updateLastLogin = async () => {
+        updateCalled = true;
+        return { id: 42 };
+    };
+    bcryptStub.compare = async () => true;
+
+    await assert.rejects(
+        () => authService.login('user@example.com', 'secret'),
+        (err) => err instanceof authService.AuthError && err.status === 403,
     );
     assert.equal(updateCalled, false);
 });
