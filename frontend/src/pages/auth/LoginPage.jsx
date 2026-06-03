@@ -1,51 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
-import "../styles/Login.css";
+import { apiRequest } from "../../services/apiClient";
+import { getRememberedEmail } from "../../services/storage";
+import { loadGoogleIdentityScript } from "../../services/googleIdentity";
+import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const googleScriptSrc = "https://accounts.google.com/gsi/client";
 
-let googleScriptPromise = null;
+function validateCredentials(email, password) {
+  const errors = { email: "", password: "" };
 
-const loadGoogleScript = () => {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Browser environment is required."));
+  if (!email) {
+    errors.email = "Email is required.";
+  } else if (!emailRegex.test(email)) {
+    errors.email = "Please enter a valid email address.";
   }
 
-  if (window.google?.accounts?.id) {
-    return Promise.resolve();
+  if (!password) {
+    errors.password = "Password is required.";
+  } else if (password.length < 6) {
+    errors.password = "Password must be at least 6 characters.";
   }
 
-  if (!googleScriptPromise) {
-    googleScriptPromise = new Promise((resolve, reject) => {
-      const existingScript = document.querySelector(
-        `script[src="${googleScriptSrc}"]`,
-      );
+  return errors;
+}
 
-      if (existingScript) {
-        existingScript.addEventListener("load", () => resolve(), { once: true });
-        existingScript.addEventListener("error", () => {
-          reject(new Error("Failed to load Google Sign-In script."));
-        }, { once: true });
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = googleScriptSrc;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Google Sign-In script."));
-      document.head.appendChild(script);
-    });
-  }
-
-  return googleScriptPromise;
-};
-
-export default function Login({ onLoginSuccess }) {
-  const [email, setEmail] = useState("");
+export default function LoginPage({ onLoginSuccess }) {
+  const rememberedEmail = getRememberedEmail();
+  const [email, setEmail] = useState(rememberedEmail);
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(Boolean(rememberedEmail));
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
   const [touched, setTouched] = useState({ email: false, password: false });
@@ -54,27 +37,13 @@ export default function Login({ onLoginSuccess }) {
   const [googleReady, setGoogleReady] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const googleButtonRef = useRef(null);
-  const googleCredentialHandlerRef = useRef(async () => { });
+  const googleCredentialHandlerRef = useRef(async () => {});
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
   const googleClientId =
     import.meta.env.VITE_GG_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  const validateFields = () => {
-    const errors = { email: "", password: "" };
-    if (!email) {
-      errors.email = "Email is required.";
-    } else if (!emailRegex.test(email)) {
-      errors.email = "Please enter a valid email address.";
-    }
-
-    if (!password) {
-      errors.password = "Password is required.";
-    } else if (password.length < 6) {
-      errors.password = "Password must be at least 6 characters.";
-    }
-
-    return errors;
+  const syncFieldErrors = (nextEmail, nextPassword) => {
+    setFieldErrors(validateCredentials(nextEmail, nextPassword));
   };
 
   googleCredentialHandlerRef.current = async (credential) => {
@@ -84,30 +53,23 @@ export default function Login({ onLoginSuccess }) {
 
     setGoogleLoading(true);
     setError("");
+
     try {
-      const response = await fetch(`${API_BASE}/auth/google`, {
+      const data = await apiRequest("/auth/google", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ credential }),
+        body: { credential },
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Google sign-in failed.");
-      }
 
       const { token, user } = data;
       if (!token || !user) {
         throw new Error("Unexpected login response from server.");
       }
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
-      if (remember) localStorage.setItem("rememberEmail", user.email || email);
-      if (onLoginSuccess) await onLoginSuccess(user);
+      onLoginSuccess?.({
+        token,
+        user,
+        rememberEmail: remember ? user.email || "" : "",
+      });
     } finally {
       setGoogleLoading(false);
     }
@@ -123,7 +85,7 @@ export default function Login({ onLoginSuccess }) {
       }
 
       try {
-        await loadGoogleScript();
+        await loadGoogleIdentityScript();
 
         if (cancelled || !googleButtonRef.current || !window.google?.accounts?.id) {
           return;
@@ -145,6 +107,7 @@ export default function Login({ onLoginSuccess }) {
           280,
           Math.min(360, googleButtonRef.current.clientWidth || 360),
         );
+
         window.google.accounts.id.renderButton(googleButtonRef.current, {
           theme: "outline",
           size: "large",
@@ -153,6 +116,7 @@ export default function Login({ onLoginSuccess }) {
           text: "signin_with",
           width: buttonWidth,
         });
+
         setGoogleReady(true);
         setGoogleError("");
       } catch (err) {
@@ -169,11 +133,11 @@ export default function Login({ onLoginSuccess }) {
     };
   }, [googleClientId]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError("");
 
-    const errors = validateFields();
+    const errors = validateCredentials(email, password);
     setFieldErrors(errors);
     setTouched({ email: true, password: true });
 
@@ -182,30 +146,23 @@ export default function Login({ onLoginSuccess }) {
     }
 
     setSubmitting(true);
+
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
+      const data = await apiRequest("/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+        body: { email, password },
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Invalid email or password.");
-      }
 
       const { token, user } = data;
       if (!token || !user) {
         throw new Error("Unexpected login response from server.");
       }
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
-      if (remember) localStorage.setItem("rememberEmail", email);
-      if (onLoginSuccess) await onLoginSuccess(user);
+      onLoginSuccess?.({
+        token,
+        user,
+        rememberEmail: remember ? email : "",
+      });
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -215,8 +172,7 @@ export default function Login({ onLoginSuccess }) {
 
   const emailError = touched.email ? fieldErrors.email : "";
   const passwordError = touched.password ? fieldErrors.password : "";
-  const formIsValid =
-    !fieldErrors.email && !fieldErrors.password && email && password;
+  const formIsValid = !fieldErrors.email && !fieldErrors.password && email && password;
   const heroImages = [
     { src: "/anh DN 1.png", className: "hero-image hero-image-1" },
     { src: "/anh DN 2.png", className: "hero-image hero-image-2" },
@@ -279,15 +235,16 @@ export default function Login({ onLoginSuccess }) {
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
+                onChange={(event) => {
+                  const nextEmail = event.target.value;
+                  setEmail(nextEmail);
                   if (touched.email) {
-                    setFieldErrors(validateFields());
+                    syncFieldErrors(nextEmail, password);
                   }
                 }}
                 onBlur={() => {
-                  setTouched((prev) => ({ ...prev, email: true }));
-                  setFieldErrors(validateFields());
+                  setTouched((current) => ({ ...current, email: true }));
+                  syncFieldErrors(email, password);
                 }}
                 className={emailError ? "input-error" : ""}
                 required
@@ -302,22 +259,21 @@ export default function Login({ onLoginSuccess }) {
                 type="password"
                 placeholder="At least 6 characters"
                 value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
+                onChange={(event) => {
+                  const nextPassword = event.target.value;
+                  setPassword(nextPassword);
                   if (touched.password) {
-                    setFieldErrors(validateFields());
+                    syncFieldErrors(email, nextPassword);
                   }
                 }}
                 onBlur={() => {
-                  setTouched((prev) => ({ ...prev, password: true }));
-                  setFieldErrors(validateFields());
+                  setTouched((current) => ({ ...current, password: true }));
+                  syncFieldErrors(email, password);
                 }}
                 className={passwordError ? "input-error" : ""}
                 required
               />
-              {passwordError && (
-                <div className="field-error">{passwordError}</div>
-              )}
+              {passwordError && <div className="field-error">{passwordError}</div>}
             </label>
 
             <div className="login-row">
@@ -325,14 +281,14 @@ export default function Login({ onLoginSuccess }) {
                 <input
                   type="checkbox"
                   checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
+                  onChange={(event) => setRemember(event.target.checked)}
                 />
                 Remember me
               </label>
               <a
                 className="forgot"
                 href="#"
-                onClick={(e) => e.preventDefault()}
+                onClick={(event) => event.preventDefault()}
               >
                 Forgot?
               </a>
