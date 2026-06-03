@@ -4,44 +4,47 @@ import "../../styles/Coordinator.css";
 
 const emptyForm = {
   date: "",
-  check_in: "",
-  plate: "",
   driver_id: "",
   customer_name: "",
+  customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
+  distance: "",
   pickup_address: "",
   delivery_address: "",
-  route_name: "",
   estimated_price: "",
-  ticket: "",
-  paid: false,
-  driver_income: "",
-  fuel: "",
-  advance: "",
+  vehicle_group_id: "",
   note: "",
-  revenue_1: "",
 };
 
 const requiredFields = [
-  { key: "date", label: "Date" },
-  { key: "check_in", label: "Check in" },
-  { key: "plate", label: "Plate" },
-  { key: "driver_id", label: "Driver" },
-  { key: "route_name", label: "Route" },
-  { key: "estimated_price", label: "Price" },
+  { key: "date", label: "Ngày tháng" },
+  { key: "driver_id", label: "Tài xế" },
+  { key: "vehicle_group_id", label: "Nhóm xe" },
+  { key: "customer_phone", label: "SĐT" },
+  { key: "customer_name", label: "Khách hàng" },
+  { key: "cargo_weight_kg", label: "Khối lượng" },
+  { key: "pickup_address", label: "Điểm lấy hàng" },
+  { key: "delivery_address", label: "Điểm giao hàng" },
+  { key: "estimated_price", label: "Cước xe" },
 ];
 
+const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
+const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
+const isFiniteNumber = (value) => Number.isFinite(Number(value));
+const ORDERS_PER_PAGE = 10;
+
 function extractDriverName(notes) {
-  const match = String(notes ?? "").match(/Lai xe:\s*([^|]+)/i);
+  const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
   return match?.[1]?.trim() || "";
 }
 
 function buildTripFromOrder(order) {
   return {
     id: `#${order.id}`,
+    orderId: order.id,
     title: order.cargo_name,
-    status: order.status === "pending" ? "New" : order.status,
+    status: order.status,
     pickup: order.pickup_address,
     delivery: order.delivery_address,
     weight: `${order.cargo_weight_kg ?? ""}kg`,
@@ -55,13 +58,13 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [trips, setTrips] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [rows, setRows] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
@@ -83,7 +86,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, [trips]);
 
   useEffect(() => {
-    const loadOrders = async () => {
+    const loadOrders = async () => { 
       try {
         const token = localStorage.getItem("token");
         const data = await apiRequest("/api/orders", { token });
@@ -157,15 +160,61 @@ export default function CoordinatorPage({ user, onLogout }) {
     });
   }, [activeTab, deferredSearchQuery, trips]);
 
+
+  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / ORDERS_PER_PAGE));
+  const paginatedTrips = useMemo(() => {
+    const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+    return filteredTrips.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+  }, [currentPage, filteredTrips]);
+  const pageStart = filteredTrips.length === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
+  const pageEnd = Math.min(currentPage * ORDERS_PER_PAGE, filteredTrips.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, deferredSearchQuery]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   const validateForm = () => {
     const errors = {};
 
     requiredFields.forEach(({ key, label }) => {
       const value = String(form[key] ?? "").trim();
       if (!value) {
-        errors[key] = `${label} is required`;
+        errors[key] = `${label} là bắt buộc`;
       }
     });
+
+    if (form.date) {
+      const selectedDate = new Date(`${form.date}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (Number.isNaN(selectedDate.getTime()) || selectedDate < today) {
+        errors.date = "Ngày không được trước hôm nay";
+      }
+    }
+
+    const phoneDigits = String(form.customer_phone ?? "").replace(/\D/g, "");
+    if (form.customer_phone && !/^0\d{9,10}$/.test(phoneDigits)) {
+      errors.customer_phone = "SĐT phải bắt đầu bằng 0 và có 10-11 chữ số";
+    }
+
+    const weight = normalizeNumericText(form.cargo_weight_kg);
+    if (weight && (!isFiniteNumber(weight) || Number(weight) <= 0)) {
+      errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
+    }
+
+    const price = normalizeNumericText(form.estimated_price);
+    if (price && (!isFiniteNumber(price) || Number(price) < 0)) {
+      errors.estimated_price = "Cước xe phải là số không âm";
+    }
+
+    const distance = normalizeDistanceText(form.distance);
+    if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
+      errors.distance = "Quãng đường phải là số lớn hơn 0";
+    }
 
     setFormErrors(errors);
     return errors;
@@ -181,6 +230,21 @@ export default function CoordinatorPage({ user, onLogout }) {
       });
     }
   };
+
+  const vehicleGroups = useMemo(() => {
+    const seen = new Map();
+    drivers.forEach((driver) => {
+      if (!driver.vehicle_group_id) return;
+      const id = String(driver.vehicle_group_id);
+      if (!seen.has(id)) {
+        seen.set(id, {
+          id,
+          name: driver.vehicle_group_name || `Nhóm xe ${id}`,
+        });
+      }
+    });
+    return Array.from(seen.values());
+  }, [drivers]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -201,7 +265,6 @@ export default function CoordinatorPage({ user, onLogout }) {
         body: formData,
       });
 
-      setRows(data.rows || []);
       setMessage(`Imported ${data.rows?.length || 0} rows from Excel.`);
       setMessageType("success");
     } catch (err) {
@@ -219,11 +282,11 @@ export default function CoordinatorPage({ user, onLogout }) {
     setMessageType("info");
 
     const errors = validateForm();
-    if (Object.keys(errors).length > 0) {
-      setMessage("Missing required fields.");
-      setMessageType("error");
-      return;
-    }
+    // if (Object.keys(errors).length > 0) {
+    //   setMessage("Vui lòng kiểm tra các trường bắt buộc.");
+    //   setMessageType("error");
+    //   return;
+    // }
 
     setCreating(true);
 
@@ -232,31 +295,28 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDriver = drivers.find(
         (driver) => String(driver.id) === String(form.driver_id),
       );
+      const selectedPlate = selectedDriver?.plate_number || "";
+      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || "";
 
       const data = await apiRequest("/api/orders", {
         method: "POST",
         token,
         body: {
-          cargo_name: form.route_name,
+          date: form.date,
+          plate: selectedPlate,
+          driver_id: form.driver_id || "",
+          customer_name: form.customer_name,
+          customer_phone: form.customer_phone,
+          cargo_name: form.cargo_name,
           cargo_weight_kg: form.cargo_weight_kg,
           pickup_address: form.pickup_address,
           delivery_address: form.delivery_address,
           estimated_price: form.estimated_price,
+          vehicle_group_id: selectedVehicleGroupId,
           notes: [
-            `Ngay: ${form.date}`,
-            `Cham cong: ${form.check_in}`,
-            `BKS: ${form.plate}`,
-            `Lai xe: ${selectedDriver?.full_name || ""}`,
-            `Khach hang: ${form.customer_name || ""}`,
-            `Hanh trinh: ${form.route_name}`,
-            `Ve: ${form.ticket || ""}`,
-            `KH da thanh toan: ${form.paid ? "x" : ""}`,
-            `Lai xe thu/chi: ${form.driver_income || ""}`,
-            `Do dau: ${form.fuel || ""}`,
-            `Ung luong: ${form.advance || ""}`,
-            `Ghi chu: ${form.note || ""}`,
-            `Doanh thu: ${form.revenue_1 || ""}`,
-          ].join(" | "),
+            form.distance ? `Quãng đường: ${form.distance}` : "",
+            form.note,
+          ].filter(Boolean).join(" | "),
         },
       });
 
@@ -265,7 +325,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           id: `tmp-${data.order.id}`,
           orderId: data.order.id,
           title: data.order.cargo_name,
-          status: "New",
+          status: data.order.status,
           pickup: data.order.pickup_address,
           delivery: data.order.delivery_address,
           weight: `${data.order.cargo_weight_kg ?? ""}kg`,
@@ -299,10 +359,10 @@ export default function CoordinatorPage({ user, onLogout }) {
             </div>
           </div>
           <nav className="nav">
-            <button className="nav-item active">Orders</button>
-            <button className="nav-item">Map</button>
+            <button className="nav-item active">Đơn hàng</button>
+            {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button>
+            <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
@@ -317,7 +377,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search order, ID, or route..."
+              placeholder="Tên sản phẩm, điểm lấy hàng, giao hàng, tài xế, trạng thái"
             />
           </div>
           <div className="topbar-actions">
@@ -326,25 +386,26 @@ export default function CoordinatorPage({ user, onLogout }) {
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
             </label>
             <button className="primary-btn" onClick={() => setCreateOpen(true)}>
-              + Create order
+              + Tạo mới
             </button>
             <div className="avatar">{user?.full_name?.[0] || "A"}</div>
           </div>
         </header>
 
         <section className="hero">
-          <div>
-            <h1>Order list</h1>
+          {/* <div>
+            <h1>Danh sách đơn hàng</h1>
             <p>Manage and dispatch active transport trips.</p>
-          </div>
+          </div> */}
+          <div></div>
           <div className="filters">
-            <button
+            {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
               All
-            </button>
-            <button
+            </button> */}
+            {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
@@ -355,7 +416,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               onClick={() => setActiveTab("waiting")}
             >
               Waiting
-            </button>
+            </button> */}
           </div>
         </section>
 
@@ -364,7 +425,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
               <div className="panel-head">
                 <div>
-                  <h2>Create order</h2>
+                  <h2>Tạo đơn</h2>
                   <p>Fill the form based on the Excel sheet structure.</p>
                 </div>
                 <button className="ghost-btn" onClick={() => setCreateOpen(false)}>
@@ -373,172 +434,185 @@ export default function CoordinatorPage({ user, onLogout }) {
               </div>
 
               <form className="create-form" onSubmit={handleCreateOrder}>
-                <div className="sheet-caption full">Order row information</div>
-                <label>
-                  <span>Date</span>
-                  <input
-                    type="date"
-                    value={form.date}
-                    onChange={(event) => updateField("date", event.target.value)}
-                    className={formErrors.date ? "input-error" : ""}
-                  />
-                  {formErrors.date && <div className="field-error">{formErrors.date}</div>}
-                </label>
-                <label>
-                  <span>Check in</span>
-                  <input
-                    value={form.check_in}
-                    onChange={(event) => updateField("check_in", event.target.value)}
-                    placeholder="1"
-                    className={formErrors.check_in ? "input-error" : ""}
-                  />
-                  {formErrors.check_in && (
-                    <div className="field-error">{formErrors.check_in}</div>
-                  )}
-                </label>
-                <label>
-                  <span>Plate</span>
-                  <input
-                    value={form.plate}
-                    onChange={(event) => updateField("plate", event.target.value)}
-                    placeholder="29H-961.45"
-                    className={formErrors.plate ? "input-error" : ""}
-                  />
-                  {formErrors.plate && <div className="field-error">{formErrors.plate}</div>}
-                </label>
-                <label>
-                  <span>Driver</span>
-                  <select
-                    value={form.driver_id}
-                    onChange={(event) => updateField("driver_id", event.target.value)}
-                    className={formErrors.driver_id ? "input-error" : ""}
-                  >
-                    <option value="">Choose driver</option>
-                    {drivers.map((driver) => (
-                      <option key={driver.id} value={driver.id}>
-                        {driver.full_name}
-                      </option>
-                    ))}
-                  </select>
-                  {formErrors.driver_id && (
-                    <div className="field-error">{formErrors.driver_id}</div>
-                  )}
-                </label>
-                <label>
-                  <span>Customer</span>
-                  <input
-                    value={form.customer_name}
-                    onChange={(event) => updateField("customer_name", event.target.value)}
-                  />
-                </label>
-                <label className="wide">
-                  <span>Route</span>
-                  <input
-                    value={form.route_name}
-                    onChange={(event) => updateField("route_name", event.target.value)}
-                    className={formErrors.route_name ? "input-error" : ""}
-                    required
-                  />
-                  {formErrors.route_name && (
-                    <div className="field-error">{formErrors.route_name}</div>
-                  )}
-                </label>
-                <label>
-                  <span>Weight</span>
-                  <input
-                    value={form.cargo_weight_kg}
-                    onChange={(event) => updateField("cargo_weight_kg", event.target.value)}
-                    placeholder="50"
-                  />
-                </label>
-                <label>
-                  <span>Price</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={form.estimated_price}
-                    onChange={(event) => updateField("estimated_price", event.target.value)}
-                    className={formErrors.estimated_price ? "input-error" : ""}
-                  />
-                  {formErrors.estimated_price && (
-                    <div className="field-error">{formErrors.estimated_price}</div>
-                  )}
-                </label>
-                <label>
-                  <span>Ticket</span>
-                  <input
-                    value={form.ticket}
-                    onChange={(event) => updateField("ticket", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Paid</span>
-                  <button
-                    type="button"
-                    className={form.paid ? "paid-toggle paid-toggle-on" : "paid-toggle"}
-                    onClick={() => updateField("paid", !form.paid)}
-                  >
-                    {form.paid ? "Paid" : "Unpaid"}
-                  </button>
-                </label>
-                <label>
-                  <span>Driver income</span>
-                  <input
-                    value={form.driver_income}
-                    onChange={(event) => updateField("driver_income", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Fuel</span>
-                  <input
-                    value={form.fuel}
-                    onChange={(event) => updateField("fuel", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Advance</span>
-                  <input
-                    value={form.advance}
-                    onChange={(event) => updateField("advance", event.target.value)}
-                  />
-                </label>
-                <label className="wide">
-                  <span>Note</span>
-                  <textarea
-                    value={form.note}
-                    onChange={(event) => updateField("note", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Pickup</span>
-                  <input
-                    value={form.pickup_address}
-                    onChange={(event) => updateField("pickup_address", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Delivery</span>
-                  <input
-                    value={form.delivery_address}
-                    onChange={(event) => updateField("delivery_address", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Revenue</span>
-                  <input
-                    value={form.revenue_1}
-                    onChange={(event) => updateField("revenue_1", event.target.value)}
-                  />
-                </label>
+                <div className="sheet-caption full">Thông tin đơn hàng</div>
 
+                <div className="form-row form-row-3">
+                  <label>
+                    <span>Ngày tháng</span>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={(event) => updateField("date", event.target.value)}
+                      min={new Date().toISOString().slice(0, 10)}
+                      className={formErrors.date ? "input-error" : ""}
+                    />
+                    {formErrors.date && <div className="field-error">{formErrors.date}</div>}
+                  </label>
+                  <label>
+                    <span>Tài xế</span>
+                    <select
+                      value={form.driver_id}
+                      onChange={(event) => {
+                        const driverId = event.target.value;
+                        const driver = drivers.find((item) => String(item.id) === String(driverId));
+                        updateField("driver_id", driverId);
+                        updateField(
+                          "vehicle_group_id",
+                          driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "",
+                        );
+                      }}
+                      className={formErrors.driver_id ? "input-error" : ""}
+                    >
+                      <option value="">Chọn tài xế</option>
+                      {drivers.map((driver) => (
+                        <option key={driver.id} value={driver.id}>
+                          {driver.full_name} {driver.plate_number ? `- ${driver.plate_number}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.driver_id && (
+                      <div className="field-error">{formErrors.driver_id}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Nhóm xe</span>
+                    <select
+                      value={form.vehicle_group_id}
+                      onChange={(event) => updateField("vehicle_group_id", event.target.value)}
+                      className={formErrors.vehicle_group_id ? "input-error" : ""}
+                    >
+                      <option value="">Chọn nhóm xe</option>
+                      {vehicleGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.vehicle_group_id && (
+                      <div className="field-error">{formErrors.vehicle_group_id}</div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    <span>SĐT</span>
+                    <input
+                      value={form.customer_phone}
+                      onChange={(event) => updateField("customer_phone", event.target.value)}
+                      className={formErrors.customer_phone ? "input-error" : ""}
+                    />
+                    {formErrors.customer_phone && (
+                      <div className="field-error">{formErrors.customer_phone}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Khách hàng</span>
+                    <input
+                      value={form.customer_name}
+                      onChange={(event) => updateField("customer_name", event.target.value)}
+                      className={formErrors.customer_name ? "input-error" : ""}
+                    />
+                    {formErrors.customer_name && (
+                      <div className="field-error">{formErrors.customer_name}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Sản phẩm</span>
+                    <input
+                      value={form.cargo_name}
+                      onChange={(event) => updateField("cargo_name", event.target.value)}
+                      placeholder="Không bắt buộc"
+                    />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-note">
+                  
+                </div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    <span>Khối lượng</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.cargo_weight_kg}
+                      onChange={(event) => updateField("cargo_weight_kg", event.target.value)}
+                      className={formErrors.cargo_weight_kg ? "input-error" : ""}
+                    />
+                    {formErrors.cargo_weight_kg && (
+                      <div className="field-error">{formErrors.cargo_weight_kg}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Quãng đường</span>
+                    <input
+                      value={form.distance}
+                      onChange={(event) => updateField("distance", event.target.value)}
+                      placeholder="VD: 120 km"
+                      className={formErrors.distance ? "input-error" : ""}
+                    />
+                    {formErrors.distance && (
+                      <div className="field-error">{formErrors.distance}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Cước xe</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={form.estimated_price}
+                      onChange={(event) => updateField("estimated_price", event.target.value)}
+                      className={formErrors.estimated_price ? "input-error" : ""}
+                    />
+                    {formErrors.estimated_price && (
+                      <div className="field-error">{formErrors.estimated_price}</div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="form-row form-row-2">
+                  <label>
+                    <span>Điểm lấy hàng</span>
+                    <input
+                      value={form.pickup_address}
+                      onChange={(event) => updateField("pickup_address", event.target.value)}
+                      className={formErrors.pickup_address ? "input-error" : ""}
+                    />
+                    {formErrors.pickup_address && (
+                      <div className="field-error">{formErrors.pickup_address}</div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Điểm giao hàng</span>
+                    <input
+                      value={form.delivery_address}
+                      onChange={(event) => updateField("delivery_address", event.target.value)}
+                      className={formErrors.delivery_address ? "input-error" : ""}
+                    />
+                    {formErrors.delivery_address && (
+                      <div className="field-error">{formErrors.delivery_address}</div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="form-row form-row-note">
+                  <label>
+                    <span>Ghi chú</span>
+                    <textarea
+                      value={form.note}
+                      onChange={(event) => updateField("note", event.target.value)}
+                    />
+                  </label>
+                </div>
                 {Object.keys(formErrors).length > 0 && (
                   <div className="full field-error field-error-box">
-                    {requiredFields
-                      .filter(({ key }) => formErrors[key])
-                      .map(({ label, key }) => (
-                        <div key={key}>{formErrors[key] || `${label} is required`}</div>
-                      ))}
+                    {Object.entries(formErrors).map(([key, error]) => (
+                      <div key={key}>{error}</div>
+                    ))}
                   </div>
                 )}
 
@@ -557,118 +631,94 @@ export default function CoordinatorPage({ user, onLogout }) {
 
         {message && <div className={`notice notice-${messageType}`}>{message}</div>}
 
-        <section className="trip-grid">
-          {filteredTrips.length === 0 ? (
-            <article className="empty-state">
-              <h3>No orders yet</h3>
-              <p>Create an order or import an Excel file to load data.</p>
-            </article>
-          ) : (
-            filteredTrips.map((trip) => (
-              <article className="trip-card" key={trip.id}>
-                <div className="trip-head">
-                  <span className="trip-id">
-                    #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
-                  </span>
-                  <span className="trip-status">{trip.status}</span>
-                </div>
-                <h3>{trip.title}</h3>
-                <div className="route-line">
-                  <div className="point start" />
-                  <div className="dashed" />
-                  <div className="point end" />
-                </div>
-                <div className="trip-locations">
-                  <div>
-                    <span>Pickup</span>
-                    <strong>{trip.pickup}</strong>
-                  </div>
-                  <div>
-                    <span>Delivery</span>
-                    <strong>{trip.delivery}</strong>
-                  </div>
-                </div>
-                <div className="trip-meta">
-                  <div>
-                    <span>Weight</span>
-                    <strong>{trip.weight}</strong>
-                  </div>
-                  <div>
-                    <span>Driver</span>
-                    <strong>{trip.driverName || "Unassigned"}</strong>
-                  </div>
-                </div>
-                <div className="trip-actions">
-                  <button className="assign-btn">+ Assign driver</button>
-                  <button className="ghost-btn" aria-label="Edit order">
-                    ✎
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </section>
-
-        <section className="spreadsheet-panel">
+        <section className="orders-panel">
           <div className="panel-head">
             <div>
-              <h2>Excel import</h2>
-              <p>Upload the spreadsheet template to batch import data.</p>
+              <h2>Danh sách chuyến</h2>
+              <p>Hiển thị đơn hàng dạng bảng để dễ theo dõi và điều phối.</p>
             </div>
-            <div className="upload-hint">.xlsx / .xls</div>
           </div>
 
           <div className="table-wrap">
-            <table>
+            <table className="orders-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Check in</th>
-                  <th>Plate</th>
-                  <th>Driver</th>
-                  <th>Customer</th>
-                  <th>Route</th>
-                  <th>Weight</th>
-                  <th>Price</th>
-                  <th>Ticket</th>
-                  <th>Paid</th>
-                  <th>Driver income</th>
-                  <th>Fuel</th>
-                  <th>Advance</th>
-                  <th>Note</th>
-                  <th>Revenue</th>
+                  <th>Mã đơn</th>
+                  <th>Trạng thái</th>
+                  <th>Sản phẩm</th>
+                  <th>Điểm lấy hàng</th>
+                  <th>Điểm giao hàng</th>
+                  <th>Khối lượng</th>
+                  <th>Tài xế</th>
+                  <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 ? (
+                {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan="15">No imported Excel rows yet.</td>
+                    <td colSpan="8" className="empty-table-cell">
+                      No orders yet. Create an order or import an Excel file to load data.
+                    </td>
                   </tr>
                 ) : (
-                  rows.map((row, index) => (
-                    <tr key={`${row.date}-${index}`}>
-                      <td>{row.date}</td>
-                      <td>{row.checkIn}</td>
-                      <td>{row.plate}</td>
-                      <td>{row.driver}</td>
-                      <td>{row.customer}</td>
-                      <td>{row.route}</td>
-                      <td>{row.distance}</td>
-                      <td>{row.fare}</td>
-                      <td>{row.ticket}</td>
-                      <td>{row.paid}</td>
-                      <td>{row.driverIncome}</td>
-                      <td>{row.fuel}</td>
-                      <td>{row.advance}</td>
-                      <td>{row.note}</td>
-                      <td>{row.revenue1}</td>
+                  paginatedTrips.map((trip) => (
+                    <tr key={trip.id}>
+                      <td>
+                        <span className="trip-id">
+                          #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="trip-status">{trip.status}</span>
+                      </td>
+                      <td className="table-route-cell">{trip.title || "-"}</td>
+                      <td className="table-address-cell">{trip.pickup}</td>
+                      <td className="table-address-cell">{trip.delivery}</td>
+                      <td>{trip.weight}</td>
+                      <td>{trip.driverName || "Unassigned"}</td>
+                      <td>
+                        <div className="table-actions">
+                          
+                          <button className="table-edit-btn" aria-label="Edit order">
+                            ✎
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+
+          <div className="pagination-bar">
+            <span>
+              Hiển thị {pageStart}-{pageEnd} / {filteredTrips.length} đơn
+            </span>
+            <div className="pagination-actions">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Trước
+              </button>
+              <span className="pagination-page">
+                Trang {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Sau
+              </button>
+            </div>
+          </div>
         </section>
+
       </main>
     </div>
   );
