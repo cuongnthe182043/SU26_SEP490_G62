@@ -1,359 +1,219 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Button, Space, Popconfirm } from "antd";
-import { PlusOutlined, EditOutlined, LockOutlined, UnlockOutlined, LeftOutlined, RightOutlined, DoubleLeftOutlined, DoubleRightOutlined } from "@ant-design/icons";
-import { apiRequest } from "../../services/apiClient";
-import UserModal from "./UserModal";
-import "../../styles/admin/UserModal.css";
-import "../../styles/admin/Toast.css";
+import React, { useEffect, useState } from 'react';
+import { Table, Button, Input, Space, Tag, message, Modal, Typography } from 'antd';
+import { SearchOutlined, PlusOutlined, EditOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import UserModal from './UserModal';
+import '../../styles/admin/UserModal.css';
+import '../../styles/admin/Toast.css';
+import '../../styles/admin/Admin.css';
 
-const PAGE_SIZE = 10;
-
-function useToast() {
-  const [toasts, setToasts] = useState([]);
-
-  const addToast = (message, type = "success") => {
-    const id = Date.now();
-    setToasts((current) => [...current, { id, message, type }]);
-    setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 3500);
-  };
-
-  return { toasts, addToast };
-}
-
-function ConfirmModal({ isOpen, message, onConfirm, onCancel }) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ width: 360 }}>
-        <h2>Confirm</h2>
-        <p style={{ color: "#374151", marginBottom: 24 }}>{message}</p>
-        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <Button onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="primary" danger onClick={onConfirm}>
-            Confirm
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ToastContainer({ toasts }) {
-  return (
-    <div className="toast-container">
-      {toasts.map((toast) => (
-        <div key={toast.id} className={`toast toast-${toast.type}`}>
-          {toast.message}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function sortUsers(users, sortField, sortDir) {
-  return [...users].sort((a, b) => {
-    let valueA = a[sortField] ?? "";
-    let valueB = b[sortField] ?? "";
-
-    if (typeof valueA === "boolean") {
-      valueA = valueA ? 1 : 0;
-      valueB = valueB ? 1 : 0;
-    }
-
-    if (valueA < valueB) return sortDir === "asc" ? -1 : 1;
-    if (valueA > valueB) return sortDir === "asc" ? 1 : -1;
-    return 0;
-  });
-}
+const { Title, Text } = Typography;
+const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
 
 export default function UserList() {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [confirm, setConfirm] = useState({
-    open: false,
-    message: "",
-    onConfirm: null,
-  });
-  const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState("id");
-  const [sortDir, setSortDir] = useState("asc");
-  const [page, setPage] = useState(1);
-  const deferredSearch = useDeferredValue(search);
-  const { toasts, addToast } = useToast();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => { fetchUsers(); }, []);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      const data = await apiRequest("/api/admin/users", { token });
+      const res = await fetch(`${apiBase}/api/admin/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không thể tải danh sách.");
       setAllUsers(data.users || []);
     } catch (err) {
-      setError(err.message);
+      message.error(`Lỗi: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  const filtered = allUsers.filter(u => {
+    const q = search.toLowerCase();
+    return (
+      String(u.id).includes(q) ||
+      (u.full_name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.phone || '').toLowerCase().includes(q) ||
+      (u.role || '').toLowerCase().includes(q)
+    );
+  });
 
-  const filteredUsers = useMemo(() => {
-    const query = deferredSearch.trim().toLowerCase();
-    if (!query) {
-      return allUsers;
-    }
-
-    return allUsers.filter((user) => {
-      return (
-        String(user.id).includes(query) ||
-        (user.full_name || "").toLowerCase().includes(query) ||
-        (user.email || "").toLowerCase().includes(query) ||
-        (user.phone || "").toLowerCase().includes(query) ||
-        (user.role || "").toLowerCase().includes(query)
-      );
-    });
-  }, [allUsers, deferredSearch]);
-
-  const sortedUsers = useMemo(
-    () => sortUsers(filteredUsers, sortField, sortDir),
-    [filteredUsers, sortField, sortDir],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-
-  const pageUsers = useMemo(() => {
-    return sortedUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  }, [safePage, sortedUsers]);
-
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-
-    setPage(1);
-  };
-
-  const sortIcon = (field) => {
-    if (sortField !== field) return " ↕";
-    return sortDir === "asc" ? " ↑" : " ↓";
-  };
-
-  const handleOpenAdd = () => {
-    setEditingUser(null);
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (user) => {
-    setEditingUser(user);
-    setIsModalOpen(true);
-  };
+  const handleOpenAdd = () => { setEditingUser(null); setIsModalOpen(true); };
+  const handleOpenEdit = (user) => { setEditingUser(user); setIsModalOpen(true); };
 
   const handleSaveUser = async (formData) => {
     try {
       const token = localStorage.getItem("token");
-      const url = editingUser ? `/api/admin/users/${editingUser.id}` : "/api/admin/users";
-      const method = editingUser ? "PUT" : "POST";
-
-      const data = await apiRequest(url, {
+      const url = editingUser
+        ? `${apiBase}/api/admin/users/${editingUser.id}`
+        : `${apiBase}/api/admin/users`;
+      const method = editingUser ? 'PUT' : 'POST';
+      const res = await fetch(url, {
         method,
-        token,
-        body: formData,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(formData),
       });
-
-      addToast(data.message || "Saved successfully.", "success");
+      const data = await res.json();
+      if (!res.ok) { message.error(data.error || 'Đã có lỗi xảy ra.'); return; }
+      message.success(data.message);
       setIsModalOpen(false);
       fetchUsers();
-    } catch (err) {
-      addToast(err.message || "An error occurred.", "error");
-    }
+    } catch { message.error("Lỗi kết nối."); }
   };
 
   const handleToggleStatus = (user) => {
-    const action = user.is_active ? "lock" : "unlock";
-    setConfirm({
-      open: true,
-      message: `Are you sure you want to ${action} account "${user.full_name || user.email}"?`,
-      onConfirm: async () => {
-        setConfirm((current) => ({ ...current, open: false }));
-
+    const action = user.is_active ? 'khoá' : 'mở khoá';
+    Modal.confirm({
+      title: 'Xác nhận',
+      content: `Bạn có chắc muốn ${action} tài khoản "${user.full_name || user.email}"?`,
+      okText: 'Xác nhận',
+      okType: 'danger',
+      cancelText: 'Hủy',
+      onOk: async () => {
         try {
           const token = localStorage.getItem("token");
-          const data = await apiRequest(`/api/admin/users/${user.id}/status`, {
-            method: "PATCH",
-            token,
-            body: { is_active: !user.is_active },
+          const res = await fetch(`${apiBase}/api/admin/users/${user.id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ is_active: !user.is_active }),
           });
-
-          addToast(data.message || "Updated successfully.", "success");
+          const data = await res.json();
+          if (!res.ok) { message.error(data.error || 'Đã có lỗi.'); return; }
+          message.success(data.message);
           fetchUsers();
-        } catch (err) {
-          addToast(err.message || "An error occurred.", "error");
-        }
+        } catch { message.error("Lỗi kết nối."); }
       },
     });
   };
 
-  const getRoleBadge = (role) => {
-    const map = {
-      manager: "badge-manager",
-      coordinator: "badge-coordinator",
-      accountant: "badge-accountant",
-      driver: "badge-driver",
-    };
-
-    return map[role] || "";
+  const getRoleColor = (role) => {
+    const map = { manager: 'magenta', coordinator: 'blue', accountant: 'purple', driver: 'orange' };
+    return map[role] || 'default';
   };
 
-  if (loading) return <div className="loading-spinner">Loading data...</div>;
-  if (error) return <div className="error-message">Error: {error}</div>;
+  const columns = [
+    {
+      title: 'STT',
+      key: 'stt',
+      render: (text, record, index) => <strong>{(currentPage - 1) * pageSize + index + 1}</strong>,
+    },
+    {
+      title: 'Họ và Tên',
+      dataIndex: 'full_name',
+      key: 'full_name',
+      sorter: (a, b) => (a.full_name || '').localeCompare(b.full_name || ''),
+      render: (text) => text || <Text type="secondary">Chưa cập nhật</Text>,
+    },
+    {
+      title: 'Email',
+      dataIndex: 'email',
+      key: 'email',
+      sorter: (a, b) => (a.email || '').localeCompare(b.email || ''),
+    },
+    {
+      title: 'Số ĐT',
+      dataIndex: 'phone',
+      key: 'phone',
+      render: (text) => text || <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Vai Trò',
+      dataIndex: 'role',
+      key: 'role',
+      sorter: (a, b) => (a.role || '').localeCompare(b.role || ''),
+      render: (role) => <Tag color={getRoleColor(role)}>{(role || '').toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Trạng Thái',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      sorter: (a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1),
+      render: (isActive) => (
+        <Tag color={isActive ? 'green' : 'red'}>
+          {isActive ? 'Hoạt động' : 'Đã khóa'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Thao tác',
+      key: 'action',
+      render: (_, user) => (
+        <Space size="middle">
+          <Button 
+            type="text" 
+            icon={<EditOutlined />} 
+            onClick={() => handleOpenEdit(user)}
+          >
+            Sửa
+          </Button>
+          <Button 
+            danger={user.is_active} 
+            type="text"
+            icon={user.is_active ? <LockOutlined /> : <UnlockOutlined />}
+            onClick={() => handleToggleStatus(user)}
+          >
+            {user.is_active ? 'Khoá' : 'Mở khoá'}
+          </Button>
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <div className="user-list-container">
-      <ToastContainer toasts={toasts} />
-
-      <div className="list-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ padding: '24px', background: '#fff', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ margin: 0 }}>User accounts</h2>
-          <span className="user-count" style={{ display: 'inline-block', margin: 0 }}>
-            Total: {filteredUsers.length} / {allUsers.length} users
-          </span>
+          <Title level={3} style={{ margin: 0 }}>Danh sách tài khoản</Title>
+          <Text type="secondary" style={{ margin: 0 }}>Tổng: {filtered.length} / {allUsers.length} người dùng</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenAdd}>
-          Add user
+        <Button type="primary" icon={<PlusOutlined />} size="middle" onClick={handleOpenAdd}>
+          Thêm người dùng
         </Button>
       </div>
 
-      <div className="search-bar">
-        <input
-          type="text"
-          placeholder="Search by name, email, phone, role..."
+      <div style={{ marginBottom: '16px' }}>
+        <Input 
+          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..." 
+          prefix={<SearchOutlined />} 
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
+          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          size="large"
+          allowClear
         />
       </div>
 
-      <div className="table-responsive">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th onClick={() => handleSort("full_name")} className="sortable">
-                Full name{sortIcon("full_name")}
-              </th>
-              <th onClick={() => handleSort("email")} className="sortable">
-                Email{sortIcon("email")}
-              </th>
-              <th>Phone</th>
-              <th onClick={() => handleSort("role")} className="sortable">
-                Role{sortIcon("role")}
-              </th>
-              <th onClick={() => handleSort("is_active")} className="sortable">
-                Status{sortIcon("is_active")}
-              </th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageUsers.map((user, index) => (
-              <tr key={user.id}>
-                <td className="text-bold">{(safePage - 1) * PAGE_SIZE + index + 1}</td>
-                <td>
-                  {user.full_name || <span className="text-muted">Not set</span>}
-                </td>
-                <td>{user.email}</td>
-                <td>{user.phone || <span className="text-muted">-</span>}</td>
-                <td>
-                  <span className={`badge ${getRoleBadge(user.role)}`}>{user.role}</span>
-                </td>
-                <td>
-                  <span className={`badge ${user.is_active ? "badge-active" : "badge-inactive"}`}>
-                    {user.is_active ? "Active" : "Locked"}
-                  </span>
-                </td>
-                <td>
-                  <Space>
-                    <Button
-                      type="text"
-                      icon={<EditOutlined />}
-                      onClick={() => handleOpenEdit(user)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="text"
-                      danger={user.is_active}
-                      icon={user.is_active ? <LockOutlined /> : <UnlockOutlined />}
-                      onClick={() => handleToggleStatus(user)}
-                    >
-                      {user.is_active ? "Lock" : "Unlock"}
-                    </Button>
-                  </Space>
-                </td>
-              </tr>
-            ))}
-            {pageUsers.length === 0 && (
-              <tr>
-                <td colSpan="7" className="text-center empty-state">
-                  No data.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="pagination" style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <Button
-          icon={<DoubleLeftOutlined />}
-          disabled={safePage <= 1}
-          onClick={() => setPage(1)}
-        />
-        <Button
-          icon={<LeftOutlined />}
-          disabled={safePage <= 1}
-          onClick={() => setPage((current) => current - 1)}
-        />
-        <span className="page-info" style={{ margin: '0 8px' }}>
-          Page {safePage} / {totalPages}
-        </span>
-        <Button
-          icon={<RightOutlined />}
-          disabled={safePage >= totalPages}
-          onClick={() => setPage((current) => current + 1)}
-        />
-        <Button
-          icon={<DoubleRightOutlined />}
-          disabled={safePage >= totalPages}
-          onClick={() => setPage(totalPages)}
-        />
-      </div>
+      <Table 
+        columns={columns} 
+        dataSource={filtered} 
+        rowKey="id" 
+        loading={loading}
+        pagination={{ 
+          current: currentPage,
+          pageSize: pageSize,
+          defaultPageSize: 10,
+          showSizeChanger: true, 
+          showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} mục`,
+          onChange: (page, size) => { setCurrentPage(page); setPageSize(size); }
+        }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <UserModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveUser}
         editingUser={editingUser}
-      />
-
-      <ConfirmModal
-        isOpen={confirm.open}
-        message={confirm.message}
-        onConfirm={confirm.onConfirm}
-        onCancel={() => setConfirm((current) => ({ ...current, open: false }))}
       />
     </div>
   );
