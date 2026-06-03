@@ -1,10 +1,12 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Button, Space, Popconfirm } from "antd";
+import { PlusOutlined, EditOutlined, LockOutlined, UnlockOutlined, LeftOutlined, RightOutlined, DoubleLeftOutlined, DoubleRightOutlined } from "@ant-design/icons";
 import { apiRequest } from "../../services/apiClient";
 import UserModal from "./UserModal";
-import "../../pages/Admin/UserModal.css";
-import "../../pages/Admin/Toast.css";
+import "../../styles/admin/UserModal.css";
+import "../../styles/admin/Toast.css";
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
@@ -26,17 +28,13 @@ function ConfirmModal({ isOpen, message, onConfirm, onCancel }) {
       <div className="modal-content" style={{ width: 360 }}>
         <h2>Confirm</h2>
         <p style={{ color: "#374151", marginBottom: 24 }}>{message}</p>
-        <div className="modal-actions">
-          <button className="btn-cancel" onClick={onCancel}>
+        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <Button onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            className="btn-save"
-            style={{ background: "#EF4444" }}
-            onClick={onConfirm}
-          >
+          </Button>
+          <Button type="primary" danger onClick={onConfirm}>
             Confirm
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -224,16 +222,16 @@ export default function UserList() {
     <div className="user-list-container">
       <ToastContainer toasts={toasts} />
 
-      <div className="list-header">
-        <div>
-          <h2>User accounts</h2>
-          <span className="user-count">
+      <div className="list-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h2 style={{ margin: 0 }}>User accounts</h2>
+          <span className="user-count" style={{ display: 'inline-block', margin: 0 }}>
             Total: {filteredUsers.length} / {allUsers.length} users
           </span>
         </div>
-        <button className="btn-add" onClick={handleOpenAdd}>
-          + Add user
-        </button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenAdd}>
+          Add user
+        </Button>
       </div>
 
       <div className="search-bar">
@@ -252,9 +250,7 @@ export default function UserList() {
         <table className="admin-table">
           <thead>
             <tr>
-              <th onClick={() => handleSort("id")} className="sortable">
-                ID{sortIcon("id")}
-              </th>
+              <th>STT</th>
               <th onClick={() => handleSort("full_name")} className="sortable">
                 Full name{sortIcon("full_name")}
               </th>
@@ -272,9 +268,9 @@ export default function UserList() {
             </tr>
           </thead>
           <tbody>
-            {pageUsers.map((user) => (
+            {pageUsers.map((user, index) => (
               <tr key={user.id}>
-                <td className="text-bold">#{user.id}</td>
+                <td className="text-bold">{(safePage - 1) * PAGE_SIZE + index + 1}</td>
                 <td>
                   {user.full_name || <span className="text-muted">Not set</span>}
                 </td>
@@ -289,18 +285,23 @@ export default function UserList() {
                   </span>
                 </td>
                 <td>
-                  <button
-                    className="btn-action btn-edit"
-                    onClick={() => handleOpenEdit(user)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={`btn-action ${user.is_active ? "btn-ban" : "btn-unban"}`}
-                    onClick={() => handleToggleStatus(user)}
-                  >
-                    {user.is_active ? "Lock" : "Unlock"}
-                  </button>
+                  <Space>
+                    <Button
+                      type="text"
+                      icon={<EditOutlined />}
+                      onClick={() => handleOpenEdit(user)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="text"
+                      danger={user.is_active}
+                      icon={user.is_active ? <LockOutlined /> : <UnlockOutlined />}
+                      onClick={() => handleToggleStatus(user)}
+                    >
+                      {user.is_active ? "Lock" : "Unlock"}
+                    </Button>
+                  </Space>
                 </td>
               </tr>
             ))}
@@ -315,34 +316,30 @@ export default function UserList() {
         </table>
       </div>
 
-      <div className="pagination">
-        <button className="page-btn" disabled={safePage <= 1} onClick={() => setPage(1)}>
-          &laquo;
-        </button>
-        <button
-          className="page-btn"
+      <div className="pagination" style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+        <Button
+          icon={<DoubleLeftOutlined />}
+          disabled={safePage <= 1}
+          onClick={() => setPage(1)}
+        />
+        <Button
+          icon={<LeftOutlined />}
           disabled={safePage <= 1}
           onClick={() => setPage((current) => current - 1)}
-        >
-          &lsaquo;
-        </button>
-        <span className="page-info">
+        />
+        <span className="page-info" style={{ margin: '0 8px' }}>
           Page {safePage} / {totalPages}
         </span>
-        <button
-          className="page-btn"
+        <Button
+          icon={<RightOutlined />}
           disabled={safePage >= totalPages}
           onClick={() => setPage((current) => current + 1)}
-        >
-          &rsaquo;
-        </button>
-        <button
-          className="page-btn"
+        />
+        <Button
+          icon={<DoubleRightOutlined />}
           disabled={safePage >= totalPages}
           onClick={() => setPage(totalPages)}
-        >
-          &raquo;
-        </button>
+        />
       </div>
 
       <UserModal
