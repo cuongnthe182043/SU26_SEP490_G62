@@ -1,13 +1,21 @@
 const authService = require('../services/authService');
+const profileRepository = require('../repositories/profileRepository');
 
 // Middleware: Verify JWT token
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
     try {
         const token = req.headers['authorization']?.split(' ')[1];
         if (!token) return res.status(403).json({ error: 'No token provided' });
 
         const decoded = authService.verifyToken(token);
-        req.user = decoded;
+
+        const account = await profileRepository.getAccountById(decoded.userId);
+        if (!account) return res.status(401).json({ error: 'User not found' });
+        if (account.is_active === false) {
+            return res.status(403).json({ error: 'Tài khoản của bạn đã bị khoá.' });
+        }
+
+        req.user = { ...decoded, role: account.role, roleId: account.role_id };
         next();
     } catch (err) {
         return res.status(401).json({ error: err.message });

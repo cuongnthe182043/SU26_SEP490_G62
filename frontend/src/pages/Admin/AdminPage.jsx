@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Typography, Dropdown, Space, Avatar } from 'antd';
+import { Layout, Menu, Typography, Dropdown, Space, Avatar } from 'antd';
 import { UserOutlined, SettingOutlined, LogoutOutlined, DashboardOutlined } from '@ant-design/icons';
-import UserList from './UserList';
+import UserList from '../../features/admin/UserList';
 import '../../styles/admin/Admin.css';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
-export default function Admin({ user }) {
+export default function AdminPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('users');
   const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+      return;
+    }
+
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.reload();
