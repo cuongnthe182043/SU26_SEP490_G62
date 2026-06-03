@@ -39,8 +39,8 @@ const login = async (email, password) => {
         throw new AuthError('Tài khoản chưa được gán vai trò.', 403);
     }
 
-    // Check if account/profile is active
-    if (profile && profile.is_active === false) {
+    // Check if account is active
+    if (account.is_active === false) {
         throw new AuthError('Tài khoản của bạn đã bị khoá.', 403);
     }
 
