@@ -84,7 +84,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, [trips]);
 
   useEffect(() => {
-    const loadOrders = async () => {
+    const loadOrders = async () => { 
       try {
         const token = localStorage.getItem("token");
         const data = await apiRequest("/api/orders", { token });
@@ -340,10 +340,10 @@ export default function CoordinatorPage({ user, onLogout }) {
             </div>
           </div>
           <nav className="nav">
-            <button className="nav-item active">Orders</button>
-            <button className="nav-item">Map</button>
+            <button className="nav-item active">Đơn hàng</button>
+            {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button>
+            <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
@@ -358,7 +358,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search order, ID, or route..."
+              placeholder="Tên sản phẩm, điểm lấy hàng, giao hàng, tài xế, trạng thái"
             />
           </div>
           <div className="topbar-actions">
@@ -380,12 +380,12 @@ export default function CoordinatorPage({ user, onLogout }) {
           </div> */}
           <div></div>
           <div className="filters">
-            <button
+            {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
               All
-            </button>
+            </button> */}
             {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
