@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
-    AlertTriangle, Camera, CheckCircle, Package,
+    AlertTriangle, Camera, CheckCircle, History, Package,
     Trash2, Truck, X, Zap,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -280,7 +280,20 @@ export function IncidentFormScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
-            <ScreenHeader title="Báo cáo sự cố" showBack />
+            <ScreenHeader
+                title="Báo cáo sự cố"
+                showBack
+                right={
+                    <Pressable
+                        onPress={() => router.push('/incident-history')}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        hitSlop={10}
+                    >
+                        <History size={15} color={appTheme.colors.primary} />
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>Lịch sử</Text>
+                    </Pressable>
+                }
+            />
 
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
