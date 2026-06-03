@@ -1,114 +1,92 @@
-import React, { useState, useEffect } from 'react';
-import './UserModal.css';
+import React, { useEffect } from 'react';
+import { Modal, Form, Input, Select } from 'antd';
+import '../../styles/admin/UserModal.css';
 
 export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    phone: '',
-    role: 'driver'
-  });
+  const [form] = Form.useForm();
 
   useEffect(() => {
-    if (editingUser) {
-      setFormData({
-        email: editingUser.email || '',
-        password: '',
-        full_name: editingUser.full_name || '',
-        phone: editingUser.phone || '',
-        role: editingUser.role || 'driver'
-      });
-    } else {
-      setFormData({
-        email: '',
-        password: '',
-        full_name: '',
-        phone: '',
-        role: 'driver'
-      });
+    if (isOpen) {
+      if (editingUser) {
+        form.setFieldsValue({
+          email: editingUser.email || '',
+          password: '',
+          full_name: editingUser.full_name || '',
+          phone: editingUser.phone || '',
+          role: editingUser.role || 'driver'
+        });
+      } else {
+        form.resetFields();
+        form.setFieldsValue({ role: 'driver' });
+      }
     }
-  }, [editingUser, isOpen]);
+  }, [editingUser, isOpen, form]);
 
-  const handleChange = (e) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleOk = () => {
+    form.validateFields().then(values => {
+      onSave(values);
+    }).catch(info => {
+      console.log('Validate Failed:', info);
+    });
   };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <h2>{editingUser ? 'Sửa thông tin người dùng' : 'Thêm người dùng mới'}</h2>
-        <form onSubmit={handleSubmit}>
-          
-          <div className="form-group">
-            <label>Email {!editingUser && '*'}</label>
-            <input 
-              type="email" 
-              name="email" 
-              value={formData.email} 
-              onChange={handleChange} 
-              disabled={!!editingUser}
-              required={!editingUser}
-            />
-            {editingUser && <small className="text-muted">Không thể thay đổi email.</small>}
-          </div>
+    <Modal
+      title={editingUser ? 'Sửa thông tin người dùng' : 'Thêm người dùng mới'}
+      open={isOpen}
+      onOk={handleOk}
+      onCancel={onClose}
+      okText="Lưu lại"
+      cancelText="Hủy"
+      destroyOnClose
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        name="userForm"
+      >
+        <Form.Item
+          name="email"
+          label="Email"
+          rules={[
+            { required: true, message: 'Vui lòng nhập email!' },
+            { type: 'email', message: 'Email không hợp lệ!' }
+          ]}
+        >
+          <Input disabled={!!editingUser} placeholder="Nhập địa chỉ email" />
+        </Form.Item>
 
-          {!editingUser && (
-            <div className="form-group">
-              <label>Mật khẩu *</label>
-              <input 
-                type="password" 
-                name="password" 
-                value={formData.password} 
-                onChange={handleChange} 
-                required
-              />
-            </div>
-          )}
+        <Form.Item
+          name="full_name"
+          label="Họ và Tên"
+          rules={[{ required: true, message: 'Vui lòng nhập họ và tên!' }]}
+        >
+          <Input placeholder="Nhập họ và tên" />
+        </Form.Item>
 
-          <div className="form-group">
-            <label>Họ và Tên</label>
-            <input 
-              type="text" 
-              name="full_name" 
-              value={formData.full_name} 
-              onChange={handleChange} 
-            />
-          </div>
+        <Form.Item
+          name="phone"
+          label="Số điện thoại"
+          rules={[
+            { required: true, message: 'Vui lòng nhập số điện thoại!' },
+            { pattern: /^(0[3|5|7|8|9])+([0-9]{8})\b/, message: 'Số điện thoại không hợp lệ (phải bắt đầu bằng 03, 05, 07, 08, 09 và có 10 chữ số)!' }
+          ]}
+        >
+          <Input placeholder="Nhập số điện thoại" />
+        </Form.Item>
 
-          <div className="form-group">
-            <label>Số điện thoại</label>
-            <input 
-              type="text" 
-              name="phone" 
-              value={formData.phone} 
-              onChange={handleChange} 
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Vai trò *</label>
-            <select name="role" value={formData.role} onChange={handleChange} required>
-              <option value="manager">Manager (Quản trị)</option>
-              <option value="coordinator">Coordinator (Điều phối)</option>
-              <option value="accountant">Accountant (Kế toán)</option>
-              <option value="driver">Driver (Tài xế)</option>
-            </select>
-          </div>
-
-          <div className="modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>Huỷ</button>
-            <button type="submit" className="btn-save">Lưu lại</button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <Form.Item
+          name="role"
+          label="Vai trò"
+          rules={[{ required: true, message: 'Vui lòng chọn vai trò!' }]}
+        >
+          <Select placeholder="Chọn vai trò">
+            <Select.Option value="coordinator">Coordinator (Điều phối)</Select.Option>
+            <Select.Option value="accountant">Accountant (Kế toán)</Select.Option>
+            <Select.Option value="driver">Driver (Tài xế)</Select.Option>
+          </Select>
+        </Form.Item>
+      </Form>
+    </Modal>
   );
 }
