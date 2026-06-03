@@ -16,7 +16,7 @@ const getAccountByEmail = async (email) => {
 
 const getProfileByAccountId = async (accountId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, p.is_active
          FROM profiles p
          LEFT JOIN roles r ON p.role_id = r.id
          WHERE p.id = $1`,
@@ -27,7 +27,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, p.is_active
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -113,6 +113,84 @@ const getProfileById = async (profileId) => {
     return result.rows[0];
 };
 
+const getAllUsers = async () => {
+    const result = await pool.query(
+        `SELECT a.id, a.email, p.full_name, p.phone, r.name AS role, p.is_active, a.is_verified, a.last_login_at
+         FROM accounts a
+         JOIN profiles p ON a.id = p.id
+         JOIN roles r ON a.role_id = r.id
+         ORDER BY a.id ASC`
+    );
+    return result.rows;
+};
+
+const getRoleIdByName = async (roleName) => {
+    const result = await pool.query('SELECT id FROM roles WHERE name = $1', [roleName]);
+    return result.rows[0]?.id;
+};
+
+const adminCreateUser = async (email, passwordHash, roleId, fullName, phone) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const accountResult = await client.query(
+            `INSERT INTO accounts (email, password_hash, role_id, is_verified) 
+             VALUES ($1, $2, $3, true) RETURNING id`,
+            [email.toLowerCase(), passwordHash, roleId]
+        );
+        const accountId = accountResult.rows[0].id;
+        
+        await client.query(
+            `INSERT INTO profiles (id, full_name, phone, role_id, is_active) 
+             VALUES ($1, $2, $3, $4, true)`,
+            [accountId, fullName, phone, roleId]
+        );
+        
+
+
+        await client.query('COMMIT');
+        return accountId;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const adminUpdateUser = async (userId, data, roleId) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        await client.query(
+            `UPDATE profiles SET full_name = $1, phone = $2, role_id = $3, updated_at = NOW() WHERE id = $4`,
+            [data.full_name, data.phone, roleId, userId]
+        );
+        
+        await client.query(
+            `UPDATE accounts SET role_id = $1, updated_at = NOW() WHERE id = $2`,
+            [roleId, userId]
+        );
+        
+        await client.query('COMMIT');
+        return true;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const adminToggleUserStatus = async (userId, isActive) => {
+    await pool.query(
+        `UPDATE profiles SET is_active = $1, updated_at = NOW() WHERE id = $2`,
+        [isActive, userId]
+    );
+};
+
 module.exports = {
     getAccountByEmail,
     getProfileByAccountId,
@@ -122,4 +200,9 @@ module.exports = {
     updateAvatar,
     updateLastLogin,
     getProfileById,
+    getAllUsers,
+    getRoleIdByName,
+    adminCreateUser,
+    adminUpdateUser,
+    adminToggleUserStatus,
 };
