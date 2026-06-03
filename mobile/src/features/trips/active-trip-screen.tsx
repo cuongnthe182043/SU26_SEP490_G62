@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -156,126 +156,142 @@ function ExpenseFormModal({
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-            <View style={ef.overlay}>
+            <KeyboardAvoidingView
+                style={{ flex: 1, justifyContent: 'flex-end' }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                <Pressable
+                    style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+                    onPress={handleClose}
+                />
                 <View style={ef.sheet}>
-                    {/* Header */}
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
-                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>Thêm chi phí phát sinh</Text>
-                        <Pressable onPress={handleClose} hitSlop={10}><X size={20} color={appTheme.colors.textMuted} /></Pressable>
-                    </XStack>
+                    {/* Drag handle */}
+                    <View style={ef.handle} />
 
-                    {/* Expense type */}
-                    <YStack gap={6} marginBottom={14}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>LOẠI CHI PHÍ</Text>
-                        <Pressable onPress={() => setShowTypePicker(v => !v)} style={ef.select}>
-                            <Text fontSize={14} color={appTheme.colors.text} fontWeight="700">{EXPENSE_TYPE_LABEL[expenseType]}</Text>
-                            <ChevronDown size={16} color={appTheme.colors.textMuted} />
-                        </Pressable>
-                        {showTypePicker ? (
-                            <YStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden">
-                                {EXPENSE_TYPES.map((t) => (
-                                    <Pressable
-                                        key={t}
-                                        onPress={() => { setExpenseType(t); setShowTypePicker(false); }}
-                                        style={[ef.typeOption, t === expenseType && ef.typeOptionActive]}
-                                    >
-                                        <Text fontSize={14} fontWeight={t === expenseType ? '900' : '600'}
-                                            color={t === expenseType ? appTheme.colors.primary : appTheme.colors.text}>
-                                            {EXPENSE_TYPE_LABEL[t]}
-                                        </Text>
-                                        {t === expenseType ? <CheckCircle size={16} color={appTheme.colors.primary} /> : null}
-                                    </Pressable>
-                                ))}
-                            </YStack>
-                        ) : null}
-                    </YStack>
-
-                    {/* Amount */}
-                    <YStack gap={6} marginBottom={14}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>SỐ TIỀN (VNĐ)</Text>
-                        <TextInput
-                            style={ef.input}
-                            value={amount}
-                            onChangeText={setAmount}
-                            placeholder="Ví dụ: 150000"
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            keyboardType="numeric"
-                        />
-                    </YStack>
-
-                    {/* Description */}
-                    <YStack gap={6} marginBottom={14}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>GHI CHÚ (tùy chọn)</Text>
-                        <TextInput
-                            style={[ef.input, { minHeight: 60, textAlignVertical: 'top' }]}
-                            value={description}
-                            onChangeText={setDescription}
-                            placeholder="Mô tả chi phí..."
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            multiline
-                            numberOfLines={2}
-                        />
-                    </YStack>
-
-                    {/* Receipt photo */}
-                    <YStack gap={6} marginBottom={16}>
-                        <XStack alignItems="center" gap={6}>
-                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>ẢNH BIÊN LAI</Text>
-                            <View style={styles.requiredBadge}>
-                                <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
-                            </View>
+                    <ScrollView
+                        contentContainerStyle={{ paddingBottom: 8 }}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {/* Header */}
+                        <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
+                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>Thêm chi phí phát sinh</Text>
+                            <Pressable onPress={handleClose} hitSlop={10}><X size={20} color={appTheme.colors.textMuted} /></Pressable>
                         </XStack>
-                        {receiptUri ? (
-                            <XStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
-                                overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}>
-                                <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
-                                <YStack flex={1} paddingHorizontal={12} gap={4}>
-                                    <XStack alignItems="center" gap={6}>
-                                        <View style={styles.doneDot} />
-                                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>Đã chụp biên lai</Text>
-                                    </XStack>
-                                    <Pressable onPress={openCamera} style={styles.retakeRow}>
-                                        <Camera size={12} color={appTheme.colors.primary} />
-                                        <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
-                                    </Pressable>
-                                </YStack>
-                                <Pressable onPress={() => setReceiptUri(null)} hitSlop={8} style={styles.deleteBtn}>
-                                    <Trash2 size={18} color={appTheme.colors.danger} />
-                                </Pressable>
-                            </XStack>
-                        ) : (
-                            <Pressable onPress={openCamera} style={ef.captureBtn}>
-                                <Camera size={20} color={appTheme.colors.primary} />
-                                <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>Chụp ảnh biên lai</Text>
+
+                        {/* Expense type */}
+                        <YStack gap={6} marginBottom={14}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>LOẠI CHI PHÍ</Text>
+                            <Pressable onPress={() => setShowTypePicker(v => !v)} style={ef.select}>
+                                <Text fontSize={14} color={appTheme.colors.text} fontWeight="700">{EXPENSE_TYPE_LABEL[expenseType]}</Text>
+                                <ChevronDown size={16} color={appTheme.colors.textMuted} />
                             </Pressable>
-                        )}
-                    </YStack>
+                            {showTypePicker ? (
+                                <YStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden">
+                                    {EXPENSE_TYPES.map((t) => (
+                                        <Pressable
+                                            key={t}
+                                            onPress={() => { setExpenseType(t); setShowTypePicker(false); }}
+                                            style={[ef.typeOption, t === expenseType && ef.typeOptionActive]}
+                                        >
+                                            <Text fontSize={14} fontWeight={t === expenseType ? '900' : '600'}
+                                                color={t === expenseType ? appTheme.colors.primary : appTheme.colors.text}>
+                                                {EXPENSE_TYPE_LABEL[t]}
+                                            </Text>
+                                            {t === expenseType ? <CheckCircle size={16} color={appTheme.colors.primary} /> : null}
+                                        </Pressable>
+                                    ))}
+                                </YStack>
+                            ) : null}
+                        </YStack>
 
-                    {/* Error */}
-                    {formError ? (
-                        <XStack padding={10} borderRadius={8} backgroundColor={appTheme.colors.dangerSoft}
-                            borderWidth={1} borderColor={appTheme.colors.dangerBorder} marginBottom={12}>
-                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{formError}</Text>
+                        {/* Amount */}
+                        <YStack gap={6} marginBottom={14}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>SỐ TIỀN (VNĐ)</Text>
+                            <TextInput
+                                style={ef.input}
+                                value={amount}
+                                onChangeText={setAmount}
+                                placeholder="Ví dụ: 150000"
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                keyboardType="numeric"
+                            />
+                        </YStack>
+
+                        {/* Description */}
+                        <YStack gap={6} marginBottom={14}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>GHI CHÚ (tùy chọn)</Text>
+                            <TextInput
+                                style={[ef.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                                value={description}
+                                onChangeText={setDescription}
+                                placeholder="Mô tả chi phí..."
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                multiline
+                                numberOfLines={2}
+                            />
+                        </YStack>
+
+                        {/* Receipt photo */}
+                        <YStack gap={6} marginBottom={16}>
+                            <XStack alignItems="center" gap={6}>
+                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>ẢNH BIÊN LAI</Text>
+                                <View style={styles.requiredBadge}>
+                                    <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
+                                </View>
+                            </XStack>
+                            {receiptUri ? (
+                                <XStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
+                                    overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}>
+                                    <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                                    <YStack flex={1} paddingHorizontal={12} gap={4}>
+                                        <XStack alignItems="center" gap={6}>
+                                            <View style={styles.doneDot} />
+                                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>Đã chụp biên lai</Text>
+                                        </XStack>
+                                        <Pressable onPress={openCamera} style={styles.retakeRow}>
+                                            <Camera size={12} color={appTheme.colors.primary} />
+                                            <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
+                                        </Pressable>
+                                    </YStack>
+                                    <Pressable onPress={() => setReceiptUri(null)} hitSlop={8} style={styles.deleteBtn}>
+                                        <Trash2 size={18} color={appTheme.colors.danger} />
+                                    </Pressable>
+                                </XStack>
+                            ) : (
+                                <Pressable onPress={openCamera} style={ef.captureBtn}>
+                                    <Camera size={20} color={appTheme.colors.primary} />
+                                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>Chụp ảnh biên lai</Text>
+                                </Pressable>
+                            )}
+                        </YStack>
+
+                        {/* Error */}
+                        {formError ? (
+                            <XStack padding={10} borderRadius={8} backgroundColor={appTheme.colors.dangerSoft}
+                                borderWidth={1} borderColor={appTheme.colors.dangerBorder} marginBottom={12}>
+                                <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{formError}</Text>
+                            </XStack>
+                        ) : null}
+
+                        {/* Submit */}
+                        <XStack gap={10}>
+                            <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
+                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[rm.btn, rm.confirmBtn, { backgroundColor: appTheme.colors.primary }, isSubmitting && { opacity: 0.6 }]}
+                                onPress={handleSubmit}
+                                disabled={isSubmitting}
+                            >
+                                <Text fontSize={14} fontWeight="900" color="#fff">
+                                    {isSubmitting ? 'Đang lưu...' : 'Lưu chi phí'}
+                                </Text>
+                            </Pressable>
                         </XStack>
-                    ) : null}
-
-                    {/* Submit */}
-                    <XStack gap={10}>
-                        <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
-                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[rm.btn, rm.confirmBtn, { backgroundColor: appTheme.colors.primary }, isSubmitting && { opacity: 0.6 }]}
-                            onPress={handleSubmit}
-                            disabled={isSubmitting}
-                        >
-                            <Text fontSize={14} fontWeight="900" color="#fff">
-                                {isSubmitting ? 'Đang lưu...' : 'Lưu chi phí'}
-                            </Text>
-                        </Pressable>
-                    </XStack>
+                    </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -473,41 +489,51 @@ function ReasonModal({
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-            <View style={rm.overlay}>
-                <View style={rm.card}>
-                    <YStack gap={12}>
-                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>{title}</Text>
-                        {description ? (
-                            <Text fontSize={13} color={appTheme.colors.textMuted} lineHeight={18}>{description}</Text>
-                        ) : null}
-                        <TextInput
-                            style={[rm.input, { borderColor: required && !canConfirm ? appTheme.colors.danger : appTheme.colors.border }]}
-                            value={text}
-                            onChangeText={setText}
-                            placeholder={placeholder}
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            multiline
-                            numberOfLines={3}
-                            textAlignVertical="top"
-                        />
-                        {required && !canConfirm ? (
-                            <Text fontSize={11} color={appTheme.colors.danger}>Vui lòng nhập lý do</Text>
-                        ) : null}
-                        <XStack gap={10}>
-                            <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
-                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[rm.btn, rm.confirmBtn, { backgroundColor: confirmDanger ? appTheme.colors.danger : appTheme.colors.primary }, !canConfirm && { opacity: 0.4 }]}
-                                onPress={handleConfirm}
-                                disabled={!canConfirm}
-                            >
-                                <Text fontSize={14} fontWeight="900" color="#fff">{confirmLabel}</Text>
-                            </Pressable>
-                        </XStack>
-                    </YStack>
-                </View>
-            </View>
+            <KeyboardAvoidingView
+                style={rm.overlay}
+                behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView
+                    contentContainerStyle={rm.scrollContainer}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={rm.card}>
+                        <YStack gap={12}>
+                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>{title}</Text>
+                            {description ? (
+                                <Text fontSize={13} color={appTheme.colors.textMuted} lineHeight={18}>{description}</Text>
+                            ) : null}
+                            <TextInput
+                                style={[rm.input, { borderColor: required && !canConfirm ? appTheme.colors.danger : appTheme.colors.border }]}
+                                value={text}
+                                onChangeText={setText}
+                                placeholder={placeholder}
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                            />
+                            {required && !canConfirm ? (
+                                <Text fontSize={11} color={appTheme.colors.danger}>Vui lòng nhập lý do</Text>
+                            ) : null}
+                            <XStack gap={10}>
+                                <Pressable style={[rm.btn, rm.cancelBtn]} onPress={handleClose}>
+                                    <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[rm.btn, rm.confirmBtn, { backgroundColor: confirmDanger ? appTheme.colors.danger : appTheme.colors.primary }, !canConfirm && { opacity: 0.4 }]}
+                                    onPress={handleConfirm}
+                                    disabled={!canConfirm}
+                                >
+                                    <Text fontSize={14} fontWeight="900" color="#fff">{confirmLabel}</Text>
+                                </Pressable>
+                            </XStack>
+                        </YStack>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -1056,14 +1082,22 @@ const styles = StyleSheet.create({
 });
 
 const ef = StyleSheet.create({
-    overlay: {
-        flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
     sheet: {
+        width: '100%',
+        maxHeight: '90%',
         backgroundColor: '#fff',
-        borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        padding: 24, paddingBottom: 40,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: 20,
+    },
+    handle: {
+        width: 40, height: 4,
+        borderRadius: 2,
+        backgroundColor: appTheme.colors.border,
+        alignSelf: 'center',
+        marginBottom: 16,
     },
     select: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -1105,11 +1139,16 @@ const ef = StyleSheet.create({
 const rm = StyleSheet.create({
     overlay: {
         flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center', alignItems: 'center',
+        justifyContent: 'flex-end', alignItems: 'center',
         padding: 24,
     },
+    scrollContainer: {
+        flexGrow: 1,
+        justifyContent: 'flex-end',
+        paddingTop: 20,
+    },
     card: {
-        width: '100%', backgroundColor: '#fff',
+        width: '100%', maxHeight: '80%', backgroundColor: '#fff',
         borderRadius: 18, padding: 22,
         shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 12,
     },
