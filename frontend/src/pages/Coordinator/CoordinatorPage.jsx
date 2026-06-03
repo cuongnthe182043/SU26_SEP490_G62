@@ -8,19 +8,13 @@ const emptyForm = {
   plate: "",
   driver_id: "",
   customer_name: "",
-  cargo_name: "",
+  customer_phone: "",
   cargo_weight_kg: "",
   pickup_address: "",
   delivery_address: "",
-  route_name: "",
   estimated_price: "",
-  ticket: "",
-  paid: false,
-  driver_income: "",
-  fuel: "",
-  advance: "",
+  vehicle_group_id: "",
   note: "",
-  revenue_1: "",
 };
 
 const requiredFields = [
@@ -28,8 +22,13 @@ const requiredFields = [
   { key: "check_in", label: "Check in" },
   { key: "plate", label: "Plate" },
   { key: "driver_id", label: "Driver" },
-  { key: "route_name", label: "Route" },
+  { key: "customer_name", label: "Customer" },
+  { key: "customer_phone", label: "Phone" },
+  { key: "cargo_weight_kg", label: "Weight" },
+  { key: "pickup_address", label: "Pickup" },
+  { key: "delivery_address", label: "Delivery" },
   { key: "estimated_price", label: "Price" },
+  { key: "vehicle_group_id", label: "Vehicle group" },
 ];
 
 function extractDriverName(notes) {
@@ -167,6 +166,15 @@ export default function CoordinatorPage({ user, onLogout }) {
       }
     });
 
+    if (form.date) {
+      const selectedDate = new Date(`${form.date}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (Number.isNaN(selectedDate.getTime()) || selectedDate < today) {
+        errors.date = "Ngày không được trước hôm nay";
+      }
+    }
+
     setFormErrors(errors);
     return errors;
   };
@@ -181,6 +189,18 @@ export default function CoordinatorPage({ user, onLogout }) {
       });
     }
   };
+
+  const vehicleGroups = useMemo(() => {
+    const seen = new Map();
+    drivers.forEach((driver) => {
+      if (!driver.vehicle_group_id) return;
+      const id = String(driver.vehicle_group_id);
+      if (!seen.has(id)) {
+        seen.set(id, { id, name: `Nhóm xe ${id}` });
+      }
+    });
+    return Array.from(seen.values());
+  }, [drivers]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -232,31 +252,25 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDriver = drivers.find(
         (driver) => String(driver.id) === String(form.driver_id),
       );
+      const selectedPlate = form.plate || selectedDriver?.plate_number || "";
+      const selectedVehicleGroupId = form.vehicle_group_id || selectedDriver?.vehicle_group_id || "";
 
       const data = await apiRequest("/api/orders", {
         method: "POST",
         token,
         body: {
-          cargo_name: form.route_name,
+          date: form.date,
+          check_in: form.check_in,
+          plate: selectedPlate,
+          driver_id: form.driver_id || "",
+          customer_name: form.customer_name,
+          customer_phone: form.customer_phone,
           cargo_weight_kg: form.cargo_weight_kg,
           pickup_address: form.pickup_address,
           delivery_address: form.delivery_address,
           estimated_price: form.estimated_price,
-          notes: [
-            `Ngay: ${form.date}`,
-            `Cham cong: ${form.check_in}`,
-            `BKS: ${form.plate}`,
-            `Lai xe: ${selectedDriver?.full_name || ""}`,
-            `Khach hang: ${form.customer_name || ""}`,
-            `Hanh trinh: ${form.route_name}`,
-            `Ve: ${form.ticket || ""}`,
-            `KH da thanh toan: ${form.paid ? "x" : ""}`,
-            `Lai xe thu/chi: ${form.driver_income || ""}`,
-            `Do dau: ${form.fuel || ""}`,
-            `Ung luong: ${form.advance || ""}`,
-            `Ghi chu: ${form.note || ""}`,
-            `Doanh thu: ${form.revenue_1 || ""}`,
-          ].join(" | "),
+          vehicle_group_id: selectedVehicleGroupId,
+          notes: form.note,
         },
       });
 
@@ -265,7 +279,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           id: `tmp-${data.order.id}`,
           orderId: data.order.id,
           title: data.order.cargo_name,
-          status: "New",
+          status: data.order.status,
           pickup: data.order.pickup_address,
           delivery: data.order.delivery_address,
           weight: `${data.order.cargo_weight_kg ?? ""}kg`,
@@ -380,6 +394,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                     type="date"
                     value={form.date}
                     onChange={(event) => updateField("date", event.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
                     className={formErrors.date ? "input-error" : ""}
                   />
                   {formErrors.date && <div className="field-error">{formErrors.date}</div>}
@@ -397,11 +412,18 @@ export default function CoordinatorPage({ user, onLogout }) {
                   )}
                 </label>
                 <label>
-                  <span>Plate</span>
+                  <span>BKS</span>
                   <input
                     value={form.plate}
-                    onChange={(event) => updateField("plate", event.target.value)}
-                    placeholder="29H-961.45"
+                    onChange={(event) => {
+                      const plate = event.target.value;
+                      const driver = drivers.find(
+                        (item) => String(item.plate_number || "").trim().toUpperCase() === plate.trim().toUpperCase(),
+                      );
+                      updateField("plate", plate);
+                      updateField("driver_id", driver?.id ? String(driver.id) : "");
+                      updateField("vehicle_group_id", driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "");
+                    }}
                     className={formErrors.plate ? "input-error" : ""}
                   />
                   {formErrors.plate && <div className="field-error">{formErrors.plate}</div>}
@@ -410,13 +432,19 @@ export default function CoordinatorPage({ user, onLogout }) {
                   <span>Driver</span>
                   <select
                     value={form.driver_id}
-                    onChange={(event) => updateField("driver_id", event.target.value)}
+                    onChange={(event) => {
+                      const driverId = event.target.value;
+                      const driver = drivers.find((item) => String(item.id) === String(driverId));
+                      updateField("driver_id", driverId);
+                      updateField("plate", driver?.plate_number || "");
+                      updateField("vehicle_group_id", driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "");
+                    }}
                     className={formErrors.driver_id ? "input-error" : ""}
                   >
-                    <option value="">Choose driver</option>
+                    <option value="">Chọn tài xế</option>
                     {drivers.map((driver) => (
                       <option key={driver.id} value={driver.id}>
-                        {driver.full_name}
+                        {driver.full_name} {driver.plate_number ? `- ${driver.plate_number}` : ""}
                       </option>
                     ))}
                   </select>
@@ -425,34 +453,52 @@ export default function CoordinatorPage({ user, onLogout }) {
                   )}
                 </label>
                 <label>
-                  <span>Customer</span>
-                  <input
-                    value={form.customer_name}
-                    onChange={(event) => updateField("customer_name", event.target.value)}
-                  />
-                </label>
-                <label className="wide">
-                  <span>Route</span>
-                  <input
-                    value={form.route_name}
-                    onChange={(event) => updateField("route_name", event.target.value)}
-                    className={formErrors.route_name ? "input-error" : ""}
-                    required
-                  />
-                  {formErrors.route_name && (
-                    <div className="field-error">{formErrors.route_name}</div>
+                  <span>Vehicle group</span>
+                  <select
+                    value={form.vehicle_group_id}
+                    onChange={(event) => updateField("vehicle_group_id", event.target.value)}
+                    className={formErrors.vehicle_group_id ? "input-error" : ""}
+                  >
+                    <option value="">Chọn cỡ xe</option>
+                    {vehicleGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  {formErrors.vehicle_group_id && (
+                    <div className="field-error">{formErrors.vehicle_group_id}</div>
                   )}
                 </label>
                 <label>
-                  <span>Weight</span>
+                  <span>Khách hàng</span>
+                  <input
+                    value={form.customer_name}
+                    onChange={(event) => updateField("customer_name", event.target.value)}
+                    className={formErrors.customer_name ? "input-error" : ""}
+                  />
+                  {formErrors.customer_name && <div className="field-error">{formErrors.customer_name}</div>}
+                </label>
+                <label>
+                  <span>SĐT</span>
+                  <input
+                    value={form.customer_phone}
+                    onChange={(event) => updateField("customer_phone", event.target.value)}
+                    className={formErrors.customer_phone ? "input-error" : ""}
+                  />
+                  {formErrors.customer_phone && <div className="field-error">{formErrors.customer_phone}</div>}
+                </label>
+                <label>
+                  <span>Khối lượng</span>
                   <input
                     value={form.cargo_weight_kg}
                     onChange={(event) => updateField("cargo_weight_kg", event.target.value)}
-                    placeholder="50"
+                    className={formErrors.cargo_weight_kg ? "input-error" : ""}
                   />
+                  {formErrors.cargo_weight_kg && <div className="field-error">{formErrors.cargo_weight_kg}</div>}
                 </label>
                 <label>
-                  <span>Price</span>
+                  <span>Cước xe</span>
                   <input
                     type="number"
                     min="0"
@@ -465,70 +511,29 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <div className="field-error">{formErrors.estimated_price}</div>
                   )}
                 </label>
-                <label>
-                  <span>Ticket</span>
-                  <input
-                    value={form.ticket}
-                    onChange={(event) => updateField("ticket", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Paid</span>
-                  <button
-                    type="button"
-                    className={form.paid ? "paid-toggle paid-toggle-on" : "paid-toggle"}
-                    onClick={() => updateField("paid", !form.paid)}
-                  >
-                    {form.paid ? "Paid" : "Unpaid"}
-                  </button>
-                </label>
-                <label>
-                  <span>Driver income</span>
-                  <input
-                    value={form.driver_income}
-                    onChange={(event) => updateField("driver_income", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Fuel</span>
-                  <input
-                    value={form.fuel}
-                    onChange={(event) => updateField("fuel", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Advance</span>
-                  <input
-                    value={form.advance}
-                    onChange={(event) => updateField("advance", event.target.value)}
-                  />
-                </label>
                 <label className="wide">
-                  <span>Note</span>
-                  <textarea
-                    value={form.note}
-                    onChange={(event) => updateField("note", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Pickup</span>
+                  <span>Điểm lấy hàng</span>
                   <input
                     value={form.pickup_address}
                     onChange={(event) => updateField("pickup_address", event.target.value)}
+                    className={formErrors.pickup_address ? "input-error" : ""}
                   />
+                  {formErrors.pickup_address && <div className="field-error">{formErrors.pickup_address}</div>}
                 </label>
-                <label>
-                  <span>Delivery</span>
+                <label className="wide">
+                  <span>Điểm giao hàng</span>
                   <input
                     value={form.delivery_address}
                     onChange={(event) => updateField("delivery_address", event.target.value)}
+                    className={formErrors.delivery_address ? "input-error" : ""}
                   />
+                  {formErrors.delivery_address && <div className="field-error">{formErrors.delivery_address}</div>}
                 </label>
-                <label>
-                  <span>Revenue</span>
-                  <input
-                    value={form.revenue_1}
-                    onChange={(event) => updateField("revenue_1", event.target.value)}
+                <label className="wide">
+                  <span>Ghi chú</span>
+                  <textarea
+                    value={form.note}
+                    onChange={(event) => updateField("note", event.target.value)}
                   />
                 </label>
 
