@@ -32,6 +32,7 @@ const requiredFields = [
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
+const ORDERS_PER_PAGE = 10;
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
@@ -63,6 +64,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
@@ -157,6 +159,23 @@ export default function CoordinatorPage({ user, onLogout }) {
         .some((value) => String(value).toLowerCase().includes(query));
     });
   }, [activeTab, deferredSearchQuery, trips]);
+
+
+  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / ORDERS_PER_PAGE));
+  const paginatedTrips = useMemo(() => {
+    const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+    return filteredTrips.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+  }, [currentPage, filteredTrips]);
+  const pageStart = filteredTrips.length === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
+  const pageEnd = Math.min(currentPage * ORDERS_PER_PAGE, filteredTrips.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, deferredSearchQuery]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const validateForm = () => {
     const errors = {};
@@ -638,11 +657,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                 {filteredTrips.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="empty-table-cell">
-                      Chưa có đơn. Tạo đơn mới hoặc import từ excel
+                      No orders yet. Create an order or import an Excel file to load data.
                     </td>
                   </tr>
                 ) : (
-                  filteredTrips.map((trip) => (
+                  paginatedTrips.map((trip) => (
                     <tr key={trip.id}>
                       <td>
                         <span className="trip-id">
@@ -670,6 +689,33 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="pagination-bar">
+            <span>
+              Hiển thị {pageStart}-{pageEnd} / {filteredTrips.length} đơn
+            </span>
+            <div className="pagination-actions">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Trước
+              </button>
+              <span className="pagination-page">
+                Trang {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Sau
+              </button>
+            </div>
           </div>
         </section>
 
