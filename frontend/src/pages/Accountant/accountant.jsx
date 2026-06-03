@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import OrderFormModal from "./OrderFormModal";
 import PaymentModal from "./PaymentModal";
-import "../styles/Orders.css";
+import "../../styles/Orders.css";
 
-export default function Orders({ user, onLogout }) {
+export default function Accountant({ user, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -356,7 +356,7 @@ export default function Orders({ user, onLogout }) {
                     <div key={order.id} className="order-card">
                       {/* Card Header */}
                       <div className="card-header">
-                        <span className="order-code">#VL-{order.id + 8800}</span>
+                        <span className="order-code">#VL-{order.id}</span>
                         <span className={`status-badge payment-${orderDebtStatus}`}>
                           {orderDebtStatus === "paid" && "Đã thu đủ"}
                           {orderDebtStatus === "partial" && "Thu một phần"}
@@ -452,7 +452,7 @@ export default function Orders({ user, onLogout }) {
                         <button 
                           className="action-square-btn" 
                           title="Xem chi tiết hành trình" 
-                          onClick={() => alert(`Hành trình đơn hàng #VL-${order.id + 8800}:\n- Lấy hàng: ${order.pickup_address}\n- Giao hàng: ${order.delivery_address}\n- Khối lượng: ${order.cargo_weight || 0} kg\n- Trạng thái xe: ${isPending ? "Mới tạo" : "Đã gán vận chuyển"}\n- Ghi chú: ${order.notes || "Không có"}`)}
+                          onClick={() => alert(`Hành trình đơn hàng #VL-${order.id}:\n- Lấy hàng: ${order.pickup_address}\n- Giao hàng: ${order.delivery_address}\n- Khối lượng: ${order.cargo_weight || 0} kg\n- Trạng thái xe: ${isPending ? "Mới tạo" : "Đã gán vận chuyển"}\n- Ghi chú: ${order.notes || "Không có"}`)}
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
