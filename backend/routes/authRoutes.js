@@ -40,6 +40,31 @@ router.post('/login', authController.login);
 
 /**
  * @swagger
+ * /auth/google:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Đăng nhập bằng Google
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credential]
+ *             properties:
+ *               credential:
+ *                 type: string
+ *                 example: eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...
+ *     responses:
+ *       200:
+ *         description: Đăng nhập Google thành công, trả về JWT token
+ *       403:
+ *         description: Tài khoản Google chưa được cấp quyền trong hệ thống nội bộ
+ */
+router.post('/google', authController.googleLogin);
+
+/**
+ * @swagger
  * /auth/roles:
  *   get:
  *     tags: [Auth]
