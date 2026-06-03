@@ -475,7 +475,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
-                <div className="form-row form-row-2">
+                <div className="form-row form-row-3">
                   <label>
                     <span>SĐT</span>
                     <input
@@ -498,9 +498,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_name}</div>
                     )}
                   </label>
-                </div>
-
-                <div className="form-row form-row-note">
                   <label>
                     <span>Sản phẩm</span>
                     <input
@@ -509,6 +506,10 @@ export default function CoordinatorPage({ user, onLogout }) {
                       placeholder="Không bắt buộc"
                     />
                   </label>
+                </div>
+
+                <div className="form-row form-row-note">
+                  
                 </div>
 
                 <div className="form-row form-row-3">
