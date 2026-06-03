@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import "../../pages/Admin/UserModal.css";
+import "../../styles/admin/UserModal.css";
 
 const initialFormState = {
   email: "",
