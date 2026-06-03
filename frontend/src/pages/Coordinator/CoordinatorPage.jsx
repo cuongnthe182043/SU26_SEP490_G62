@@ -4,8 +4,6 @@ import "../../styles/Coordinator.css";
 
 const emptyForm = {
   date: "",
-  check_in: "",
-  plate: "",
   driver_id: "",
   customer_name: "",
   customer_phone: "",
@@ -19,8 +17,6 @@ const emptyForm = {
 
 const requiredFields = [
   { key: "date", label: "Date" },
-  { key: "check_in", label: "Check in" },
-  { key: "plate", label: "Plate" },
   { key: "driver_id", label: "Driver" },
   { key: "customer_name", label: "Customer" },
   { key: "customer_phone", label: "Phone" },
@@ -196,7 +192,10 @@ export default function CoordinatorPage({ user, onLogout }) {
       if (!driver.vehicle_group_id) return;
       const id = String(driver.vehicle_group_id);
       if (!seen.has(id)) {
-        seen.set(id, { id, name: `Nhóm xe ${id}` });
+        seen.set(id, {
+          id,
+          name: driver.vehicle_group_name || `Nhóm xe ${id}`,
+        });
       }
     });
     return Array.from(seen.values());
@@ -252,17 +251,16 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDriver = drivers.find(
         (driver) => String(driver.id) === String(form.driver_id),
       );
-      const selectedPlate = form.plate || selectedDriver?.plate_number || "";
-      const selectedVehicleGroupId = form.vehicle_group_id || selectedDriver?.vehicle_group_id || "";
+      const selectedPlate = selectedDriver?.plate_number || "";
+      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || "";
 
       const data = await apiRequest("/api/orders", {
         method: "POST",
         token,
-        body: {
-          date: form.date,
-          check_in: form.check_in,
-          plate: selectedPlate,
-          driver_id: form.driver_id || "",
+                body: {
+                  date: form.date,
+                  plate: selectedPlate,
+                  driver_id: form.driver_id || "",
           customer_name: form.customer_name,
           customer_phone: form.customer_phone,
           cargo_weight_kg: form.cargo_weight_kg,
@@ -378,7 +376,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
               <div className="panel-head">
                 <div>
-                  <h2>Create order</h2>
+                  <h2>Tạo đơn</h2>
                   <p>Fill the form based on the Excel sheet structure.</p>
                 </div>
                 <button className="ghost-btn" onClick={() => setCreateOpen(false)}>
@@ -388,6 +386,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
               <form className="create-form" onSubmit={handleCreateOrder}>
                 <div className="sheet-caption full">Order row information</div>
+                <div className="form-row form-row-3">
                 <label>
                   <span>Date</span>
                   <input
@@ -400,43 +399,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                   {formErrors.date && <div className="field-error">{formErrors.date}</div>}
                 </label>
                 <label>
-                  <span>Check in</span>
-                  <input
-                    value={form.check_in}
-                    onChange={(event) => updateField("check_in", event.target.value)}
-                    placeholder="1"
-                    className={formErrors.check_in ? "input-error" : ""}
-                  />
-                  {formErrors.check_in && (
-                    <div className="field-error">{formErrors.check_in}</div>
-                  )}
-                </label>
-                <label>
-                  <span>BKS</span>
-                  <input
-                    value={form.plate}
-                    onChange={(event) => {
-                      const plate = event.target.value;
-                      const driver = drivers.find(
-                        (item) => String(item.plate_number || "").trim().toUpperCase() === plate.trim().toUpperCase(),
-                      );
-                      updateField("plate", plate);
-                      updateField("driver_id", driver?.id ? String(driver.id) : "");
-                      updateField("vehicle_group_id", driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "");
-                    }}
-                    className={formErrors.plate ? "input-error" : ""}
-                  />
-                  {formErrors.plate && <div className="field-error">{formErrors.plate}</div>}
-                </label>
-                <label>
-                  <span>Driver</span>
+                  <span>Tài xế</span>
                   <select
                     value={form.driver_id}
                     onChange={(event) => {
                       const driverId = event.target.value;
                       const driver = drivers.find((item) => String(item.id) === String(driverId));
                       updateField("driver_id", driverId);
-                      updateField("plate", driver?.plate_number || "");
                       updateField("vehicle_group_id", driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "");
                     }}
                     className={formErrors.driver_id ? "input-error" : ""}
@@ -453,7 +422,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   )}
                 </label>
                 <label>
-                  <span>Vehicle group</span>
+                  <span>Nhóm xe</span>
                   <select
                     value={form.vehicle_group_id}
                     onChange={(event) => updateField("vehicle_group_id", event.target.value)}
@@ -470,25 +439,28 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <div className="field-error">{formErrors.vehicle_group_id}</div>
                   )}
                 </label>
-                <label>
-                  <span>Khách hàng</span>
-                  <input
-                    value={form.customer_name}
-                    onChange={(event) => updateField("customer_name", event.target.value)}
-                    className={formErrors.customer_name ? "input-error" : ""}
-                  />
-                  {formErrors.customer_name && <div className="field-error">{formErrors.customer_name}</div>}
-                </label>
-                <label>
-                  <span>SĐT</span>
-                  <input
-                    value={form.customer_phone}
-                    onChange={(event) => updateField("customer_phone", event.target.value)}
-                    className={formErrors.customer_phone ? "input-error" : ""}
-                  />
-                  {formErrors.customer_phone && <div className="field-error">{formErrors.customer_phone}</div>}
-                </label>
-                <label>
+                </div>
+                <div className="form-row form-row-2">
+                  <label>
+                    <span>SĐT</span>
+                    <input
+                      value={form.customer_phone}
+                      onChange={(event) => updateField("customer_phone", event.target.value)}
+                      className={formErrors.customer_phone ? "input-error" : ""}
+                    />
+                    {formErrors.customer_phone && <div className="field-error">{formErrors.customer_phone}</div>}
+                  </label>
+                  <label>
+                    <span>Khách hàng</span>
+                    <input
+                      value={form.customer_name}
+                      onChange={(event) => updateField("customer_name", event.target.value)}
+                      className={formErrors.customer_name ? "input-error" : ""}
+                    />
+                    {formErrors.customer_name && <div className="field-error">{formErrors.customer_name}</div>}
+                  </label>
+                </div>
+                <label className="form-row form-row-2">
                   <span>Khối lượng</span>
                   <input
                     value={form.cargo_weight_kg}
@@ -511,7 +483,8 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <div className="field-error">{formErrors.estimated_price}</div>
                   )}
                 </label>
-                <label className="wide">
+                <div class ="form-row form-row-2">
+                <label>
                   <span>Điểm lấy hàng</span>
                   <input
                     value={form.pickup_address}
@@ -520,7 +493,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   />
                   {formErrors.pickup_address && <div className="field-error">{formErrors.pickup_address}</div>}
                 </label>
-                <label className="wide">
+                <label>
                   <span>Điểm giao hàng</span>
                   <input
                     value={form.delivery_address}
@@ -529,14 +502,16 @@ export default function CoordinatorPage({ user, onLogout }) {
                   />
                   {formErrors.delivery_address && <div className="field-error">{formErrors.delivery_address}</div>}
                 </label>
-                <label className="wide">
+                </div>
+                <div className="form-row form-row-note">
+                <label>
                   <span>Ghi chú</span>
                   <textarea
                     value={form.note}
                     onChange={(event) => updateField("note", event.target.value)}
                   />
                 </label>
-
+                  </div>
                 {Object.keys(formErrors).length > 0 && (
                   <div className="full field-error field-error-box">
                     {requiredFields
@@ -628,7 +603,6 @@ export default function CoordinatorPage({ user, onLogout }) {
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Check in</th>
                   <th>Plate</th>
                   <th>Driver</th>
                   <th>Customer</th>
@@ -647,13 +621,12 @@ export default function CoordinatorPage({ user, onLogout }) {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan="15">No imported Excel rows yet.</td>
+                    <td colSpan="14">No imported Excel rows yet.</td>
                   </tr>
                 ) : (
                   rows.map((row, index) => (
                     <tr key={`${row.date}-${index}`}>
                       <td>{row.date}</td>
-                      <td>{row.checkIn}</td>
                       <td>{row.plate}</td>
                       <td>{row.driver}</td>
                       <td>{row.customer}</td>

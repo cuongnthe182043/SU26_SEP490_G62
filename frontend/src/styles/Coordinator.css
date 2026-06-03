@@ -253,8 +253,7 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
 
 .create-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
   margin-top: 8px;
   max-width: 100%;
 }
@@ -277,10 +276,27 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
   min-width: 0;
 }
 
-.create-form label.wide {
-  grid-column: span 2;
+.form-row {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
 }
 
+.form-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-row-address {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-row-note {
+  grid-template-columns: 1fr;
+}
 .paid-toggle {
   min-height: 46px;
   border-radius: 14px;
@@ -385,12 +401,10 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
     border-radius: 18px;
   }
 
-  .create-form {
+  .form-row-3,
+  .form-row-2,
+  .form-row-address {
     grid-template-columns: 1fr;
-  }
-
-  .create-form label.wide {
-    grid-column: auto;
   }
 
   .form-actions {
@@ -406,10 +420,6 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
 @media (max-width: 1024px) {
   .modal-card {
     width: min(100%, calc(100vw - 24px));
-  }
-
-  .create-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
