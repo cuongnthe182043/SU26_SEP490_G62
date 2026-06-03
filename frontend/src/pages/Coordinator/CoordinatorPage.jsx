@@ -17,25 +17,30 @@ const emptyForm = {
 };
 
 const requiredFields = [
-  { key: "date", label: "Date" },
-  { key: "driver_id", label: "Driver" },
-  { key: "customer_name", label: "Customer" },
-  { key: "customer_phone", label: "Phone" },
-  { key: "cargo_weight_kg", label: "Weight" },
-  { key: "pickup_address", label: "Pickup" },
-  { key: "delivery_address", label: "Delivery" },
-  { key: "estimated_price", label: "Price" },
-  { key: "vehicle_group_id", label: "Vehicle group" },
+  { key: "date", label: "Ngày tháng" },
+  { key: "driver_id", label: "Tài xế" },
+  { key: "vehicle_group_id", label: "Nhóm xe" },
+  { key: "customer_phone", label: "SĐT" },
+  { key: "customer_name", label: "Khách hàng" },
+  { key: "cargo_weight_kg", label: "Khối lượng" },
+  { key: "pickup_address", label: "Điểm lấy hàng" },
+  { key: "delivery_address", label: "Điểm giao hàng" },
+  { key: "estimated_price", label: "Cước xe" },
 ];
 
+const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
+const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
+const isFiniteNumber = (value) => Number.isFinite(Number(value));
+
 function extractDriverName(notes) {
-  const match = String(notes ?? "").match(/Lai xe:\s*([^|]+)/i);
+  const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
   return match?.[1]?.trim() || "";
 }
 
 function buildTripFromOrder(order) {
   return {
     id: `#${order.id}`,
+    orderId: order.id,
     title: order.cargo_name,
     status: order.status === "pending" ? "New" : order.status,
     pickup: order.pickup_address,
@@ -51,7 +56,6 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [trips, setTrips] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [rows, setRows] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
@@ -159,7 +163,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     requiredFields.forEach(({ key, label }) => {
       const value = String(form[key] ?? "").trim();
       if (!value) {
-        errors[key] = `${label} is required`;
+        errors[key] = `${label} là bắt buộc`;
       }
     });
 
@@ -170,6 +174,26 @@ export default function CoordinatorPage({ user, onLogout }) {
       if (Number.isNaN(selectedDate.getTime()) || selectedDate < today) {
         errors.date = "Ngày không được trước hôm nay";
       }
+    }
+
+    const phoneDigits = String(form.customer_phone ?? "").replace(/\D/g, "");
+    if (form.customer_phone && !/^0\d{9,10}$/.test(phoneDigits)) {
+      errors.customer_phone = "SĐT phải bắt đầu bằng 0 và có 10-11 chữ số";
+    }
+
+    const weight = normalizeNumericText(form.cargo_weight_kg);
+    if (weight && (!isFiniteNumber(weight) || Number(weight) <= 0)) {
+      errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
+    }
+
+    const price = normalizeNumericText(form.estimated_price);
+    if (price && (!isFiniteNumber(price) || Number(price) < 0)) {
+      errors.estimated_price = "Cước xe phải là số không âm";
+    }
+
+    const distance = normalizeDistanceText(form.distance);
+    if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
+      errors.distance = "Quãng đường phải là số lớn hơn 0";
     }
 
     setFormErrors(errors);
@@ -221,7 +245,6 @@ export default function CoordinatorPage({ user, onLogout }) {
         body: formData,
       });
 
-      setRows(data.rows || []);
       setMessage(`Imported ${data.rows?.length || 0} rows from Excel.`);
       setMessageType("success");
     } catch (err) {
@@ -240,7 +263,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
-      setMessage("Missing required fields.");
+      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
       setMessageType("error");
       return;
     }
@@ -478,6 +501,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                   <label>
                     <span>Khối lượng</span>
                     <input
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={form.cargo_weight_kg}
                       onChange={(event) => updateField("cargo_weight_kg", event.target.value)}
                       className={formErrors.cargo_weight_kg ? "input-error" : ""}
@@ -492,7 +518,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                       value={form.distance}
                       onChange={(event) => updateField("distance", event.target.value)}
                       placeholder="VD: 120 km"
+                      className={formErrors.distance ? "input-error" : ""}
                     />
+                    {formErrors.distance && (
+                      <div className="field-error">{formErrors.distance}</div>
+                    )}
                   </label>
                   <label>
                     <span>Cước xe</span>
@@ -546,11 +576,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                 </div>
                 {Object.keys(formErrors).length > 0 && (
                   <div className="full field-error field-error-box">
-                    {requiredFields
-                      .filter(({ key }) => formErrors[key])
-                      .map(({ label, key }) => (
-                        <div key={key}>{formErrors[key] || `${label} is required`}</div>
-                      ))}
+                    {Object.entries(formErrors).map(([key, error]) => (
+                      <div key={key}>{error}</div>
+                    ))}
                   </div>
                 )}
 
@@ -569,109 +597,59 @@ export default function CoordinatorPage({ user, onLogout }) {
 
         {message && <div className={`notice notice-${messageType}`}>{message}</div>}
 
-        <section className="trip-grid">
-          {filteredTrips.length === 0 ? (
-            <article className="empty-state">
-              <h3>No orders yet</h3>
-              <p>Create an order or import an Excel file to load data.</p>
-            </article>
-          ) : (
-            filteredTrips.map((trip) => (
-              <article className="trip-card" key={trip.id}>
-                <div className="trip-head">
-                  <span className="trip-id">
-                    #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
-                  </span>
-                  <span className="trip-status">{trip.status}</span>
-                </div>
-                <h3>{trip.title}</h3>
-                <div className="route-line">
-                  <div className="point start" />
-                  <div className="dashed" />
-                  <div className="point end" />
-                </div>
-                <div className="trip-locations">
-                  <div>
-                    <span>Pickup</span>
-                    <strong>{trip.pickup}</strong>
-                  </div>
-                  <div>
-                    <span>Delivery</span>
-                    <strong>{trip.delivery}</strong>
-                  </div>
-                </div>
-                <div className="trip-meta">
-                  <div>
-                    <span>Weight</span>
-                    <strong>{trip.weight}</strong>
-                  </div>
-                  <div>
-                    <span>Driver</span>
-                    <strong>{trip.driverName || "Unassigned"}</strong>
-                  </div>
-                </div>
-                <div className="trip-actions">
-                  <button className="assign-btn">+ Assign driver</button>
-                  <button className="ghost-btn" aria-label="Edit order">
-                    ✎
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </section>
-
-        <section className="spreadsheet-panel">
+        <section className="orders-panel">
           <div className="panel-head">
             <div>
-              <h2>Excel import</h2>
-              <p>Upload the spreadsheet template to batch import data.</p>
+              <h2>Danh sách chuyến</h2>
+              <p>Hiển thị đơn hàng dạng bảng để dễ theo dõi và điều phối.</p>
             </div>
-            <div className="upload-hint">.xlsx / .xls</div>
           </div>
 
           <div className="table-wrap">
-            <table>
+            <table className="orders-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Plate</th>
-                  <th>Driver</th>
-                  <th>Customer</th>
-                  <th>Route</th>
-                  <th>Weight</th>
-                  <th>Price</th>
-                  <th>Ticket</th>
-                  <th>Paid</th>
-                  <th>Driver income</th>
-                  <th>Fuel</th>
-                  <th>Advance</th>
-                  <th>Note</th>
-                  <th>Revenue</th>
+                  <th>Mã đơn</th>
+                  <th>Trạng thái</th>
+                  <th>Hành trình</th>
+                  <th>Điểm lấy hàng</th>
+                  <th>Điểm giao hàng</th>
+                  <th>Khối lượng</th>
+                  <th>Tài xế</th>
+                  <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 ? (
+                {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan="14">No imported Excel rows yet.</td>
+                    <td colSpan="8" className="empty-table-cell">
+                      No orders yet. Create an order or import an Excel file to load data.
+                    </td>
                   </tr>
                 ) : (
-                  rows.map((row, index) => (
-                    <tr key={`${row.date}-${index}`}>
-                      <td>{row.date}</td>
-                      <td>{row.plate}</td>
-                      <td>{row.driver}</td>
-                      <td>{row.customer}</td>
-                      <td>{row.route}</td>
-                      <td>{row.distance}</td>
-                      <td>{row.fare}</td>
-                      <td>{row.ticket}</td>
-                      <td>{row.paid}</td>
-                      <td>{row.driverIncome}</td>
-                      <td>{row.fuel}</td>
-                      <td>{row.advance}</td>
-                      <td>{row.note}</td>
-                      <td>{row.revenue1}</td>
+                  filteredTrips.map((trip) => (
+                    <tr key={trip.id}>
+                      <td>
+                        <span className="trip-id">
+                          #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="trip-status">{trip.status}</span>
+                      </td>
+                      <td className="table-route-cell">{trip.title}</td>
+                      <td className="table-address-cell">{trip.pickup}</td>
+                      <td className="table-address-cell">{trip.delivery}</td>
+                      <td>{trip.weight}</td>
+                      <td>{trip.driverName || "Unassigned"}</td>
+                      <td>
+                        <div className="table-actions">
+                          <button className="assign-btn">+ Assign driver</button>
+                          <button className="table-edit-btn" aria-label="Edit order">
+                            ✎
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -679,6 +657,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             </table>
           </div>
         </section>
+
       </main>
     </div>
   );
