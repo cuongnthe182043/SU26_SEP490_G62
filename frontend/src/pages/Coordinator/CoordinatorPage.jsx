@@ -383,7 +383,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             >
               All
             </button>
-            <button
+            {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
@@ -394,7 +394,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               onClick={() => setActiveTab("waiting")}
             >
               Waiting
-            </button>
+            </button> */}
           </div>
         </section>
 
@@ -644,7 +644,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{trip.driverName || "Unassigned"}</td>
                       <td>
                         <div className="table-actions">
-                          <button className="assign-btn">+ Assign driver</button>
+                          
                           <button className="table-edit-btn" aria-label="Edit order">
                             ✎
                           </button>
