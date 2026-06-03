@@ -92,7 +92,7 @@ export function CompletionProofScreen() {
     const cameraRef = useRef<CameraView>(null);
 
     const { isUploading, error, completeWithProof } = useCompletionProof(() => {
-        router.replace('/(tabs)');
+        router.back();
     });
 
     const slots: Slot[] = isFinal ? ['receipt', 'proof'] : ['receipt'];
