@@ -154,6 +154,7 @@ export default function UserList() {
             type="text" 
             icon={<EditOutlined />} 
             onClick={() => handleOpenEdit(user)}
+            disabled={user.role === 'manager'}
           >
             Sửa
           </Button>
@@ -162,6 +163,7 @@ export default function UserList() {
             type="text"
             icon={user.is_active ? <LockOutlined /> : <UnlockOutlined />}
             onClick={() => handleToggleStatus(user)}
+            disabled={user.role === 'manager'}
           >
             {user.is_active ? 'Khoá' : 'Mở khoá'}
           </Button>
