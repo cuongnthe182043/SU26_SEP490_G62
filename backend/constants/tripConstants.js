@@ -42,24 +42,25 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.PICKING]:   [SHIPMENT_STATUS.LOADED],
     [SHIPMENT_STATUS.LOADED]:    [SHIPMENT_STATUS.TRANSIT],
     [SHIPMENT_STATUS.TRANSIT]:   [SHIPMENT_STATUS.ARRIVED],
-    [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],    // giao thất bại
-    [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING], // bắt đầu hoàn hàng
-    [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED], // hoàn thành hoàn hàng
+    [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
+    [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
+    [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED],
 });
 
-// Các trạng thái cho phép hủy chuyến sớm (release về pool)
 const RELEASABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
     SHIPMENT_STATUS.PICKING,
 ]);
 
-// Status → lifecycle timestamp column
+// Status → lifecycle timestamp column (must cover every writable status)
 const STATUS_TIMESTAMP_COL = Object.freeze({
     [SHIPMENT_STATUS.PICKING]:   'picking_at',
     [SHIPMENT_STATUS.LOADED]:    'loaded_at',
     [SHIPMENT_STATUS.TRANSIT]:   'transit_at',
     [SHIPMENT_STATUS.ARRIVED]:   'arrived_at',
     [SHIPMENT_STATUS.COMPLETED]: 'completed_at',
+    [SHIPMENT_STATUS.FAILED]:    'failed_at',
+    [SHIPMENT_STATUS.RETURNING]: 'returning_at',
     [SHIPMENT_STATUS.CANCELLED]: 'cancelled_at',
 });
 

@@ -7,26 +7,29 @@ import type { ActiveTrip } from '@/types/trip';
 
 type ClaimResult =
   | { ok: true; trip: ActiveTrip }
-  | { ok: false; message: string; alreadyClaimed: boolean };
+  | { ok: false; message: string; alreadyClaimed: boolean; sameOrder?: boolean };
 
 export function useClaimTrip() {
   const [isLoading, setIsLoading] = useState(false);
 
-  const claim = async (orderId: number): Promise<ClaimResult> => {
+  // shipmentId — ID của shipment cụ thể cần nhận (không phải order_id)
+  const claim = async (shipmentId: number): Promise<ClaimResult> => {
     setIsLoading(true);
 
     try {
-      const { trip } = await tripService.claim(orderId);
+      const { trip } = await tripService.claim(shipmentId);
       return { ok: true, trip };
     } catch (error) {
-      const alreadyClaimed = error instanceof ApiError && error.status === 409;
-      const message = alreadyClaimed
-        ? ERROR_MESSAGES.tripAlreadyClaimed
-        : error instanceof Error
-          ? error.message
-          : ERROR_MESSAGES.claimFailed;
+      const is409 = error instanceof ApiError && error.status === 409;
+      const msg   = error instanceof Error ? error.message : ERROR_MESSAGES.claimFailed;
+      const sameOrder = is409 && msg.includes('đơn hàng này');
 
-      return { ok: false, message, alreadyClaimed };
+      return {
+        ok: false,
+        message: is409 ? msg : msg,
+        alreadyClaimed: is409 && !sameOrder,
+        sameOrder,
+      };
     } finally {
       setIsLoading(false);
     }
