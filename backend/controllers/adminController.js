@@ -13,9 +13,14 @@ const getAllUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
     try {
-        const { email, password, full_name, phone, role } = req.body;
-        if (!email || !password || !role) {
-            return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (email, password, role).' });
+        const { email, full_name, phone, role } = req.body;
+        const password = '123123'; // Mặc định password
+        if (!email || !role) {
+            return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (email, role).' });
+        }
+
+        if (role === 'manager') {
+            return res.status(403).json({ error: 'Không được phép tạo thêm tài khoản Quản lý.' });
         }
 
         const roleId = await profileRepository.getRoleIdByName(role);
@@ -28,6 +33,11 @@ const createUser = async (req, res) => {
         const passwordHash = await bcrypt.hash(password, salt);
 
         const newId = await profileRepository.adminCreateUser(email, passwordHash, roleId, full_name || '', phone || null);
+        
+        // Gửi mail bất đồng bộ (không await để không chặn API response)
+        const emailService = require('../services/emailService');
+        emailService.sendWelcomeEmail(email, password, full_name, role);
+
         res.status(201).json({ message: 'Tạo người dùng thành công.', id: newId });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -42,6 +52,10 @@ const updateUser = async (req, res) => {
         const { full_name, phone, role } = req.body;
         
         if (!role) return res.status(400).json({ error: 'Vai trò không được để trống.' });
+
+        if (role === 'manager') {
+            return res.status(403).json({ error: 'Không được phép cấp quyền Quản lý.' });
+        }
 
         const roleId = await profileRepository.getRoleIdByName(role);
         if (!roleId) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });

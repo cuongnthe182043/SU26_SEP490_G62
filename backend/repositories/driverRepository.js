@@ -7,10 +7,15 @@ const getAllDrivers = async () => {
             p.full_name,
             a.email,
             d.license_number,
-            d.vehicle_id
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id,
+            vg.name AS vehicle_group_name
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
          ORDER BY p.full_name ASC`,
     );
     return result.rows;
