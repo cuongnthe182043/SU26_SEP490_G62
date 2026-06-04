@@ -40,6 +40,7 @@ Thumbs.db
 .expo-shared/
 node_modules/
 .env
+db.md
 CLAUDE.md
 .claude
 AGENTS.md
