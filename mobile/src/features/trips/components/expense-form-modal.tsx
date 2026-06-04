@@ -1,22 +1,24 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-    Alert, Image, KeyboardAvoidingView, Modal, Platform,
-    Pressable, ScrollView, StyleSheet, TextInput, View,
+    Alert, Animated, Image, Modal, Platform,
+    Pressable, ScrollView, StyleSheet, TextInput,
+    useWindowDimensions, View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Camera, CheckCircle, ChevronDown, Trash2, X } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppButton } from '@/components/app-button';
-import { AppText }   from '@/components/app-text';
-import { FormField } from '@/components/form-field';
-import { appTheme }  from '@/theme/app-theme';
+import { AppButton }  from '@/components/app-button';
+import { AppText }    from '@/components/app-text';
+import { FormField }  from '@/components/form-field';
+import { appTheme }   from '@/theme/app-theme';
 import { tripService } from '@/services/trip-service';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
 
-const EXPENSE_TYPES: ExpenseType[] = ['toll', 'parking', 'other'];
+const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'other'];
 
 const C  = 28;
 const CT = 3;
@@ -29,7 +31,57 @@ type Props = {
 };
 
 export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Props) {
-    const [expenseType,    setExpenseType]    = useState<ExpenseType>('toll');
+    const { height: windowHeight } = useWindowDimensions();
+
+    // Animation — chạy trên native thread, không bị JS delay
+    const slideAnim   = useRef(new Animated.Value(0)).current;
+    const backdropAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (visible) {
+            // Reset về 0 trước khi animate vào
+            slideAnim.setValue(0);
+            backdropAnim.setValue(0);
+            Animated.parallel([
+                Animated.spring(slideAnim, {
+                    toValue: 1,
+                    useNativeDriver: true,
+                    tension: 68,
+                    friction: 12,
+                    restDisplacementThreshold: 0.01,
+                    restSpeedThreshold: 0.01,
+                }),
+                Animated.timing(backdropAnim, {
+                    toValue: 1,
+                    duration: 220,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+        }
+    }, [visible]);
+
+    const closeWithAnimation = (cb: () => void) => {
+        Animated.parallel([
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(backdropAnim, {
+                toValue: 0,
+                duration: 180,
+                useNativeDriver: true,
+            }),
+        ]).start(cb);
+    };
+
+    const translateY = slideAnim.interpolate({
+        inputRange:  [0, 1],
+        outputRange: [windowHeight, 0],
+    });
+
+    // ── Form state ──
+    const [expenseType,    setExpenseType]    = useState<ExpenseType>('fuel');
     const [amount,         setAmount]         = useState('');
     const [description,    setDescription]    = useState('');
     const [receiptUri,     setReceiptUri]     = useState<string | null>(null);
@@ -42,7 +94,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     const cameraRef = useRef<CameraView>(null);
 
     const reset = () => {
-        setExpenseType('toll');
+        setExpenseType('fuel');
         setAmount('');
         setDescription('');
         setReceiptUri(null);
@@ -51,7 +103,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
         setFormError(null);
     };
 
-    const handleClose = () => { reset(); onClose(); };
+    const handleClose = () => closeWithAnimation(() => { reset(); onClose(); });
 
     const openCamera = async () => {
         if (!permission?.granted) {
@@ -98,8 +150,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
             } as unknown as Blob);
 
             await tripService.createExpense(formData);
-            reset();
-            onSuccess();
+            closeWithAnimation(() => { reset(); onSuccess(); });
         } catch (err) {
             setFormError(err instanceof Error ? err.message : 'Không thể thêm chi phí');
         } finally {
@@ -140,155 +191,181 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     }
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                <Pressable
-                    style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
-                    onPress={handleClose}
-                />
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-                    keyboardVerticalOffset={0}
-                >
-                    <View style={sheet.container}>
-                        <View style={sheet.handle} />
-                        <ScrollView
-                            contentContainerStyle={{ paddingBottom: 8 }}
-                            keyboardShouldPersistTaps="handled"
-                            showsVerticalScrollIndicator={false}
-                        >
-                            {/* Header */}
-                            <XStack justifyContent="space-between" alignItems="center" marginBottom={20}>
-                                <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>Thêm chi phí phát sinh</Text>
-                                <Pressable onPress={handleClose} hitSlop={10}>
-                                    <X size={20} color={appTheme.colors.textMuted} />
-                                </Pressable>
-                            </XStack>
+        // animationType="none" — tự handle animation để nội dung và nền cùng lên 1 lúc
+        <Modal
+            visible={visible}
+            transparent
+            animationType="none"
+            statusBarTranslucent
+            onRequestClose={handleClose}
+        >
+            {/* Backdrop fade */}
+            <Animated.View
+                style={[StyleSheet.absoluteFill, sheet.backdrop, { opacity: backdropAnim }]}
+                pointerEvents="none"
+            />
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
 
-                            {/* Type picker */}
-                            <YStack gap={6} marginBottom={14}>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>LOẠI CHI PHÍ</Text>
-                                <Pressable onPress={() => setShowTypePicker(v => !v)} style={f.select}>
-                                    <Text fontSize={14} color={appTheme.colors.text} fontWeight="700">
-                                        {EXPENSE_TYPE_LABEL[expenseType]}
-                                    </Text>
-                                    <ChevronDown size={16} color={appTheme.colors.textMuted} />
-                                </Pressable>
-                                {showTypePicker ? (
-                                    <YStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden">
-                                        {EXPENSE_TYPES.map((t) => (
-                                            <Pressable
-                                                key={t}
-                                                onPress={() => { setExpenseType(t); setShowTypePicker(false); }}
-                                                style={[f.typeOption, t === expenseType && f.typeOptionActive]}
+            {/* Sheet slide — toàn bộ nội dung + nền cùng 1 Animated.View */}
+            <KeyboardAvoidingView
+                style={sheet.kav}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={0}
+                pointerEvents="box-none"
+            >
+                <Animated.View style={[sheet.container, { transform: [{ translateY }] }]}>
+                    <View style={sheet.handle} />
+
+                    {/* Header */}
+                    <XStack justifyContent="space-between" alignItems="center" marginBottom={18}>
+                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
+                            Thêm chi phí phát sinh
+                        </Text>
+                        <Pressable onPress={handleClose} hitSlop={12}>
+                            <X size={20} color={appTheme.colors.textMuted} />
+                        </Pressable>
+                    </XStack>
+
+                    <ScrollView
+                        style={{ maxHeight: windowHeight * 0.65 }}
+                        contentContainerStyle={sheet.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                        bounces={false}
+                    >
+                        {/* Type picker */}
+                        <YStack gap={6} marginBottom={14}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
+                                LOẠI CHI PHÍ
+                            </Text>
+                            <Pressable onPress={() => setShowTypePicker(v => !v)} style={f.select}>
+                                <Text fontSize={14} color={appTheme.colors.text} fontWeight="700">
+                                    {EXPENSE_TYPE_LABEL[expenseType]}
+                                </Text>
+                                <ChevronDown size={16} color={appTheme.colors.textMuted} />
+                            </Pressable>
+                            {showTypePicker ? (
+                                <YStack borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden">
+                                    {EXPENSE_TYPES.map((t) => (
+                                        <Pressable
+                                            key={t}
+                                            onPress={() => { setExpenseType(t); setShowTypePicker(false); }}
+                                            style={[f.typeOption, t === expenseType && f.typeOptionActive]}
+                                        >
+                                            <Text
+                                                fontSize={14}
+                                                fontWeight={t === expenseType ? '900' : '600'}
+                                                color={t === expenseType ? appTheme.colors.primary : appTheme.colors.text}
                                             >
-                                                <Text
-                                                    fontSize={14}
-                                                    fontWeight={t === expenseType ? '900' : '600'}
-                                                    color={t === expenseType ? appTheme.colors.primary : appTheme.colors.text}
-                                                >
-                                                    {EXPENSE_TYPE_LABEL[t]}
-                                                </Text>
-                                                {t === expenseType
-                                                    ? <CheckCircle size={16} color={appTheme.colors.primary} />
-                                                    : null}
-                                            </Pressable>
-                                        ))}
-                                    </YStack>
-                                ) : null}
-                            </YStack>
-
-                            {/* Amount */}
-                            <YStack marginBottom={14}>
-                                <FormField
-                                    label="SỐ TIỀN (VNĐ)"
-                                    value={amount}
-                                    onChangeText={setAmount}
-                                    placeholder="Ví dụ: 150000"
-                                    keyboardType="numeric"
-                                />
-                            </YStack>
-
-                            {/* Description */}
-                            <YStack gap={6} marginBottom={14}>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>GHI CHÚ (tùy chọn)</Text>
-                                <TextInput
-                                    style={[f.input, { minHeight: 60, textAlignVertical: 'top' }]}
-                                    value={description}
-                                    onChangeText={setDescription}
-                                    placeholder="Mô tả chi phí..."
-                                    placeholderTextColor={appTheme.colors.textMuted}
-                                    multiline
-                                    numberOfLines={2}
-                                />
-                            </YStack>
-
-                            {/* Receipt photo */}
-                            <YStack gap={6} marginBottom={16}>
-                                <XStack alignItems="center" gap={6}>
-                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>ẢNH BIÊN LAI</Text>
-                                    <View style={f.requiredBadge}>
-                                        <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
-                                    </View>
-                                </XStack>
-                                {receiptUri ? (
-                                    <XStack
-                                        borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
-                                        overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}
-                                    >
-                                        <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
-                                        <YStack flex={1} paddingHorizontal={12} gap={4}>
-                                            <XStack alignItems="center" gap={6}>
-                                                <View style={f.doneDot} />
-                                                <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>Đã chụp biên lai</Text>
-                                            </XStack>
-                                            <Pressable onPress={openCamera} style={f.retakeRow}>
-                                                <Camera size={12} color={appTheme.colors.primary} />
-                                                <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
-                                            </Pressable>
-                                        </YStack>
-                                        <Pressable onPress={() => setReceiptUri(null)} hitSlop={8} style={f.deleteBtn}>
-                                            <Trash2 size={18} color={appTheme.colors.danger} />
+                                                {EXPENSE_TYPE_LABEL[t]}
+                                            </Text>
+                                            {t === expenseType
+                                                ? <CheckCircle size={16} color={appTheme.colors.primary} />
+                                                : null}
                                         </Pressable>
-                                    </XStack>
-                                ) : (
-                                    <Pressable onPress={openCamera} style={f.captureBtn}>
-                                        <Camera size={20} color={appTheme.colors.primary} />
-                                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>Chụp ảnh biên lai</Text>
-                                    </Pressable>
-                                )}
-                            </YStack>
-
-                            {/* Error */}
-                            {formError ? (
-                                <YStack
-                                    padding={10} borderRadius={8} marginBottom={12}
-                                    backgroundColor={appTheme.colors.dangerSoft}
-                                    borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                                >
-                                    <AppText variant="caption" tone="danger">{formError}</AppText>
+                                    ))}
                                 </YStack>
                             ) : null}
+                        </YStack>
 
-                            {/* Actions */}
-                            <XStack gap={10}>
-                                <Pressable style={[f.btn, f.cancelBtn]} onPress={handleClose}>
-                                    <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
-                                </Pressable>
-                                <AppButton
-                                    flex={1}
-                                    tone="primary"
-                                    isLoading={isSubmitting}
-                                    onPress={handleSubmit}
-                                    height={48}
-                                >
-                                    Lưu chi phí
-                                </AppButton>
+                        {/* Amount */}
+                        <YStack marginBottom={14}>
+                            <FormField
+                                label="SỐ TIỀN (VNĐ)"
+                                value={amount}
+                                onChangeText={setAmount}
+                                placeholder="Ví dụ: 150000"
+                                keyboardType="numeric"
+                            />
+                        </YStack>
+
+                        {/* Description */}
+                        <YStack gap={6} marginBottom={14}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
+                                GHI CHÚ (tùy chọn)
+                            </Text>
+                            <TextInput
+                                style={[f.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                                value={description}
+                                onChangeText={setDescription}
+                                placeholder="Mô tả chi phí..."
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                multiline
+                                numberOfLines={2}
+                            />
+                        </YStack>
+
+                        {/* Receipt photo */}
+                        <YStack gap={6} marginBottom={16}>
+                            <XStack alignItems="center" gap={6}>
+                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
+                                    ẢNH BIÊN LAI
+                                </Text>
+                                <View style={f.requiredBadge}>
+                                    <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
+                                </View>
                             </XStack>
-                        </ScrollView>
-                    </View>
-                </KeyboardAvoidingView>
-            </View>
+                            {receiptUri ? (
+                                <XStack
+                                    borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
+                                    overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}
+                                >
+                                    <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                                    <YStack flex={1} paddingHorizontal={12} gap={4}>
+                                        <XStack alignItems="center" gap={6}>
+                                            <View style={f.doneDot} />
+                                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>
+                                                Đã chụp biên lai
+                                            </Text>
+                                        </XStack>
+                                        <Pressable onPress={openCamera} style={f.retakeRow}>
+                                            <Camera size={12} color={appTheme.colors.primary} />
+                                            <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
+                                        </Pressable>
+                                    </YStack>
+                                    <Pressable onPress={() => setReceiptUri(null)} hitSlop={8} style={f.deleteBtn}>
+                                        <Trash2 size={18} color={appTheme.colors.danger} />
+                                    </Pressable>
+                                </XStack>
+                            ) : (
+                                <Pressable onPress={openCamera} style={f.captureBtn}>
+                                    <Camera size={20} color={appTheme.colors.primary} />
+                                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
+                                        Chụp ảnh biên lai
+                                    </Text>
+                                </Pressable>
+                            )}
+                        </YStack>
+
+                        {/* Error */}
+                        {formError ? (
+                            <YStack
+                                padding={10} borderRadius={8} marginBottom={12}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                borderWidth={1} borderColor={appTheme.colors.dangerBorder}
+                            >
+                                <AppText variant="caption" tone="danger">{formError}</AppText>
+                            </YStack>
+                        ) : null}
+                    </ScrollView>
+
+                    {/* Actions — ngoài ScrollView, luôn visible */}
+                    <XStack gap={10} paddingTop={12}>
+                        <Pressable style={[f.btn, f.cancelBtn]} onPress={handleClose}>
+                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Hủy</Text>
+                        </Pressable>
+                        <AppButton
+                            flex={1}
+                            tone="primary"
+                            isLoading={isSubmitting}
+                            onPress={handleSubmit}
+                            height={48}
+                        >
+                            Lưu chi phí
+                        </AppButton>
+                    </XStack>
+                </Animated.View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -296,15 +373,28 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const sheet = StyleSheet.create({
+    backdrop: {
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    kav: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
     container: {
-        width: '100%', maxHeight: '90%', backgroundColor: '#fff',
-        borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        paddingHorizontal: 24, paddingTop: 12, paddingBottom: 20,
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: Platform.OS === 'ios' ? 32 : 20,
     },
     handle: {
         width: 40, height: 4, borderRadius: 2,
         backgroundColor: appTheme.colors.border,
         alignSelf: 'center', marginBottom: 16,
+    },
+    scrollContent: {
+        paddingBottom: 4,
     },
 });
 

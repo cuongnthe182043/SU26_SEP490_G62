@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { router } from 'expo-router';
 import { AlertTriangle, CheckCircle, ChevronRight, Clock, Package, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText } from '@/components/app-text';
+import { PaginationBar } from '@/components/pagination-bar';
 import { ScreenHeader } from '@/components/screen-header';
 import { HistorySkeleton } from '@/components/skeleton';
 import { TripStatusBadge } from '@/components/trip-status-badge';
@@ -30,7 +31,9 @@ const FILTERS: { key: Filter; label: string }[] = [
     { key: 'cancelled', label: 'Đã hủy' },
 ];
 
-const TERMINAL = new Set(['completed', 'available']);
+// orders.derived_status: open | completed | cancelled | partial
+// 'active' filter = orders chưa kết thúc (open / partial)
+const TERMINAL = new Set(['completed']);
 
 function applyFilter(orders: OrderHistoryItem[], f: Filter): OrderHistoryItem[] {
     if (f === 'all')       return orders;
@@ -168,35 +171,17 @@ function Empty({ filter }: { filter: Filter }) {
     );
 }
 
-function ListFooter({ isLoadingMore, hasMore, total }: {
-    isLoadingMore: boolean;
-    hasMore: boolean;
-    total: number;
-}) {
-    if (isLoadingMore) {
-        return (
-            <XStack justifyContent="center" paddingVertical={16} gap={8} alignItems="center">
-                <ActivityIndicator size="small" color={appTheme.colors.primary} />
-                <Text fontSize={12} color={appTheme.colors.textMuted}>Đang tải thêm...</Text>
-            </XStack>
-        );
-    }
-    if (!hasMore && total > 0) {
-        return (
-            <XStack justifyContent="center" paddingVertical={14}>
-                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                    Đã hiển thị tất cả {total} đơn hàng
-                </Text>
-            </XStack>
-        );
-    }
-    return null;
-}
-
 export function HistoryScreen() {
-    const { orders, pagination, isLoading, isLoadingMore, hasMore, error, refresh, loadMore } = useTripHistory();
+    const { orders, page, totalPages, total, isLoading, error, refresh, goToPage } = useTripHistory();
     const [filter, setFilter] = useState<Filter>('all');
+    const listRef = useRef<FlatList>(null);
     const filtered = applyFilter(orders, filter);
+
+    const handlePageChange = useCallback((p: number) => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        void goToPage(p);
+        setFilter('all');
+    }, [goToPage]);
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
@@ -226,13 +211,13 @@ export function HistoryScreen() {
                         </View>
                     </Pressable>
                 ))}
-                {pagination && (
+                {total > 0 ? (
                     <XStack flex={1} justifyContent="flex-end" alignItems="center">
                         <Text fontSize={11} color={appTheme.colors.textMuted}>
-                            {pagination.total} đơn
+                            {total} đơn
                         </Text>
                     </XStack>
-                )}
+                ) : null}
             </XStack>
 
             {error ? (
@@ -257,6 +242,7 @@ export function HistoryScreen() {
             ) : null}
 
             <FlatList
+                ref={listRef}
                 data={filtered}
                 keyExtractor={item => String(item.order_id)}
                 renderItem={({ item }) => <OrderCard item={item} />}
@@ -268,21 +254,23 @@ export function HistoryScreen() {
                 }}
                 refreshControl={
                     <RefreshControl
-                        refreshing={isLoading && orders.length > 0}
+                        refreshing={isLoading}
                         onRefresh={refresh}
                         tintColor={appTheme.colors.primary}
                     />
                 }
                 ListEmptyComponent={isLoading ? <HistorySkeleton /> : <Empty filter={filter} />}
-                ListFooterComponent={
-                    <ListFooter
-                        isLoadingMore={isLoadingMore}
-                        hasMore={hasMore}
-                        total={pagination?.total ?? 0}
-                    />
-                }
-                onEndReached={loadMore}
-                onEndReachedThreshold={0.3}
+            />
+
+            <PaginationBar
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                totalLabel="đơn hàng"
+                onPrev={() => handlePageChange(page - 1)}
+                onNext={() => handlePageChange(page + 1)}
+                onPage={handlePageChange}
+                disabled={isLoading}
             />
         </View>
     );

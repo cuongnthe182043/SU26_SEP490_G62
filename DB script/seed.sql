@@ -128,44 +128,75 @@ WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietn
 
 --------------------------------------------------------------------------------
 -- 10. ORDERS
+-- Địa chỉ pickup/delivery lưu ở trip_stops, KHÔNG phải orders
+-- orders.derived_status (không phải status), orders.total_estimated_price (không phải estimated_price)
 --------------------------------------------------------------------------------
--- Order 1: available — visible in driver trip pool
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes)
-SELECT c.id, p.id, 'Electronics Package', 50.0, '123 Nguyen Hue, HCMC', '456 Le Loi, HCMC', 500000, 'cash', 'available', 'Fragile - Handle with care'
+-- Order 1: open — visible in driver trip pool
+INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, payment_type, derived_status, notes)
+SELECT c.id, p.id, 'Electronics Package', 50.0, 500000, 'cash', 'open', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.customer_type = 'individual' AND c.phone = '0987654321'
-AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Electronics Package' AND pickup_address = '123 Nguyen Hue, HCMC')
+AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Electronics Package')
 LIMIT 1;
 
 -- Order 2: completed — appears in driver history
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, payment_type, status, notes, completed_at)
-SELECT c.id, p.id, 'Furniture Set', 200.0, '789 Tran Hung Dao, HCMC', '321 Nguyen Trai, HCMC', 1500000, 'bank_transfer', 'completed', 'Large furniture item', NOW() - INTERVAL '1 day'
+INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, payment_type, derived_status, notes)
+SELECT c.id, p.id, 'Furniture Set', 200.0, 1500000, 'bank_transfer', 'completed', 'Large furniture item'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.customer_type = 'business' AND c.phone = '0987654322'
-AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Furniture Set' AND pickup_address = '789 Tran Hung Dao, HCMC')
+AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Furniture Set')
 LIMIT 1;
 
 --------------------------------------------------------------------------------
--- 11. SHIPMENTS
+-- 11. SHIPMENTS + TRIP STOPS
+-- pickup_address / delivery_address lưu trong trip_stops (stop_type = pickup/delivery)
 --------------------------------------------------------------------------------
--- Shipment for order 1 (available — visible in pool, no owner)
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'available'
+-- Shipment 1: available — visible in pool, no owner
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+       o.cargo_weight_kg, o.total_estimated_price, 'available'
 FROM orders o
-WHERE o.status = 'available' AND o.cargo_name = 'Electronics Package'
+WHERE o.derived_status = 'open' AND o.cargo_name = 'Electronics Package'
 AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
--- Shipment for order 2 (completed — owned by driver1, shows in history)
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, claimed_at, completed_at)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), drv.id, o.pickup_address, o.delivery_address, o.cargo_weight_kg, o.estimated_price, 'completed',
+-- Trip stops for shipment 1
+INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
+SELECT os.id, 1, 'pickup', '123 Nguyen Hue, HCMC', 'Nguyen Hoang Anh', '0987654321'
+FROM order_shipments os JOIN orders o ON o.id = os.order_id
+WHERE o.cargo_name = 'Electronics Package' AND os.shipment_index = 1
+AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
+
+INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address)
+SELECT os.id, 2, 'delivery', '456 Le Loi, HCMC'
+FROM order_shipments os JOIN orders o ON o.id = os.order_id
+WHERE o.cargo_name = 'Electronics Package' AND os.shipment_index = 1
+AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
+
+-- Shipment 2: completed — owned by driver1, shows in history
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, owner_driver_id, cargo_weight_kg, estimated_price, status, claimed_at, completed_at)
+SELECT o.id, 1, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+       drv.id, o.cargo_weight_kg, o.total_estimated_price, 'completed',
        NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day'
 FROM orders o
 JOIN accounts a ON a.email = 'driver1@example.com'
 JOIN profiles drv ON drv.id = a.id
-WHERE o.status = 'completed' AND o.cargo_name = 'Furniture Set'
+WHERE o.derived_status = 'completed' AND o.cargo_name = 'Furniture Set'
 AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
+
+-- Trip stops for shipment 2
+INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
+SELECT os.id, 1, 'pickup', '789 Tran Hung Dao, HCMC', 'Tran Van Binh', '0987654323', NOW() - INTERVAL '2 days'
+FROM order_shipments os JOIN orders o ON o.id = os.order_id
+WHERE o.cargo_name = 'Furniture Set' AND os.shipment_index = 1
+AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
+
+INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, completed_at)
+SELECT os.id, 2, 'delivery', '321 Nguyen Trai, HCMC', NOW() - INTERVAL '1 day'
+FROM order_shipments os JOIN orders o ON o.id = os.order_id
+WHERE o.cargo_name = 'Furniture Set' AND os.shipment_index = 1
+AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
 
 --------------------------------------------------------------------------------
 -- 12. SHIPMENT ASSIGNMENTS (coordinator_assign records for order 1)
