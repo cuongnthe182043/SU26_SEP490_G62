@@ -1,4 +1,4 @@
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Layers, MapPin, Weight } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -43,25 +43,27 @@ export function TripCard({ trip, onPress, onClaim, isClaimLoading, claimDisabled
                     justifyContent="space-between"
                 >
                     <YStack gap={2}>
-                        <Text fontSize={11} color={appTheme.colors.textMuted} fontWeight="700">
-                            ĐƠN HÀNG #{trip.order_id}
-                        </Text>
+                        <XStack alignItems="center" gap={6}>
+                            <Text fontSize={11} color={appTheme.colors.textMuted} fontWeight="700">
+                                ĐƠN #{trip.order_id}
+                            </Text>
+                            {/* Chuyến thứ mấy / tổng */}
+                            <XStack
+                                paddingHorizontal={7} paddingVertical={2}
+                                borderRadius={6}
+                                backgroundColor={appTheme.colors.primarySoft}
+                                gap={3} alignItems="center"
+                            >
+                                <Layers size={10} color={appTheme.colors.primary} />
+                                <Text fontSize={10} fontWeight="900" color={appTheme.colors.primary}>
+                                    {trip.shipment_index}/{trip.total_order_legs}
+                                </Text>
+                            </XStack>
+                        </XStack>
                         <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>
                             {trip.cargo_name ?? 'Hàng hóa'}
                         </Text>
                     </YStack>
-                    {/* Legs badge */}
-                    <XStack
-                        paddingHorizontal={10} paddingVertical={4}
-                        borderRadius={appTheme.radius.pill}
-                        backgroundColor={appTheme.colors.primarySoft}
-                        gap={4} alignItems="center"
-                    >
-                        <Layers size={12} color={appTheme.colors.primary} />
-                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
-                            {trip.total_legs} chuyến
-                        </Text>
-                    </XStack>
                 </XStack>
 
                 {/* Body */}
@@ -96,7 +98,7 @@ export function TripCard({ trip, onPress, onClaim, isClaimLoading, claimDisabled
                         </XStack>
                         <YStack flex={1} gap={1}>
                             <Text fontSize={11} color={appTheme.colors.textMuted} fontWeight="700">
-                                ĐIỂM GIAO HÀNG CUỐI
+                                ĐIỂM GIAO HÀNG
                             </Text>
                             <Text fontSize={13} color={appTheme.colors.text} lineHeight={18}>
                                 {trip.delivery_address}
@@ -109,15 +111,15 @@ export function TripCard({ trip, onPress, onClaim, isClaimLoading, claimDisabled
                         <XStack alignItems="center" gap={5}>
                             <Weight size={13} color={appTheme.colors.textMuted} />
                             <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                {formatWeight(trip.total_cargo_weight_kg)}
+                                {formatWeight(trip.cargo_weight_kg)}
                             </Text>
                         </XStack>
                         <Text fontSize={12} color={appTheme.colors.textMuted}>
                             {trip.vehicle_group_name}
                         </Text>
-                        {trip.total_estimated_price ? (
+                        {trip.estimated_price ? (
                             <Text fontSize={12} fontWeight="800" color={appTheme.colors.primary}>
-                                {formatPrice(trip.total_estimated_price)}
+                                {formatPrice(trip.estimated_price)}
                             </Text>
                         ) : null}
                     </XStack>

@@ -15,18 +15,21 @@ export type TripStatus =
     | 'failed'
     | 'returning';
 
-// Pool hiển thị ORDER (không phải từng shipment riêng lẻ).
-// Driver nhận cả order, hệ thống tự kích hoạt từng leg theo thứ tự.
+// Pool hiển thị từng SHIPMENT riêng lẻ.
+// Mỗi shipment trong 1 order có thể được nhận bởi driver khác nhau.
 export type TripPoolItem = {
+    shipment_id: number;             // ID dùng để claim
     order_id: number;
+    shipment_index: number;          // chuyến thứ mấy trong order
+    total_order_legs: number;        // tổng số chuyến của order
     cargo_name: string | null;
     order_notes: string | null;
     payment_type: string | null;
-    pickup_address: string;          // điểm lấy hàng của leg đầu tiên
-    delivery_address: string;        // điểm giao của leg cuối cùng
-    total_cargo_weight_kg: string | null;
-    total_estimated_price: string | null;
-    total_legs: number;              // tổng số chuyến trong order
+    pickup_address: string;
+    delivery_address: string;
+    cargo_weight_kg: string | null;
+    estimated_price: string | null;
+    notes: string | null;
     created_at: string;
     vehicle_group_id: number;
     vehicle_group_name: string;
@@ -58,9 +61,21 @@ export type ActiveTrip = {
     max_shipment_index: number;
 };
 
+export type TripPoolPagination = {
+    total:      number;
+    page:       number;
+    limit:      number;
+    totalPages: number;
+};
+
 export type TripPoolResponse = {
-    trips: TripPoolItem[];
+    trips:         TripPoolItem[];
     vehicleGroups: VehicleGroup[];
+    total?:        number;
+    page?:         number;
+    limit?:        number;
+    totalPages?:   number;
+    pagination?:   TripPoolPagination;
 };
 
 export type ActiveTripResponse = {
@@ -184,12 +199,23 @@ export type PoolOrderDetail = {
 
 export type OrderDetailResponse = OrderDetailData;
 
-export type ExpenseType ='toll' | 'parking' | 'other';
+export type ExpenseType =
+    | 'fuel'
+    | 'toll'
+    | 'parking'
+    | 'repair'
+    | 'maintenance'
+    | 'depreciation'
+    | 'other';
 
 export const EXPENSE_TYPE_LABEL: Record<ExpenseType, string> = {
-    toll:    'Phí cầu đường',
-    parking: 'Đỗ xe',
-    other:   'Khác',
+    fuel:         'Nhiên liệu',
+    toll:         'Phí cầu đường',
+    parking:      'Đỗ xe',
+    repair:       'Sửa chữa',
+    maintenance:  'Bảo dưỡng',
+    depreciation: 'Khấu hao',
+    other:        'Khác',
 };
 
 export type Expense = {

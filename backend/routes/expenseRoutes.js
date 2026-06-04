@@ -16,15 +16,7 @@ function handleUpload(middleware) {
     };
 }
 
-// POST /api/expenses  — tạo chi phí kèm ảnh receipt
-router.post(
-    '/',
-    driverOnly,
-    handleUpload(uploadExpense.single('receipt')),
-    expenseController.createExpense,
-);
-
-// GET /api/expenses/shipment/:shipmentId  — lấy danh sách chi phí theo shipment
-router.get('/shipment/:shipmentId', driverOnly, expenseController.getShipmentExpenses);
+router.post('/',                       driverOnly, handleUpload(uploadExpense.single('receipt')), expenseController.createExpense);
+router.get('/shipment/:shipmentId',    driverOnly, expenseController.getShipmentExpenses);
 
 module.exports = router;

@@ -1,11 +1,11 @@
-
-
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import type { DimensionValue, ViewStyle } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { XStack, YStack } from 'tamagui';
 import { appTheme } from '@/theme/app-theme';
 
+// ─── Shared shimmer animation (module-level singleton) ────────────────────────
 
 const shimmerAnim = new Animated.Value(0);
 let _shimmerStarted = false;
@@ -15,14 +15,18 @@ function ensureShimmer() {
     _shimmerStarted = true;
     Animated.loop(
         Animated.timing(shimmerAnim, {
-            toValue: 1,
-            duration: 1100,
-            easing: Easing.linear,
-            useNativeDriver: true,
+            toValue:  1,
+            duration: 1400,
+            easing:   Easing.linear,
+            useNativeDriver: false, // SVG children require JS-thread driver
         }),
     ).start();
 }
 
+// ID counter — mỗi SVG cần gradient ID riêng để tránh conflict
+let _gradientCounter = 0;
+
+// ─── SkeletonBox ──────────────────────────────────────────────────────────────
 
 type BoxProps = {
     height: number;
@@ -33,36 +37,57 @@ type BoxProps = {
 
 export function SkeletonBox({ height, width = '100%', borderRadius = 8, style }: BoxProps) {
     const [w, setW] = useState(0);
+    const gradId    = useRef(`sk${++_gradientCounter}`).current;
 
     useEffect(() => { ensureShimmer(); }, []);
 
+    // Vệt sáng chạy từ bên trái sang phải — rộng ~55% container
+    const shimmerW  = Math.max(w * 0.55, 60);
     const translateX = shimmerAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [-Math.max(w, 1), Math.max(w, 1)],
+        inputRange:  [0, 1],
+        outputRange: [-shimmerW, w + shimmerW],
     });
 
     return (
         <View
             onLayout={e => setW(e.nativeEvent.layout.width)}
-            style={[{ height, borderRadius, backgroundColor: '#E8EDF2', overflow: 'hidden', width }, style]}
+            style={[
+                { height, borderRadius, backgroundColor: '#E2E8EF', overflow: 'hidden', width },
+                style,
+            ]}
         >
             {w > 0 && (
                 <Animated.View
-                    style={[
-                        StyleSheet.absoluteFill,
-                        {
-                            width: '55%',
-                            backgroundColor: 'rgba(255,255,255,0.58)',
-                            transform: [{ translateX }, { skewX: '-20deg' }],
-                        },
-                    ]}
-                />
+                    style={{
+                        position: 'absolute',
+                        top: 0, bottom: 0,
+                        width: shimmerW,
+                        transform: [
+                            { translateX },
+                            { skewX: '-12deg' }, // nghiêng nhẹ để trông như ánh sáng xiên
+                        ],
+                    }}
+                >
+                    {/* SVG LinearGradient: mờ hai đầu, sáng ở giữa */}
+                    <Svg width="100%" height="100%">
+                        <Defs>
+                            <LinearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+                                <Stop offset="0"   stopColor="#fff" stopOpacity="0"    />
+                                <Stop offset="0.3" stopColor="#fff" stopOpacity="0.45" />
+                                <Stop offset="0.5" stopColor="#fff" stopOpacity="0.75" />
+                                <Stop offset="0.7" stopColor="#fff" stopOpacity="0.45" />
+                                <Stop offset="1"   stopColor="#fff" stopOpacity="0"    />
+                            </LinearGradient>
+                        </Defs>
+                        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradId})`} />
+                    </Svg>
+                </Animated.View>
             )}
         </View>
     );
 }
 
-// ─── SkeletonLine — convenience short alias ────────────────────────────────────
+// ─── SkeletonLine — shorthand ─────────────────────────────────────────────────
 
 type LineProps = {
     width?: DimensionValue;
