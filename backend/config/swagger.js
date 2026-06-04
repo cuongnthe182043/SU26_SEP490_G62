@@ -6,10 +6,18 @@ const options = {
         info: {
             title: 'SEP490 G62 — Logistics API',
             version: '1.0.0',
-            description: 'API documentation — auto-generated from route JSDoc annotations.',
+            description: [
+                '## Hướng dẫn sử dụng',
+                '1. Đăng nhập qua **POST /auth/login** để lấy JWT token.',
+                '2. Click **Authorize** (góc trên phải), nhập token vào ô `bearerAuth`.',
+                '3. Token được lưu tự động, không cần nhập lại khi refresh trang.',
+                '',
+                '## Thêm endpoint mới',
+                'Tạo hoặc chỉnh sửa file tương ứng trong thư mục `docs/` — server tự reload.',
+            ].join('\n'),
         },
         servers: [
-            { url: 'http://localhost:9999', description: 'Local' },
+            { url: 'http://localhost:9999', description: 'Local dev' },
         ],
         components: {
             securitySchemes: {
@@ -21,10 +29,7 @@ const options = {
             },
         },
     },
-    // Scan tất cả route files tự động
-    apis: ['./routes/*.js'],
+    apis: ['./docs/**/*.js'],
 };
 
-const swaggerDocument = swaggerJsdoc(options);
-
-module.exports = swaggerDocument;
+module.exports = swaggerJsdoc(options);

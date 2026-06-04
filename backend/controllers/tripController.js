@@ -1,10 +1,14 @@
 const tripService = require('../services/tripService');
 
-// GET /api/trips/pool
+// GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
     try {
-        const { trips, vehicleGroups } = await tripService.getTripPool(req.user.userId);
-        res.json({ trips, vehicleGroups });
+        const page           = Math.max(1, Number(req.query.page) || 1);
+        const limit          = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
+        const vehicleGroupId = req.query.vehicleGroupId ? Number(req.query.vehicleGroupId) : null;
+
+        const data = await tripService.getTripPool(req.user.userId, { page, limit, vehicleGroupId });
+        res.json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -20,18 +24,20 @@ const getActiveTrip = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/claim  — :id là order_id
+// POST /api/trips/:id/claim  — :id là shipment_id
 const claimTrip = async (req, res) => {
     try {
-        const orderId = Number(req.params.id);
-        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
 
-        const trip = await tripService.claimTrip(orderId, req.user.userId);
-        res.status(200).json({ message: 'Nhận đơn hàng thành công', trip });
+        const trip = await tripService.claimTrip(shipmentId, req.user.userId);
+        res.status(200).json({ message: 'Nhận chuyến thành công', trip });
     } catch (err) {
-        // ALREADY_CLAIMED: → 409 Conflict (tài xế khác nhận trước)
         if (err.message.startsWith('ALREADY_CLAIMED:')) {
             return res.status(409).json({ error: err.message.replace('ALREADY_CLAIMED:', '') });
+        }
+        if (err.message.startsWith('SAME_ORDER:')) {
+            return res.status(409).json({ error: err.message.replace('SAME_ORDER:', '') });
         }
         const status = err.message.includes('đang có') ? 422
             : err.message.includes('chưa được gán') ? 422
@@ -138,7 +144,20 @@ const getOrderHistory = async (req, res) => {
     }
 };
 
-// GET /api/trips/pool/:orderId — chi tiết đơn hàng có sẵn (chưa nhận)
+// GET /api/trips/pool-shipment/:shipmentId — chi tiết 1 chuyến trong pool
+const getAvailableShipmentDetail = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.shipmentId);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
+        const detail = await tripService.getAvailableShipmentDetail(shipmentId);
+        res.json(detail);
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/pool/:orderId — giữ lại để tương thích
 const getAvailableOrderDetail = async (req, res) => {
     try {
         const orderId = Number(req.params.orderId);
@@ -174,6 +193,7 @@ module.exports = {
     completeTrip,
     getDriverStats,
     getOrderHistory,
+    getAvailableShipmentDetail,
     getAvailableOrderDetail,
     getOrderDetail,
 };

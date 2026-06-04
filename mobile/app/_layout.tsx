@@ -4,6 +4,7 @@ import { TamaguiProvider } from 'tamagui';
 
 import tamaguiConfig from '../tamagui.config';
 import { AuthProvider } from '@/providers/auth-provider';
+import { NotificationsProvider } from '@/providers/notifications-provider';
 import { UIProvider } from '@/providers/ui-provider';
 
 export default function RootLayout() {
@@ -20,7 +21,9 @@ export default function RootLayout() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <UIProvider>
         <AuthProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+          <NotificationsProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </NotificationsProvider>
         </AuthProvider>
       </UIProvider>
     </TamaguiProvider>

@@ -1,7 +1,5 @@
 const pool = require('../config/database');
 
-// ─── Create ───────────────────────────────────────────────────────────────────
-
 const createIncident = async ({ shipmentId, reportedBy, incidentType, severityLevel, description, location }) => {
     const result = await pool.query(
         `INSERT INTO incidents
@@ -22,8 +20,6 @@ const addIncidentEvidence = async (incidentId, fileUrl) => {
     );
     return result.rows[0];
 };
-
-// ─── Read ─────────────────────────────────────────────────────────────────────
 
 const getIncidentById = async (incidentId) => {
     const result = await pool.query(
@@ -78,8 +74,6 @@ const getIncidentsByDriver = async (driverId, { limit = 20, offset = 0 } = {}) =
     return { rows: rows.rows, total: Number(countRow.rows[0].count) };
 };
 
-// ─── Notification helpers ─────────────────────────────────────────────────────
-
 const getCoordinatorIds = async () => {
     const result = await pool.query(
         `SELECT p.id
@@ -90,14 +84,17 @@ const getCoordinatorIds = async () => {
     return result.rows.map((r) => r.id);
 };
 
-const insertNotifications = async (userIds, { title, body, entityId }) => {
-    if (!userIds.length) return;
-    const placeholders = userIds.map((_, i) => `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`).join(', ');
-    const values = userIds.flatMap((uid) => [uid, title, body, 'incident_reported', entityId]);
-    await pool.query(
-        `INSERT INTO notifications (user_id, title, body, type, entity_id) VALUES ${placeholders}`,
-        values,
+const updateIncidentStatus = async (incidentId, { status, resolution = null }) => {
+    const isClosing = status === 'resolved' || status === 'closed';
+    const result = await pool.query(
+        `UPDATE incidents
+         SET status     = $2
+             ${isClosing ? ', resolved_at = NOW()' : ''}
+         WHERE id = $1
+         RETURNING *`,
+        [incidentId, status],
     );
+    return result.rows[0] ?? null;
 };
 
 module.exports = {
@@ -106,5 +103,5 @@ module.exports = {
     getIncidentById,
     getIncidentsByDriver,
     getCoordinatorIds,
-    insertNotifications,
+    updateIncidentStatus,
 };

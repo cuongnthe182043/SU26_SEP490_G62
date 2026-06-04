@@ -1,12 +1,16 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const routes = require('./routes');
 const swaggerDocument = require('./config/swagger');
+const { initNotificationGateway } = require('./services/notificationGateway');
 
 const app = express();
 const port = process.env.PORT || 9999;
+const server = http.createServer(app);
+initNotificationGateway(server);
 
 // Middleware
 app.use(express.json());
@@ -18,7 +22,15 @@ app.get('/', (req, res) => {
 });
 
 // API documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        filter: true,
+        tryItOutEnabled: true,
+    },
+    customSiteTitle: 'G62 Logistics API',
+}));
 
 // Routes
 app.use('/', routes);
@@ -35,7 +47,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
 });
 

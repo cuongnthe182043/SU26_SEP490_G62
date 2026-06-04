@@ -1,38 +1,45 @@
-import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AlertTriangle, Inbox } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText } from '@/components/app-text';
-import { ScreenHeader } from '@/components/screen-header';
-import { TripPoolSkeleton } from '@/components/skeleton';
-import { TripCard } from '@/components/trip-card';
-import { VehicleGroupFilter } from '@/components/vehicle-group-filter';
-import { appTheme } from '@/theme/app-theme';
-import type { TripPoolItem } from '@/types/trip';
-import { useActiveTrip } from '@/hooks/use-active-trip';
-import { useClaimTrip } from '@/hooks/use-claim-trip';
-import { useTripPool } from '@/hooks/use-trip-pool';
+import { AppText }             from '@/components/app-text';
+import { PaginationBar }       from '@/components/pagination-bar';
+import { ScreenHeader }        from '@/components/screen-header';
+import { TripPoolSkeleton }    from '@/components/skeleton';
+import { TripCard }            from '@/components/trip-card';
+import { VehicleGroupFilter }  from '@/components/vehicle-group-filter';
+import { appTheme }            from '@/theme/app-theme';
+import type { TripPoolItem }   from '@/types/trip';
+import { useActiveTrip }       from '@/hooks/use-active-trip';
+import { useClaimTrip }        from '@/hooks/use-claim-trip';
+import { useTripPool }         from '@/hooks/use-trip-pool';
 import { useConfirm, useToast } from '@/providers/ui-provider';
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function TripPoolScreen() {
     const {
         trips,
-        totalCount,
         vehicleGroups,
+        total,
+        page,
+        totalPages,
         groupFilter,
         setGroupFilter,
         isLoading,
         refresh,
-        removeOrder,
+        goToPage,
+        removeShipment,
     } = useTripPool();
 
     const { trip: activeTrip } = useActiveTrip();
-    const hasActiveTrip = activeTrip !== null;
+    const hasActiveTrip        = activeTrip !== null;
 
     const [claimingId, setClaimingId] = useState<number | null>(null);
+    const scrollRef = useRef<ScrollView>(null);
     const { showConfirm } = useConfirm();
     const { showToast }   = useToast();
     const { claim }       = useClaimTrip();
@@ -40,55 +47,53 @@ export function TripPoolScreen() {
     const handleClaim = useCallback(
         async (trip: TripPoolItem) => {
             if (hasActiveTrip) {
-                showToast({ type: 'warning', message: 'Bạn đang có đơn hàng đang thực hiện' });
+                showToast({ type: 'warning', message: 'Bạn đang có chuyến đang thực hiện' });
                 return;
             }
-            if (claimingId !== null) return; // block nếu đang xử lý claim khác
+            if (claimingId !== null) return;
 
             const ok = await showConfirm({
-                title:        'Nhận đơn hàng',
-                message:      `Đơn #${trip.order_id} — ${trip.total_legs} chuyến\n${trip.pickup_address} → ${trip.delivery_address}`,
-                confirmLabel: 'Nhận đơn hàng',
+                title:        'Nhận chuyến',
+                message:      `Đơn #${trip.order_id} — Chuyến ${trip.shipment_index}/${trip.total_order_legs}\n${trip.pickup_address} → ${trip.delivery_address}`,
+                confirmLabel: 'Nhận chuyến',
             });
             if (!ok) return;
 
-            // Xóa ngay khỏi danh sách (optimistic) trước khi gọi API
-            removeOrder(trip.order_id);
-            setClaimingId(trip.order_id);
+            removeShipment(trip.shipment_id);
+            setClaimingId(trip.shipment_id);
 
-            const result = await claim(trip.order_id);
+            const result = await claim(trip.shipment_id);
             setClaimingId(null);
 
             if (result.ok) {
-                showToast({ type: 'success', message: `Đã nhận đơn hàng #${trip.order_id}` });
+                showToast({ type: 'success', message: `Đã nhận chuyến ${trip.shipment_index} của đơn #${trip.order_id}` });
                 router.replace('/active-trip');
+            } else if (result.sameOrder) {
+                showToast({ type: 'warning', message: result.message });
+                refresh(false);
             } else if (result.alreadyClaimed) {
-                showToast({ type: 'warning', message: 'Đơn hàng này đã được tài xế khác nhận' });
-                refresh(false); // sync lại, không hiện spinner
+                showToast({ type: 'warning', message: 'Chuyến này đã được tài xế khác nhận' });
+                refresh(false);
             } else {
                 showToast({ type: 'error', message: result.message });
                 refresh(false);
             }
         },
-        [hasActiveTrip, claimingId, claim, removeOrder, refresh, showConfirm, showToast],
+        [hasActiveTrip, claimingId, claim, removeShipment, refresh, showConfirm, showToast],
     );
 
-    const filterLabel = groupFilter !== null
-        ? (vehicleGroups.find((g) => g.id === groupFilter)?.name ?? '')
-        : null;
-
-    const countLabel = isLoading && trips.length === 0
-        ? null
-        : filterLabel
-            ? `${trips.length} đơn — ${filterLabel}`
-            : `${totalCount} đơn hàng`;
+    const paginationDisabled = isLoading || claimingId !== null;
+    const handlePageChange = useCallback((nextPage: number) => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+        goToPage(nextPage);
+    }, [goToPage]);
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
             <ScreenHeader title="Đơn hàng có sẵn" showBack />
 
-            {/* Filter chips */}
+            {/* Vehicle group filter */}
             <View style={{ paddingTop: 12, paddingBottom: 4 }}>
                 <VehicleGroupFilter
                     groups={vehicleGroups}
@@ -98,6 +103,7 @@ export function TripPoolScreen() {
             </View>
 
             <ScrollView
+                ref={scrollRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
@@ -114,34 +120,33 @@ export function TripPoolScreen() {
                 }
             >
                 {/* Count label */}
-                {countLabel ? (
-                    <AppText variant="caption" tone="muted">{countLabel}</AppText>
+                {!isLoading || trips.length > 0 ? (
+                    <AppText variant="caption" tone="muted">
+                        {total > 0 ? `${total} đơn · trang ${page}/${totalPages}` : ''}
+                    </AppText>
                 ) : null}
 
-                {/* Active trip warning banner */}
+                {/* Active trip warning */}
                 {hasActiveTrip ? (
                     <XStack
-                        padding={12}
-                        borderRadius={appTheme.radius.sm}
+                        padding={12} borderRadius={appTheme.radius.sm}
                         backgroundColor={appTheme.colors.warningSoft}
-                        borderWidth={1}
-                        borderColor={appTheme.colors.warningBorder}
-                        gap={8}
-                        alignItems="center"
+                        borderWidth={1} borderColor={appTheme.colors.warningBorder}
+                        gap={8} alignItems="center"
                     >
                         <AlertTriangle size={16} color={appTheme.colors.warningText} />
                         <YStack flex={1}>
                             <Text fontSize={12} fontWeight="900" color={appTheme.colors.warningText}>
-                                Bạn đang có đơn hàng đang thực hiện
+                                Bạn đang có chuyến đang thực hiện
                             </Text>
                             <Text fontSize={11} color={appTheme.colors.warningTextMuted}>
-                                Hoàn thành tất cả chuyến trong đơn để nhận đơn mới
+                                Hoàn thành chuyến hiện tại trước khi nhận chuyến mới
                             </Text>
                         </YStack>
                     </XStack>
                 ) : null}
 
-                {/* Skeleton — first load */}
+                {/* Skeleton */}
                 {isLoading && trips.length === 0 ? <TripPoolSkeleton /> : null}
 
                 {/* Empty state */}
@@ -156,7 +161,7 @@ export function TripPoolScreen() {
                         </XStack>
                         <YStack alignItems="center" gap={4}>
                             <AppText variant="bodyStrong" tone="muted">
-                                {filterLabel ? `Không có đơn cho "${filterLabel}"` : 'Chưa có chuyến nào'}
+                                {groupFilter ? 'Không có đơn cho nhóm xe này' : 'Chưa có chuyến nào'}
                             </AppText>
                             <AppText variant="caption" tone="muted">Kéo để làm mới danh sách</AppText>
                         </YStack>
@@ -166,15 +171,29 @@ export function TripPoolScreen() {
                 {/* Trip cards */}
                 {trips.map((trip) => (
                     <TripCard
-                        key={trip.order_id}
+                        key={trip.shipment_id}
                         trip={trip}
-                        onPress={() => router.push(`/pool-order/${trip.order_id}`)}
+                        onPress={() => router.push(`/pool-order/${trip.shipment_id}`)}
                         onClaim={() => handleClaim(trip)}
-                        isClaimLoading={claimingId === trip.order_id}
+                        isClaimLoading={claimingId === trip.shipment_id}
                         claimDisabled={hasActiveTrip || claimingId !== null}
                     />
                 ))}
+
+                <PaginationBar
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    totalLabel="đơn"
+                    onPrev={() => handlePageChange(page - 1)}
+                    onNext={() => handlePageChange(page + 1)}
+                    onPage={handlePageChange}
+                    disabled={paginationDisabled}
+                />
             </ScrollView>
+
+            {/* Pagination bar — fixed at bottom */}
         </View>
     );
 }
+

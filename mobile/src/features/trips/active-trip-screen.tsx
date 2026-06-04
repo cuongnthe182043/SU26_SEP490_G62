@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
@@ -22,6 +22,7 @@ import { useCompletionProof }  from '@/hooks/use-completion-proof';
 import { useReleaseTrip }      from '@/hooks/use-release-trip';
 import { useShipmentExpenses } from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle }    from '@/hooks/use-trip-lifecycle';
+import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
 import type { ActiveTrip, Expense, TripStatus } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
@@ -30,6 +31,16 @@ import { ExpenseFormModal } from './components/expense-form-modal';
 import { PhotoCaptureCard } from './components/photo-capture-card';
 import { ReasonModal }     from './components/reason-modal';
 import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status-stepper';
+
+// Toast message shown after each lifecycle transition
+const STATUS_ADVANCE_TOAST: Partial<Record<TripStatus, string>> = {
+    picking:   'Đang di chuyển đến điểm lấy hàng',
+    loaded:    'Đã lấy hàng xong — chuẩn bị xuất phát',
+    transit:   'Đang vận chuyển hàng đến điểm giao',
+    arrived:   'Đã đến điểm giao — tiến hành giao hàng',
+    failed:    'Ghi nhận giao thất bại — cần hoàn hàng về điểm lấy',
+    returning: 'Đang hoàn hàng về điểm lấy',
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -193,7 +204,16 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
 // ─── Active trip content ──────────────────────────────────────────────────────
 
 function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () => void }) {
-    const { isLoading: lifecycleLoading, advance } = useTripLifecycle(() => refresh());
+    const { showToast }   = useToast();
+    const { showAlert }   = useAppAlert();
+    const { showConfirm } = useConfirm();
+
+    const { isLoading: lifecycleLoading, advance } = useTripLifecycle((updatedTrip) => {
+        const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
+        if (msg) showToast({ type: 'success', message: msg, duration: 2500 });
+        refresh();
+    });
+
     const [permission, requestPermission] = useCameraPermissions();
 
     const [receiptUri,   setReceiptUri]   = useState<string | null>(null);
@@ -202,7 +222,15 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [showRelease,  setShowRelease]  = useState(false);
     const [showExpense,  setShowExpense]  = useState(false);
 
-    const { isUploading, error: proofError, completeWithProof } = useCompletionProof(() => router.back());
+    const { isUploading, error: proofError, completeWithProof } = useCompletionProof(async () => {
+        await showAlert({
+            type: 'success',
+            title: 'Hoàn thành chuyến!',
+            message: 'Chuyến đã được xác nhận giao hàng thành công.',
+            okLabel: 'Tuyệt vời!',
+        });
+        router.back();
+    });
     const { isLoading: releaseLoading, releaseTrip }            = useReleaseTrip(() => router.back());
     const { expenses, load: loadExpenses }                      = useShipmentExpenses(trip.id);
 
@@ -229,14 +257,17 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         setCameraTarget(target);
     };
 
-    const handleMarkFailed = () => Alert.alert(
-        'Xác nhận giao thất bại',
-        'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
-        [
-            { text: 'Hủy', style: 'cancel' },
-            { text: 'Xác nhận', style: 'destructive', onPress: () => advance(trip.id, 'failed') },
-        ],
-    );
+    const handleMarkFailed = async () => {
+        const ok = await showConfirm({
+            title:        'Xác nhận giao thất bại?',
+            message:      'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
+            confirmLabel: 'Xác nhận thất bại',
+            cancelLabel:  'Hủy',
+            danger:       true,
+        });
+        if (!ok) return;
+        await advance(trip.id, 'failed');
+    };
 
     const expenseBadge = expenses.length > 0
         ? `${expenses.length} khoản · ${fmt(expenses.reduce((s, e) => s + Number(e.amount), 0))}`
