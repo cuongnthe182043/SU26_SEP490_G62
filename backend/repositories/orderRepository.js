@@ -1,249 +1,213 @@
 const pool = require('../config/database');
+const { SHIPMENT_STATUS, ASSIGNMENT_TYPE } = require('../constants/tripConstants');
 
-/**
- * Get all orders with customer details
- */
-const getAllOrders = async (filters = {}, page = null, limit = null) => {
-    let baseQuery = `
-        FROM orders o
-        LEFT JOIN customers c ON o.customer_id = c.id
-        LEFT JOIN debts d ON o.id = d.order_id
-    `;
-    const params = [];
-    const conditions = [];
-
-    if (filters.status && filters.status !== 'all') {
-        params.push(filters.status);
-        conditions.push(`o.status = $${params.length}`);
-    }
-
-    if (filters.search) {
-        params.push(`%${filters.search}%`);
-        conditions.push(`(o.cargo_name ILIKE $${params.length} OR o.pickup_address ILIKE $${params.length} OR o.delivery_address ILIKE $${params.length} OR CAST(o.id AS TEXT) LIKE $${params.length} OR c.full_name ILIKE $${params.length} OR c.phone ILIKE $${params.length})`);
-    }
-
-    if (conditions.length > 0) {
-        baseQuery += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    // 1. Get total items count for pagination
-    const countQuery = `SELECT COUNT(o.id) ${baseQuery}`;
-    const countResult = await pool.query(countQuery, params);
-    const totalItems = parseInt(countResult.rows[0].count);
-
-    // 2. Build the main paginated query
-    let query = `
-        SELECT o.*, 
-               CASE WHEN o.payment_type = 'client_credit' THEN 'debt' ELSE o.payment_type END as payment_type,
-               o.cargo_weight_kg as cargo_weight,
-               c.full_name as customer_name, 
-               c.company_name as customer_company, 
-               c.phone as customer_phone,
-               d.id as debt_id,
-               d.status as debt_status,
-               d.total_amount as debt_total,
-               d.paid_amount as debt_paid
-        ${baseQuery}
-        ORDER BY o.created_at DESC
-    `;
-
-    if (page !== null && limit !== null) {
-        const offset = (page - 1) * limit;
-        params.push(limit);
-        query += ` LIMIT $${params.length}`;
-        params.push(offset);
-        query += ` OFFSET $${params.length}`;
-    }
-
-    const result = await pool.query(query, params);
-    const totalPages = limit ? Math.ceil(totalItems / limit) : 1;
-
-    return {
-        orders: result.rows,
-        totalItems,
-        totalPages,
-        currentPage: page || 1,
-        limit: limit || totalItems
-    };
-};
-
-/**
- * Find or create a customer by phone number
- */
-const findOrCreateCustomer = async (client, { phone, name, company_name, customer_type = 'individual' }) => {
-    // Look up by phone
-    const lookup = await client.query('SELECT id FROM customers WHERE phone = $1', [phone]);
-    if (lookup.rows.length > 0) {
-        return lookup.rows[0].id;
-    }
-
-    // Create new customer
-    const insert = await client.query(
-        `INSERT INTO customers (customer_type, full_name, company_name, phone, address, current_debt)
-         VALUES ($1, $2, $3, $4, $5, 0) RETURNING id`,
-        [customer_type, name, company_name || null, phone, '']
+const listOrders = async () => {
+    const result = await pool.query(
+        `SELECT
+            o.id,
+            o.customer_id,
+            o.cargo_name,
+            o.cargo_weight_kg,
+            o.pickup_address,
+            o.delivery_address,
+            o.estimated_price,
+            o.status,
+            o.notes,
+            o.created_at,
+            o.updated_at,
+            s.completed_at,
+            c.full_name AS customer_name,
+            c.phone AS customer_phone,
+            d.full_name AS driver_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN LATERAL (
+            SELECT s1.completed_at
+            FROM order_shipments s1
+            WHERE s1.order_id = o.id
+            ORDER BY s1.shipment_index DESC
+            LIMIT 1
+         ) s ON TRUE
+         LEFT JOIN LATERAL (
+            SELECT pr.full_name
+            FROM order_shipments os
+            LEFT JOIN profiles pr ON pr.id = os.owner_driver_id
+            WHERE os.order_id = o.id
+            ORDER BY os.shipment_index ASC
+            LIMIT 1
+         ) d ON TRUE
+         ORDER BY o.created_at DESC`,
     );
-    return insert.rows[0].id;
+    return result.rows;
 };
 
-/**
- * Create a single order
- */
-const createOrder = async (orderData) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+const getDriverById = async (client, driverId) => {
+    if (!driverId) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE d.profile_id = $1
+         LIMIT 1`,
+        [driverId],
+    );
+    return result.rows[0] ?? null;
+};
 
-        // Resolve customer
-        const customerId = await findOrCreateCustomer(client, {
-            phone: orderData.customer_phone,
-            name: orderData.customer_name,
-            company_name: orderData.customer_company,
-        });
+const getDriverByPlate = async (client, plateNumber) => {
+    if (!plateNumber) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id
+         FROM vehicles v
+         LEFT JOIN drivers d ON d.vehicle_id = v.id
+         LEFT JOIN profiles p ON p.id = d.profile_id
+         WHERE v.plate_number = $1
+         LIMIT 1`,
+        [plateNumber],
+    );
+    return result.rows[0] ?? null;
+};
 
-        // Map frontend 'debt' payment type to database 'client_credit' check constraint
-        const dbPaymentType = orderData.payment_type === 'debt' ? 'client_credit' : orderData.payment_type;
+const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
+    const normalizedPhone = normalizePhone(customerPhone);
+    if (!normalizedPhone) return null;
 
-        // Insert order
-        const orderQuery = `
-            INSERT INTO orders (
-                customer_id, created_by, cargo_name, cargo_weight_kg, 
-                pickup_address, delivery_address, estimated_price, 
-                payment_type, status, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING *, cargo_weight_kg as cargo_weight
-        `;
-        const orderParams = [
-            customerId,
-            orderData.created_by,
+    const existingCustomer = await client.query(
+        `SELECT id, full_name, phone
+         FROM customers
+         WHERE phone = $1
+         LIMIT 1`,
+        [normalizedPhone],
+    );
+    if (existingCustomer.rows[0]) return existingCustomer.rows[0];
+
+    const createdCustomer = await client.query(
+        `INSERT INTO customers (customer_type, full_name, contact_person, phone)
+         VALUES ('individual', $1, $1, $2)
+         RETURNING id, full_name, phone`,
+        [safeTrim(customerName) || normalizedPhone, normalizedPhone],
+    );
+    return createdCustomer.rows[0];
+};
+
+const createOrderWithShipment = async ({
+    client,
+    userId,
+    orderData,
+    shipmentData,
+    assignmentData,
+}) => {
+    const orderResult = await client.query(
+        `INSERT INTO orders
+            (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+            orderData.customer_id,
+            userId,
             orderData.cargo_name,
-            orderData.cargo_weight || 0,
+            orderData.cargo_weight_kg,
             orderData.pickup_address,
             orderData.delivery_address,
-            orderData.estimated_price || 0,
-            dbPaymentType || 'cash',
-            orderData.status || 'pending',
-            orderData.notes || ''
-        ];
+            orderData.estimated_price,
+            orderData.status,
+            orderData.notes,
+        ],
+    );
 
-        const orderResult = await client.query(orderQuery, orderParams);
-        const newOrder = orderResult.rows[0];
-        
-        // Create an automatic shipment for this order (1-to-1 default). 
-        // Note: vehicle_group_id is required NOT NULL in new DB schema, defaulting to 1 (Small Van)
-        // Note: default status is 'available' instead of 'pending'
-        const shipmentQuery = `
-            INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, status)
-            VALUES ($1, 1, 1, $2, $3, $4, 'available')
-        `;
-        await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight_kg]);
+    const order = orderResult.rows[0];
+    const shipmentResult = await client.query(
+        `INSERT INTO order_shipments
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+         RETURNING *`,
+        [
+            order.id,
+            shipmentData.vehicle_group_id,
+            shipmentData.owner_driver_id,
+            shipmentData.pickup_address,
+            shipmentData.delivery_address,
+            shipmentData.cargo_weight_kg,
+            shipmentData.estimated_price,
+            shipmentData.status,
+            shipmentData.notes,
+        ],
+    );
 
-        // Create an automatic debt tracking entry for this order
-        const debtQuery = `
-            INSERT INTO debts (debt_type, customer_id, order_id, total_amount, paid_amount, due_date, status, notes, updated_by)
-            VALUES ('customer', $1, $2, $3, 0, CURRENT_DATE + INTERVAL '30 days', 'unpaid', $4, $5)
-        `;
-        const debtParams = [
-            customerId,
-            newOrder.id,
-            newOrder.estimated_price || 0,
-            `Khởi tạo công nợ tự động cho đơn hàng #${newOrder.id + 8800}`,
-            orderData.created_by
-        ];
-        await client.query(debtQuery, debtParams);
-
-        await client.query('COMMIT');
-        return newOrder;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
+    if (assignmentData?.driver_id && assignmentData?.vehicle_id) {
+        await client.query(
+            `INSERT INTO shipment_assignments
+                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+                shipmentResult.rows[0].id,
+                assignmentData.driver_id,
+                assignmentData.vehicle_id,
+                assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
+                assignmentData.assigned_by ?? null,
+            ],
+        );
     }
+
+    return { order, shipment: shipmentResult.rows[0] };
 };
 
-/**
- * Bulk create orders from Excel upload
- */
-const bulkCreateOrders = async (ordersArray, createdByUserId) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const createdOrders = [];
+const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
+    const orderResult = await client.query(
+        `INSERT INTO orders
+            (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', $8)
+         RETURNING *`,
+        [
+            orderData.customer_id,
+            userId,
+            orderData.cargo_name,
+            orderData.cargo_weight_kg,
+            orderData.pickup_address,
+            orderData.delivery_address,
+            orderData.estimated_price,
+            orderData.notes,
+        ],
+    );
 
-        for (const order of ordersArray) {
-            // Resolve customer
-            const customerId = await findOrCreateCustomer(client, {
-                phone: order.customer_phone || '0000000000',
-                name: order.customer_name || 'Khách hàng Excel',
-                company_name: order.customer_company || null,
-            });
+    const order = orderResult.rows[0];
+    const shipmentResult = await client.query(
+        `INSERT INTO order_shipments
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
+         VALUES ($1, 1, 1, NULL, $2, $3, $4, $5, 'available', $6, NULL)
+         RETURNING *`,
+        [
+            order.id,
+            shipmentData.pickup_address,
+            shipmentData.delivery_address,
+            shipmentData.cargo_weight_kg,
+            shipmentData.estimated_price,
+            shipmentData.notes,
+        ],
+    );
 
-            // Map frontend 'debt' payment type to database 'client_credit' check constraint
-            const dbPaymentType = order.payment_type === 'debt' ? 'client_credit' : order.payment_type;
-
-            // Insert order
-            const orderQuery = `
-                INSERT INTO orders (
-                    customer_id, created_by, cargo_name, cargo_weight_kg, 
-                    pickup_address, delivery_address, estimated_price, 
-                    payment_type, status, notes
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
-                RETURNING *, cargo_weight_kg as cargo_weight
-            `;
-            const orderParams = [
-                customerId,
-                createdByUserId,
-                order.cargo_name || 'Hàng hóa tổng hợp',
-                order.cargo_weight || 0,
-                order.pickup_address || 'Địa điểm mặc định',
-                order.delivery_address || 'Địa điểm mặc định',
-                order.estimated_price || 0,
-                dbPaymentType || 'cash',
-                order.notes || 'Imported via Excel'
-            ];
-
-            const orderResult = await client.query(orderQuery, orderParams);
-            const newOrder = orderResult.rows[0];
-            
-            // Create corresponding shipment. vehicle_group_id default = 1, status default = 'available'
-            const shipmentQuery = `
-                INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, pickup_address, delivery_address, cargo_weight_kg, status)
-                VALUES ($1, 1, 1, $2, $3, $4, 'available')
-            `;
-            await client.query(shipmentQuery, [newOrder.id, newOrder.pickup_address, newOrder.delivery_address, newOrder.cargo_weight_kg]);
-            
-            // Create automatic debt entry
-            const debtQuery = `
-                INSERT INTO debts (debt_type, customer_id, order_id, total_amount, paid_amount, due_date, status, notes, updated_by)
-                VALUES ('customer', $1, $2, $3, 0, CURRENT_DATE + INTERVAL '30 days', 'unpaid', $4, $5)
-            `;
-            const debtParams = [
-                customerId,
-                newOrder.id,
-                newOrder.estimated_price || 0,
-                `Khởi tạo công nợ tự động từ Excel cho đơn hàng #${newOrder.id + 8800}`,
-                createdByUserId
-            ];
-            await client.query(debtQuery, debtParams);
-
-            createdOrders.push(newOrder);
-        }
-
-        await client.query('COMMIT');
-        return createdOrders;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    return { order, shipment: shipmentResult.rows[0] };
 };
 
 module.exports = {
-    getAllOrders,
-    createOrder,
-    bulkCreateOrders,
+    listOrders,
+    getDriverById,
+    getDriverByPlate,
+    findOrCreateCustomer,
+    createOrderWithShipment,
+    importOrderWithShipment,
+    SHIPMENT_STATUS,
 };

@@ -37,6 +37,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: "root"
       DB_SSL: "false"
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -47,11 +50,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:9999}
     restart: unless-stopped
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_BASE_URL=http://localhost:9999
+      - "5173:80"
     depends_on:
       - backend
     networks:

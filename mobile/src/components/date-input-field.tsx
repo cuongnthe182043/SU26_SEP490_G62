@@ -29,10 +29,11 @@ function parseDisplay(display: string): Date | null {
     return date;
 }
 
-// ISO YYYY-MM-DD → hiển thị DD-MM-YYYY
+// ISO YYYY-MM-DD (hoặc YYYY-MM-DDTHH:mm:ssZ) → hiển thị DD-MM-YYYY
 function isoToDisplay(iso: string): string {
     if (!iso) return '';
-    const [y, m, d] = iso.split('-');
+    const datePart = iso.slice(0, 10); // lấy đúng phần YYYY-MM-DD
+    const [y, m, d] = datePart.split('-');
     if (!y || !m || !d) return '';
     return `${d}-${m}-${y}`;
 }
