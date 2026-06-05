@@ -65,9 +65,11 @@ const fireStatusNotif = (driverId, shipmentId, newStatus) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const getTripPool = async (_driverId, { page = 1, limit = 5, vehicleGroupId = null } = {}) => {
+// BR-003: Auto-filter theo vehicle group của driver. vehicleGroupId override (coordinator dùng)
+const getTripPool = async (driverId, { page = 1, limit = 5, vehicleGroupId = null } = {}) => {
+    const effectiveGroupId = vehicleGroupId ?? await tripRepository.getDriverVehicleGroupId(driverId);
     const [paged, vehicleGroups] = await Promise.all([
-        tripRepository.getAvailableShipments({ page, limit, vehicleGroupId }),
+        tripRepository.getAvailableShipments({ page, limit, vehicleGroupId: effectiveGroupId }),
         tripRepository.getAllVehicleGroups(),
     ]);
     return { ...paged, vehicleGroups };
@@ -106,7 +108,7 @@ const claimTrip = async (shipmentId, driverId) => {
     return claimed;
 };
 
-const updateStatus = async (tripId, driverId, newStatus) => {
+const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
@@ -116,52 +118,21 @@ const updateStatus = async (tripId, driverId, newStatus) => {
         throw new Error(`Không thể chuyển trạng thái từ "${trip.status}" sang "${newStatus}"`);
     }
 
-    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus);
+    if (newStatus === SHIPMENT_STATUS.FAILED && (!reason || !reason.trim())) {
+        throw new Error('Lý do giao thất bại là bắt buộc');
+    }
 
-    // Lưu thông báo trạng thái vào DB
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null);
+
     fireStatusNotif(driverId, tripId, newStatus);
 
-    // Sau khi hoàn thành (COMPLETED): kích hoạt leg tiếp theo nếu có
-    if (newStatus === SHIPMENT_STATUS.COMPLETED) {
-        const vehicleId = await tripRepository.getDriverVehicleId(driverId);
-        const nextShipment = await tripRepository.activateNextShipment(tripId, driverId, vehicleId);
-        if (nextShipment) {
-            notificationService.createForUser(driverId, {
-                title: 'Chuyến tiếp theo đã sẵn sàng',
-                message: `Chuyến #${nextShipment.id} trong cùng đơn hàng đã được tự động kích hoạt. Hãy tiếp tục giao hàng.`,
-                type: 'TRIP_QUEUED',
-                entityType: 'shipments',
-                entityId: nextShipment.id,
-            }, { displayMode: 'alert' }).catch(() => {});
-        }
-    }
+    // RETURNING → COMPLETED: hàng đã về kho, KHÔNG auto-activate leg tiếp theo
+    // Successful delivery COMPLETED được xử lý qua completeTrip (POST /complete)
 
     return updatedTrip;
 };
 
-// Không thể giao hàng: ARRIVED → CANCELLED + lý do bắt buộc
-const cancelDelivery = async (tripId, driverId, reason) => {
-    if (!reason || !reason.trim()) throw new Error('Lý do không thể giao hàng là bắt buộc');
-
-    const trip = await tripRepository.getTripById(tripId);
-    if (!trip) throw new Error('Chuyến không tồn tại');
-    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
-    if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chỉ có thể báo không giao được khi đã đến điểm giao');
-
-    const cancelled = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.CANCELLED, reason.trim());
-
-    notificationService.createForUser(driverId, {
-        title: 'Không thể giao hàng',
-        message: `Chuyến #${tripId} đã bị hủy: ${reason.trim().slice(0, 60)}`,
-        type: 'TRIP_STATUS_UPDATED',
-        entityType: 'shipments',
-        entityId: tripId,
-    }, { displayMode: 'silent' }).catch(() => {});
-
-    return cancelled;
-};
-
-// Hủy chuyến sớm: CLAIMED/PICKING → trả toàn bộ order về pool (available)
+// Driver tự hủy chuyến: CLAIMED/PICKING → trả shipment về pool (available)
 const releaseTrip = async (tripId, driverId, reason) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
@@ -183,35 +154,43 @@ const releaseTrip = async (tripId, driverId, reason) => {
     return released;
 };
 
-const completeTrip = async (tripId, driverId, receiptFileUrl, proofFileUrl) => {
+// ARRIVED → COMPLETED: driver xác nhận giao hàng thành công
+// Yêu cầu ảnh proof thực tế (BR-015, BR-016, BR-017)
+const completeTrip = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chuyến phải ở trạng thái "arrived" để hoàn thành');
+    if (!proofFileUrl) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
 
-    if (!receiptFileUrl) throw new Error('Ảnh biên lai giao hàng là bắt buộc');
-    await tripRepository.saveShipmentReceipt(tripId, driverId, receiptFileUrl);
-
-    const isFinal = await tripRepository.isFinalShipment(tripId);
-    if (isFinal) {
-        if (!proofFileUrl) throw new Error('Ảnh xác nhận hoàn thành đơn hàng là bắt buộc cho chuyến cuối');
-        await tripRepository.saveCompletionProof(tripId, driverId, proofFileUrl);
-    }
+    await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
     const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
 
-    // Lưu thông báo hoàn thành vào DB
-    const completionMsg = isFinal
-        ? `Chuyến #${tripId} — chuyến cuối của đơn hàng #${trip.order_id} đã hoàn thành!`
-        : `Chuyến #${tripId} của đơn hàng #${trip.order_id} đã hoàn thành.`;
+    const isFinal = await tripRepository.isFinalShipment(tripId);
 
     notificationService.createForUser(driverId, {
         title: isFinal ? 'Hoàn thành toàn bộ đơn hàng!' : 'Hoàn thành chuyến',
-        message: completionMsg,
+        message: isFinal
+            ? `Chuyến #${tripId} — chuyến cuối của đơn hàng #${trip.order_id} đã hoàn thành!`
+            : `Chuyến #${tripId} của đơn hàng #${trip.order_id} đã hoàn thành.`,
         type: 'ORDER_COMPLETED',
         entityType: 'shipments',
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
+
+    // Auto-activate leg tiếp theo nếu coordinator đã pre-assign cho driver này
+    const vehicleId = await tripRepository.getDriverVehicleId(driverId);
+    const nextShipment = await tripRepository.activateNextShipment(tripId, driverId, vehicleId);
+    if (nextShipment) {
+        notificationService.createForUser(driverId, {
+            title: 'Chuyến tiếp theo đã sẵn sàng',
+            message: `Chuyến #${nextShipment.id} trong cùng đơn hàng đã sẵn sàng. Hãy tiếp tục giao hàng.`,
+            type: 'TRIP_QUEUED',
+            entityType: 'shipments',
+            entityId: nextShipment.id,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
 
     return completedTrip;
 };
@@ -257,7 +236,6 @@ module.exports = {
     getActiveTrip,
     claimTrip,
     updateStatus,
-    cancelDelivery,
     releaseTrip,
     completeTrip,
     getDriverStats,

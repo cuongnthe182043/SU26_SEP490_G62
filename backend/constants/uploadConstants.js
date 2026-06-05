@@ -4,11 +4,12 @@ const UPLOAD = Object.freeze({
     CLOUDINARY_QUALITY: 'auto:good',
     ALLOWED_FORMATS: ['jpg', 'jpeg', 'png', 'webp'],
     FOLDERS: {
-        PROOF:    'g62/completion-proofs',
-        RECEIPT:  'g62/receipts',
-        INCIDENT: 'g62/incidents',
-        AVATAR:   'g62/avatars',
-        EXPENSE:  'g62/expenses',
+        PROOF:           'g62/completion-proofs',
+        RECEIPT:         'g62/receipts',
+        PAYMENT_RECEIPT: 'g62/payment-receipts',
+        INCIDENT:        'g62/incidents',
+        AVATAR:          'g62/avatars',
+        EXPENSE:         'g62/expenses',
     },
 });
 
