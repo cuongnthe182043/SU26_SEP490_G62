@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
-const { uploadTripComplete } = require('../middleware/uploadMiddleware');
-const tripController = require('../controllers/tripController');
+const { uploadProof, uploadPaymentReceipt } = require('../middleware/uploadMiddleware');
+const tripController    = require('../controllers/tripController');
+const paymentController = require('../controllers/paymentController');
 
 const driverOnly = [verifyToken, requireRole('driver')];
 
@@ -26,19 +27,34 @@ router.get('/pool/:orderId',              driverOnly, tripController.getAvailabl
 
 router.get('/active', driverOnly, tripController.getActiveTrip);
 
-router.post('/:id/claim',           driverOnly, tripController.claimTrip);
-router.patch('/:id/status',         driverOnly, tripController.updateStatus);
-router.post('/:id/cancel-delivery', driverOnly, tripController.cancelDelivery);
-router.post('/:id/release',         driverOnly, tripController.releaseTrip);
+router.post('/:id/claim',   driverOnly, tripController.claimTrip);
+router.patch('/:id/status', driverOnly, tripController.updateStatus);
+router.post('/:id/release', driverOnly, tripController.releaseTrip);
 
 router.post(
     '/:id/complete',
     driverOnly,
-    handleUpload(uploadTripComplete.fields([
-        { name: 'receipt', maxCount: 1 },
-        { name: 'proof',   maxCount: 1 },
-    ])),
+    handleUpload(uploadProof.single('proof')),
     tripController.completeTrip,
 );
+
+// TH2: Ghi nhận khách trả tiền mặt cho driver → tạo driver debt
+router.post(
+    '/:id/payment',
+    driverOnly,
+    handleUpload(uploadPaymentReceipt.single('receipt')),
+    paymentController.recordCashPayment,
+);
+router.get('/:id/payments', driverOnly, paymentController.getShipmentPayments);
+
+// Multi-Stop: xem + xác nhận từng stop (BR-011)
+router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
+router.patch('/:id/stops/:stopId/arrive',   driverOnly, tripController.arriveAtStop);
+router.patch('/:id/stops/:stopId/complete', driverOnly, tripController.completeStop);
+
+// Multi-Run X2C/X3C: xem + thực hiện từng lượt (BR-012)
+router.get('/:id/runs',                       driverOnly, tripController.getShipmentRuns);
+router.patch('/:id/runs/:runIndex/start',     driverOnly, tripController.startRun);
+router.patch('/:id/runs/:runIndex/complete',  driverOnly, tripController.completeRun);
 
 module.exports = router;

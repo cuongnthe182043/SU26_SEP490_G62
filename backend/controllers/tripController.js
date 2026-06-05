@@ -1,4 +1,7 @@
-const tripService = require('../services/tripService');
+const tripService    = require('../services/tripService');
+const stopRepository = require('../repositories/stopRepository');
+const tripRepository = require('../repositories/tripRepository');
+const runRepository  = require('../repositories/runRepository');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
@@ -47,41 +50,24 @@ const claimTrip = async (req, res) => {
 };
 
 // PATCH /api/trips/:id/status
+// Body: { status, reason? }  — reason bắt buộc khi status = "failed"
 const updateStatus = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
-        const { status } = req.body;
+        const { status, reason } = req.body;
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
         if (!status) return res.status(400).json({ error: 'Trạng thái không được để trống' });
 
-        const trip = await tripService.updateStatus(tripId, req.user.userId, status);
+        const trip = await tripService.updateStatus(tripId, req.user.userId, status, reason);
         res.json({ message: 'Cập nhật trạng thái thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
-            : err.message.includes('không thể') ? 422
+            : err.message.includes('không thể') || err.message.includes('bắt buộc') ? 422
             : 400;
         res.status(code).json({ error: err.message });
     }
 };
 
-
-const cancelDelivery = async (req, res) => {
-    try {
-        const tripId = Number(req.params.id);
-        const { reason } = req.body;
-        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
-        if (!reason?.trim()) return res.status(400).json({ error: 'Lý do không thể giao hàng là bắt buộc' });
-
-        const trip = await tripService.cancelDelivery(tripId, req.user.userId, reason);
-        res.json({ message: 'Đã ghi nhận không thể giao hàng', trip });
-    } catch (err) {
-        const code = err.message.includes('không có quyền') ? 403
-            : err.message.includes('bắt buộc') ? 400
-            : err.message.includes('khi đã đến') ? 422
-            : 400;
-        res.status(code).json({ error: err.message });
-    }
-};
 
 // POST /api/trips/:id/release
 // Body: { reason?: string }
@@ -102,16 +88,15 @@ const releaseTrip = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/complete  (multipart/form-data, fields: receipt, proof?)
+// POST /api/trips/:id/complete  (multipart/form-data, field: proof — ảnh thực tế từ camera)
 const completeTrip = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const receiptUrl = req.files?.receipt?.[0]?.path ?? null;
-        const proofUrl   = req.files?.proof?.[0]?.path   ?? null;
+        const proofUrl = req.file?.path ?? null;
 
-        const trip = await tripService.completeTrip(tripId, req.user.userId, receiptUrl, proofUrl);
+        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl);
         res.json({ message: 'Hoàn thành chuyến thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
@@ -183,13 +168,135 @@ const getOrderDetail = async (req, res) => {
     }
 };
 
+// GET /api/trips/:id/stops
+const getShipmentStops = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền xem stops của chuyến này' });
+        }
+        const stops = await stopRepository.getStopsByShipment(shipmentId);
+        res.json({ stops });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// PATCH /api/trips/:id/stops/:stopId/arrive
+const arriveAtStop = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const stopId     = Number(req.params.stopId);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền cập nhật stop này' });
+        }
+        const stop = await stopRepository.markStopArrived(stopId, shipmentId);
+        if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã đánh dấu đến' });
+        res.json({ message: 'Đã đánh dấu đến điểm dừng', stop });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// PATCH /api/trips/:id/stops/:stopId/complete
+const completeStop = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const stopId     = Number(req.params.stopId);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền cập nhật stop này' });
+        }
+        // BR-011: phải đúng thứ tự
+        const prevDone = await stopRepository.isPreviousStopDone(stopId, shipmentId);
+        if (!prevDone) return res.status(422).json({ error: 'Phải hoàn thành stop trước (BR-011)' });
+
+        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, req.body.proof_url ?? null);
+        if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã hoàn thành' });
+        res.json({ message: 'Đã hoàn thành điểm dừng', stop });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/:id/runs
+const getShipmentRuns = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền xem runs của chuyến này' });
+        }
+        const runs = await runRepository.getRunsByShipment(shipmentId);
+        res.json({ runs, total: runs.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// PATCH /api/trips/:id/runs/:runIndex/start
+const startRun = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const runIndex   = Number(req.params.runIndex);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền thao tác runs của chuyến này' });
+        }
+        const vehicleId = await tripRepository.getDriverVehicleId(req.user.userId);
+        const run = await runRepository.startRun(shipmentId, runIndex, req.user.userId, vehicleId);
+        if (!run) return res.status(409).json({ error: 'Lượt chạy không tồn tại hoặc đã bắt đầu/hoàn thành' });
+        res.json({ message: `Bắt đầu lượt chạy ${runIndex}`, run });
+    } catch (err) {
+        const code = err.message.includes('đang có') ? 422 : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// PATCH /api/trips/:id/runs/:runIndex/complete
+const completeRun = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const runIndex   = Number(req.params.runIndex);
+        const trip = await tripRepository.getTripById(shipmentId);
+        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
+            return res.status(403).json({ error: 'Bạn không có quyền thao tác runs của chuyến này' });
+        }
+        const run = await runRepository.completeRun(shipmentId, runIndex, req.body.notes ?? null);
+        if (!run) return res.status(409).json({ error: 'Lượt chạy không tồn tại hoặc chưa bắt đầu' });
+
+        // BR-012: Trip chỉ ready để complete khi tất cả runs xong
+        const allDone = await runRepository.areAllRunsCompleted(shipmentId);
+        res.json({
+            message: `Hoàn thành lượt chạy ${runIndex}`,
+            run,
+            all_runs_completed: allDone,
+        });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
     claimTrip,
     updateStatus,
-    cancelDelivery,
     releaseTrip,
+    getShipmentStops,
+    arriveAtStop,
+    completeStop,
+    getShipmentRuns,
+    startRun,
+    completeRun,
     completeTrip,
     getDriverStats,
     getOrderHistory,
