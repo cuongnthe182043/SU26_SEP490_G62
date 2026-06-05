@@ -38,7 +38,7 @@ export default function Accountant({ user, onLogout }) {
   // Fetch finance statistics
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/finance/stats`, {
+      const response = await fetch(`${API_BASE}/accountant/finance/stats`, {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -57,7 +57,7 @@ export default function Accountant({ user, onLogout }) {
     setLoading(true);
     setError("");
     try {
-      let url = `${API_BASE}/orders?page=${currentPage}&limit=${itemsPerPage}`;
+      let url = `${API_BASE}/accountant/orders?page=${currentPage}&limit=${itemsPerPage}`;
       const params = [];
       if (activeStatusFilter !== "all") {
         params.push(`status=${activeStatusFilter}`);
