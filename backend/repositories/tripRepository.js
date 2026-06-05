@@ -166,12 +166,14 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             return null;
         }
 
+        // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
         const sameOrderCheck = await client.query(
             `SELECT id FROM order_shipments
              WHERE order_id = $1
                AND owner_driver_id = $2
+               AND status = ANY($3::text[])
              LIMIT 1`,
-            [order_id, driverId],
+            [order_id, driverId, ACTIVE_STATUSES],
         );
         if (sameOrderCheck.rows.length > 0) {
             await client.query('ROLLBACK');
@@ -221,6 +223,9 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
 
         const { order_id, shipment_index } = cur.rows[0];
 
+        // Chỉ auto-activate nếu coordinator đã pre-assign chuyến tiếp cho driver này
+        // (owner_driver_id = driverId AND status = 'available')
+        // Pool trips (owner_driver_id = NULL) không auto-activate — driver tự claim từ pool
         const nextResult = await client.query(
             `UPDATE order_shipments
              SET status     = $1,
@@ -233,7 +238,9 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
                AND shipment_index  = (
                    SELECT MIN(shipment_index)
                    FROM order_shipments
-                   WHERE order_id = $2 AND shipment_index > $4
+                   WHERE order_id = $2
+                     AND shipment_index > $4
+                     AND owner_driver_id = $3
                )
              RETURNING *`,
             [SHIPMENT_STATUS.CLAIMED, order_id, driverId, shipment_index],
@@ -292,20 +299,52 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
         await client.query('BEGIN');
 
         const cur = await client.query(
-            `SELECT order_id, status FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            `SELECT order_id, status, vehicle_id FROM order_shipments WHERE id = $1 FOR UPDATE`,
             [tripId],
         );
         if (!cur.rows[0]) throw new Error('Chuyến không tồn tại');
 
+        // Trả trip về pool: xóa sạch thông tin driver/thời điểm claim trước đó
         await client.query(
             `UPDATE order_shipments
              SET status          = 'available',
                  owner_driver_id = NULL,
-                 cancel_reason   = $1,
-                 cancelled_at    = NOW(),
+                 vehicle_id      = NULL,
+                 claimed_at      = NULL,
+                 notes           = CASE WHEN $1 IS NOT NULL
+                                       THEN COALESCE(notes || E'\n', '') || '[Released] ' || $1
+                                       ELSE notes
+                                   END,
                  updated_at      = NOW()
              WHERE id = $2`,
             [reason ?? null, tripId],
+        );
+
+        // Đóng shipment_assignments record của lần claim này
+        await client.query(
+            `UPDATE shipment_assignments
+             SET completed_at = NOW()
+             WHERE shipment_id = $1 AND driver_id = $2 AND completed_at IS NULL`,
+            [tripId, driverId],
+        );
+
+        // Ghi audit vào shipment_assignment_history
+        await client.query(
+            `INSERT INTO shipment_assignment_history
+                 (shipment_id, from_driver_id, from_vehicle_id,
+                  to_driver_id, to_vehicle_id,
+                  changed_by, change_reason, notes, changed_at)
+             SELECT $1,
+                    sa.driver_id, sa.vehicle_id,
+                    sa.driver_id, sa.vehicle_id,
+                    $2, 'driver_request',
+                    $3,
+                    NOW()
+             FROM shipment_assignments sa
+             WHERE sa.shipment_id = $1 AND sa.driver_id = $2
+             ORDER BY sa.assigned_at DESC
+             LIMIT 1`,
+            [tripId, driverId, reason ? `Driver tự hủy: ${reason}` : 'Driver tự hủy chuyến'],
         );
 
         await client.query('COMMIT');
@@ -333,19 +372,7 @@ const isFinalShipment = async (tripId) => {
     return Number(shipment_index) === Number(max_index);
 };
 
-// Ảnh biên lai giao hàng → delivery_proofs
-const saveShipmentReceipt = async (shipmentId, driverId, fileUrl) => {
-    const result = await pool.query(
-        `INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
-         VALUES ($1, $2, $3, TRUE, NOW())
-         RETURNING *`,
-        [shipmentId, driverId, fileUrl],
-    );
-    return result.rows[0];
-};
-
-// Ảnh xác nhận hoàn thành (chuyến cuối) → delivery_proofs
-const saveCompletionProof = async (shipmentId, driverId, fileUrl) => {
+const saveDeliveryProof = async (shipmentId, driverId, fileUrl) => {
     const result = await pool.query(
         `INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
          VALUES ($1, $2, $3, TRUE, NOW())
@@ -560,8 +587,8 @@ module.exports = {
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,
-    saveShipmentReceipt,
-    saveCompletionProof,
+    saveDeliveryProof,
+    activateNextShipment,
     getDriverStats,
     getDriverOrderHistory,
     getAvailableShipmentDetail,

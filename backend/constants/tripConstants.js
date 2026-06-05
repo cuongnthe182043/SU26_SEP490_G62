@@ -32,7 +32,6 @@ const CANCELLABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.PICKING,
     SHIPMENT_STATUS.LOADED,
     SHIPMENT_STATUS.TRANSIT,
-    SHIPMENT_STATUS.ARRIVED,
 ]);
 
 // Strict forward-only transitions via PATCH /status endpoint

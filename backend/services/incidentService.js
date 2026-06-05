@@ -15,6 +15,8 @@ const TYPE_LABEL = {
     vehicle_breakdown: 'Sự cố xe',
     cargo_damage:      'Hàng hóa bị hỏng',
     road_incident:     'Đường sá / giao thông',
+    customer_refusal:  'Khách từ chối nhận',
+    traffic_jam:       'Tắc đường',
     other:             'Khác',
 };
 

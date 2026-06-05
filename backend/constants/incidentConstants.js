@@ -2,6 +2,8 @@ const INCIDENT_TYPE = Object.freeze({
     VEHICLE_BREAKDOWN: 'vehicle_breakdown',
     CARGO_DAMAGE:      'cargo_damage',
     ROAD_INCIDENT:     'road_incident',
+    CUSTOMER_REFUSAL:  'customer_refusal',
+    TRAFFIC_JAM:       'traffic_jam',
     OTHER:             'other',
 });
 
