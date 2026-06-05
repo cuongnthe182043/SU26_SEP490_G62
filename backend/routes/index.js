@@ -7,7 +7,6 @@ const accountantRoutes = require('./accountant/accountantRoutes');
 const tripRoutes = require('./tripRoutes');
 const profileRoutes = require('./profileRoutes');
 const coordinatorRoutes = require('./coordinatorRoutes');
-const orderRoutes = require('./orderRoutes');
 const driverRoutes = require('./driverRoutes');
 const adminRoutes = require('./adminRoutes');
 const expenseRoutes = require('./expenseRoutes');
