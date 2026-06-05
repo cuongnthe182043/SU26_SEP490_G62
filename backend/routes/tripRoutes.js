@@ -52,9 +52,4 @@ router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
 router.patch('/:id/stops/:stopId/arrive',   driverOnly, tripController.arriveAtStop);
 router.patch('/:id/stops/:stopId/complete', driverOnly, tripController.completeStop);
 
-// Multi-Run X2C/X3C: xem + thực hiện từng lượt (BR-012)
-router.get('/:id/runs',                       driverOnly, tripController.getShipmentRuns);
-router.patch('/:id/runs/:runIndex/start',     driverOnly, tripController.startRun);
-router.patch('/:id/runs/:runIndex/complete',  driverOnly, tripController.completeRun);
-
 module.exports = router;
