@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { incidentService } from '@/services/incident-service';
-import type { CreateIncidentPayload } from '@/services/incident-service';
+import type { UpdateIncidentPayload } from '@/services/incident-service';
 import type { Incident } from '@/types/incident';
 
 type State = {
@@ -8,28 +8,24 @@ type State = {
     error: string | null;
 };
 
-export function useSubmitIncident(
-    onSuccess?: (incident: Incident) => void,
-    onError?: (err: unknown) => void,
-) {
+export function useUpdateIncident(onSuccess?: (incident: Incident) => void) {
     const [state, setState] = useState<State>({ isSubmitting: false, error: null });
 
-    const submit = async (payload: CreateIncidentPayload) => {
+    const update = async (id: number, payload: UpdateIncidentPayload) => {
         setState({ isSubmitting: true, error: null });
         try {
-            const { incident } = await incidentService.createIncident(payload);
+            const { incident } = await incidentService.updateIncident(id, payload);
             setState({ isSubmitting: false, error: null });
             onSuccess?.(incident);
             return incident;
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Không thể gửi báo cáo sự cố';
+            const message = err instanceof Error ? err.message : 'Không thể cập nhật sự cố';
             setState({ isSubmitting: false, error: message });
-            onError?.(err);
             return null;
         }
     };
 
     const clearError = () => setState((s) => ({ ...s, error: null }));
 
-    return { ...state, submit, clearError };
+    return { ...state, update, clearError };
 }

@@ -27,6 +27,53 @@ const STATUS_LABEL = {
     closed:        'Đã đóng',
 };
 
+// Lấy incidents của 1 shipment (driver xem + check duplicate)
+const getShipmentIncidents = async (shipmentId, driverId) => {
+    const shipment = await tripRepository.getTripById(shipmentId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+    if (Number(shipment.owner_driver_id) !== Number(driverId)) {
+        throw new Error('Bạn không có quyền xem sự cố của chuyến này');
+    }
+    return incidentRepository.getIncidentsByShipment(shipmentId);
+};
+
+// Driver cập nhật sự cố của mình (chỉ khi còn open)
+const updateMyIncident = async (incidentId, driverId, { severityLevel, description, location }) => {
+    if (description !== undefined && description !== null) {
+        if (!description.trim()) throw new Error('Mô tả sự cố không được để trống');
+        if (description.trim().length < 10) throw new Error('Mô tả phải có ít nhất 10 ký tự');
+    }
+
+    const incident = await incidentRepository.getIncidentById(incidentId);
+    if (!incident) throw new Error('Sự cố không tồn tại');
+    if (Number(incident.reported_by) !== Number(driverId)) {
+        throw new Error('Bạn không có quyền chỉnh sửa sự cố này');
+    }
+    if (incident.status !== 'open') {
+        throw new Error('Chỉ có thể chỉnh sửa sự cố đang ở trạng thái "Đang chờ"');
+    }
+
+    const updated = await incidentRepository.updateIncident(incidentId, driverId, {
+        severityLevel: severityLevel ?? null,
+        description:   description ? description.trim() : null,
+        location:      location !== undefined ? (location?.trim() || null) : undefined,
+    });
+
+    if (!updated) throw new Error('Không thể cập nhật sự cố');
+
+    // Notify coordinators về cập nhật
+    const coordinatorIds = await incidentRepository.getCoordinatorIds();
+    notificationService.createForUsers(coordinatorIds, {
+        title: `Cập nhật sự cố #${incidentId}`,
+        message: `Tài xế đã cập nhật thông tin sự cố trên chuyến #${incident.shipment_id}`,
+        type: 'INCIDENT_REPORTED',
+        entityType: 'incidents',
+        entityId: incidentId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return incidentRepository.getIncidentById(incidentId);
+};
+
 const createIncident = async (driverId, { shipmentId, incidentType, severityLevel, description, location }, imageUrls = []) => {
     if (!incidentType || !ALLOWED_INCIDENT_TYPES.includes(incidentType)) {
         throw new Error('Loại sự cố không hợp lệ');
@@ -54,6 +101,13 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
 
     if (imageUrls.length > MAX_IMAGES_PER_INCIDENT) {
         throw new Error(`Tối đa ${MAX_IMAGES_PER_INCIDENT} ảnh minh chứng`);
+    }
+
+    // Chỉ 1 sự cố mỗi loại (incident_type) trên 1 chuyến
+    const existing = await incidentRepository.getIncidentsByShipment(shipmentId);
+    const duplicate = existing.find((i) => i.incident_type === incidentType);
+    if (duplicate) {
+        throw new Error(`DUPLICATE_TYPE:Chuyến này đã có sự cố loại "${TYPE_LABEL[incidentType] ?? incidentType}". Vui lòng chỉnh sửa sự cố đã tạo thay vì tạo mới.`);
     }
 
     const incident = await incidentRepository.createIncident({
@@ -142,4 +196,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     return updated;
 };
 
-module.exports = { createIncident, getMyIncidents, getIncidentDetail, updateIncidentStatus };
+module.exports = {
+    createIncident, getMyIncidents, getIncidentDetail,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
+};

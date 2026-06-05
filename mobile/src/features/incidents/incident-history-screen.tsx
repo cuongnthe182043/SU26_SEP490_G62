@@ -1,5 +1,9 @@
-import { Image, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { AlertTriangle, CheckCircle, Clock, FileText, Image as ImageIcon, MapPin, Package, SearchX, Truck } from 'lucide-react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import {
+    AlertTriangle, CheckCircle, ChevronRight, Clock, FileText,
+    Image as ImageIcon, MapPin, Package, SearchX, Truck,
+} from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText } from '@/components/app-text';
@@ -31,10 +35,12 @@ const SEVERITY_DOT_COLOR: Record<IncidentSeverity, string> = {
 };
 
 const TYPE_ICON: Record<IncidentType, React.ReactNode> = {
-    vehicle_breakdown: <Truck     size={16} color={appTheme.colors.danger}       />,
-    cargo_damage:      <Package   size={16} color={appTheme.colors.warningText}  />,
-    road_incident:     <AlertTriangle size={16} color={appTheme.colors.warning}  />,
-    other:             <FileText  size={16} color={appTheme.colors.textMuted}    />,
+    vehicle_breakdown: <Truck         size={16} color={appTheme.colors.danger}      />,
+    cargo_damage:      <Package       size={16} color={appTheme.colors.warningText} />,
+    road_incident:     <AlertTriangle size={16} color={appTheme.colors.warning}     />,
+    customer_refusal:  <FileText      size={16} color='#7C3AED'                     />,
+    traffic_jam:       <MapPin        size={16} color={appTheme.colors.primary}     />,
+    other:             <FileText      size={16} color={appTheme.colors.textMuted}   />,
 };
 
 function StatusBadge({ status }: { status: IncidentStatus }) {
@@ -55,8 +61,6 @@ function StatusBadge({ status }: { status: IncidentStatus }) {
     );
 }
 
-// ─── Date formatter ───────────────────────────────────────────────────────────
-
 function formatDate(iso: string) {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
@@ -66,16 +70,14 @@ function formatDate(iso: string) {
 // ─── Incident card ────────────────────────────────────────────────────────────
 
 function IncidentCard({ item }: { item: Incident }) {
-    const severityColor = SEVERITY_DOT_COLOR[item.severity_level] ?? appTheme.colors.warning;
-    const previewImages = item.image_urls.slice(0, 3);
+    const severityColor  = SEVERITY_DOT_COLOR[item.severity_level] ?? appTheme.colors.warning;
+    const previewImages  = item.image_urls.slice(0, 3);
+    const canEdit        = item.status === 'open';
 
     return (
-        <YStack
-            borderRadius={appTheme.radius.lg}
-            borderWidth={1}
-            borderColor={appTheme.colors.border}
-            backgroundColor={appTheme.colors.surface}
-            overflow="hidden"
+        <Pressable
+            onPress={() => router.push({ pathname: '/incident-detail', params: { id: String(item.id) } })}
+            style={({ pressed }) => [s.card, pressed && { opacity: 0.85 }]}
         >
             {/* Header */}
             <XStack
@@ -96,12 +98,14 @@ function IncidentCard({ item }: { item: Incident }) {
                         {INCIDENT_TYPE_LABEL[item.incident_type]}
                     </Text>
                 </XStack>
-                <StatusBadge status={item.status} />
+                <XStack alignItems="center" gap={6}>
+                    <StatusBadge status={item.status} />
+                    <ChevronRight size={14} color={appTheme.colors.textMuted} />
+                </XStack>
             </XStack>
 
             {/* Body */}
             <YStack padding={14} gap={10}>
-                {/* Severity + shipment */}
                 <XStack alignItems="center" gap={10} justifyContent="space-between">
                     <XStack alignItems="center" gap={6}>
                         <View style={[s.severityDot, { backgroundColor: severityColor }]} />
@@ -114,12 +118,10 @@ function IncidentCard({ item }: { item: Incident }) {
                     </Text>
                 </XStack>
 
-                {/* Description */}
                 <Text fontSize={13} color={appTheme.colors.text} numberOfLines={2} lineHeight={18}>
                     {item.description}
                 </Text>
 
-                {/* Location */}
                 {item.location ? (
                     <XStack alignItems="center" gap={4}>
                         <MapPin size={11} color={appTheme.colors.textMuted} />
@@ -129,7 +131,6 @@ function IncidentCard({ item }: { item: Incident }) {
                     </XStack>
                 ) : null}
 
-                {/* Images preview */}
                 {previewImages.length > 0 ? (
                     <XStack gap={6} alignItems="center">
                         <ImageIcon size={11} color={appTheme.colors.textMuted} />
@@ -151,12 +152,15 @@ function IncidentCard({ item }: { item: Incident }) {
                     </XStack>
                 ) : null}
 
-                {/* Footer */}
                 <XStack justifyContent="space-between" alignItems="center">
                     <Text fontSize={11} color={appTheme.colors.textMuted}>
                         {formatDate(item.created_at)}
                     </Text>
-                    {item.resolved_at ? (
+                    {canEdit ? (
+                        <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">
+                            Có thể chỉnh sửa
+                        </Text>
+                    ) : item.resolved_at ? (
                         <XStack alignItems="center" gap={4}>
                             <CheckCircle size={11} color={appTheme.colors.success} />
                             <Text fontSize={10} color={appTheme.colors.success} fontWeight="700">
@@ -166,7 +170,7 @@ function IncidentCard({ item }: { item: Incident }) {
                     ) : null}
                 </XStack>
             </YStack>
-        </YStack>
+        </Pressable>
     );
 }
 
@@ -180,7 +184,6 @@ function IncidentCardSkeleton() {
             borderColor={appTheme.colors.border}
             backgroundColor={appTheme.colors.surface}
             overflow="hidden"
-            gap={0}
         >
             <XStack paddingHorizontal={14} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft} justifyContent="space-between">
                 <XStack gap={8} alignItems="center">
@@ -226,14 +229,12 @@ export function IncidentHistoryScreen() {
                 }
                 showsVerticalScrollIndicator={false}
             >
-                {/* Summary */}
                 {!isLoading && incidents.length > 0 ? (
                     <Text fontSize={12} color={appTheme.colors.textMuted} fontWeight="700">
                         {incidents.length} sự cố đã báo cáo
                     </Text>
                 ) : null}
 
-                {/* Error */}
                 {error ? (
                     <XStack
                         padding={14} borderRadius={appTheme.radius.md}
@@ -246,14 +247,12 @@ export function IncidentHistoryScreen() {
                     </XStack>
                 ) : null}
 
-                {/* Skeleton */}
                 {isLoading && incidents.length === 0 ? (
                     <YStack gap={12}>
                         {[0, 1, 2].map((i) => <IncidentCardSkeleton key={i} />)}
                     </YStack>
                 ) : null}
 
-                {/* Empty state */}
                 {!isLoading && incidents.length === 0 && !error ? (
                     <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical={80} gap={12}>
                         <XStack
@@ -268,7 +267,6 @@ export function IncidentHistoryScreen() {
                     </YStack>
                 ) : null}
 
-                {/* List */}
                 {incidents.map((item) => (
                     <IncidentCard key={item.id} item={item} />
                 ))}
@@ -278,6 +276,13 @@ export function IncidentHistoryScreen() {
 }
 
 const s = StyleSheet.create({
+    card: {
+        borderRadius: appTheme.radius.lg,
+        borderWidth: 1,
+        borderColor: appTheme.colors.border,
+        backgroundColor: appTheme.colors.surface,
+        overflow: 'hidden',
+    },
     severityDot: { width: 8, height: 8, borderRadius: 4 },
     previewImg:  { width: 40, height: 40, borderRadius: 8 },
 });

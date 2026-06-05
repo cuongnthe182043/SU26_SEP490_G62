@@ -6,7 +6,12 @@ const recordCashPayment = async (req, res) => {
         const shipmentId = Number(req.params.id);
         if (!shipmentId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const receiptUrl = req.file?.path ?? null;
+        const receiptUrl =
+            req.files?.receipt?.[0]?.path ??
+            req.files?.image?.[0]?.path   ??
+            req.files?.photo?.[0]?.path   ??
+            req.file?.path ??
+            null;
         const { amount, notes } = req.body;
 
         if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
