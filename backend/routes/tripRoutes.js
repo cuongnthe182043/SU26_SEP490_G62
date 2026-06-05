@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
-const { uploadProof, uploadPaymentReceipt } = require('../middleware/uploadMiddleware');
+const { uploadProof, uploadPaymentReceipt, uploadTripComplete } = require('../middleware/uploadMiddleware');
 const tripController    = require('../controllers/tripController');
 const paymentController = require('../controllers/paymentController');
 
@@ -31,21 +31,62 @@ router.post('/:id/claim',   driverOnly, tripController.claimTrip);
 router.patch('/:id/status', driverOnly, tripController.updateStatus);
 router.post('/:id/release', driverOnly, tripController.releaseTrip);
 
+// ITEM 1: PICKING → LOADED — ảnh lấy hàng bắt buộc (BR-013/014)
+// Field: 'proof' | 'image' | 'photo'
+router.post(
+    '/:id/loaded',
+    driverOnly,
+    handleUpload(uploadProof.fields([
+        { name: 'proof', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+        { name: 'photo', maxCount: 1 },
+    ])),
+    tripController.loadTrip,
+);
+
+// ITEM 2: TH3 — Driver báo khách chưa trả tiền → tạo Customer Debt
+// Body: { amount, notes? }
+router.post('/:id/mark-unpaid', driverOnly, tripController.markUnpaid);
+
+// ITEM 5: RETURNING → COMPLETED (hoàn hàng) — ảnh không bắt buộc
+// Field: 'proof' | 'image'
+router.post(
+    '/:id/return-complete',
+    driverOnly,
+    handleUpload(uploadProof.fields([
+        { name: 'proof', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+    ])),
+    tripController.returnComplete,
+);
+
+// 2 ảnh bắt buộc: 'proof' (xác nhận giao) + 'receipt' (biên lai/hóa đơn)
 router.post(
     '/:id/complete',
     driverOnly,
-    handleUpload(uploadProof.single('proof')),
+    handleUpload(uploadTripComplete.fields([
+        { name: 'proof',   maxCount: 1 },
+        { name: 'image',   maxCount: 1 },   // alias cho proof
+        { name: 'receipt', maxCount: 1 },
+        { name: 'invoice', maxCount: 1 },   // alias cho receipt
+    ])),
     tripController.completeTrip,
 );
 
 // TH2: Ghi nhận khách trả tiền mặt cho driver → tạo driver debt
+// Field: 'receipt' | 'image' | 'photo'
 router.post(
     '/:id/payment',
     driverOnly,
-    handleUpload(uploadPaymentReceipt.single('receipt')),
+    handleUpload(uploadPaymentReceipt.fields([
+        { name: 'receipt', maxCount: 1 },
+        { name: 'image',   maxCount: 1 },
+        { name: 'photo',   maxCount: 1 },
+    ])),
     paymentController.recordCashPayment,
 );
-router.get('/:id/payments', driverOnly, paymentController.getShipmentPayments);
+router.get('/:id/payments',        driverOnly, paymentController.getShipmentPayments);
+router.get('/:id/payment-summary', driverOnly, paymentController.getPaymentSummary);
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);

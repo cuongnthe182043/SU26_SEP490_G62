@@ -87,20 +87,91 @@ const releaseTrip = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/complete  (multipart/form-data, field: proof — ảnh thực tế từ camera)
+// POST /api/trips/:id/complete  (multipart/form-data)
+// Fields bắt buộc:
+//   'proof'   — ảnh xác nhận giao hàng (chụp hàng/người nhận)
+//   'receipt' — ảnh biên lai/hóa đơn có chữ ký khách
 const completeTrip = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const proofUrl = req.file?.path ?? null;
+        const proofUrl   = req.files?.proof?.[0]?.path   ?? req.files?.image?.[0]?.path   ?? null;
+        const receiptUrl = req.files?.receipt?.[0]?.path ?? req.files?.invoice?.[0]?.path ?? null;
 
-        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl);
+        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl, receiptUrl);
         res.json({ message: 'Hoàn thành chuyến thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('bắt buộc') ? 422
             : err.message.includes('"arrived"') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/loaded — PICKING → LOADED với ảnh bắt buộc (BR-013/014)
+// Field name linh hoạt: 'proof' | 'image' | 'photo'
+const loadTrip = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const proofUrl =
+            req.files?.proof?.[0]?.path ??
+            req.files?.image?.[0]?.path ??
+            req.files?.photo?.[0]?.path ??
+            req.file?.path ??
+            null;
+
+        const trip = await tripService.loadTrip(tripId, req.user.userId, proofUrl);
+        res.json({ message: 'Xác nhận lấy hàng thành công', trip });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('bắt buộc') ? 422
+            : err.message.includes('"picking"') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/mark-unpaid — TH3: khách chưa trả tiền → tạo Customer Debt
+// Body: { amount, notes? }
+const markUnpaid = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const { amount, notes } = req.body;
+        const debt = await tripService.markUnpaid(tripId, req.user.userId, { amount, notes });
+        res.status(201).json({ message: 'Đã ghi nhận công nợ khách hàng', debt });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('phải là số') ? 422
+            : err.message.includes('trạng thái') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/return-complete — RETURNING → COMPLETED (ảnh không bắt buộc)
+// Field name linh hoạt: 'proof' | 'image'
+const returnComplete = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const proofUrl =
+            req.files?.proof?.[0]?.path ??
+            req.files?.image?.[0]?.path ??
+            req.file?.path ??
+            null;
+
+        const trip = await tripService.returnComplete(tripId, req.user.userId, proofUrl);
+        res.json({ message: 'Hoàn hàng thành công', trip });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('"returning"') ? 422
             : 400;
         res.status(code).json({ error: err.message });
     }
@@ -233,6 +304,9 @@ module.exports = {
     arriveAtStop,
     completeStop,
     completeTrip,
+    loadTrip,
+    markUnpaid,
+    returnComplete,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,

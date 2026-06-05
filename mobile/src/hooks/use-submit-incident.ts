@@ -8,7 +8,10 @@ type State = {
     error: string | null;
 };
 
-export function useSubmitIncident(onSuccess?: (incident: Incident) => void) {
+export function useSubmitIncident(
+    onSuccess?: (incident: Incident) => void,
+    onError?: (err: unknown) => void,
+) {
     const [state, setState] = useState<State>({ isSubmitting: false, error: null });
 
     const submit = async (payload: CreateIncidentPayload) => {
@@ -21,6 +24,7 @@ export function useSubmitIncident(onSuccess?: (incident: Incident) => void) {
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể gửi báo cáo sự cố';
             setState({ isSubmitting: false, error: message });
+            onError?.(err);
             return null;
         }
     };

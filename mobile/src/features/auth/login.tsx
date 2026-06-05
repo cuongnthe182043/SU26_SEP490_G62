@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Modal, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff, HelpCircle } from "lucide-react-native";
 import { Text, XStack, YStack } from "tamagui";
 
 import { AppButton } from "@/components/app-button";
@@ -10,6 +10,8 @@ import { FormField } from "@/components/form-field";
 import { KeyboardSafeScrollView } from "@/components/keyboard-safe-scroll-view";
 import { useAuthSession } from "@/providers/auth-provider";
 import { appTheme } from "@/theme/app-theme";
+import { useRememberMe } from "@/hooks/use-remember-me";
+import { useGoogleLogin, isGoogleAvailable } from "@/hooks/use-google-login";
 
 import {
   hasLoginErrors,
@@ -24,8 +26,32 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<LoginFormErrors>({});
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [showForgot, setShowForgot] = useState(false);
+
   const { error, isLoading, login } = useLogin();
   const { refreshSession } = useAuthSession();
+  const { savedEmail, remember, setRemember, persist } = useRememberMe();
+
+  // Pre-fill email từ Remember Me
+  useEffect(() => {
+    if (savedEmail) setEmail(savedEmail);
+  }, [savedEmail]);
+
+  const onLoginSuccess = async () => {
+    try {
+      await refreshSession();
+    } catch (nextError) {
+      setSessionError(nextError instanceof Error ? nextError.message : "Không thể tải phiên đăng nhập.");
+      return false;
+    }
+    router.replace("/(tabs)");
+    return true;
+  };
+
+  const { isLoading: googleLoading, error: googleError, signInWithGoogle } = useGoogleLogin(async (result) => {
+    await persist(result.user.email, remember);
+    await onLoginSuccess();
+  });
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0,
@@ -39,14 +65,9 @@ export function LoginScreen() {
     setSessionError(null);
     const result = await login(email, password);
     if (result) {
-      try {
-        await refreshSession();
-      } catch (nextError) {
-        setSessionError(nextError instanceof Error ? nextError.message : "Không thể tải phiên đăng nhập.");
-        return;
-      }
+      await persist(email, remember);
       setPassword("");
-      router.replace("/(tabs)");
+      await onLoginSuccess();
     }
   };
 
@@ -56,13 +77,13 @@ export function LoginScreen() {
       <KeyboardSafeScrollView
         style={{ backgroundColor: appTheme.colors.background }}
         contentContainerStyle={{
-          flexGrow: 1,
           paddingHorizontal: appTheme.spacing.screenX,
           paddingTop: appTheme.spacing.screenTop,
           paddingBottom: appTheme.spacing.screenBottom,
         }}
+        extraPadding={100}
       >
-        <YStack flex={1} justifyContent="space-between">
+        <YStack gap="$0">
 
           {/* ── Top section ── */}
           <YStack gap="$8">
@@ -184,8 +205,43 @@ export function LoginScreen() {
                 />
               </YStack>
 
+              {/* Remember Me + Forgot Password */}
+              <XStack justifyContent="space-between" alignItems="center" marginTop="$1">
+                <Pressable
+                  onPress={() => setRemember(v => !v)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  hitSlop={8}
+                >
+                  <View style={[
+                    styles.checkbox,
+                    remember && { backgroundColor: appTheme.colors.primary, borderColor: appTheme.colors.primary },
+                  ]}>
+                    {remember ? (
+                      <Text fontSize={11} fontWeight="900" color="#fff">✓</Text>
+                    ) : null}
+                  </View>
+                  <Text
+                    fontSize={13}
+                    fontFamily={appTheme.typography.fontFamily.regular}
+                    color={appTheme.colors.textMuted}
+                  >
+                    Ghi nhớ đăng nhập
+                  </Text>
+                </Pressable>
+
+                <Pressable onPress={() => setShowForgot(true)} hitSlop={8}>
+                  <Text
+                    fontSize={13}
+                    fontFamily={appTheme.typography.fontFamily.medium}
+                    color={appTheme.colors.primary}
+                  >
+                    Quên mật khẩu?
+                  </Text>
+                </Pressable>
+              </XStack>
+
               {/* Error banner */}
-              {error || sessionError ? (
+              {(error ?? googleError ?? sessionError) ? (
                 <XStack
                   paddingHorizontal="$3"
                   paddingVertical="$3"
@@ -196,27 +252,16 @@ export function LoginScreen() {
                   gap="$2"
                   alignItems="flex-start"
                 >
-                  <View
-                    style={{
-                      width: 4,
-                      borderRadius: 2,
-                      alignSelf: "stretch",
-                      backgroundColor: appTheme.colors.danger,
-                      marginRight: 4,
-                    }}
-                  />
-                  <Text
-                    flex={1}
-                    fontSize={13}
-                    lineHeight={19}
+                  <View style={{ width: 4, borderRadius: 2, alignSelf: "stretch", backgroundColor: appTheme.colors.danger, marginRight: 4 }} />
+                  <Text flex={1} fontSize={13} lineHeight={19}
                     fontFamily={appTheme.typography.fontFamily.medium}
-                    color={appTheme.colors.dangerText}
-                  >
-                    {error ?? sessionError}
+                    color={appTheme.colors.dangerText}>
+                    {error ?? googleError ?? sessionError}
                   </Text>
                 </XStack>
               ) : null}
 
+              {/* Login button */}
               <AppButton
                 tone="primary"
                 disabled={!canSubmit}
@@ -227,30 +272,122 @@ export function LoginScreen() {
               >
                 Đăng nhập
               </AppButton>
+
+              {/* Google Sign-In — chỉ hiện khi có native OAuth client ID */}
+              {isGoogleAvailable ? (
+                <>
+                  <XStack alignItems="center" gap="$3" marginVertical="$1">
+                    <View style={{ flex: 1, height: 1, backgroundColor: appTheme.colors.border }} />
+                    <Text fontSize={12} color={appTheme.colors.textMuted}
+                      fontFamily={appTheme.typography.fontFamily.regular}>
+                      hoặc
+                    </Text>
+                    <View style={{ flex: 1, height: 1, backgroundColor: appTheme.colors.border }} />
+                  </XStack>
+
+                  <Pressable
+                    onPress={signInWithGoogle}
+                    disabled={googleLoading}
+                    style={({ pressed }) => [
+                      styles.googleBtn,
+                      pressed && { opacity: 0.8 },
+                      googleLoading && { opacity: 0.6 },
+                    ]}
+                  >
+                    <View style={styles.googleIcon}>
+                      <Text fontSize={15} fontWeight="900">G</Text>
+                    </View>
+                    <Text fontSize={14}
+                      fontFamily={appTheme.typography.fontFamily.medium}
+                      color={appTheme.colors.text}
+                    >
+                      {googleLoading ? 'Đang kết nối Google...' : 'Đăng nhập với Google'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
             </YStack>
           </YStack>
 
           {/* ── Footer ── */}
-          <YStack alignItems="center" gap="$1" paddingTop="$6">
-            <View
-              style={{
-                width: 32,
-                height: 1,
-                backgroundColor: appTheme.colors.border,
-                marginBottom: 12,
-              }}
-            />
-            <Text
-              fontSize={12}
-              fontFamily={appTheme.typography.fontFamily.regular}
-              color={appTheme.colors.textMuted}
-            >
+          <YStack alignItems="center" gap="$1" marginTop={40}>
+            <View style={{ width: 32, height: 1, backgroundColor: appTheme.colors.border, marginBottom: 12 }} />
+            <Text fontSize={12} fontFamily={appTheme.typography.fontFamily.regular} color={appTheme.colors.textMuted}>
               Phiên bản nội bộ · Chỉ dành cho nhân viên
             </Text>
           </YStack>
 
         </YStack>
       </KeyboardSafeScrollView>
+
+      {/* Forgot Password modal */}
+      <Modal visible={showForgot} transparent animationType="fade" onRequestClose={() => setShowForgot(false)}>
+        <Pressable style={styles.forgotBackdrop} onPress={() => setShowForgot(false)} />
+        <View style={styles.forgotCard}>
+          <View style={styles.forgotIconWrap}>
+            <HelpCircle size={28} color={appTheme.colors.primary} />
+          </View>
+          <Text fontSize={18} fontFamily={appTheme.typography.fontFamily.bold} color={appTheme.colors.text}
+            style={{ textAlign: 'center', marginBottom: 8 }}>
+            Quên mật khẩu?
+          </Text>
+          <Text fontSize={14} fontFamily={appTheme.typography.fontFamily.regular}
+            color={appTheme.colors.textMuted} style={{ textAlign: 'center', lineHeight: 22, marginBottom: 20 }}>
+            Đây là hệ thống nội bộ.{"\n"}
+            Vui lòng liên hệ quản trị viên để được đặt lại mật khẩu.
+          </Text>
+          <Pressable
+            onPress={() => setShowForgot(false)}
+            style={({ pressed }) => [styles.forgotBtn, pressed && { opacity: 0.8 }]}
+          >
+            <Text fontSize={14} fontFamily={appTheme.typography.fontFamily.bold} color="#fff">
+              Đã hiểu
+            </Text>
+          </Pressable>
+        </View>
+      </Modal>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  checkbox: {
+    width: 20, height: 20, borderRadius: 6,
+    borderWidth: 1.5, borderColor: appTheme.colors.border,
+    backgroundColor: appTheme.colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  googleBtn: {
+    height: 54, borderRadius: appTheme.radius.md,
+    borderWidth: 1.5, borderColor: appTheme.colors.border,
+    backgroundColor: appTheme.colors.surface,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+  },
+  googleIcon: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: '#fff',
+    borderWidth: 1, borderColor: '#e0e0e0',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  forgotBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  forgotCard: {
+    position: 'absolute', left: 24, right: 24,
+    top: '35%',
+    backgroundColor: appTheme.colors.surface,
+    borderRadius: appTheme.radius.xl,
+    padding: 28, alignItems: 'center',
+  },
+  forgotIconWrap: {
+    width: 60, height: 60, borderRadius: 20,
+    backgroundColor: appTheme.colors.primarySoft,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  forgotBtn: {
+    width: '100%', height: 48, borderRadius: appTheme.radius.md,
+    backgroundColor: appTheme.colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+});

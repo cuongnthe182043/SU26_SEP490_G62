@@ -84,6 +84,41 @@ const getCoordinatorIds = async () => {
     return result.rows.map((r) => r.id);
 };
 
+// Lấy incidents của 1 shipment (để check duplicate type + list)
+const getIncidentsByShipment = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT
+            i.id, i.shipment_id, i.incident_type, i.severity_level,
+            i.description, i.location, i.status, i.occurred_at, i.resolved_at, i.created_at,
+            COALESCE(
+                json_agg(ie.file_url ORDER BY ie.uploaded_at)
+                FILTER (WHERE ie.id IS NOT NULL), '[]'::json
+            ) AS image_urls
+         FROM incidents i
+         LEFT JOIN incident_evidences ie ON ie.incident_id = i.id
+         WHERE i.shipment_id = $1
+         GROUP BY i.id
+         ORDER BY i.created_at DESC`,
+        [shipmentId],
+    );
+    return result.rows;
+};
+
+// Driver cập nhật sự cố của mình (chỉ khi còn open)
+const updateIncident = async (incidentId, driverId, { severityLevel, description, location }) => {
+    const result = await pool.query(
+        `UPDATE incidents
+         SET severity_level = COALESCE($3, severity_level),
+             description    = COALESCE($4, description),
+             location       = COALESCE($5, location),
+             updated_at     = NOW()
+         WHERE id = $1 AND reported_by = $2 AND status = 'open'
+         RETURNING *`,
+        [incidentId, driverId, severityLevel ?? null, description ?? null, location ?? null],
+    );
+    return result.rows[0] ?? null;
+};
+
 const updateIncidentStatus = async (incidentId, { status, resolution = null }) => {
     const isClosing = status === 'resolved' || status === 'closed';
     const result = await pool.query(
@@ -102,6 +137,8 @@ module.exports = {
     addIncidentEvidence,
     getIncidentById,
     getIncidentsByDriver,
+    getIncidentsByShipment,
+    updateIncident,
     getCoordinatorIds,
     updateIncidentStatus,
 };

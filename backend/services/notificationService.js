@@ -1,5 +1,6 @@
 const notificationRepository = require('../repositories/notificationRepository');
 const notificationGateway = require('./notificationGateway');
+const fcmService = require('./fcmService');
 
 const createForUser = async (userId, payload, options = {}) => {
     if (!userId) throw new Error('userId is required');
@@ -17,6 +18,17 @@ const createForUser = async (userId, payload, options = {}) => {
     notificationGateway.notifyCreated(notification, {
         displayMode: options.displayMode ?? payload.displayMode ?? 'toast',
     });
+
+    // ITEM 6 — Also fire FCM push if device token is registered (never throws)
+    fcmService.sendNotification(userId, {
+        title: payload.title,
+        body: payload.message ?? payload.body ?? '',
+        data: {
+            type: payload.type ?? 'SYSTEM_ALERT',
+            entityType: payload.entityType ?? payload.entity_type ?? '',
+            entityId: String(payload.entityId ?? payload.entity_id ?? ''),
+        },
+    }).catch(() => {});
 
     return notification;
 };
