@@ -68,4 +68,8 @@ export const tripService = {
 
     createExpense: (formData: FormData) =>
         apiClient.postForm<import('@/types/trip').CreateExpenseResponse>('/api/expenses', formData),
+
+    // Trạng thái tài chính chuyến — trip_value, cash_collected, remaining...
+    getPaymentSummary: (tripId: number) =>
+        apiClient.get<import('@/types/trip').PaymentSummary>(`/api/trips/${tripId}/payment-summary`),
 };

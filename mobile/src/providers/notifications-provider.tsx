@@ -13,17 +13,18 @@ import { useAppAlert, useToast } from '@/providers/ui-provider';
 const PAGE_LIMIT = 20;
 
 type NotificationsContextValue = {
-    notifications: AppNotification[];
-    unreadCount: number;
-    total: number;
-    page: number;
-    totalPages: number;
-    isLoading: boolean;
-    error: string | null;
-    refresh: (showSpinner?: boolean) => Promise<void>;
-    markAsRead: (id: number | string) => Promise<void>;
-    markAllAsRead: () => Promise<void>;
-    goToPage: (p: number) => Promise<void>;
+    notifications:  AppNotification[];
+    unreadCount:    number;
+    total:          number;
+    hasMore:        boolean;
+    isLoading:      boolean;   // lần đầu, chưa có data
+    isRefreshing:   boolean;   // user kéo pull-to-refresh
+    isLoadingMore:  boolean;   // cuộn xuống load thêm
+    error:          string | null;
+    refresh:        (showSpinner?: boolean) => Promise<void>;
+    loadMore:       () => Promise<void>;
+    markAsRead:     (id: number | string) => Promise<void>;
+    markAllAsRead:  () => Promise<void>;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -32,39 +33,42 @@ const toWsUrl = () => {
     const url = new URL(API_BASE_URL);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/notifications';
-    url.search = '';
+    url.search   = '';
     return url;
 };
 
-const normalizeNotification = (notification: AppNotification): AppNotification => ({
-    ...notification,
-    message: notification.message ?? '',
-    is_read: Boolean(notification.is_read),
+const normalize = (n: AppNotification): AppNotification => ({
+    ...n,
+    message: n.message ?? '',
+    is_read: Boolean(n.is_read),
 });
 
-const mergeNotification = (items: AppNotification[], notification: AppNotification) => {
-    const normalized = normalizeNotification(notification);
-    const existingIndex = items.findIndex((item) => String(item.id) === String(normalized.id));
-    if (existingIndex < 0) return [normalized, ...items];
+const mergeOne = (items: AppNotification[], incoming: AppNotification) => {
+    const idx = items.findIndex((i) => String(i.id) === String(incoming.id));
+    if (idx < 0) return [incoming, ...items];
     const next = [...items];
-    next[existingIndex] = { ...next[existingIndex], ...normalized };
+    next[idx] = { ...next[idx], ...incoming };
     return next;
 };
 
+type FetchMode = 'initial' | 'refresh' | 'background' | 'append';
+
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
-    const { status } = useAuthSession();
+    const { status }    = useAuthSession();
     const { showToast } = useToast();
     const { showAlert } = useAppAlert();
 
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
-    const [unreadCount, setUnreadCount]     = useState(0);
-    const [total, setTotal]                 = useState(0);
-    const [page, setPage]                   = useState(1);
-    const [totalPages, setTotalPages]       = useState(1);
-    const [isLoading, setIsLoading]         = useState(false);
-    const [error, setError]                 = useState<string | null>(null);
+    const [unreadCount,   setUnreadCount]   = useState(0);
+    const [total,         setTotal]         = useState(0);
+    const [hasMore,       setHasMore]       = useState(false);
+    const [isLoading,     setIsLoading]     = useState(false);   // initial only
+    const [isRefreshing,  setIsRefreshing]  = useState(false);   // pull-to-refresh
+    const [isLoadingMore, setIsLoadingMore] = useState(false);   // infinite scroll
+    const [error,         setError]         = useState<string | null>(null);
 
-    const pageRef             = useRef(1);
+    const currentPageRef      = useRef(1);
+    const isFetchingRef       = useRef(false);
     const socketRef           = useRef<WebSocket | null>(null);
     const reconnectTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptRef = useRef(0);
@@ -78,66 +82,81 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         socketRef.current = null;
     }, []);
 
-    // ── Fetch page ──────────────────────────────────────────────────────────────
-    const fetchPage = useCallback(async (targetPage: number, showSpinner: boolean) => {
-        if (showSpinner) {
-            setIsLoading(true);
-            setError(null);
-        }
+    // ── Core fetch ──────────────────────────────────────────────────────────────
+    const fetchPage = useCallback(async (page: number, mode: FetchMode) => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
+
+        // Bật đúng spinner theo mode
+        if      (mode === 'initial')  { setIsLoading(true);     setError(null); }
+        else if (mode === 'refresh')  { setIsRefreshing(true);  setError(null); }
+        else if (mode === 'append')   { setIsLoadingMore(true); }
+        // 'background' → không bật spinner nào
+
         try {
-            const res = await notificationService.getMyNotifications(targetPage, PAGE_LIMIT);
-            setNotifications((res.notifications ?? []).map(normalizeNotification));
+            const res  = await notificationService.getMyNotifications(page, PAGE_LIMIT);
+            const rows = (res.notifications ?? []).map(normalize);
+            const serverTotal = res.total ?? 0;
+
+            if (mode === 'append') {
+                setNotifications((prev) => {
+                    const existingIds = new Set(prev.map((n) => String(n.id)));
+                    const fresh = rows.filter((n) => !existingIds.has(String(n.id)));
+                    return [...prev, ...fresh];
+                });
+            } else {
+                setNotifications(rows);
+            }
+
             setUnreadCount(res.unreadCount ?? 0);
-            setTotal(res.total ?? 0);
-            setTotalPages(res.totalPages ?? 1);
-            setPage(targetPage);
-            pageRef.current = targetPage;
+            setTotal(serverTotal);
+            currentPageRef.current = page;
+            setHasMore(page * PAGE_LIMIT < serverTotal);
             setError(null);
         } catch (err) {
             if (err instanceof ApiError && err.status === 404) {
-                setNotifications([]);
+                if (mode !== 'append') setNotifications([]);
                 setError(null);
+                setHasMore(false);
                 return;
             }
-            if (showSpinner) {
+            // Lỗi: chỉ hiện error khi không phải background/append
+            if (mode === 'initial' || mode === 'refresh') {
                 setError(err instanceof Error ? err.message : ERROR_MESSAGES.notificationLoadFailed);
             }
         } finally {
-            if (showSpinner) setIsLoading(false);
+            isFetchingRef.current = false;
+            if      (mode === 'initial')  setIsLoading(false);
+            else if (mode === 'refresh')  setIsRefreshing(false);
+            else if (mode === 'append')   setIsLoadingMore(false);
         }
     }, []);
 
-    const refresh   = useCallback((showSpinner = true) => fetchPage(pageRef.current, showSpinner), [fetchPage]);
-    const goToPage  = useCallback((p: number)          => fetchPage(p, true),                      [fetchPage]);
+    // refresh(true)  → kéo xuống tay, hiện RefreshControl spinner
+    // refresh(false) → background silent (AppState, WS reconnect)
+    const refresh = useCallback((showSpinner = true) => {
+        currentPageRef.current = 1;
+        return fetchPage(1, showSpinner ? 'refresh' : 'background');
+    }, [fetchPage]);
+
+    const loadMore = useCallback(() => {
+        if (isFetchingRef.current || !hasMore) return Promise.resolve();
+        return fetchPage(currentPageRef.current + 1, 'append');
+    }, [fetchPage, hasMore]);
 
     // ── Incoming WS notification ────────────────────────────────────────────────
     const handleIncomingNotification = useCallback((notification: AppNotification) => {
-        const normalized = normalizeNotification(notification);
-
-        // Prepend to list only when on page 1 (newest first)
-        if (pageRef.current === 1) {
-            setNotifications((current) => mergeNotification(current, normalized));
-        }
-        // Always update unread badge
-        if (!normalized.is_read) {
-            setUnreadCount((c) => c + 1);
-        }
+        const n = normalize(notification);
+        setNotifications((cur) => mergeOne(cur, n));
+        if (!n.is_read) setUnreadCount((c) => c + 1);
         setTotal((t) => t + 1);
 
-        if (normalized.display_mode === 'silent') return;
-        if (normalized.display_mode === 'alert') {
-            void showAlert({
-                type: 'info',
-                title: normalized.title,
-                message: normalized.message,
-                okLabel: 'Đã hiểu',
-            });
+        if (n.display_mode === 'silent') return;
+        if (n.display_mode === 'alert') {
+            void showAlert({ type: 'info', title: n.title, message: n.message, okLabel: 'Đã hiểu' });
             return;
         }
-        showToast({
-            type: 'info',
-            message: `${normalized.title}${normalized.message ? `: ${normalized.message}` : ''}`,
-        });
+        showToast({ type: 'info', message: `${n.title}${n.message ? `: ${n.message}` : ''}` });
     }, [showAlert, showToast]);
 
     // ── WebSocket ───────────────────────────────────────────────────────────────
@@ -155,8 +174,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         const socket = new WebSocket(wsUrl.toString());
         socketRef.current = socket;
 
-        socket.onopen = () => { reconnectAttemptRef.current = 0; };
-
+        socket.onopen  = () => { reconnectAttemptRef.current = 0; };
         socket.onmessage = (event) => {
             try {
                 const payload = JSON.parse(String(event.data)) as NotificationEvent;
@@ -165,7 +183,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 }
             } catch { /* ignore malformed */ }
         };
-
         socket.onclose = () => {
             socketRef.current = null;
             if (!shouldConnectRef.current) return;
@@ -173,26 +190,25 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             const delay = Math.min(30_000, 1000 * reconnectAttemptRef.current);
             reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
         };
-
         socket.onerror = () => { socket.close(); };
     }, [handleIncomingNotification, status]);
 
     // ── Mark as read ────────────────────────────────────────────────────────────
     const markAsRead = useCallback(async (id: number | string) => {
-        setNotifications((current) =>
-            current.map((item) => String(item.id) === String(id) ? { ...item, is_read: true } : item),
+        setNotifications((cur) =>
+            cur.map((item) => String(item.id) === String(id) ? { ...item, is_read: true } : item),
         );
         setUnreadCount((c) => Math.max(0, c - 1));
         try {
             const { notification } = await notificationService.markAsRead(id);
-            setNotifications((current) => mergeNotification(current, notification));
+            setNotifications((cur) => mergeOne(cur, notification));
         } catch {
-            void refresh(false);
+            void refresh(false); // silent retry
         }
     }, [refresh]);
 
     const markAllAsRead = useCallback(async () => {
-        setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+        setNotifications((cur) => cur.map((item) => ({ ...item, is_read: true })));
         setUnreadCount(0);
         try {
             await notificationService.markAllAsRead();
@@ -208,45 +224,34 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             setNotifications([]);
             setUnreadCount(0);
             setTotal(0);
-            setPage(1);
-            setTotalPages(1);
+            setHasMore(false);
             setIsLoading(false);
+            setIsRefreshing(false);
             setError(null);
-            pageRef.current = 1;
+            currentPageRef.current = 1;
             return;
         }
-        void fetchPage(1, true);
+        void fetchPage(1, 'initial');
         void connect();
         return () => closeSocket();
     }, [closeSocket, connect, fetchPage, status]);
 
+    // AppState: chỉ background refresh — không hiện spinner
     useEffect(() => {
         const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
             if (status !== 'authenticated') return;
-            if (next === 'active') {
-                void refresh(false);
-                void connect();
-            } else {
-                closeSocket();
-            }
+            if (next === 'active') { void refresh(false); void connect(); }
+            else closeSocket();
         });
         return () => sub.remove();
     }, [closeSocket, connect, refresh, status]);
 
     const value = useMemo<NotificationsContextValue>(() => ({
-        notifications,
-        unreadCount,
-        total,
-        page,
-        totalPages,
-        isLoading,
-        error,
-        refresh,
-        markAsRead,
-        markAllAsRead,
-        goToPage,
-    }), [error, goToPage, isLoading, markAllAsRead, markAsRead, notifications,
-        page, refresh, total, totalPages, unreadCount]);
+        notifications, unreadCount, total, hasMore,
+        isLoading, isRefreshing, isLoadingMore, error,
+        refresh, loadMore, markAsRead, markAllAsRead,
+    }), [error, hasMore, isLoading, isLoadingMore, isRefreshing, loadMore,
+        markAllAsRead, markAsRead, notifications, refresh, total, unreadCount]);
 
     return (
         <NotificationsContext.Provider value={value}>
