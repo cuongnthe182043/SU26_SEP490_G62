@@ -114,9 +114,20 @@ const getActiveTrip = async (driverId) => {
     );
     if (!result.rows[0]) return null;
     const row = result.rows[0];
+
+    // Attach stops array (BR-011 — driver sees ordered stops for active trip)
+    const stopsResult = await pool.query(
+        `SELECT id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at, proof_url
+         FROM trip_stops
+         WHERE shipment_id = $1
+         ORDER BY stop_index ASC`,
+        [row.id],
+    );
+
     return {
         ...row,
         is_final_shipment: Number(row.shipment_index) === Number(row.max_shipment_index),
+        stops: stopsResult.rows,
     };
 };
 
@@ -290,7 +301,43 @@ const updateTripStatus = async (tripId, newStatus, cancelReason = null) => {
         params = [tripId, newStatus];
     }
     const result = await pool.query(query, params);
-    return result.rows[0];
+    const row = result.rows[0];
+
+    // Auto-update trip_stops timestamps based on lifecycle transition
+    // (driver may not manage stops explicitly in simple A→B trips)
+    if (newStatus === 'picking') {
+        // Driver đang đến điểm lấy → mark first pickup stop as arrived
+        await pool.query(
+            `UPDATE trip_stops SET arrived_at = NOW()
+             WHERE shipment_id = $1 AND stop_type = 'pickup' AND arrived_at IS NULL
+               AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'pickup')`,
+            [tripId],
+        );
+    } else if (newStatus === 'loaded') {
+        // Driver đã lấy hàng xong → mark tất cả pickup stops là completed
+        await pool.query(
+            `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
+             WHERE shipment_id = $1 AND stop_type = 'pickup' AND completed_at IS NULL`,
+            [tripId],
+        );
+    } else if (newStatus === 'arrived') {
+        // Driver đến điểm giao → mark first unvisited delivery stop as arrived
+        await pool.query(
+            `UPDATE trip_stops SET arrived_at = NOW()
+             WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL
+               AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL)`,
+            [tripId],
+        );
+    } else if (newStatus === 'completed') {
+        // Trip hoàn thành → mark tất cả delivery stops là completed
+        await pool.query(
+            `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
+             WHERE shipment_id = $1 AND stop_type = 'delivery' AND completed_at IS NULL`,
+            [tripId],
+        );
+    }
+
+    return row;
 };
 
 const releaseShipmentToPool = async (tripId, driverId, reason) => {
@@ -373,6 +420,16 @@ const isFinalShipment = async (tripId) => {
 };
 
 const saveDeliveryProof = async (shipmentId, driverId, fileUrl) => {
+    const result = await pool.query(
+        `INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
+         VALUES ($1, $2, $3, TRUE, NOW())
+         RETURNING *`,
+        [shipmentId, driverId, fileUrl],
+    );
+    return result.rows[0];
+};
+
+const saveLoadingProof = async (shipmentId, driverId, fileUrl) => {
     const result = await pool.query(
         `INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
          VALUES ($1, $2, $3, TRUE, NOW())
@@ -588,6 +645,7 @@ module.exports = {
     releaseShipmentToPool,
     isFinalShipment,
     saveDeliveryProof,
+    saveLoadingProof,
     activateNextShipment,
     getDriverStats,
     getDriverOrderHistory,

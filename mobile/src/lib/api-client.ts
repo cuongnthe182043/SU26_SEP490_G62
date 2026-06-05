@@ -65,8 +65,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload = await response.json().catch(() => null);
 
   if (response.status === 401) {
-    await handleUnauthorized();
-    throw new ApiError(ERROR_MESSAGES.sessionExpired, 401);
+    // /auth/* endpoints = wrong credentials, không phải session hết hạn
+    if (!path.startsWith('/auth/')) {
+      await handleUnauthorized();
+      throw new ApiError(ERROR_MESSAGES.sessionExpired, 401);
+    }
+    throw new ApiError(payload?.error ?? payload?.message ?? 'Email hoặc mật khẩu không đúng', 401);
   }
 
   if (!response.ok) {

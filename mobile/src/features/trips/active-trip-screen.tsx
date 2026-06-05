@@ -1,35 +1,42 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+    KeyboardAvoidingView, Modal, Platform,
+    Pressable, ScrollView, StyleSheet, TextInput, View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
     AlertTriangle, ChevronDown, ChevronUp,
-    CheckCircle, MapPin, Package,
+    CheckCircle, DollarSign, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
 import { Image } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText }             from '@/components/app-text';
-import { LifecycleActionButton } from '@/components/lifecycle-action-button';
-import { ScreenHeader }        from '@/components/screen-header';
-import { TripStatusBadge }     from '@/components/trip-status-badge';
-import { ActiveTripSkeleton }  from '@/components/skeleton';
-import { appTheme }            from '@/theme/app-theme';
-import { useActiveTrip }       from '@/hooks/use-active-trip';
-import { useCompletionProof }  from '@/hooks/use-completion-proof';
-import { useReleaseTrip }      from '@/hooks/use-release-trip';
-import { useShipmentExpenses } from '@/hooks/use-shipment-expenses';
-import { useTripLifecycle }    from '@/hooks/use-trip-lifecycle';
+import { AppText }              from '@/components/app-text';
+import { LifecycleActionButton }  from '@/components/lifecycle-action-button';
+import { ScreenHeader }         from '@/components/screen-header';
+import { TripStatusBadge }      from '@/components/trip-status-badge';
+import { ActiveTripSkeleton }   from '@/components/skeleton';
+import { appTheme }             from '@/theme/app-theme';
+import { useActiveTrip }        from '@/hooks/use-active-trip';
+import { useCompletionProof }   from '@/hooks/use-completion-proof';
+import { useLoadingProof }      from '@/hooks/use-loading-proof';
+import { useReturnComplete }    from '@/hooks/use-return-complete';
+import { useMarkUnpaid }        from '@/hooks/use-mark-unpaid';
+import { useRecordPayment }     from '@/hooks/use-record-payment';
+import { useReleaseTrip }       from '@/hooks/use-release-trip';
+import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
+import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
 import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
-import type { ActiveTrip, Expense, TripStatus } from '@/types/trip';
+import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
-import { CameraModal }     from './components/camera-modal';
-import { ExpenseFormModal } from './components/expense-form-modal';
-import { PhotoCaptureCard } from './components/photo-capture-card';
-import { ReasonModal }     from './components/reason-modal';
+import { CameraModal }      from './components/camera-modal';
+import { ExpenseFormModal }  from './components/expense-form-modal';
+import { PhotoCaptureCard }  from './components/photo-capture-card';
+import { ReasonModal }      from './components/reason-modal';
 import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status-stepper';
 
 // Toast message shown after each lifecycle transition
@@ -201,6 +208,225 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
     );
 }
 
+// ─── Stops section ───────────────────────────────────────────────────────────
+
+// Derive stop visual state từ trip status khi DB chưa có timestamp
+// (xảy ra khi driver update status mà chưa kịp sync DB)
+function deriveStopState(
+    stop: TripStop,
+    tripStatus: TripStatus,
+): 'completed' | 'active' | 'pending' {
+    if (stop.completed_at) return 'completed';
+    if (stop.arrived_at)   return 'active';
+
+    if (stop.stop_type === 'pickup') {
+        const pickupDone: TripStatus[] = ['loaded', 'transit', 'arrived', 'completed', 'failed', 'returning'];
+        if (pickupDone.includes(tripStatus)) return 'completed';
+        if (tripStatus === 'picking')        return 'active';
+    }
+    if (stop.stop_type === 'delivery') {
+        if (tripStatus === 'completed') return 'completed';
+        if (tripStatus === 'arrived')   return 'active';
+    }
+    return 'pending';
+}
+
+function StopsSection({ stops, tripStatus }: { stops: TripStop[]; tripStatus: TripStatus }) {
+    if (!stops || stops.length === 0) return null;
+    const done = stops.filter(s => deriveStopState(s, tripStatus) === 'completed').length;
+
+    return (
+        <CollapsibleSection label="Điểm dừng" badge={`${done}/${stops.length}`} defaultOpen>
+            <YStack gap={10}>
+                {stops.map((stop) => {
+                    const state = deriveStopState(stop, tripStatus);
+                    const dotColor =
+                        state === 'completed' ? appTheme.colors.success :
+                        state === 'active'    ? appTheme.colors.warning :
+                                                appTheme.colors.border;
+                    return (
+                        <XStack key={stop.id} gap={10} alignItems="flex-start">
+                            <YStack alignItems="center" gap={2} paddingTop={2}>
+                                <View style={[s.stopDot, { backgroundColor: dotColor }]} />
+                                <Text fontSize={9} fontWeight="900" color={
+                                    stop.stop_type === 'pickup'
+                                        ? appTheme.colors.success
+                                        : appTheme.colors.primary
+                                }>
+                                    {stop.stop_type === 'pickup' ? 'LẤY' : 'GIAO'}
+                                </Text>
+                            </YStack>
+                            <YStack flex={1} gap={2}>
+                                <Text fontSize={12} color={appTheme.colors.text} numberOfLines={2}>
+                                    {stop.address}
+                                </Text>
+                                {stop.contact_name ? (
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>
+                                        {stop.contact_name}{stop.contact_phone ? ` · ${stop.contact_phone}` : ''}
+                                    </Text>
+                                ) : null}
+                                {state === 'completed' ? (
+                                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.success}>✓ Hoàn thành</Text>
+                                ) : state === 'active' ? (
+                                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.warning}>• Đang thực hiện</Text>
+                                ) : (
+                                    <Text fontSize={10} color={appTheme.colors.textMuted}>Chờ đến lượt</Text>
+                                )}
+                            </YStack>
+                        </XStack>
+                    );
+                })}
+            </YStack>
+        </CollapsibleSection>
+    );
+}
+
+// ─── Payment modal (TH2 + TH3) ───────────────────────────────────────────────
+
+function PaymentModal({
+    visible, tripId, mode, onClose, onSuccess,
+}: {
+    visible: boolean;
+    tripId: number;
+    mode: 'cash' | 'unpaid';
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const { showToast } = useToast();
+    const [amount,      setAmount]      = useState('');
+    const [notes,       setNotes]       = useState('');
+    const [cameraOpen,  setCameraOpen]  = useState(false);
+    const [receiptUri,  setReceiptUri]  = useState<string | null>(null);
+
+    const { isLoading: paymentLoading, recordPayment } = useRecordPayment(() => {
+        showToast({ type: 'success', message: 'Đã ghi nhận thanh toán' });
+        onSuccess();
+    });
+    const { isLoading: unpaidLoading, markUnpaid } = useMarkUnpaid(() => {
+        showToast({ type: 'success', message: 'Đã ghi nhận công nợ khách hàng' });
+        onSuccess();
+    });
+
+    const isLoading = paymentLoading || unpaidLoading;
+    const parsed = Number(amount.replace(/[^0-9]/g, ''));
+
+    const handleConfirm = async () => {
+        if (mode === 'cash') {
+            if (!receiptUri) { showToast({ type: 'error', message: 'Cần chụp ảnh biên lai' }); return; }
+            await recordPayment(tripId, parsed, receiptUri, notes || undefined);
+        } else {
+            await markUnpaid(tripId, parsed, notes || undefined);
+        }
+    };
+
+    return (
+        <Modal
+            visible={visible}
+            transparent
+            animationType="fade"
+            onRequestClose={onClose}
+            statusBarTranslucent
+        >
+            {/* Backdrop tối phủ toàn màn hình — không bị ảnh hưởng bởi bàn phím */}
+            <Pressable style={[StyleSheet.absoluteFill, s.modalBackdrop]} onPress={onClose} />
+
+            {/* KeyboardAvoidingView chỉ chứa card, không có background */}
+            <KeyboardAvoidingView
+                style={s.modalOverlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                pointerEvents="box-none"
+            >
+                    <YStack
+                        backgroundColor={appTheme.colors.surface}
+                        borderRadius={appTheme.radius.xl}
+                        padding={20} gap={14} margin={20}
+                    >
+                        <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
+                            {mode === 'cash' ? 'Ghi nhận tiền mặt' : 'Báo khách chưa trả'}
+                        </Text>
+                        <Text fontSize={12} color={appTheme.colors.textMuted}>
+                            {mode === 'cash'
+                                ? 'Khách đã trả tiền mặt cho bạn. Nhập số tiền và chụp ảnh biên lai.'
+                                : 'Khách chưa thanh toán. Hệ thống sẽ tạo công nợ cho khách hàng.'}
+                        </Text>
+
+                        <YStack gap={6}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>Số tiền (VNĐ) *</Text>
+                            <TextInput
+                                value={amount}
+                                onChangeText={setAmount}
+                                keyboardType="numeric"
+                                placeholder="0"
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                returnKeyType="done"
+                                style={{
+                                    borderWidth: 1.5, borderColor: appTheme.colors.border,
+                                    borderRadius: 10, padding: 12, fontSize: 16,
+                                    color: appTheme.colors.text,
+                                    backgroundColor: appTheme.colors.background,
+                                }}
+                            />
+                        </YStack>
+
+                        {mode === 'cash' ? (
+                            <YStack gap={6}>
+                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>Ảnh biên lai *</Text>
+                                <PhotoCaptureCard
+                                    label="Chụp biên lai"
+                                    sublabel="Ảnh biên lai / xác nhận thanh toán"
+                                    uri={receiptUri}
+                                    required
+                                    onCapture={() => setCameraOpen(true)}
+                                    onDelete={() => setReceiptUri(null)}
+                                />
+                            </YStack>
+                        ) : null}
+
+                        <YStack gap={6}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>Ghi chú (tuỳ chọn)</Text>
+                            <TextInput
+                                value={notes}
+                                onChangeText={setNotes}
+                                placeholder="Ghi chú..."
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                multiline
+                                blurOnSubmit
+                                style={{
+                                    borderWidth: 1.5, borderColor: appTheme.colors.border,
+                                    borderRadius: 10, padding: 12, fontSize: 14,
+                                    color: appTheme.colors.text, minHeight: 60,
+                                    backgroundColor: appTheme.colors.background,
+                                }}
+                            />
+                        </YStack>
+
+                        <XStack gap={10}>
+                            <Pressable style={[s.modalBtn, s.modalBtnSecondary, { flex: 1 }]} onPress={onClose}>
+                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.text}>Hủy</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[s.modalBtn, { flex: 2, backgroundColor: isLoading || !parsed ? appTheme.colors.primaryMuted : appTheme.colors.primary }]}
+                                onPress={handleConfirm}
+                                disabled={isLoading || !parsed}
+                            >
+                                <Text fontSize={14} fontWeight="900" color="#fff">
+                                    {isLoading ? 'Đang gửi...' : 'Xác nhận'}
+                                </Text>
+                            </Pressable>
+                        </XStack>
+                    </YStack>
+            </KeyboardAvoidingView>
+
+            <CameraModal
+                visible={cameraOpen}
+                label="Chụp ảnh biên lai thanh toán"
+                onCapture={(uri) => { setReceiptUri(uri); setCameraOpen(false); }}
+                onClose={() => setCameraOpen(false)}
+            />
+        </Modal>
+    );
+}
+
 // ─── Active trip content ──────────────────────────────────────────────────────
 
 function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () => void }) {
@@ -216,54 +442,63 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     const [permission, requestPermission] = useCameraPermissions();
 
-    const [receiptUri,   setReceiptUri]   = useState<string | null>(null);
+    // ARRIVED: 2 ảnh bắt buộc — xác nhận giao + biên lai
     const [proofUri,     setProofUri]     = useState<string | null>(null);
-    const [cameraTarget, setCameraTarget] = useState<'receipt' | 'proof' | null>(null);
+    const [receiptUri,   setReceiptUri]   = useState<string | null>(null);
+    const [cameraTarget, setCameraTarget] = useState<'proof' | 'receipt' | 'loading' | 'return' | null>(null);
     const [showRelease,  setShowRelease]  = useState(false);
     const [showExpense,  setShowExpense]  = useState(false);
+    const [showPayment,  setShowPayment]  = useState<'cash' | 'unpaid' | null>(null);
 
-    const { isUploading, error: proofError, completeWithProof } = useCompletionProof(async () => {
-        await showAlert({
-            type: 'success',
-            title: 'Hoàn thành chuyến!',
-            message: 'Chuyến đã được xác nhận giao hàng thành công.',
-            okLabel: 'Tuyệt vời!',
-        });
+    // PICKING: loading proof photo
+    const [loadingUri, setLoadingUri] = useState<string | null>(null);
+    // RETURNING: optional return proof photo
+    const [returnUri,  setReturnUri]  = useState<string | null>(null);
+
+    const { isUploading: completingProof, completeWithProof } = useCompletionProof(async () => {
+        await showAlert({ type: 'success', title: 'Hoàn thành chuyến!', message: 'Giao hàng thành công.', okLabel: 'Tuyệt vời!' });
         router.back();
     });
-    const { isLoading: releaseLoading, releaseTrip }            = useReleaseTrip(() => router.back());
-    const { expenses, load: loadExpenses }                      = useShipmentExpenses(trip.id);
+    const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof((t) => {
+        showToast({ type: 'success', message: STATUS_ADVANCE_TOAST.loaded ?? 'Đã lấy hàng xong', duration: 2500 });
+        refresh();
+    });
+    const { isUploading: completingReturn, completeReturn } = useReturnComplete(async () => {
+        await showAlert({ type: 'success', title: 'Hoàn hàng thành công!', message: 'Hàng đã được trả về điểm lấy.', okLabel: 'OK' });
+        router.back();
+    });
+
+    const { isLoading: releaseLoading, releaseTrip }  = useReleaseTrip(() => router.back());
+    const { expenses, load: loadExpenses }            = useShipmentExpenses(trip.id);
 
     useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
-    const isWorking     = lifecycleLoading || isUploading || releaseLoading;
+    const isWorking     = lifecycleLoading || completingProof || submittingLoad || completingReturn || releaseLoading;
     const nextAction    = NEXT_ACTIONS[trip.status as TripStatus];
     const accent        = STATUS_ACCENT[trip.status as TripStatus];
     const banner        = STATUS_BANNER[trip.status as TripStatus];
+    const isPicking     = trip.status === 'picking';
     const isArrived     = trip.status === 'arrived';
     const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
-    const allPhotosDone = isArrived && !!receiptUri && (!trip.is_final_shipment || !!proofUri);
+    const canRecordPayment = ['arrived', 'transit', 'loaded'].includes(trip.status);
 
-    const openCamera = async (target: 'receipt' | 'proof') => {
+    const openCamera = async (target: 'proof' | 'receipt' | 'loading' | 'return') => {
         if (!permission?.granted) {
             const res = await requestPermission();
-            if (!res.granted) {
-                Alert.alert('Cần quyền camera', 'Vui lòng cấp quyền camera trong cài đặt.');
-                return;
-            }
+            if (!res.granted) return;
         }
         setCameraTarget(target);
     };
 
     const handleMarkFailed = async () => {
         const ok = await showConfirm({
-            title:        'Xác nhận giao thất bại?',
-            message:      'Không thể giao hàng cho khách? Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
+            title: 'Xác nhận giao thất bại?',
+            message: 'Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
             confirmLabel: 'Xác nhận thất bại',
-            cancelLabel:  'Hủy',
-            danger:       true,
+            cancelLabel: 'Hủy',
+            danger: true,
         });
         if (!ok) return;
         await advance(trip.id, 'failed');
@@ -361,6 +596,9 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     ) : null}
                 </CollapsibleSection>
 
+                {/* ── Stops (collapsible) — Item 4 ── */}
+                <StopsSection stops={trip.stops ?? []} tripStatus={trip.status as TripStatus} />
+
                 {/* ── Expenses (collapsible) ── */}
                 <CollapsibleSection label="Chi phí phát sinh" badge={expenseBadge}>
                     <ExpenseInlineList
@@ -370,60 +608,127 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 </CollapsibleSection>
 
-                {/* ── Photo section (ARRIVED only) ── */}
-                {isArrived ? (
-                    <YStack
-                        borderRadius={appTheme.radius.lg} borderWidth={1}
+                {/* ── Loading proof section (PICKING) — Item 1 ── */}
+                {isPicking ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
                         backgroundColor={appTheme.colors.surface}
                         padding={14} gap={10}
                     >
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
-                            ẢNH XÁC NHẬN GIAO HÀNG
+                            ẢNH XÁC NHẬN LẤY HÀNG (BẮT BUỘC)
                         </Text>
                         <PhotoCaptureCard
-                            label="Ảnh biên lai"
-                            sublabel="Biên lai / chữ ký khách nhận"
+                            label="Ảnh lấy hàng"
+                            sublabel="Chụp hàng hóa tại điểm lấy (BR-013)"
+                            uri={loadingUri}
+                            required
+                            onCapture={() => openCamera('loading')}
+                            onDelete={() => setLoadingUri(null)}
+                        />
+                        <LifecycleActionButton
+                            label={submittingLoad ? 'Đang tải ảnh...' : 'Xác nhận đã lấy hàng'}
+                            tone="primary"
+                            onPress={() => { if (loadingUri) void submitLoadingProof(trip.id, loadingUri); }}
+                            isLoading={submittingLoad}
+                            disabled={!loadingUri}
+                            icon={<CheckCircle size={17} color={loadingUri ? '#fff' : appTheme.colors.textMuted} />}
+                        />
+                    </YStack>
+                ) : null}
+
+                {/* ── Delivery proof section (ARRIVED) — 2 ảnh bắt buộc ── */}
+                {isArrived ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.successSoft}
+                        backgroundColor={appTheme.colors.surface}
+                        padding={14} gap={10}
+                    >
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            ẢNH XÁC NHẬN GIAO HÀNG (2 ẢNH BẮT BUỘC)
+                        </Text>
+                        <PhotoCaptureCard
+                            label="Ảnh xác nhận giao hàng"
+                            sublabel="Chụp hàng / người nhận tại điểm giao (BR-015)"
+                            uri={proofUri}
+                            required
+                            onCapture={() => openCamera('proof')}
+                            onDelete={() => setProofUri(null)}
+                        />
+                        <PhotoCaptureCard
+                            label="Ảnh biên lai / hóa đơn"
+                            sublabel="Chụp biên lai hoặc hóa đơn có chữ ký của khách"
                             uri={receiptUri}
                             required
                             onCapture={() => openCamera('receipt')}
                             onDelete={() => setReceiptUri(null)}
                         />
-                        {trip.is_final_shipment ? (
-                            <PhotoCaptureCard
-                                label="Ảnh xác nhận hoàn thành"
-                                sublabel="Hàng đã giao tại điểm cuối"
-                                uri={proofUri}
-                                required
-                                onCapture={() => openCamera('proof')}
-                                onDelete={() => setProofUri(null)}
-                            />
-                        ) : null}
-                        {proofError ? (
-                            <AppText variant="caption" tone="danger">{proofError}</AppText>
-                        ) : null}
+                        <LifecycleActionButton
+                            label={completingProof ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
+                            tone="primary"
+                            onPress={() => {
+                                if (proofUri && receiptUri)
+                                    void completeWithProof(trip.id, proofUri, receiptUri);
+                            }}
+                            isLoading={completingProof}
+                            disabled={!proofUri || !receiptUri}
+                            icon={<CheckCircle size={17} color={(proofUri && receiptUri) ? '#fff' : appTheme.colors.textMuted} />}
+                        />
                     </YStack>
                 ) : null}
 
-                {/* ── Primary action ── */}
-                {nextAction && !isArrived ? (
+                {/* ── Return complete section (RETURNING) — Item 5 ── */}
+                {isReturning ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.border}
+                        backgroundColor={appTheme.colors.surface}
+                        padding={14} gap={10}
+                    >
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            XÁC NHẬN ĐÃ HOÀN HÀNG
+                        </Text>
+                        <PhotoCaptureCard
+                            label="Ảnh hoàn hàng (tuỳ chọn)"
+                            sublabel="Chụp ảnh hàng đã trả về kho"
+                            uri={returnUri}
+                            required={false}
+                            onCapture={() => openCamera('return')}
+                            onDelete={() => setReturnUri(null)}
+                        />
+                        <LifecycleActionButton
+                            label={completingReturn ? 'Đang xử lý...' : 'Xác nhận hoàn hàng'}
+                            tone="secondary"
+                            onPress={() => void completeReturn(trip.id, returnUri ?? undefined)}
+                            isLoading={completingReturn}
+                            icon={<RotateCcw size={17} color="#fff" />}
+                        />
+                    </YStack>
+                ) : null}
+
+                {/* ── Primary action (non-special statuses) ── */}
+                {nextAction && !isArrived && !isPicking && !isReturning ? (
                     <LifecycleActionButton
                         label={nextAction.label}
                         tone={nextAction.tone}
-                        onPress={() => advance(trip.id, nextAction.nextStatus)}
+                        onPress={() => void advance(trip.id, nextAction.nextStatus)}
                         isLoading={isWorking}
                     />
                 ) : null}
 
-                {isArrived ? (
-                    <LifecycleActionButton
-                        label={isUploading ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
-                        tone="primary"
-                        onPress={() => { if (receiptUri) completeWithProof(trip.id, receiptUri, proofUri ?? undefined); }}
-                        isLoading={isUploading}
-                        disabled={!allPhotosDone}
-                        icon={<CheckCircle size={17} color={allPhotosDone ? '#fff' : appTheme.colors.textMuted} />}
-                    />
+                {/* ── Payment + Debt actions (TH2 / TH3) — Items 2 & new ── */}
+                {canRecordPayment ? (
+                    <XStack gap={8}>
+                        <Pressable style={[s.secondaryBtn, s.successBtn, { flex: 1 }]}
+                            onPress={() => setShowPayment('cash')}>
+                            <DollarSign size={14} color={appTheme.colors.success} />
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.success}>Ghi nhận TM</Text>
+                        </Pressable>
+                        <Pressable style={[s.secondaryBtn, s.warnBtn, { flex: 1 }]}
+                            onPress={() => setShowPayment('unpaid')}>
+                            <XCircle size={14} color={appTheme.colors.warningText} />
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.warningText}>Chưa trả</Text>
+                        </Pressable>
+                    </XStack>
                 ) : null}
 
                 {/* ── Secondary actions row ── */}
@@ -455,10 +760,17 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
             {/* ── Modals ── */}
             <CameraModal
                 visible={cameraTarget !== null}
-                label={cameraTarget === 'receipt' ? 'Chụp ảnh biên lai' : 'Chụp ảnh xác nhận'}
+                label={
+                    cameraTarget === 'loading' ? 'Chụp ảnh lấy hàng' :
+                    cameraTarget === 'proof'   ? 'Chụp ảnh xác nhận giao hàng' :
+                    cameraTarget === 'receipt' ? 'Chụp ảnh biên lai / hóa đơn' :
+                                                 'Chụp ảnh hoàn hàng (tuỳ chọn)'
+                }
                 onCapture={(uri) => {
-                    if (cameraTarget === 'receipt') setReceiptUri(uri);
-                    else if (cameraTarget === 'proof') setProofUri(uri);
+                    if      (cameraTarget === 'loading') setLoadingUri(uri);
+                    else if (cameraTarget === 'proof')   setProofUri(uri);
+                    else if (cameraTarget === 'receipt') setReceiptUri(uri);
+                    else if (cameraTarget === 'return')  setReturnUri(uri);
                     setCameraTarget(null);
                 }}
                 onClose={() => setCameraTarget(null)}
@@ -471,7 +783,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 placeholder="Lý do hủy (tùy chọn)..."
                 confirmLabel="Xác nhận hủy chuyến"
                 confirmDanger
-                onConfirm={(reason) => { setShowRelease(false); releaseTrip(trip.id, reason || undefined); }}
+                onConfirm={(reason) => { setShowRelease(false); void releaseTrip(trip.id, reason || undefined); }}
                 onClose={() => setShowRelease(false)}
             />
 
@@ -481,6 +793,16 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 onClose={() => setShowExpense(false)}
                 onSuccess={() => { setShowExpense(false); void loadExpenses(); }}
             />
+
+            {showPayment ? (
+                <PaymentModal
+                    visible
+                    tripId={trip.id}
+                    mode={showPayment}
+                    onClose={() => setShowPayment(null)}
+                    onSuccess={() => { setShowPayment(null); refresh(); }}
+                />
+            ) : null}
         </View>
     );
 }
@@ -576,5 +898,29 @@ const s = StyleSheet.create({
     warnBtn: {
         borderColor: appTheme.colors.warningBorder,
         backgroundColor: appTheme.colors.warningSoft,
+    },
+    successBtn: {
+        borderColor: appTheme.colors.successSoft,
+        backgroundColor: appTheme.colors.successSoft,
+    },
+
+    // Stop dot
+    stopDot: { width: 10, height: 10, borderRadius: 5 },
+
+    // Payment modal
+    modalBackdrop: {
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    modalBtn: {
+        paddingVertical: 12, borderRadius: 10,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    modalBtnSecondary: {
+        backgroundColor: appTheme.colors.surfaceSoft,
+        borderWidth: 1, borderColor: appTheme.colors.border,
     },
 });

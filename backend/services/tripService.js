@@ -1,5 +1,6 @@
 const tripRepository = require('../repositories/tripRepository');
 const notificationService = require('./notificationService');
+const pool = require('../config/database');
 const {
     SHIPMENT_STATUS,
     ALLOWED_TRANSITIONS,
@@ -155,15 +156,20 @@ const releaseTrip = async (tripId, driverId, reason) => {
 };
 
 // ARRIVED → COMPLETED: driver xác nhận giao hàng thành công
-// Yêu cầu ảnh proof thực tế (BR-015, BR-016, BR-017)
-const completeTrip = async (tripId, driverId, proofFileUrl) => {
+// Bắt buộc 2 ảnh:
+//   proofFileUrl   — ảnh xác nhận giao hàng (BR-015/016/017)
+//   receiptFileUrl — ảnh biên lai/hóa đơn có chữ ký khách
+const completeTrip = async (tripId, driverId, proofFileUrl, receiptFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chuyến phải ở trạng thái "arrived" để hoàn thành');
     if (!proofFileUrl) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
+    if (!receiptFileUrl) throw new Error('Ảnh biên lai/hóa đơn là bắt buộc');
 
+    // Lưu cả 2 ảnh vào delivery_proofs
     await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
+    await tripRepository.saveDeliveryProof(tripId, driverId, receiptFileUrl);
 
     const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
 
@@ -191,6 +197,102 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
             entityId: nextShipment.id,
         }, { displayMode: 'alert' }).catch(() => {});
     }
+
+    return completedTrip;
+};
+
+// ITEM 1 — PICKING → LOADED with mandatory loading proof (BR-013/014)
+const loadTrip = async (tripId, driverId, proofFileUrl) => {
+    const trip = await tripRepository.getTripById(tripId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
+    if (trip.status !== SHIPMENT_STATUS.PICKING) throw new Error('Chuyến phải ở trạng thái "picking" để xác nhận lấy hàng');
+    if (!proofFileUrl) throw new Error('Ảnh xác nhận lấy hàng là bắt buộc (BR-013)');
+
+    await tripRepository.saveLoadingProof(tripId, driverId, proofFileUrl);
+
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.LOADED);
+
+    notificationService.createForUser(driverId, {
+        title: 'Đã lấy hàng xong',
+        message: `Hàng đã được lấy tại chuyến #${tripId}, chuẩn bị xuất phát giao hàng.`,
+        type: 'TRIP_STATUS_UPDATED',
+        entityType: 'shipments',
+        entityId: tripId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return updatedTrip;
+};
+
+// ITEM 2 — TH3: Driver marks customer unpaid → creates Customer Debt
+const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
+    const trip = await tripRepository.getTripById(tripId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
+    if (!['completed', 'arrived'].includes(trip.status)) {
+        throw new Error('Chỉ có thể báo nợ khi chuyến ở trạng thái "arrived" hoặc "completed"');
+    }
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        throw new Error('Số tiền nợ phải là số dương hợp lệ');
+    }
+
+    // Get customer_id from orders table via shipment's order_id
+    const orderResult = await pool.query(
+        `SELECT customer_id FROM orders WHERE id = $1`,
+        [trip.order_id],
+    );
+    if (!orderResult.rows[0]) throw new Error('Không tìm thấy đơn hàng liên quan');
+    const customerId = orderResult.rows[0].customer_id;
+
+    const debtResult = await pool.query(
+        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', $6, NOW(), NOW())
+         RETURNING *`,
+        [customerId, driverId, tripId, trip.order_id, Number(amount), notes ?? null],
+    );
+
+    notificationService.createForUser(driverId, {
+        title: 'Đã ghi nhận công nợ khách hàng',
+        message: `Chuyến #${tripId} — khách chưa thanh toán ${Number(amount).toLocaleString('vi-VN')}đ.`,
+        type: 'DEBT_CREATED',
+        entityType: 'shipments',
+        entityId: tripId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return debtResult.rows[0];
+};
+
+// ITEM 5 — RETURNING → COMPLETED with optional return proof
+const returnComplete = async (tripId, driverId, proofFileUrl) => {
+    const trip = await tripRepository.getTripById(tripId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
+    if (trip.status !== SHIPMENT_STATUS.RETURNING) throw new Error('Chuyến phải ở trạng thái "returning" để xác nhận hoàn hàng');
+
+    // Photo is optional for return completion
+    if (proofFileUrl) {
+        await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
+    }
+
+    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
+
+    const isFinal = await tripRepository.isFinalShipment(tripId);
+    if (isFinal) {
+        await pool.query(
+            `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
+            [trip.order_id],
+        );
+    }
+
+    notificationService.createForUser(driverId, {
+        title: isFinal ? 'Hoàn thành toàn bộ đơn hàng (hoàn hàng)' : 'Hoàn hàng thành công',
+        message: isFinal
+            ? `Chuyến #${tripId} — chuyến cuối của đơn hàng #${trip.order_id} đã hoàn tất (hoàn hàng).`
+            : `Chuyến #${tripId} đã hoàn hàng thành công.`,
+        type: 'ORDER_COMPLETED',
+        entityType: 'shipments',
+        entityId: tripId,
+    }, { displayMode: 'silent' }).catch(() => {});
 
     return completedTrip;
 };
@@ -238,6 +340,9 @@ module.exports = {
     updateStatus,
     releaseTrip,
     completeTrip,
+    loadTrip,
+    markUnpaid,
+    returnComplete,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,

@@ -15,4 +15,12 @@ export const profileService = {
 
     updateAvatar: (formData: FormData) =>
         apiClient.postForm<UpdateAvatarResponse>('/api/profile/me/avatar', formData),
+
+    // Item 3 — Đổi mật khẩu
+    changePassword: (currentPassword: string, newPassword: string) =>
+        apiClient.patch<{ message: string }>('/api/profile/me/password', { currentPassword, newPassword }),
+
+    // Item 6 — Đăng ký FCM device token
+    registerDeviceToken: (fcmToken: string, platform: 'android' | 'ios' | 'web' = 'android') =>
+        apiClient.post<{ message: string; platform: string }>('/api/profile/me/device-token', { fcmToken, platform }),
 };

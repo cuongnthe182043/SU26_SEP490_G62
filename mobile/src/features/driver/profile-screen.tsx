@@ -135,7 +135,7 @@ export function ProfileScreen() {
                             label="Thông tin cá nhân" onPress={handleOpenProfile} />
                         <XStack height={1} backgroundColor={appTheme.colors.border} marginLeft={64} />
                         <MenuRow icon={<Shield size={17} color={appTheme.colors.primary} />}
-                            label="Bảo mật" onPress={() => {}} />
+                            label="Đổi mật khẩu" onPress={() => router.push('/change-password')} />
                     </YStack>
 
                     {/* Hệ thống */}

@@ -25,6 +25,9 @@ const createIncident = async (req, res) => {
 
         res.status(201).json({ incident });
     } catch (err) {
+        if (err.message.startsWith('DUPLICATE_TYPE:')) {
+            return res.status(409).json({ error: err.message.replace('DUPLICATE_TYPE:', '') });
+        }
         const status = err.message.includes('không tồn tại') ? 404
             : err.message.includes('quyền') ? 403
             : err.message.includes('không hợp lệ') || err.message.includes('bắt buộc') || err.message.includes('ít nhất') || err.message.includes('Tối đa') ? 400
@@ -87,4 +90,39 @@ const updateIncidentStatus = async (req, res) => {
     }
 };
 
-module.exports = { createIncident, getMyIncidents, getIncidentDetail, updateIncidentStatus };
+// GET /api/incidents/shipment/:shipmentId  (driver — incidents của 1 chuyến)
+const getShipmentIncidents = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.shipmentId);
+        if (!shipmentId) return res.status(400).json({ error: 'shipmentId không hợp lệ' });
+        const incidents = await incidentService.getShipmentIncidents(shipmentId, req.user.userId);
+        res.json({ incidents });
+    } catch (err) {
+        const code = err.message.includes('quyền') ? 403
+            : err.message.includes('không tồn tại') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// PATCH /api/incidents/:id  (driver — tự sửa sự cố của mình khi còn open)
+const updateMyIncident = async (req, res) => {
+    try {
+        const incidentId = Number(req.params.id);
+        if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
+        const { severityLevel, description, location } = req.body;
+        const incident = await incidentService.updateMyIncident(incidentId, req.user.userId, {
+            severityLevel, description, location,
+        });
+        res.json({ incident });
+    } catch (err) {
+        const code = err.message.includes('quyền') ? 403
+            : err.message.includes('không tồn tại') ? 404
+            : err.message.includes('trạng thái') ? 422 : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = {
+    createIncident, getMyIncidents, getIncidentDetail,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
+};

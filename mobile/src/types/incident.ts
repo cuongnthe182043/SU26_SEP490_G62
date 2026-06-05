@@ -4,6 +4,8 @@ export type IncidentType =
     | 'vehicle_breakdown'
     | 'cargo_damage'
     | 'road_incident'
+    | 'customer_refusal'
+    | 'traffic_jam'
     | 'other';
 
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -16,6 +18,8 @@ export const INCIDENT_TYPE_LABEL: Record<IncidentType, string> = {
     vehicle_breakdown: 'Sự cố xe',
     cargo_damage:      'Hàng hóa hư hỏng',
     road_incident:     'Đường sá / Giao thông',
+    customer_refusal:  'Khách từ chối nhận',
+    traffic_jam:       'Tắc đường',
     other:             'Khác',
 };
 
@@ -57,6 +61,19 @@ export const INCIDENT_SUBTYPES: Record<IncidentType, string[]> = {
         'Tai nạn giao thông',
         'Cầu hỏng',
         'Đường đang sửa',
+    ],
+    customer_refusal: [
+        'Khách vắng mặt',
+        'Từ chối vì chất lượng',
+        'Từ chối vì sai hàng',
+        'Từ chối vì trễ hạn',
+        'Không liên lạc được',
+    ],
+    traffic_jam: [
+        'Ùn tắc cao điểm',
+        'Tai nạn gây kẹt xe',
+        'Công trình xây dựng',
+        'Sự kiện / lễ hội',
     ],
     other: [],
 };

@@ -19,18 +19,34 @@ export const tripService = {
 
     getActiveTrip: () => apiClient.get<ActiveTripResponse>('/api/trips/active'),
 
-    // tripId ở đây là shipment_id (không phải order_id)
     claim: (shipmentId: number) =>
         apiClient.post<ClaimTripResponse>(`/api/trips/${shipmentId}/claim`, {}),
 
     getPoolShipmentDetail: (shipmentId: number) =>
         apiClient.get<import('@/types/trip').TripPoolItem>(`/api/trips/pool-shipment/${shipmentId}`),
 
-    updateStatus: (tripId: number, status: TripStatus) =>
-        apiClient.patch<UpdateStatusResponse>(`/api/trips/${tripId}/status`, { status }),
+    updateStatus: (tripId: number, status: TripStatus, reason?: string) =>
+        apiClient.patch<UpdateStatusResponse>(`/api/trips/${tripId}/status`, { status, reason }),
 
+    // ARRIVED → COMPLETED: upload ảnh xác nhận giao hàng (BR-015/016/017)
     completeWithProof: (tripId: number, formData: FormData) =>
         apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, formData),
+
+    // PICKING → LOADED: upload ảnh lấy hàng bắt buộc (BR-013/014)
+    submitLoadingProof: (tripId: number, formData: FormData) =>
+        apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/loaded`, formData),
+
+    // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn
+    returnComplete: (tripId: number, formData: FormData) =>
+        apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData),
+
+    // TH3: Báo khách chưa trả → tạo customer debt
+    markUnpaid: (tripId: number, amount: number, notes?: string) =>
+        apiClient.post<{ message: string; debt: object }>(`/api/trips/${tripId}/mark-unpaid`, { amount, notes }),
+
+    // TH2: Ghi nhận khách trả tiền mặt → tạo driver debt
+    recordPayment: (tripId: number, formData: FormData) =>
+        apiClient.postForm<{ message: string; payment: object; debt: object }>(`/api/trips/${tripId}/payment`, formData),
 
     cancelDelivery: (tripId: number, reason: string) =>
         apiClient.post<CancelDeliveryResponse>(`/api/trips/${tripId}/cancel-delivery`, { reason }),
