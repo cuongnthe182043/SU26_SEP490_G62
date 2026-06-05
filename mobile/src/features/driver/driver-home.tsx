@@ -1,4 +1,4 @@
-import { Bell, ChevronRight, MapPin, Package, PackageCheck, Truck } from 'lucide-react-native';
+import { Bell, ChevronRight, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -224,6 +224,32 @@ export function DriverHomeScreen() {
                                 </Text>
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
                                     Quản lý và cập nhật trạng thái chuyến
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/kpi')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor='#FEF9C3'
+                                alignItems="center" justifyContent="center"
+                            >
+                                <Trophy size={22} color='#CA8A04' />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    KPI & Xếp hạng
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Theo dõi hiệu suất và bảng xếp hạng
                                 </Text>
                             </YStack>
                             <ChevronRight size={18} color={appTheme.colors.textMuted} />

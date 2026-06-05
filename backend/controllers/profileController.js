@@ -39,4 +39,29 @@ const updateAvatar = async (req, res) => {
     }
 };
 
-module.exports = { getMyProfile, updateMyProfile, updateAvatar };
+// PATCH /api/profile/me/password
+const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const result = await profileService.changePassword(req.user.userId, { currentPassword, newPassword });
+        res.json(result);
+    } catch (err) {
+        const code = err.message.includes('không đúng') ? 401
+            : err.message.includes('bắt buộc') || err.message.includes('ít nhất') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/profile/me/device-token  (ITEM 6)
+const registerDeviceToken = async (req, res) => {
+    try {
+        const { fcmToken, platform } = req.body;
+        const result = await profileService.registerDeviceToken(req.user.userId, { fcmToken, platform });
+        res.json(result);
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = { getMyProfile, updateMyProfile, updateAvatar, changePassword, registerDeviceToken };

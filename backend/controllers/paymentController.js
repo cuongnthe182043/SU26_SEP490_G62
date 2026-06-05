@@ -6,7 +6,12 @@ const recordCashPayment = async (req, res) => {
         const shipmentId = Number(req.params.id);
         if (!shipmentId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const receiptUrl = req.file?.path ?? null;
+        const receiptUrl =
+            req.files?.receipt?.[0]?.path ??
+            req.files?.image?.[0]?.path   ??
+            req.files?.photo?.[0]?.path   ??
+            req.file?.path ??
+            null;
         const { amount, notes } = req.body;
 
         if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
@@ -38,4 +43,18 @@ const getShipmentPayments = async (req, res) => {
     }
 };
 
-module.exports = { recordCashPayment, getShipmentPayments };
+// GET /api/trips/:id/payment-summary
+const getPaymentSummary = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'ID không hợp lệ' });
+        const data = await paymentService.getShipmentPaymentSummary(shipmentId, req.user.userId);
+        if (!data) return res.status(404).json({ error: 'Chuyến không tồn tại' });
+        res.json(data);
+    } catch (err) {
+        const code = err.message.includes('quyền') ? 403 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = { recordCashPayment, getShipmentPayments, getPaymentSummary };

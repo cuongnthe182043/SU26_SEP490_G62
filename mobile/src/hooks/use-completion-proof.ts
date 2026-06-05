@@ -20,32 +20,27 @@ async function compressImage(uri: string): Promise<string> {
 export function useCompletionProof(onSuccess?: (trip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null });
 
-    /**
-     * receiptUri — ảnh biên lai trip (bắt buộc mọi trip)
-     * proofUri   — ảnh xác nhận hoàn thành order (chỉ bắt buộc final trip)
-     */
-    const completeWithProof = async (tripId: number, receiptUri: string, proofUri?: string) => {
+    // proofUri   — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
+    // receiptUri — ảnh biên lai/hóa đơn có chữ ký khách (bắt buộc)
+    const completeWithProof = async (tripId: number, proofUri: string, receiptUri: string) => {
         setState({ isUploading: true, error: null });
         try {
-            const [compressedReceipt, compressedProof] = await Promise.all([
+            const [compressedProof, compressedReceipt] = await Promise.all([
+                compressImage(proofUri),
                 compressImage(receiptUri),
-                proofUri ? compressImage(proofUri) : Promise.resolve(null),
             ]);
 
             const formData = new FormData();
+            formData.append('proof', {
+                uri: compressedProof,
+                type: 'image/jpeg',
+                name: 'proof.jpg',
+            } as unknown as Blob);
             formData.append('receipt', {
                 uri: compressedReceipt,
                 type: 'image/jpeg',
                 name: 'receipt.jpg',
             } as unknown as Blob);
-
-            if (compressedProof) {
-                formData.append('proof', {
-                    uri: compressedProof,
-                    type: 'image/jpeg',
-                    name: 'proof.jpg',
-                } as unknown as Blob);
-            }
 
             const { trip } = await tripService.completeWithProof(tripId, formData);
             setState({ isUploading: false, error: null });

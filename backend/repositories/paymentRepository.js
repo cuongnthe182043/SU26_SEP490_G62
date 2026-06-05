@@ -74,4 +74,39 @@ const getShipmentPayments = async (shipmentId) => {
     return result.rows;
 };
 
-module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments };
+// Tổng hợp tài chính của 1 shipment — dùng để validate trước khi tạo payment/debt mới
+const getShipmentFinancialSummary = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT
+            COALESCE(os.actual_price, os.estimated_price, 0)          AS trip_value,
+            o.payment_type                                             AS order_payment_type,
+            COALESCE(SUM(sp.amount), 0)                               AS cash_collected,
+            COALESCE(SUM(d.total_amount)
+                FILTER (WHERE d.debt_type = 'customer'
+                          AND d.status NOT IN ('paid')), 0)           AS customer_debt_total
+         FROM order_shipments os
+         JOIN orders o ON o.id = os.order_id
+         LEFT JOIN shipment_payments sp ON sp.shipment_id = os.id
+         LEFT JOIN debts d ON d.shipment_id = os.id
+         WHERE os.id = $1
+         GROUP BY os.id, os.actual_price, os.estimated_price, o.payment_type`,
+        [shipmentId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    const tripValue        = Number(row.trip_value);
+    const cashCollected    = Number(row.cash_collected);
+    const customerDebt     = Number(row.customer_debt_total);
+    const remaining        = tripValue > 0 ? tripValue - cashCollected - customerDebt : null;
+
+    return {
+        trip_value:           tripValue,
+        order_payment_type:   row.order_payment_type,
+        cash_collected:       cashCollected,
+        customer_debt_total:  customerDebt,
+        remaining,            // null = không biết giá trị chuyến (chưa set actual_price/estimated_price)
+    };
+};
+
+module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary };

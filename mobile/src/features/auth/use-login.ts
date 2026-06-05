@@ -29,11 +29,7 @@ export function useLogin() {
       return result;
     } catch (error) {
       const message = error instanceof ApiError
-        ? error.status === 401
-          ? ERROR_MESSAGES.invalidCredential
-          : error.status === 403
-            ? error.message
-            : error.message
+        ? error.message
         : error instanceof Error
           ? error.message
           : ERROR_MESSAGES.invalidCredential;

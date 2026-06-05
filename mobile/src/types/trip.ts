@@ -36,6 +36,18 @@ export type TripPoolItem = {
     max_load_weight_kg: string | null;
 };
 
+export type TripStop = {
+    id: number;
+    stop_index: number;
+    stop_type: 'pickup' | 'delivery';
+    address: string;
+    contact_name: string | null;
+    contact_phone: string | null;
+    arrived_at: string | null;
+    completed_at: string | null;
+    proof_url: string | null;
+};
+
 export type ActiveTrip = {
     id: number;
     order_id: number;
@@ -59,6 +71,7 @@ export type ActiveTrip = {
     order_payment_type: string | null;
     is_final_shipment: boolean;
     max_shipment_index: number;
+    stops: TripStop[];
 };
 
 export type TripPoolPagination = {
@@ -199,6 +212,14 @@ export type PoolOrderDetail = {
 
 export type OrderDetailResponse = OrderDetailData;
 
+export type PaymentSummary = {
+    trip_value: number;
+    order_payment_type: string | null;
+    cash_collected: number;
+    customer_debt_total: number;
+    remaining: number | null;
+};
+
 export type ExpenseType =
     | 'fuel'
     | 'toll'
@@ -258,9 +279,9 @@ export type NextAction = {
 
 export const NEXT_ACTIONS: Partial<Record<TripStatus, NextAction>> = {
     claimed:   { label: 'Bắt đầu lấy hàng',      nextStatus: 'picking',   tone: 'primary'   },
-    picking:   { label: 'Xác nhận đã lấy hàng',  nextStatus: 'loaded',    tone: 'primary'   },
     loaded:    { label: 'Bắt đầu vận chuyển',     nextStatus: 'transit',   tone: 'primary'   },
     transit:   { label: 'Xác nhận đã đến',        nextStatus: 'arrived',   tone: 'primary'   },
     failed:    { label: 'Bắt đầu hoàn hàng',      nextStatus: 'returning', tone: 'secondary' },
-    returning: { label: 'Hoàn thành hoàn hàng',   nextStatus: 'completed', tone: 'secondary' },
+    // picking → loaded: requires loading proof photo (use-loading-proof hook)
+    // returning → completed: use return-complete screen with optional photo
 };

@@ -22,8 +22,8 @@ export function KeyboardSafeScrollView({
     return (
         <KeyboardAvoidingView
             style={[styles.flex, style]}
-            behavior="padding"
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
             <ScrollView
                 style={styles.flex}

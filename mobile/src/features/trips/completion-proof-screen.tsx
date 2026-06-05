@@ -12,16 +12,16 @@ import { useCompletionProof } from '@/hooks/use-completion-proof';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Slot = 'receipt' | 'proof';
+type Slot = 'proof' | 'receipt';
 
 const SLOT_LABEL: Record<Slot, string> = {
-    receipt: 'Biên lai',
     proof:   'Xác nhận',
+    receipt: 'Biên lai',
 };
 
 const SLOT_GUIDE: Record<Slot, string> = {
-    receipt: 'Chụp biên lai / chữ ký khách nhận hàng',
-    proof:   'Chụp hàng hóa đã giao tại điểm giao cuối',
+    proof:   'Chụp ảnh xác nhận giao hàng (người nhận / hàng tại điểm giao)',
+    receipt: 'Chụp ảnh biên lai / hóa đơn có chữ ký của khách',
 };
 
 // ─── Thumbnail slot ───────────────────────────────────────────────────────────
@@ -83,10 +83,9 @@ export function CompletionProofScreen() {
     const tripIdNum = Number(tripId);
     const isFinal   = isFinalParam === '1';
 
-    const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [proofUri,   setProofUri]   = useState<string | null>(null);
-    // activeSlot = which slot the shutter targets
-    const [activeSlot, setActiveSlot] = useState<Slot>('receipt');
+    const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [activeSlot, setActiveSlot] = useState<Slot>('proof');
 
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView>(null);
@@ -95,49 +94,48 @@ export function CompletionProofScreen() {
         router.back();
     });
 
-    const slots: Slot[] = isFinal ? ['receipt', 'proof'] : ['receipt'];
-    const currentUri     = activeSlot === 'receipt' ? receiptUri : proofUri;
+    // Luôn hiện cả 2 slots: xác nhận giao + biên lai (bắt buộc cho mọi completion)
+    const slots: Slot[] = ['proof', 'receipt'];
+    const currentUri = activeSlot === 'proof' ? proofUri : receiptUri;
 
-    // Auto-advance activeSlot to first empty slot
-    const resolveActiveSlot = useCallback((newReceiptUri: string | null, newProofUri: string | null) => {
-        if (!newReceiptUri) { setActiveSlot('receipt'); return; }
-        if (isFinal && !newProofUri) { setActiveSlot('proof'); return; }
-        // all filled — stay on current
-    }, [isFinal]);
+    const resolveActiveSlot = useCallback((newProof: string | null, newReceipt: string | null) => {
+        if (!newProof)    { setActiveSlot('proof');   return; }
+        if (!newReceipt)  { setActiveSlot('receipt'); return; }
+    }, []);
 
     const takePicture = useCallback(async () => {
         if (!cameraRef.current) return;
         try {
             const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
             if (!photo?.uri) return;
-            if (activeSlot === 'receipt') {
-                setReceiptUri(photo.uri);
-                resolveActiveSlot(photo.uri, proofUri);
-            } else {
+            if (activeSlot === 'proof') {
                 setProofUri(photo.uri);
-                resolveActiveSlot(receiptUri, photo.uri);
+                resolveActiveSlot(photo.uri, receiptUri);
+            } else {
+                setReceiptUri(photo.uri);
+                resolveActiveSlot(proofUri, photo.uri);
             }
         } catch {
             Alert.alert('Lỗi', 'Không thể chụp ảnh, vui lòng thử lại.');
         }
-    }, [activeSlot, receiptUri, proofUri, resolveActiveSlot]);
+    }, [activeSlot, proofUri, receiptUri, resolveActiveSlot]);
 
     const handleDelete = useCallback((slot: Slot) => {
-        if (slot === 'receipt') {
-            setReceiptUri(null);
-            setActiveSlot('receipt');
-        } else {
+        if (slot === 'proof') {
             setProofUri(null);
             setActiveSlot('proof');
+        } else {
+            setReceiptUri(null);
+            setActiveSlot('receipt');
         }
     }, []);
 
     const handleConfirm = useCallback(() => {
-        if (!receiptUri) return;
-        completeWithProof(tripIdNum, receiptUri, proofUri ?? undefined);
-    }, [receiptUri, proofUri, tripIdNum, completeWithProof]);
+        if (!proofUri || !receiptUri) return;
+        completeWithProof(tripIdNum, proofUri, receiptUri);
+    }, [proofUri, receiptUri, tripIdNum, completeWithProof]);
 
-    const allDone = isFinal ? (!!receiptUri && !!proofUri) : !!receiptUri;
+    const allDone = !!proofUri && !!receiptUri;
 
     // ── Permission screens ───────────────────────────────────────────────────
 
@@ -208,7 +206,7 @@ export function CompletionProofScreen() {
                         <ThumbSlot
                             key={slot}
                             label={SLOT_LABEL[slot]}
-                            uri={slot === 'receipt' ? receiptUri : proofUri}
+                            uri={slot === 'proof' ? proofUri : receiptUri}
                             active={activeSlot === slot}
                             onPress={() => setActiveSlot(slot)}
                             onDelete={() => handleDelete(slot)}
@@ -250,13 +248,11 @@ export function CompletionProofScreen() {
                             <Camera size={28} color={appTheme.colors.primary} />
                         </View>
                     </Pressable>
-                    {isFinal ? (
-                        <Text style={styles.stepHint}>
-                            {slots.map(s =>
-                                (s === 'receipt' ? receiptUri : proofUri) ? `✓ ${SLOT_LABEL[s]}` : `○ ${SLOT_LABEL[s]}`
-                            ).join('   ')}
-                        </Text>
-                    ) : null}
+                    <Text style={styles.stepHint}>
+                        {slots.map(s =>
+                            (s === 'proof' ? proofUri : receiptUri) ? `✓ ${SLOT_LABEL[s]}` : `○ ${SLOT_LABEL[s]}`
+                        ).join('   ')}
+                    </Text>
                 </YStack>
             </View>
         </View>
