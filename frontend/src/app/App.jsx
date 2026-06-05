@@ -2,6 +2,7 @@ import React from "react";
 import LoadingScreen from "../components/LoadingScreen";
 import { useAuthSession } from "../hooks/useAuthSession";
 import AdminPage from "../pages/Admin/AdminPage";
+import AccountantPage from "../pages/Accountant/accountant";
 import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
 
@@ -22,6 +23,10 @@ export default function App() {
 
   if (user.role === "coordinator") {
     return <CoordinatorPage user={user} onLogout={logout} />;
+  }
+
+  if (user.role === "accountant") {
+    return <AccountantPage user={user} onLogout={logout} />;
   }
 
   return <LoadingScreen label="No page is available for this role." />;
