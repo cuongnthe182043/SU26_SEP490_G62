@@ -15,9 +15,12 @@ const notificationRoutes = require('./notificationRoutes');
 const kpiRoutes          = require('./kpiRoutes');
 const payrollRoutes      = require('./payrollRoutes');
 const debtRoutes         = require('./debtRoutes');
+const accountantRoutes = require('./accountant/accountantRoutes');
 
 // Register route modules
 router.use('/auth', authRoutes);
+router.use('/orders', orderRoutes);
+router.use('/accountant', accountantRoutes);
 router.use('/api/trips', tripRoutes);
 router.use('/api/profile', profileRoutes);
 router.use('/api/coordinator', coordinatorRoutes);

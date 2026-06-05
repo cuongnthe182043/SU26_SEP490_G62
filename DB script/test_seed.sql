@@ -77,18 +77,7 @@ FROM order_shipments os JOIN orders o ON o.id = os.order_id
 WHERE o.cargo_name = 'X2C Test: Thùng hàng xi măng' AND os.shipment_index = 1
   AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
 
--- trip_runs: Coordinator đã tạo sẵn 2 runs (X2C), driver chỉ thực hiện
-INSERT INTO trip_runs (shipment_id, run_index, status)
-SELECT os.id, 1, 'pending'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'X2C Test: Thùng hàng xi măng' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_runs tr WHERE tr.shipment_id = os.id AND tr.run_index = 1);
-
-INSERT INTO trip_runs (shipment_id, run_index, status)
-SELECT os.id, 2, 'pending'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'X2C Test: Thùng hàng xi măng' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_runs tr WHERE tr.shipment_id = os.id AND tr.run_index = 2);
+-- trip_runs sẽ do coordinator tạo sau khi có UI. Chưa insert vào đây.
 
 -- ─── SCENARIO 2: Multi-Trip Order — 3 trips cùng đơn, driver tự claim từng cái ─
 
@@ -385,9 +374,7 @@ END $$;
 
 -- ─── VALIDATION ───────────────────────────────────────────────────────────────
 
-SELECT 'trip_runs'         AS entity, COUNT(*) AS count FROM trip_runs
-UNION ALL
-SELECT 'shipment_payments', COUNT(*) FROM shipment_payments
+SELECT 'shipment_payments' AS entity, COUNT(*) AS count FROM shipment_payments
 UNION ALL
 SELECT 'payment_receipts',  COUNT(*) FROM payment_receipts
 UNION ALL

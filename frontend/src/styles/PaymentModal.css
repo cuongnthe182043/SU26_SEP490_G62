@@ -1,0 +1,152 @@
+/* Premium Styles for Payment Modal */
+
+.payment-modal-card {
+  max-width: 600px;
+  width: 90%;
+  animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.order-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 4px;
+  display: block;
+}
+
+/* Debt summary boxes */
+.debt-summary-box {
+  display: flex;
+  gap: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.summary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-right: 1px solid #e2e8f0;
+}
+
+.summary-item:last-child {
+  border-right: none;
+}
+
+.summary-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.summary-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.summary-val.text-green {
+  color: #16a34a;
+}
+
+.summary-val.text-red {
+  color: #dc2626;
+}
+
+/* Success banner */
+.success-banner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Payments history section */
+.payments-history-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 20px;
+  margin-top: 20px;
+}
+
+.payments-history-section h4 {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.history-table-wrapper {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.history-table th {
+  background: #f8fafc;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+}
+
+.history-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.loading-small, .empty-small {
+  text-align: center;
+  font-size: 13px;
+  color: #64748b;
+  padding: 24px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+.mt-16 { margin-top: 16px; }
+.text-center { text-align: center; }
+.font-bold { font-weight: 700; }
+.text-muted { color: #64748b; }
