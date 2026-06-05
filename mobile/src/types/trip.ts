@@ -212,6 +212,14 @@ export type PoolOrderDetail = {
 
 export type OrderDetailResponse = OrderDetailData;
 
+export type PaymentSummary = {
+    trip_value: number;
+    order_payment_type: string | null;
+    cash_collected: number;
+    customer_debt_total: number;
+    remaining: number | null;
+};
+
 export type ExpenseType =
     | 'fuel'
     | 'toll'

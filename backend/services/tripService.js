@@ -1,6 +1,10 @@
-const tripRepository = require('../repositories/tripRepository');
+const tripRepository     = require('../repositories/tripRepository');
+const paymentRepository  = require('../repositories/paymentRepository');
 const notificationService = require('./notificationService');
+const kpiService          = require('./kpiService');
 const pool = require('../config/database');
+
+const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
 const {
     SHIPMENT_STATUS,
     ALLOWED_TRANSITIONS,
@@ -198,6 +202,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl, receiptFileUrl) => {
         }, { displayMode: 'alert' }).catch(() => {});
     }
 
+    // Tự động tính lại KPI sau khi hoàn thành — fire-and-forget, không block response
+    kpiService.recalculateAfterCompletion(driverId, new Date());
+
     return completedTrip;
 };
 
@@ -232,8 +239,22 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     if (!['completed', 'arrived'].includes(trip.status)) {
         throw new Error('Chỉ có thể báo nợ khi chuyến ở trạng thái "arrived" hoặc "completed"');
     }
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+
+    const amt = Number(amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
         throw new Error('Số tiền nợ phải là số dương hợp lệ');
+    }
+
+    // Anti-spam + TH2+TH3 overflow guard
+    const summary = await paymentRepository.getShipmentFinancialSummary(tripId);
+    if (summary && summary.remaining !== null) {
+        if (amt > summary.remaining) {
+            const msg = summary.remaining <= 0
+                ? `Chuyến này đã được ghi nhận đủ số tiền (${fmtVND(summary.trip_value)}). Không thể báo thêm nợ.`
+                : `Số tiền báo nợ ${fmtVND(amt)} vượt quá phần còn lại ${fmtVND(summary.remaining)} ` +
+                  `(giá trị chuyến ${fmtVND(summary.trip_value)}, đã thu mặt ${fmtVND(summary.cash_collected)}, đã báo nợ ${fmtVND(summary.customer_debt_total)}).`;
+            throw new Error(msg);
+        }
     }
 
     // Get customer_id from orders table via shipment's order_id
@@ -248,7 +269,7 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
         `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at, updated_at)
          VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', $6, NOW(), NOW())
          RETURNING *`,
-        [customerId, driverId, tripId, trip.order_id, Number(amount), notes ?? null],
+        [customerId, driverId, tripId, trip.order_id, amt, notes ?? null],
     );
 
     notificationService.createForUser(driverId, {
@@ -293,6 +314,9 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
         entityType: 'shipments',
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
+
+    // Tự động tính lại KPI — fire-and-forget
+    kpiService.recalculateAfterCompletion(driverId, new Date());
 
     return completedTrip;
 };

@@ -85,7 +85,8 @@ router.post(
     ])),
     paymentController.recordCashPayment,
 );
-router.get('/:id/payments', driverOnly, paymentController.getShipmentPayments);
+router.get('/:id/payments',        driverOnly, paymentController.getShipmentPayments);
+router.get('/:id/payment-summary', driverOnly, paymentController.getPaymentSummary);
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
