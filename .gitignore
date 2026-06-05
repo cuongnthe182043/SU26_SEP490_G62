@@ -43,6 +43,7 @@ node_modules/
 db.md
 CLAUDE.md
 .claude
+BUSINESS_SPECIFICATION.md
 AGENTS.md
 .cache/
 dist/
