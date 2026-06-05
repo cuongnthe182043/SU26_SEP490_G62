@@ -42,7 +42,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE}/orders`, {
+      const response = await fetch(`${API_BASE}/accountant/orders`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -191,7 +191,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
     setImporting(true);
     try {
-      const response = await fetch(`${API_BASE}/orders/import`, {
+      const response = await fetch(`${API_BASE}/accountant/orders/import`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

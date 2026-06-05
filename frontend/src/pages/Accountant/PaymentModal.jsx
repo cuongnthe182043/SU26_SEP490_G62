@@ -30,7 +30,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
     if (!order) return;
     setLoadingPayments(true);
     try {
-      const response = await fetch(`${API_BASE}/orders/${order.id}/payments`, {
+      const response = await fetch(`${API_BASE}/accountant/orders/${order.id}/payments`, {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -65,7 +65,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE}/orders/${order.id}/payments`, {
+      const response = await fetch(`${API_BASE}/accountant/orders/${order.id}/payments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
