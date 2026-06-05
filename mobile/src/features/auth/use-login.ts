@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '@/lib/api-error';
+import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { authService } from '@/services/auth-service';
 import type { AuthUser } from '@/types/auth';
 
@@ -28,10 +29,14 @@ export function useLogin() {
       return result;
     } catch (error) {
       const message = error instanceof ApiError
-        ? error.message
+        ? error.status === 401
+          ? ERROR_MESSAGES.invalidCredential
+          : error.status === 403
+            ? error.message
+            : error.message
         : error instanceof Error
           ? error.message
-          : '\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i. Vui l\u00f2ng th\u1eed l\u1ea1i.';
+          : ERROR_MESSAGES.invalidCredential;
 
       setState({ isLoading: false, error: message, user: null });
       return null;

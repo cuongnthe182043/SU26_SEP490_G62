@@ -1,102 +1,56 @@
-const orderRepository = require('../repositories/orderRepository');
+const orderService = require('../services/orderService');
 
-/**
- * GET /orders
- * Fetch all orders, supporting optional query filters
- */
-const getOrders = async (req, res) => {
+const listOrders = async (_req, res) => {
     try {
-        const filters = {
-            status: req.query.status,
-            search: req.query.search,
-        };
-
-        const page = req.query.page ? Number(req.query.page) : null;
-        const limit = req.query.limit ? Number(req.query.limit) : null;
-
-        const result = await orderRepository.getAllOrders(filters, page, limit);
-        res.json(result);
+        const orders = await orderService.listOrders();
+        res.json({ orders });
     } catch (err) {
-        console.error('Error fetching orders:', err);
-        res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
+        res.status(500).json({ error: err.message });
     }
 };
 
-/**
- * POST /orders
- * Create a single manual order
- */
-const createOrder = async (req, res) => {
-    try {
-        const {
-            customer_name,
-            customer_phone,
-            customer_company,
-            cargo_name,
-            cargo_weight,
-            pickup_address,
-            delivery_address,
-            estimated_price,
-            payment_type,
-            notes,
-        } = req.body;
-
-        if (!customer_name || !customer_phone || !pickup_address || !delivery_address) {
-            return res.status(400).json({ error: 'Customer name, phone, pickup and delivery addresses are required' });
-        }
-
-        const createdByUserId = req.user.userId; // Resolved from JWT verifyToken middleware
-
-        const orderData = {
-            customer_name,
-            customer_phone,
-            customer_company,
-            cargo_name,
-            cargo_weight: Number(cargo_weight),
-            pickup_address,
-            delivery_address,
-            estimated_price: Number(estimated_price),
-            payment_type,
-            status: 'pending',
-            notes,
-            created_by: createdByUserId,
-        };
-
-        const newOrder = await orderRepository.createOrder(orderData);
-        res.status(201).json({ message: 'Order created successfully', order: newOrder });
-    } catch (err) {
-        console.error('Error creating order:', err);
-        res.status(500).json({ error: 'Failed to create order', details: err.message });
-    }
-};
-
-/**
- * POST /orders/import
- * Bulk import orders parsed from Excel file
- */
 const importOrders = async (req, res) => {
     try {
-        const { orders } = req.body;
-        if (!orders || !Array.isArray(orders) || orders.length === 0) {
-            return res.status(400).json({ error: 'A non-empty array of orders is required for import' });
+        if (!req.file?.buffer) {
+            return res.status(400).json({ error: 'Vui lòng upload file Excel' });
         }
 
-        const createdByUserId = req.user.userId;
-
-        const importedOrders = await orderRepository.bulkCreateOrders(orders, createdByUserId);
+        const result = await orderService.importOrdersFromExcel(req.user.userId, req.file.buffer);
         res.status(201).json({
-            message: `Successfully imported ${importedOrders.length} orders`,
-            count: importedOrders.length,
-            orders: importedOrders
+            message: `Đã import ${result.length} đơn hàng từ Excel`,
+            imported: result.length,
+            orders: result,
         });
     } catch (err) {
-        console.error('Error importing orders:', err);
-        res.status(500).json({ error: 'Failed to import orders', details: err.message });
+        res.status(422).json({ error: err.message });
     }
 };
 
-module.exports = {
-    getOrders,
-    createOrder,
-    importOrders,
+const createOrder = async (req, res) => {
+    try {
+        const result = await orderService.createOrder(req.user.userId, req.body);
+        res.status(201).json({
+            message: 'Tạo đơn hàng thành công',
+            ...result,
+        });
+    } catch (err) {
+        const status = err.message.includes('Thiếu') ? 400 : 422;
+        res.status(status).json({ error: err.message });
+    }
 };
+
+const updateOrder = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const updatedOrder = await orderService.updateOrder(orderId, req.body);
+        if (!updatedOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
+
+        res.json({ message: 'Cập nhật đơn hàng thành công', order: updatedOrder });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = { createOrder, listOrders, importOrders, updateOrder };

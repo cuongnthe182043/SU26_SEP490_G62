@@ -1,13 +1,16 @@
 const tripService = require('../services/tripService');
 
-// GET /api/trips/pool
+// GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
     try {
-        const trips = await tripService.getTripPool(req.user.userId);
-        res.json({ trips });
+        const page           = Math.max(1, Number(req.query.page) || 1);
+        const limit          = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
+        const vehicleGroupId = req.query.vehicleGroupId ? Number(req.query.vehicleGroupId) : null;
+
+        const data = await tripService.getTripPool(req.user.userId, { page, limit, vehicleGroupId });
+        res.json(data);
     } catch (err) {
-        const status = err.message.includes('chưa được gán') ? 422 : 500;
-        res.status(status).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
 };
 
@@ -21,18 +24,23 @@ const getActiveTrip = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/claim
+// POST /api/trips/:id/claim  — :id là shipment_id
 const claimTrip = async (req, res) => {
     try {
-        const tripId = Number(req.params.id);
-        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
 
-        const trip = await tripService.claimTrip(tripId, req.user.userId);
+        const trip = await tripService.claimTrip(shipmentId, req.user.userId);
         res.status(200).json({ message: 'Nhận chuyến thành công', trip });
     } catch (err) {
-        const status = err.message.includes('đã được nhận') ? 409
-            : err.message.includes('đang có') ? 422
-            : err.message.includes('không phù hợp') ? 403
+        if (err.message.startsWith('ALREADY_CLAIMED:')) {
+            return res.status(409).json({ error: err.message.replace('ALREADY_CLAIMED:', '') });
+        }
+        if (err.message.startsWith('SAME_ORDER:')) {
+            return res.status(409).json({ error: err.message.replace('SAME_ORDER:', '') });
+        }
+        const status = err.message.includes('đang có') ? 422
+            : err.message.includes('chưa được gán') ? 422
             : 400;
         res.status(status).json({ error: err.message });
     }
@@ -49,29 +57,68 @@ const updateStatus = async (req, res) => {
         const trip = await tripService.updateStatus(tripId, req.user.userId, status);
         res.json({ message: 'Cập nhật trạng thái thành công', trip });
     } catch (err) {
-        const status = err.message.includes('không có quyền') ? 403
+        const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('không thể') ? 422
             : 400;
-        res.status(status).json({ error: err.message });
+        res.status(code).json({ error: err.message });
     }
 };
 
-// POST /api/trips/:id/complete  (multipart/form-data, field: proof)
+
+const cancelDelivery = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        const { reason } = req.body;
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+        if (!reason?.trim()) return res.status(400).json({ error: 'Lý do không thể giao hàng là bắt buộc' });
+
+        const trip = await tripService.cancelDelivery(tripId, req.user.userId, reason);
+        res.json({ message: 'Đã ghi nhận không thể giao hàng', trip });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('bắt buộc') ? 400
+            : err.message.includes('khi đã đến') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/release
+// Body: { reason?: string }
+// CLAIMED/PICKING → toàn bộ order về available (back to pool)
+const releaseTrip = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        const { reason } = req.body;
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const result = await tripService.releaseTrip(tripId, req.user.userId, reason);
+        res.json({ message: 'Đã hủy chuyến, đơn hàng trả về pool', ...result });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('Chỉ có thể') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/complete  (multipart/form-data, fields: receipt, proof?)
 const completeTrip = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const proofUrl = req.file?.path ?? null;
+        const receiptUrl = req.files?.receipt?.[0]?.path ?? null;
+        const proofUrl   = req.files?.proof?.[0]?.path   ?? null;
 
-        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl);
+        const trip = await tripService.completeTrip(tripId, req.user.userId, receiptUrl, proofUrl);
         res.json({ message: 'Hoàn thành chuyến thành công', trip });
     } catch (err) {
-        const status = err.message.includes('không có quyền') ? 403
+        const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('bắt buộc') ? 422
             : err.message.includes('"arrived"') ? 422
             : 400;
-        res.status(status).json({ error: err.message });
+        res.status(code).json({ error: err.message });
     }
 };
 
@@ -85,11 +132,68 @@ const getDriverStats = async (req, res) => {
     }
 };
 
+// GET /api/trips/history?page=1&limit=20
+const getOrderHistory = async (req, res) => {
+    try {
+        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+        const result = await tripService.getOrderHistory(req.user.userId, page, limit);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/pool-shipment/:shipmentId — chi tiết 1 chuyến trong pool
+const getAvailableShipmentDetail = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.shipmentId);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
+        const detail = await tripService.getAvailableShipmentDetail(shipmentId);
+        res.json(detail);
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/pool/:orderId — giữ lại để tương thích
+const getAvailableOrderDetail = async (req, res) => {
+    try {
+        const orderId = Number(req.params.orderId);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        const detail = await tripService.getAvailableOrderDetail(orderId);
+        res.json(detail);
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/orders/:orderId
+const getOrderDetail = async (req, res) => {
+    try {
+        const orderId = Number(req.params.orderId);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        const detail = await tripService.getOrderDetail(orderId, req.user.userId);
+        res.json(detail);
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
     claimTrip,
     updateStatus,
+    cancelDelivery,
+    releaseTrip,
     completeTrip,
     getDriverStats,
+    getOrderHistory,
+    getAvailableShipmentDetail,
+    getAvailableOrderDetail,
+    getOrderDetail,
 };
