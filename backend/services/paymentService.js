@@ -5,7 +5,8 @@ const PAYMENT_ALLOWED_STATUSES = ['arrived', 'transit', 'loaded', 'completed'];
 
 const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
 
-// TH2: Khách thanh toán tiền mặt cho Driver → ghi nhận + tạo Driver Debt (BR-018, §15)
+// TH2: Khách thanh toán tiền mặt cho Driver → ghi nhận vào shipment_payments (BR-018, §15)
+// Driver Debt chỉ được tạo khi kế toán chuyển bill thành công nợ — không auto-create ở đây.
 const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, receiptUrl) => {
     if (!receiptUrl) throw new Error('Ảnh biên lai thanh toán là bắt buộc (BR-018)');
 
@@ -44,7 +45,7 @@ const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, 
         }
     }
 
-    const { payment, debt } = await paymentRepository.recordCashPayment({
+    const { payment } = await paymentRepository.recordCashPayment({
         shipmentId,
         amount: amt,
         collectedBy: driverId,
@@ -53,7 +54,7 @@ const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, 
 
     await paymentRepository.addPaymentReceipt(payment.id, receiptUrl);
 
-    return { payment, debt };
+    return { payment };
 };
 
 // GET payments + summary cho driver xem trạng thái tài chính chuyến
