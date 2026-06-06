@@ -234,15 +234,15 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-card">
-        <div className="modal-header">
+    <div className="accountant-modal-overlay">
+      <div className="accountant-modal-card">
+        <div className="accountant-modal-header">
           <h3>Tạo đơn hàng mới</h3>
           <button className="close-btn" onClick={onClose}>&times;</button>
         </div>
 
         {/* Tab Selection */}
-        <div className="modal-tabs">
+        <div className="accountant-modal-tabs">
           <button 
             className={`tab-btn ${activeTab === "manual" ? "active" : ""}`}
             onClick={() => setActiveTab("manual")}
@@ -259,7 +259,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
         {/* Tab Content: Manual */}
         {activeTab === "manual" && (
-          <form onSubmit={handleManualSubmit} className="modal-form">
+          <form onSubmit={handleManualSubmit} className="accountant-modal-form">
             <div className="form-grid">
               <label className="required">
                 <span>Tên khách hàng (*)</span>
@@ -368,7 +368,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
             {formError && <div className="error-message">{formError}</div>}
 
-            <div className="modal-actions">
+            <div className="accountant-modal-actions">
               <button type="button" className="secondary-btn" onClick={onClose}>Hủy bỏ</button>
               <button type="submit" className="primary-btn" disabled={submitting}>
                 {submitting ? "Đang lưu..." : "Lưu đơn hàng"}
@@ -444,7 +444,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
               </div>
             )}
 
-            <div className="modal-actions mt-16">
+            <div className="accountant-modal-actions mt-16">
               <button type="button" className="secondary-btn" onClick={onClose}>Hủy bỏ</button>
               <button 
                 type="button" 

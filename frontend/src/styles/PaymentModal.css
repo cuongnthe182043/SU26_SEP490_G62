@@ -1,12 +1,12 @@
 /* Premium Styles for Payment Modal */
 
-.payment-modal-card {
+.accountant-modal-card.payment-modal-card {
   max-width: 600px;
   width: 90%;
   animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.order-subtitle {
+.accountant-modal-card .order-subtitle {
   font-size: 13px;
   color: #64748b;
   margin-top: 4px;
@@ -14,7 +14,7 @@
 }
 
 /* Debt summary boxes */
-.debt-summary-box {
+.accountant-modal-card .debt-summary-box {
   display: flex;
   gap: 16px;
   background: #f8fafc;
@@ -24,7 +24,7 @@
   margin-bottom: 20px;
 }
 
-.summary-item {
+.accountant-modal-card .summary-item {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -34,11 +34,11 @@
   border-right: 1px solid #e2e8f0;
 }
 
-.summary-item:last-child {
+.accountant-modal-card .summary-item:last-child {
   border-right: none;
 }
 
-.summary-lbl {
+.accountant-modal-card .summary-lbl {
   font-size: 11px;
   font-weight: 700;
   color: #64748b;
@@ -47,22 +47,22 @@
   margin-bottom: 4px;
 }
 
-.summary-val {
+.accountant-modal-card .summary-val {
   font-size: 16px;
   font-weight: 800;
   color: #0f172a;
 }
 
-.summary-val.text-green {
+.accountant-modal-card .summary-val.text-green {
   color: #16a34a;
 }
 
-.summary-val.text-red {
+.accountant-modal-card .summary-val.text-red {
   color: #dc2626;
 }
 
 /* Success banner */
-.success-banner {
+.accountant-modal-card .success-banner {
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   color: #16a34a;
@@ -73,13 +73,13 @@
 }
 
 /* Payments history section */
-.payments-history-section {
+.accountant-modal-card .payments-history-section {
   border-top: 1px solid #e2e8f0;
   padding-top: 20px;
   margin-top: 20px;
 }
 
-.payments-history-section h4 {
+.accountant-modal-card .payments-history-section h4 {
   font-size: 14px;
   font-weight: 800;
   color: #1e293b;
@@ -88,21 +88,21 @@
   letter-spacing: 0.02em;
 }
 
-.history-table-wrapper {
+.accountant-modal-card .history-table-wrapper {
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
 
-.history-table {
+.accountant-modal-card .history-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
   text-align: left;
 }
 
-.history-table th {
+.accountant-modal-card .history-table th {
   background: #f8fafc;
   padding: 10px 12px;
   font-weight: 700;
@@ -112,18 +112,19 @@
   top: 0;
 }
 
-.history-table td {
+.accountant-modal-card .history-table td {
   padding: 10px 12px;
   border-bottom: 1px solid #f1f5f9;
   color: #334155;
   vertical-align: middle;
 }
 
-.history-table tr:last-child td {
+.accountant-modal-card .history-table tr:last-child td {
   border-bottom: none;
 }
 
-.loading-small, .empty-small {
+.accountant-modal-card .loading-small,
+.accountant-modal-card .empty-small {
   text-align: center;
   font-size: 13px;
   color: #64748b;
@@ -144,9 +145,9 @@
   }
 }
 
-.mb-16 { margin-bottom: 16px; }
-.mb-24 { margin-bottom: 24px; }
-.mt-16 { margin-top: 16px; }
-.text-center { text-align: center; }
-.font-bold { font-weight: 700; }
-.text-muted { color: #64748b; }
+.accountant-modal-card .mb-16 { margin-bottom: 16px; }
+.accountant-modal-card .mb-24 { margin-bottom: 24px; }
+.accountant-modal-card .mt-16 { margin-top: 16px; }
+.accountant-modal-card .text-center { text-align: center; }
+.accountant-modal-card .font-bold { font-weight: 700; }
+.accountant-modal-card .text-muted { color: #64748b; }
