@@ -132,7 +132,7 @@ export default function Accountant({ user, onLogout }) {
   });
 
   return (
-    <div className="dashboard-layout">
+    <div className="dashboard-layout accountant-dashboard">
       {/* Sidebar - Finance & Logistics HQ */}
       <aside className="sidebar">
         <div className="sidebar-brand">
