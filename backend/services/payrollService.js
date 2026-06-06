@@ -12,12 +12,21 @@ const getMyPayrolls = async (driverId, { month, year } = {}) => {
 // ─── Salary Advance ───────────────────────────────────────────────────────────
 
 // BR-029: Driver request → Manager approve → Accountant disburse
+const MAX_ADVANCE = 5_000_000;
+
 const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, requestYear }) => {
     if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
+    if (Number(amount) > MAX_ADVANCE) throw new Error(`Số tiền ứng lương tối đa là ${MAX_ADVANCE.toLocaleString('vi-VN')}₫`);
     const m = Number(requestMonth);
     const y = Number(requestYear);
     if (!m || m < 1 || m > 12) throw new Error('Tháng không hợp lệ (1-12)');
     if (!y || y < 2020)        throw new Error('Năm không hợp lệ');
+
+    // Chỉ cho phép ứng vào ngày 25 hàng tháng (Điều IV)
+    const today = new Date();
+    if (today.getDate() !== 25) {
+        throw new Error('Ứng lương chỉ được thực hiện vào ngày 25 hàng tháng');
+    }
 
     return payrollRepository.createSalaryAdvance({
         driverId,
@@ -32,4 +41,11 @@ const getMyAdvances = async (driverId, { status } = {}) => {
     return payrollRepository.getDriverAdvances(driverId, { status });
 };
 
-module.exports = { getMyPayrolls, requestSalaryAdvance, getMyAdvances };
+const getPayrollEstimate = async (driverId, { month, year }) => {
+    const m = month ? Number(month) : new Date().getMonth() + 1;
+    const y = year  ? Number(year)  : new Date().getFullYear();
+    if (m < 1 || m > 12) throw new Error('Tháng không hợp lệ');
+    return payrollRepository.getPayrollEstimate(driverId, { month: m, year: y });
+};
+
+module.exports = { getMyPayrolls, requestSalaryAdvance, getMyAdvances, getPayrollEstimate };

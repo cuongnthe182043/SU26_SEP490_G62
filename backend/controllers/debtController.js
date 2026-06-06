@@ -21,8 +21,20 @@ const getMyDebtSummary = async (req, res) => {
     }
 };
 
+// GET /api/debts/:id/payments
+const getDebtPayments = async (req, res) => {
+    try {
+        const debtId = Number(req.params.id);
+        if (!debtId) return res.status(400).json({ error: 'Debt ID không hợp lệ' });
+        const data = await debtService.getDebtPayments(req.user.userId, debtId);
+        res.json({ payments: data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // POST /api/debts/:id/remit
-// Body: { amount, paymentMethod, notes }
+// Body: { amount, paymentMethod?, notes? }
 const remitDebt = async (req, res) => {
     try {
         const debtId = Number(req.params.id);
@@ -31,8 +43,13 @@ const remitDebt = async (req, res) => {
         const { amount, paymentMethod, notes } = req.body;
         if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
 
-        const updated = await debtService.remitDebt(req.user.userId, debtId, { amount, paymentMethod, notes });
-        res.json({ message: 'Nộp tiền thành công', debt: updated });
+        const payment = await debtService.remitDebt(req.user.userId, debtId, {
+            amount, paymentMethod, notes,
+        });
+        res.json({
+            message: 'Đã báo nộp tiền. Đang chờ kế toán xác nhận.',
+            payment,
+        });
     } catch (err) {
         const code = err.message.includes('không thuộc về') ? 403
             : err.message.includes('vượt quá') ? 422
@@ -42,4 +59,4 @@ const remitDebt = async (req, res) => {
     }
 };
 
-module.exports = { getMyDebts, getMyDebtSummary, remitDebt };
+module.exports = { getMyDebts, getMyDebtSummary, getDebtPayments, remitDebt };

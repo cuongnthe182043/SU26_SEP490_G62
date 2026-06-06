@@ -6,7 +6,8 @@ const payrollController = require('../controllers/payrollController');
 
 const driverOnly = [verifyToken, requireRole('driver')];
 
-router.get('/me',      driverOnly, payrollController.getMyPayrolls);
+router.get('/me',        driverOnly, payrollController.getMyPayrolls);
+router.get('/estimate',  driverOnly, payrollController.getEstimate);
 router.post('/advance',  driverOnly, payrollController.requestAdvance);
 router.get('/advance',   driverOnly, payrollController.getMyAdvances);
 
