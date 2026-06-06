@@ -7,14 +7,14 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
     AlertTriangle, Award, ChevronLeft, ChevronRight,
-    Clock, TrendingUp, Trophy, Truck,
+    Star, TrendingUp, Trophy, Truck,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText }    from '@/components/app-text';
+import { AppText }     from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
-import { appTheme }   from '@/theme/app-theme';
-import { useKpi }     from '@/hooks/use-kpi';
+import { appTheme }    from '@/theme/app-theme';
+import { useKpi }      from '@/hooks/use-kpi';
 import type { KpiRecord } from '@/services/kpi-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -25,23 +25,19 @@ const MONTH_NAMES = [
     'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
 ];
 
-const fmtRevenue = (val: string | number) => {
+const fmtMoney = (val: string | number) => {
     const n = Number(val);
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
-    return String(n);
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M₫`;
+    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K₫`;
+    return `${n}₫`;
 };
-
-const fmtRate = (val: string | number) => `${Number(val).toFixed(1)}%`;
 
 // ─── Month navigator ──────────────────────────────────────────────────────────
 
 function MonthNav({
-    month, year,
-    onPrev, onNext,
+    month, year, onPrev, onNext,
 }: {
-    month: number; year: number;
-    onPrev: () => void; onNext: () => void;
+    month: number; year: number; onPrev: () => void; onNext: () => void;
 }) {
     const now = new Date();
     const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
@@ -72,8 +68,7 @@ function MonthNav({
             </YStack>
 
             <Pressable
-                onPress={onNext}
-                hitSlop={12}
+                onPress={onNext} hitSlop={12}
                 style={[s.navBtn, isCurrentMonth && { opacity: 0.3 }]}
                 disabled={isCurrentMonth}
             >
@@ -83,16 +78,12 @@ function MonthNav({
     );
 }
 
-// ─── KPI stat card ────────────────────────────────────────────────────────────
+// ─── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({
     icon, label, value, sub, color,
 }: {
-    icon: React.ReactNode;
-    label: string;
-    value: string;
-    sub?: string;
-    color: string;
+    icon: React.ReactNode; label: string; value: string; sub?: string; color: string;
 }) {
     return (
         <YStack
@@ -102,7 +93,7 @@ function StatCard({
             borderWidth={1} borderColor={appTheme.colors.border}
         >
             <XStack
-                width={38} height={38} borderRadius={12}
+                width={36} height={36} borderRadius={10}
                 backgroundColor={color + '22'}
                 alignItems="center" justifyContent="center"
             >
@@ -117,7 +108,201 @@ function StatCard({
     );
 }
 
-// ─── No data placeholder ──────────────────────────────────────────────────────
+// ─── Rule 5: Thưởng vượt KPI ─────────────────────────────────────────────────
+// threshold & reward đến từ bonus_rules trong DB — không hardcode ở đây
+
+function KpiBonusCard({ record }: { record: KpiRecord }) {
+    const threshold = record.kpi_bonus_threshold ? Number(record.kpi_bonus_threshold) : null;
+    const reward    = record.kpi_bonus_reward    ? Number(record.kpi_bonus_reward)    : null;
+
+    if (!threshold || !reward) return null;
+
+    const revenue  = Number(record.total_revenue);
+    const achieved = record.kpi_bonus_achieved;
+    const pct      = Math.min(revenue / threshold * 100, 100);
+    const remain   = Math.max(threshold - revenue, 0);
+    const color    = achieved ? appTheme.colors.success : appTheme.colors.primary;
+
+    return (
+        <YStack
+            padding={16}
+            backgroundColor={achieved ? '#F0FDF4' : appTheme.colors.surface}
+            borderRadius={appTheme.radius.lg}
+            borderWidth={achieved ? 1.5 : 1}
+            borderColor={achieved ? appTheme.colors.success : appTheme.colors.border}
+            gap={12}
+        >
+            <XStack alignItems="center" justifyContent="space-between">
+                <XStack alignItems="center" gap={8}>
+                    <XStack
+                        width={32} height={32} borderRadius={10}
+                        backgroundColor={color + '22'}
+                        alignItems="center" justifyContent="center"
+                    >
+                        <TrendingUp size={16} color={color} />
+                    </XStack>
+                    <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
+                        Thưởng vượt KPI
+                    </Text>
+                </XStack>
+                {achieved ? (
+                    <View style={[s.badge, { backgroundColor: appTheme.colors.success }]}>
+                        <Text fontSize={10} fontWeight="900" color="#fff">ĐÃ ĐẠT</Text>
+                    </View>
+                ) : null}
+            </XStack>
+
+            <YStack gap={6}>
+                <XStack justifyContent="space-between">
+                    <Text fontSize={12} color={appTheme.colors.textMuted}>Doanh thu tháng này</Text>
+                    <Text fontSize={12} fontWeight="700" color={color}>
+                        {fmtMoney(revenue)} / {fmtMoney(threshold)}
+                    </Text>
+                </XStack>
+                <View style={s.barTrack}>
+                    <View style={[s.barFill, { width: `${pct}%` as any, backgroundColor: color }]} />
+                </View>
+                <XStack justifyContent="space-between" alignItems="center">
+                    <Text fontSize={11} color={appTheme.colors.textMuted}>
+                        {achieved
+                            ? `Vượt ngưỡng ${fmtMoney(revenue - threshold)}`
+                            : `Còn thiếu ${fmtMoney(remain)}`}
+                    </Text>
+                    <Text fontSize={13} fontWeight="900" color={color}>
+                        {fmtMoney(reward)}
+                    </Text>
+                </XStack>
+            </YStack>
+        </YStack>
+    );
+}
+
+// ─── Rule 4: Lái xe xuất sắc nhất tháng ──────────────────────────────────────
+// reward đến từ bonus_rules — không hardcode
+
+function TopDriverCard({ record }: { record: KpiRecord }) {
+    const rank   = record.revenue_rank;
+    const reward = record.top_driver_bonus_reward ? Number(record.top_driver_bonus_reward) : null;
+
+    if (!reward || rank === 0) return null;
+
+    const isTop1 = rank === 1;
+    const color  = isTop1 ? '#F59E0B' : appTheme.colors.primary;
+
+    return (
+        <YStack
+            padding={16}
+            backgroundColor={isTop1 ? '#FFFBEB' : appTheme.colors.surface}
+            borderRadius={appTheme.radius.lg}
+            borderWidth={isTop1 ? 1.5 : 1}
+            borderColor={isTop1 ? '#F59E0B' : appTheme.colors.border}
+            gap={10}
+        >
+            <XStack alignItems="center" justifyContent="space-between">
+                <XStack alignItems="center" gap={8}>
+                    <XStack
+                        width={32} height={32} borderRadius={10}
+                        backgroundColor={color + '22'}
+                        alignItems="center" justifyContent="center"
+                    >
+                        <Trophy size={16} color={color} />
+                    </XStack>
+                    <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
+                        Lái xe xuất sắc nhất
+                    </Text>
+                </XStack>
+                {isTop1 ? (
+                    <View style={[s.badge, { backgroundColor: '#F59E0B' }]}>
+                        <Text fontSize={10} fontWeight="900" color="#fff">TOP 1</Text>
+                    </View>
+                ) : null}
+            </XStack>
+
+            <XStack alignItems="center" gap={16}>
+                <YStack alignItems="center" gap={2}>
+                    <Text fontSize={32} fontWeight="900" color={color}>#{rank}</Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted}>Xếp hạng</Text>
+                </YStack>
+                <View style={s.divider} />
+                <YStack flex={1} gap={4}>
+                    <Text fontSize={13} color={isTop1 ? appTheme.colors.success : appTheme.colors.textMuted} fontWeight={isTop1 ? '700' : '400'}>
+                        {isTop1 ? 'Bạn đang dẫn đầu nhóm xe!' : 'Vươn tới #1 để nhận thưởng'}
+                    </Text>
+                    <XStack alignItems="center" gap={4}>
+                        <Star size={12} color={color} fill={color} />
+                        <Text fontSize={12} fontWeight="700" color={color}>
+                            {fmtMoney(reward)} cho driver #1
+                        </Text>
+                    </XStack>
+                </YStack>
+            </XStack>
+        </YStack>
+    );
+}
+
+// ─── KPI section ──────────────────────────────────────────────────────────────
+
+function KpiSection({ record }: { record: KpiRecord }) {
+    return (
+        <YStack gap={14}>
+            {/* Completed trips + Revenue */}
+            <XStack gap={12}>
+                <StatCard
+                    icon={<Truck size={18} color={appTheme.colors.primary} />}
+                    label="Chuyến hoàn thành"
+                    value={String(record.completed_shipments)}
+                    color={appTheme.colors.primary}
+                />
+                <StatCard
+                    icon={<TrendingUp size={18} color={appTheme.colors.success} />}
+                    label="Doanh thu thực tế"
+                    value={fmtMoney(record.total_revenue)}
+                    sub="Chỉ tính giá thực tế"
+                    color={appTheme.colors.success}
+                />
+            </XStack>
+
+            {/* Incidents */}
+            <StatCard
+                icon={<AlertTriangle size={18} color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success} />}
+                label="Sự cố trong tháng"
+                value={String(record.incident_count)}
+                sub={
+                    record.critical_incident_count > 0
+                        ? `${record.critical_incident_count} khẩn cấp`
+                        : record.major_incident_count > 0
+                            ? `${record.major_incident_count} nghiêm trọng`
+                            : 'Không có sự cố nghiêm trọng'
+                }
+                color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success}
+            />
+
+            {/* Rule 5 */}
+            <KpiBonusCard record={record} />
+
+            {/* Rule 4 */}
+            <TopDriverCard record={record} />
+
+            {/* Nhóm xe label */}
+            <XStack
+                padding={10} borderRadius={appTheme.radius.md}
+                backgroundColor={appTheme.colors.surfaceSoft}
+                borderWidth={1} borderColor={appTheme.colors.border}
+                alignItems="center" gap={8}
+            >
+                <Truck size={13} color={appTheme.colors.textMuted} />
+                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                    Nhóm xe:{' '}
+                    <Text fontWeight="700" color={appTheme.colors.text}>
+                        {record.vehicle_group_name}
+                    </Text>
+                </Text>
+            </XStack>
+        </YStack>
+    );
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyMonth({ month, year }: { month: number; year: number }) {
     return (
@@ -134,114 +319,10 @@ function EmptyMonth({ month, year }: { month: number; year: number }) {
             >
                 <Truck size={26} color={appTheme.colors.textMuted} />
             </XStack>
-            <AppText variant="bodyStrong" tone="muted">
-                Chưa có dữ liệu
-            </AppText>
+            <AppText variant="bodyStrong" tone="muted">Chưa có dữ liệu</AppText>
             <AppText variant="caption" tone="muted">
                 Chưa có KPI nào được ghi nhận cho {MONTH_NAMES[month]}/{year}
             </AppText>
-        </YStack>
-    );
-}
-
-// ─── KPI Detail Card ──────────────────────────────────────────────────────────
-
-function KpiDetailCard({ record }: { record: KpiRecord }) {
-    const onTimeRate = Number(record.on_time_rate);
-    const onTimeColor = onTimeRate >= 90
-        ? appTheme.colors.success
-        : onTimeRate >= 70
-            ? appTheme.colors.warning
-            : appTheme.colors.danger;
-
-    return (
-        <YStack gap={16}>
-            {/* Row 1: Chuyến + Doanh thu */}
-            <XStack gap={12}>
-                <StatCard
-                    icon={<Truck size={18} color={appTheme.colors.primary} />}
-                    label="Chuyến hoàn thành"
-                    value={String(record.completed_shipments)}
-                    sub={record.late_deliveries > 0 ? `${record.late_deliveries} chuyến trễ` : 'Không trễ chuyến nào'}
-                    color={appTheme.colors.primary}
-                />
-                <StatCard
-                    icon={<TrendingUp size={18} color={appTheme.colors.success} />}
-                    label="Doanh thu thực tế"
-                    value={fmtRevenue(record.total_revenue)}
-                    sub="Không tính phí trung gian"
-                    color={appTheme.colors.success}
-                />
-            </XStack>
-
-            {/* Row 2: Đúng giờ + Sự cố */}
-            <XStack gap={12}>
-                <StatCard
-                    icon={<Clock size={18} color={onTimeColor} />}
-                    label="Tỷ lệ đúng giờ"
-                    value={fmtRate(record.on_time_rate)}
-                    color={onTimeColor}
-                />
-                <StatCard
-                    icon={<AlertTriangle size={18} color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success} />}
-                    label="Sự cố"
-                    value={String(record.incident_count)}
-                    sub={record.critical_incident_count > 0
-                        ? `${record.critical_incident_count} khẩn cấp`
-                        : record.major_incident_count > 0
-                            ? `${record.major_incident_count} nghiêm trọng`
-                            : 'Không có sự cố nghiêm trọng'}
-                    color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success}
-                />
-            </XStack>
-
-            {/* On-time rate bar */}
-            <YStack
-                padding={16}
-                backgroundColor={appTheme.colors.surface}
-                borderRadius={appTheme.radius.lg}
-                borderWidth={1} borderColor={appTheme.colors.border}
-                gap={10}
-            >
-                <XStack justifyContent="space-between" alignItems="center">
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
-                        Tỷ lệ đúng giờ
-                    </Text>
-                    <Text fontSize={14} fontWeight="900" color={onTimeColor}>
-                        {fmtRate(record.on_time_rate)}
-                    </Text>
-                </XStack>
-                <View style={s.barTrack}>
-                    <View style={[
-                        s.barFill,
-                        {
-                            width: `${Math.min(onTimeRate, 100)}%` as any,
-                            backgroundColor: onTimeColor,
-                        },
-                    ]} />
-                </View>
-                <XStack justifyContent="space-between">
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        {record.completed_shipments - record.late_deliveries} chuyến đúng giờ
-                    </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        / {record.completed_shipments} tổng chuyến
-                    </Text>
-                </XStack>
-            </YStack>
-
-            {/* Nhóm xe */}
-            <XStack
-                padding={12} borderRadius={appTheme.radius.md}
-                backgroundColor={appTheme.colors.surfaceSoft}
-                borderWidth={1} borderColor={appTheme.colors.border}
-                alignItems="center" gap={8}
-            >
-                <Truck size={14} color={appTheme.colors.textMuted} />
-                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                    Nhóm xe: <Text fontWeight="700" color={appTheme.colors.text}>{record.vehicle_group_name}</Text>
-                </Text>
-            </XStack>
         </YStack>
     );
 }
@@ -265,8 +346,8 @@ export function KpiScreen() {
     };
 
     const goToNext = () => {
-        const now = new Date();
-        if (year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1)) return;
+        const n = new Date();
+        if (year > n.getFullYear() || (year === n.getFullYear() && month >= n.getMonth() + 1)) return;
         if (month === 12) { setMonth(1); setYear((y) => y + 1); }
         else setMonth((m) => m + 1);
     };
@@ -284,9 +365,7 @@ export function KpiScreen() {
                         hitSlop={10}
                     >
                         <Trophy size={14} color={appTheme.colors.primary} />
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>
-                            Xếp hạng
-                        </Text>
+                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>Xếp hạng</Text>
                     </Pressable>
                 }
             />
@@ -304,10 +383,8 @@ export function KpiScreen() {
                 }
                 showsVerticalScrollIndicator={false}
             >
-                {/* Month navigator */}
                 <MonthNav month={month} year={year} onPrev={goToPrev} onNext={goToNext} />
 
-                {/* Error */}
                 {error ? (
                     <XStack
                         padding={14} borderRadius={appTheme.radius.md}
@@ -320,7 +397,6 @@ export function KpiScreen() {
                     </XStack>
                 ) : null}
 
-                {/* Loading */}
                 {isLoading ? (
                     <YStack alignItems="center" paddingVertical={40} gap={12}>
                         <ActivityIndicator color={appTheme.colors.primary} />
@@ -328,14 +404,12 @@ export function KpiScreen() {
                     </YStack>
                 ) : null}
 
-                {/* KPI data */}
                 {!isLoading && !error ? (
                     record
-                        ? <KpiDetailCard record={record} />
+                        ? <KpiSection record={record} />
                         : <EmptyMonth month={month} year={year} />
                 ) : null}
 
-                {/* Leaderboard CTA */}
                 {!isLoading && record ? (
                     <Pressable
                         style={s.leaderboardCta}
@@ -347,7 +421,7 @@ export function KpiScreen() {
                                 Xem bảng xếp hạng tháng {month}/{year}
                             </Text>
                             <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                So sánh trong nhóm xe {record.vehicle_group_name}
+                                Nhóm xe {record.vehicle_group_name}
                             </Text>
                         </YStack>
                         <ChevronRight size={16} color={appTheme.colors.primary} />
@@ -389,5 +463,13 @@ const s = StyleSheet.create({
         backgroundColor: appTheme.colors.primarySoft,
         borderRadius: appTheme.radius.lg,
         borderWidth: 1.5, borderColor: appTheme.colors.primaryMuted,
+    },
+    badge: {
+        paddingHorizontal: 8, paddingVertical: 3,
+        borderRadius: appTheme.radius.pill,
+    },
+    divider: {
+        width: 1, height: 48,
+        backgroundColor: appTheme.colors.border,
     },
 });
