@@ -96,9 +96,9 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-card payment-modal-card">
-        <div className="modal-header">
+    <div className="accountant-modal-overlay">
+      <div className="accountant-modal-card payment-modal-card">
+        <div className="accountant-modal-header">
           <div>
             <h3>Ghi nhận Phiếu thu (Thanh toán)</h3>
             <span className="order-subtitle">Đơn hàng #VL-{order.id} &bull; Khách hàng: {order.customer_name}</span>
@@ -127,7 +127,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
             🎉 Đơn hàng này đã được thu đủ toàn bộ số tiền!
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="modal-form">
+          <form onSubmit={handleSubmit} className="accountant-modal-form">
             <div className="form-grid">
               <label className="required full-width">
                 <span>Số tiền ghi thu (VND) (*)</span>
@@ -162,7 +162,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
 
             {error && <div className="error-message mb-16">{error}</div>}
 
-            <div className="modal-actions mb-24">
+            <div className="accountant-modal-actions mb-24">
               <button type="button" className="secondary-btn" onClick={onClose}>Hủy</button>
               <button type="submit" className="primary-btn" disabled={submitting}>
                 {submitting ? "Đang ghi thu..." : `Xác nhận thu ${Number(amount || 0).toLocaleString()}đ`}
