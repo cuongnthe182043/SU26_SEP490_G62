@@ -1,4 +1,4 @@
-import { Banknote, Bell, CalendarOff, ChevronRight, DollarSign, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
+import { Banknote, Bell, CalendarOff, ChevronRight, DollarSign, HandCoins, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -256,6 +256,32 @@ export function DriverHomeScreen() {
                         </XStack>
                     </Pressable>
 
+                    <Pressable onPress={() => router.push('/bill')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.primarySoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <HandCoins size={22} color={appTheme.colors.primary} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Bill thu hộ
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Tạo bill báo thu tiền khách — chờ kế toán xác nhận
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
                     <Pressable onPress={() => router.push('/debt')}>
                         <XStack
                             alignItems="center" padding="$4"
@@ -275,7 +301,7 @@ export function DriverHomeScreen() {
                                     Công nợ
                                 </Text>
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Xem và báo nộp tiền thu hộ
+                                    Xem công nợ do kế toán tạo
                                 </Text>
                             </YStack>
                             <ChevronRight size={18} color={appTheme.colors.textMuted} />
