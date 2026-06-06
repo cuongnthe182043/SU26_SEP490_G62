@@ -8,10 +8,9 @@ const listOrders = async () => {
             o.customer_id,
             o.cargo_name,
             o.cargo_weight_kg,
-            o.pickup_address,
-            o.delivery_address,
-            o.estimated_price,
-            o.status,
+            
+            
+            o.total_estimated_price,
             o.notes,
             o.created_at,
             o.updated_at,
