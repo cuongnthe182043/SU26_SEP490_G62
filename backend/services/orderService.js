@@ -11,6 +11,11 @@ const normalizeNumber = (value) => {
 };
 
 const safeTrim = (value) => String(value ?? '').trim();
+const normalizeText = (value) => safeTrim(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+const isLeaveNote = (value) => normalizeText(value) === 'nghi';
 const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
 
 const normalizeDateInput = (value) => {
@@ -55,6 +60,19 @@ const buildNotes = ({ date, checkIn, plate, driverName, customerName, customerPh
         deliveryAddress ? `Điểm giao hàng: ${deliveryAddress}` : '',
         notes ? safeTrim(notes) : '',
     ].filter(Boolean).join(' | ') || null;
+};
+
+const parseRoute = (routeStr) => {
+    const route = safeTrim(routeStr);
+    if (!route) return { pickupAddress: '', deliveryAddress: '' };
+    const parts = route.split(/\s+-\s+|-/);
+    if (parts.length >= 2) {
+        return {
+            pickupAddress: parts[0].trim(),
+            deliveryAddress: parts.slice(1).join(' - ').trim(),
+        };
+    }
+    return { pickupAddress: route, deliveryAddress: route };
 };
 
 const parseExcelDate = (value) => {
@@ -103,9 +121,11 @@ const createOrder = async (userId, payload) => {
         notes,
     } = payload;
 
-    if (!pickup_address || !delivery_address || estimated_price === undefined || estimated_price === null || estimated_price === '') {
+    if (!pickup_address || !delivery_address) {
         throw new Error('Thiếu thông tin bắt buộc');
     }
+
+    const finalEstimatedPrice = (estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price;
 
     const normalizedDate = normalizeDateInput(date);
     if (normalizedDate && isBeforeToday(normalizedDate)) {
@@ -113,7 +133,7 @@ const createOrder = async (userId, payload) => {
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
-    const normalizedPrice = normalizeNumber(estimated_price);
+    const normalizedPrice = normalizeNumber(finalEstimatedPrice);
     const normalizedDriverId = driver_id ? Number(driver_id) : null;
     let dbClient = null;
 
@@ -141,8 +161,39 @@ const createOrder = async (userId, payload) => {
 
         const finalDriverId = driver?.id ?? null;
         const finalVehicleId = driver?.vehicle_id ?? null;
-        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? 1;
+        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? defaultVehicleGroupId;
+
+        if (!finalVehicleGroupId) {
+            throw new Error('Chưa có nhóm xe trong hệ thống');
+        }
+
+        if (finalDriverId) {
+            const activeTrip = await dbClient.query(
+                `SELECT id FROM order_shipments 
+                 WHERE owner_driver_id = $1 
+                   AND status IN ('claimed','picking','loaded','transit','arrived','returning')
+                 LIMIT 1`,
+                [finalDriverId]
+            );
+            if (activeTrip.rows[0]) {
+                throw new Error('Tài xế đang có chuyến đi khác chưa hoàn thành');
+            }
+        }
+
         const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
+
+        const orderNotes = safeTrim(notes) || buildNotes({
+            date: normalizedDate,
+            checkIn: check_in,
+            plate: driver?.plate_number || plate,
+            driverName: driver?.full_name,
+            customerName: customer_name,
+            customerPhone: customer_phone,
+            pickupAddress: pickup_address,
+            deliveryAddress: delivery_address,
+            notes,
+        });
 
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,
@@ -155,17 +206,21 @@ const createOrder = async (userId, payload) => {
                 delivery_address: safeTrim(delivery_address),
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
-                notes: notes,
+                payment_type: payload.payment_type,
+                notes: orderNotes,
             },
             shipmentData: {
                 vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
                 pickup_address: safeTrim(pickup_address),
                 delivery_address: safeTrim(delivery_address),
+                cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
-                notes: notes,
+                payment_type: payload.payment_type,
+                notes: orderNotes,
             },
             assignmentData: finalDriverId && finalVehicleId ? {
                 driver_id: finalDriverId,
@@ -211,11 +266,17 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             const driverName = safeTrim(row['Lái xe'] ?? row.driver);
             const customerName = safeTrim(row['Khách hàng'] ?? row.customer_name);
             const customerPhone = normalizePhone(row['SĐT'] ?? row.phone);
-            const pickupAddress = safeTrim(row['Điểm lấy hàng'] ?? row.pickup_address);
-            const deliveryAddress = safeTrim(row['Điểm giao hàng'] ?? row.delivery_address);
             const route = safeTrim(row['Hành trình'] ?? row.route);
+            const routeAddresses = parseRoute(route);
+            const pickupAddress = safeTrim(row['Điểm lấy hàng'] ?? row.pickup_address) || routeAddresses.pickupAddress;
+            const deliveryAddress = safeTrim(row['Điểm giao hàng'] ?? row.delivery_address) || routeAddresses.deliveryAddress;
             const estimatedPrice = normalizeNumber(row['Cước xe'] ?? row.fare);
             const cargoWeight = normalizeNumber(row['Khối lượng'] ?? row.cargo_weight_kg);
+            const note = safeTrim(row['Ghi chú'] ?? row.notes ?? row.note);
+
+            if (isLeaveNote(note)) {
+                continue;
+            }
 
             const missing = [];
             if (!date) missing.push('Ngày');
@@ -230,6 +291,20 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             }
 
             const customer = await findOrCreateCustomer(dbClient, customerName, customerPhone);
+            const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+            if (!defaultVehicleGroupId) {
+                throw new Error('Chưa có nhóm xe trong hệ thống');
+            }
+            const driver = await orderRepository.findOrCreateDriverWithVehicle(dbClient, {
+                driverName,
+                plateNumber: plate,
+                vehicleGroupId: defaultVehicleGroupId,
+            });
+            const finalDriverId = driver?.id ?? null;
+            const finalVehicleId = driver?.vehicle_id ?? null;
+            const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
+            const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
+
             const notes = [
                 `Ngày: ${date}`,
                 `Chấm công: ${checkIn}`,
@@ -238,7 +313,9 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 customerName ? `Khách hàng: ${customerName}` : '',
                 customerPhone ? `SĐT: ${customerPhone}` : '',
                 route ? `Hành trình: ${route}` : `Hành trình: ${pickupAddress} - ${deliveryAddress}`,
+                estimatedPrice !== null ? `Cước xe: ${estimatedPrice}` : '',
                 row['Doanh thu'] ? `Doanh thu: ${safeTrim(row['Doanh thu'])}` : '',
+                note,
             ].filter(Boolean).join(' | ');
 
             const result = await orderRepository.importOrderWithShipment({
@@ -252,6 +329,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     delivery_address: deliveryAddress,
                     estimated_price: estimatedPrice,
                     notes,
+                    status: shipmentStatus,
                 },
                 shipmentData: {
                     pickup_address: pickupAddress,
@@ -259,6 +337,10 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
                     notes,
+                    vehicle_group_id: finalVehicleGroupId,
+                    owner_driver_id: finalDriverId,
+                    vehicle_id: finalVehicleId,
+                    status: shipmentStatus,
                 },
             });
 
@@ -287,34 +369,26 @@ const updateOrder = async (orderId, payload) => {
         delivery_address,
         estimated_price,
         notes,
+        date,
+        plate,
+        driver_id,
+        vehicle_group_id,
     } = payload;
 
-    const result = await pool.query(
-        `UPDATE orders
-         SET cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
-             cargo_weight_kg = COALESCE($3, cargo_weight_kg),
-             pickup_address = COALESCE(NULLIF($4, ''), pickup_address),
-             delivery_address = COALESCE(NULLIF($5, ''), delivery_address),
-             estimated_price = COALESCE($6, estimated_price),
-             notes = COALESCE(NULLIF($7, ''), notes),
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [
-            orderId,
-            safeTrim(cargo_name),
-            normalizeNumber(cargo_weight_kg),
-            safeTrim(pickup_address),
-            safeTrim(delivery_address),
-            normalizeNumber(estimated_price),
-            safeTrim(notes) || [
-                customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
-                customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
-            ].filter(Boolean).join(' | ') || null,
-        ],
-    );
-
-    return result.rows[0] ?? null;
+    return orderRepository.updateOrder(orderId, {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+        date,
+        plate,
+        driver_id,
+        vehicle_group_id,
+    }, normalizeNumber, safeTrim, normalizePhone);
 };
 
 module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder };

@@ -642,7 +642,7 @@ CREATE TABLE shipment_vehicle_upgrades (
 
 CREATE UNIQUE INDEX uq_driver_one_active_trip
     ON order_shipments (owner_driver_id)
-    WHERE owner_driver_id IS NOT NULL
+    WHERE owner_driver_id IS NOT NULL 
       AND status IN ('claimed','picking','loaded','transit','arrived','returning');
 
 
