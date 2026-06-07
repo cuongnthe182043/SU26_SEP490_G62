@@ -64,6 +64,8 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -249,11 +251,11 @@ export default function CoordinatorPage({ user, onLogout }) {
     setMessageType("info");
 
     const errors = validateForm();
-    // if (Object.keys(errors).length > 0) {
-    //   setMessage("Vui lòng kiểm tra các trường bắt buộc.");
-    //   setMessageType("error");
-    //   return;
-    // }
+    if (Object.keys(errors).length > 0) {
+      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
+      setMessageType("error");
+      return;
+    }
 
     setCreating(true);
 
@@ -315,25 +317,36 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   return (
-    <div className="coordinator-shell">
+    <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div>
           <div className="brand">
             <div className="brand-mark">L</div>
-            <div>
-              <div className="brand-name">Logistics HQ</div>
-              <div className="brand-sub">Coordinator dashboard</div>
-            </div>
+            {!sidebarCollapsed && (
+              <div>
+                <div className="brand-name">Logistics HQ</div>
+                <div className="brand-sub">Coordinator dashboard</div>
+              </div>
+            )}
           </div>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            aria-label={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+            title={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+          >
+            {sidebarCollapsed ? "›" : "‹"}
+          </button>
           <nav className="nav">
-            <button className="nav-item active">Đơn hàng</button>
+            <button className="nav-item active"><span className="nav-icon">☰</span><span className="nav-label">Đơn hàng</span></button>
             {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
             <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
-          Profile
+          <span className="nav-icon">⇥</span><span className="nav-label">Đăng xuất</span>
         </button>
       </aside>
 
@@ -355,7 +368,23 @@ export default function CoordinatorPage({ user, onLogout }) {
             <button className="primary-btn" onClick={() => setCreateOpen(true)}>
               + Tạo mới
             </button>
-            <div className="avatar">{user?.full_name?.[0] || "A"}</div>
+            <div className="top-profile">
+              <button
+                className="avatar profile-trigger"
+                type="button"
+                onClick={() => setProfileMenuOpen((value) => !value)}
+                title={user?.email}
+              >
+                {user?.full_name?.[0] || "A"}
+              </button>
+              {profileMenuOpen && (
+                <div className="profile-menu">
+                  <div className="profile-menu-name">{user?.full_name || user?.email || "Coordinator"}</div>
+                  <div className="profile-menu-email">{user?.email}</div>
+                  <button type="button" onClick={handleLogout}>Đăng xuất</button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

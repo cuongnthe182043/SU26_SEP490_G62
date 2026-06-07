@@ -141,7 +141,12 @@ const createOrder = async (userId, payload) => {
 
         const finalDriverId = driver?.id ?? null;
         const finalVehicleId = driver?.vehicle_id ?? null;
-        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? 1;
+        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? defaultVehicleGroupId;
+
+        if (!finalVehicleGroupId) {
+            throw new Error('Chưa có nhóm xe trong hệ thống');
+        }
         const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
         const result = await orderRepository.createOrderWithShipment({
@@ -155,16 +160,20 @@ const createOrder = async (userId, payload) => {
                 delivery_address: safeTrim(delivery_address),
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
+                payment_type: payload.payment_type,
                 notes: notes,
             },
             shipmentData: {
                 vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
                 pickup_address: safeTrim(pickup_address),
                 delivery_address: safeTrim(delivery_address),
+                cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
+                payment_type: payload.payment_type,
                 notes: notes,
             },
             assignmentData: finalDriverId && finalVehicleId ? {
@@ -230,6 +239,10 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             }
 
             const customer = await findOrCreateCustomer(dbClient, customerName, customerPhone);
+            const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+            if (!defaultVehicleGroupId) {
+                throw new Error('Chưa có nhóm xe trong hệ thống');
+            }
             const notes = [
                 `Ngày: ${date}`,
                 `Chấm công: ${checkIn}`,
@@ -259,6 +272,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
                     notes,
+                    vehicle_group_id: defaultVehicleGroupId,
                 },
             });
 
@@ -289,32 +303,16 @@ const updateOrder = async (orderId, payload) => {
         notes,
     } = payload;
 
-    const result = await pool.query(
-        `UPDATE orders
-         SET cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
-             cargo_weight_kg = COALESCE($3, cargo_weight_kg),
-             pickup_address = COALESCE(NULLIF($4, ''), pickup_address),
-             delivery_address = COALESCE(NULLIF($5, ''), delivery_address),
-             estimated_price = COALESCE($6, estimated_price),
-             notes = COALESCE(NULLIF($7, ''), notes),
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [
-            orderId,
-            safeTrim(cargo_name),
-            normalizeNumber(cargo_weight_kg),
-            safeTrim(pickup_address),
-            safeTrim(delivery_address),
-            normalizeNumber(estimated_price),
-            safeTrim(notes) || [
-                customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
-                customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
-            ].filter(Boolean).join(' | ') || null,
-        ],
-    );
-
-    return result.rows[0] ?? null;
+    return orderRepository.updateOrder(orderId, {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+    }, normalizeNumber, safeTrim, normalizePhone);
 };
 
 module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder };

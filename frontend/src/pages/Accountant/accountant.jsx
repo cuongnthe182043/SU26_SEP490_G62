@@ -7,10 +7,12 @@ export default function Accountant({ user, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
   // Status filter for orders
-  const [activeStatusFilter, setActiveStatusFilter] = useState("all"); // "all" | "pending" | "assigned" | "in_progress" | "completed" | "cancelled"
+  const [activeStatusFilter, setActiveStatusFilter] = useState("all"); // "all" | "available" | "claimed" | "transit" | "completed" | "cancelled"
   // Debt status filter
   const [debtFilter, setDebtFilter] = useState("all"); // "all" | "unpaid" | "partial" | "paid"
 
@@ -132,7 +134,7 @@ export default function Accountant({ user, onLogout }) {
   });
 
   return (
-    <div className="dashboard-layout accountant-dashboard">
+    <div className={`dashboard-layout accountant-dashboard ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {/* Sidebar - Finance & Logistics HQ */}
       <aside className="sidebar">
         <div className="sidebar-brand">
@@ -140,8 +142,17 @@ export default function Accountant({ user, onLogout }) {
             <line x1="12" y1="1" x2="12" y2="23" />
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
           </svg>
-          <span className="brand-name">Finance HQ</span>
+          {!sidebarCollapsed && <span className="brand-name">Finance HQ</span>}
         </div>
+        <button
+          className="sidebar-toggle"
+          type="button"
+          onClick={() => setSidebarCollapsed((value) => !value)}
+          aria-label={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+          title={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+        >
+          {sidebarCollapsed ? "›" : "‹"}
+        </button>
 
         <nav className="sidebar-nav">
           <button className="nav-item active">
@@ -149,7 +160,7 @@ export default function Accountant({ user, onLogout }) {
               <rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" />
               <rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" />
             </svg>
-            <span>Quản lý thu nợ</span>
+            <span className="nav-label">Quản lý thu nợ</span>
           </button>
           
           <button className="nav-item" onClick={() => alert("Báo cáo tài chính & doanh thu đang phát triển!")}>
@@ -157,14 +168,14 @@ export default function Accountant({ user, onLogout }) {
               <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
               <line x1="6" y1="20" x2="6" y2="14" />
             </svg>
-            <span>Báo cáo doanh thu</span>
+            <span className="nav-label">Báo cáo doanh thu</span>
           </button>
 
           <button className="nav-item" onClick={() => alert("Chức năng đối soát quỹ tài xế đang phát triển!")}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
             </svg>
-            <span>Đối soát quỹ tài xế</span>
+            <span className="nav-label">Đối soát quỹ tài xế</span>
           </button>
         </nav>
 
@@ -173,10 +184,12 @@ export default function Accountant({ user, onLogout }) {
             <div className="profile-avatar">
               {user?.full_name ? user.full_name.charAt(0) : "A"}
             </div>
-            <div className="profile-info">
-              <span className="profile-name">{user?.full_name || "Trần Kế Toán"}</span>
-              <span className="profile-role">Kế toán (Thu)</span>
-            </div>
+            {!sidebarCollapsed && (
+              <div className="profile-info">
+                <span className="profile-name">{user?.full_name || "Trần Kế Toán"}</span>
+                <span className="profile-role">Kế toán (Thu)</span>
+              </div>
+            )}
             <svg className="logout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
@@ -213,8 +226,22 @@ export default function Accountant({ user, onLogout }) {
               <span className="notification-badge"></span>
             </button>
 
-            <div className="user-avatar" title={user?.email}>
-              H
+            <div className="top-profile">
+              <button
+                className="user-avatar profile-trigger"
+                type="button"
+                title={user?.email}
+                onClick={() => setProfileMenuOpen((value) => !value)}
+              >
+                {user?.full_name ? user.full_name.charAt(0) : "A"}
+              </button>
+              {profileMenuOpen && (
+                <div className="profile-menu">
+                  <div className="profile-menu-name">{user?.full_name || user?.email || "Kế toán"}</div>
+                  <div className="profile-menu-email">{user?.email}</div>
+                  <button type="button" onClick={onLogout}>Đăng xuất</button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -318,9 +345,9 @@ export default function Accountant({ user, onLogout }) {
                 onChange={(e) => setActiveStatusFilter(e.target.value)}
               >
                 <option value="all">Tất cả trạng thái vận chuyển</option>
-                <option value="pending">Mới tạo (Chưa điều phối)</option>
-                <option value="assigned">Đã điều phối</option>
-                <option value="in_progress">Đang vận chuyển</option>
+                <option value="available">Mới tạo (Chưa điều phối)</option>
+                <option value="claimed">Đã điều phối</option>
+                <option value="transit">Đang vận chuyển</option>
                 <option value="completed">Đã giao hàng</option>
                 <option value="cancelled">Đã hủy</option>
               </select>
@@ -345,7 +372,7 @@ export default function Accountant({ user, onLogout }) {
             <>
               <div className="order-grid">
                 {filteredOrders.map((order) => {
-                  const isPending = order.status === "pending";
+                  const isPending = order.status === "available";
                   const cargoType = getCargoType(order.cargo_name);
                   const orderDebtStatus = order.debt_status || "unpaid";
                   
