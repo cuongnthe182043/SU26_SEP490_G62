@@ -32,7 +32,7 @@ const requiredFields = [
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
-const ORDERS_PER_PAGE = 10;
+
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
@@ -64,26 +64,12 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
+
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
-    try {
-      const storedTrips = localStorage.getItem("coordinatorTrips");
-      if (!storedTrips) return;
-
-      const parsedTrips = JSON.parse(storedTrips);
-      if (Array.isArray(parsedTrips)) {
-        setTrips(parsedTrips);
-      }
-    } catch (error) {
-      console.error("Failed to load trips:", error);
-    }
+    localStorage.removeItem("coordinatorTrips");
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("coordinatorTrips", JSON.stringify(trips));
-  }, [trips]);
 
   useEffect(() => {
     const loadOrders = async () => { 
@@ -91,13 +77,9 @@ export default function CoordinatorPage({ user, onLogout }) {
         const token = localStorage.getItem("token");
         const data = await apiRequest("/api/orders", { token });
         const dbTrips = (data.orders || []).map(buildTripFromOrder);
-
-        setTrips((currentTrips) => {
-          const customTrips = currentTrips.filter((trip) => String(trip.id).startsWith("tmp-"));
-          return [...dbTrips, ...customTrips];
-        });
+        setTrips(dbTrips);
       } catch (error) {
-        setMessage(error.message || "Unable to load order list.");
+        setMessage(error.message || "Không thể load danh sách đơn.");
         setMessageType("error");
       }
     };
@@ -160,22 +142,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     });
   }, [activeTab, deferredSearchQuery, trips]);
 
-
-  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / ORDERS_PER_PAGE));
-  const paginatedTrips = useMemo(() => {
-    const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
-    return filteredTrips.slice(startIndex, startIndex + ORDERS_PER_PAGE);
-  }, [currentPage, filteredTrips]);
-  const pageStart = filteredTrips.length === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
-  const pageEnd = Math.min(currentPage * ORDERS_PER_PAGE, filteredTrips.length);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, deferredSearchQuery]);
-
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages));
-  }, [totalPages]);
+  
 
   const validateForm = () => {
     const errors = {};
@@ -661,7 +628,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                     </td>
                   </tr>
                 ) : (
-                  paginatedTrips.map((trip) => (
+                  filteredTrips.map((trip) => (
                     <tr key={trip.id}>
                       <td>
                         <span className="trip-id">
@@ -691,32 +658,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             </table>
           </div>
 
-          <div className="pagination-bar">
-            <span>
-              Hiển thị {pageStart}-{pageEnd} / {filteredTrips.length} đơn
-            </span>
-            <div className="pagination-actions">
-              <button
-                type="button"
-                className="pagination-btn"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                disabled={currentPage === 1}
-              >
-                Trước
-              </button>
-              <span className="pagination-page">
-                Trang {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                className="pagination-btn"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Sau
-              </button>
-            </div>
-          </div>
+          
         </section>
 
       </main>
