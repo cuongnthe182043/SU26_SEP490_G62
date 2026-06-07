@@ -354,14 +354,31 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         delivery_address,
         estimated_price,
         notes,
+        plate,
+        driver_id,
+        vehicle_group_id,
     } = payload;
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        const customer = (customer_name || customer_phone)
+            ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
+            : null;
+        const normalizedDriverId = driver_id ? Number(driver_id) : null;
+        const driver = normalizedDriverId ? await getDriverById(client, normalizedDriverId) : await getDriverByPlate(client, plate);
+
+        if (driver_id && !driver) {
+            throw new Error('Tài xế không tồn tại');
+        }
+
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? null;
+
         const orderResult = await client.query(
             `UPDATE orders
-             SET cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
+             SET customer_id = COALESCE($6, customer_id),
+                 cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
                  cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                  total_estimated_price = COALESCE($4, total_estimated_price),
                  notes = COALESCE(NULLIF($5, ''), notes),
@@ -377,6 +394,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
                     customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
                 ].filter(Boolean).join(' | ') || null,
+                customer?.id ?? null,
             ],
         );
 
@@ -398,9 +416,21 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                      cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                      estimated_price = COALESCE($4, estimated_price),
                      notes = COALESCE(NULLIF($5, ''), notes),
+                     owner_driver_id = COALESCE($6, owner_driver_id),
+                     vehicle_id = COALESCE($7, vehicle_id),
+                     vehicle_group_id = COALESCE($8, vehicle_group_id),
                      updated_at = NOW()
                  WHERE id = $1`,
-                [shipmentId, safeTrim(cargo_name), normalizeNumber(cargo_weight_kg), normalizeNumber(estimated_price), safeTrim(notes)],
+                [
+                    shipmentId,
+                    safeTrim(cargo_name),
+                    normalizeNumber(cargo_weight_kg),
+                    normalizeNumber(estimated_price),
+                    safeTrim(notes),
+                    driver?.id ?? null,
+                    driver?.vehicle_id ?? null,
+                    finalVehicleGroupId,
+                ],
             );
 
             if (safeTrim(pickup_address)) {
