@@ -146,8 +146,8 @@ const createOrderWithShipment = async ({
 }) => {
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
@@ -157,14 +157,15 @@ const createOrderWithShipment = async ({
             orderData.payment_type || 'cash',
             orderData.estimated_price || 0,
             orderData.notes,
+            orderData.created_at || null,
         ],
     );
 
     const order = orderResult.rows[0];
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, status, notes)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, status, notes, created_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             order.id,
@@ -176,6 +177,7 @@ const createOrderWithShipment = async ({
             shipmentData.estimated_price,
             shipmentData.status,
             shipmentData.notes,
+            shipmentData.created_at || null,
         ],
     );
 
@@ -220,7 +222,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
     return createOrderWithShipment({
         client,
         userId,
-        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash' },
+        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
         shipmentData: {
             ...shipmentData,
             cargo_name: orderData.cargo_name,
@@ -228,6 +230,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
             owner_driver_id: shipmentData.owner_driver_id || null,
             vehicle_id: shipmentData.vehicle_id || null,
             status: shipmentData.status || 'available',
+            created_at: shipmentData.created_at || null,
         },
     });
 };

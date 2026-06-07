@@ -149,6 +149,20 @@ const createOrder = async (userId, payload) => {
         if (!finalVehicleGroupId) {
             throw new Error('Chưa có nhóm xe trong hệ thống');
         }
+
+        if (finalDriverId) {
+            const activeTrip = await dbClient.query(
+                `SELECT id FROM order_shipments 
+                 WHERE owner_driver_id = $1 
+                   AND status IN ('claimed','picking','loaded','transit','arrived','returning')
+                 LIMIT 1`,
+                [finalDriverId]
+            );
+            if (activeTrip.rows[0]) {
+                throw new Error('Tài xế đang có chuyến đi khác chưa hoàn thành');
+            }
+        }
+
         const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
         const result = await orderRepository.createOrderWithShipment({

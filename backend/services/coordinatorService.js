@@ -4,7 +4,13 @@ const orderRepository = require('../repositories/orderRepository');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const COLUMN_ALIASES = {
-  date: ['ngày', 'ngay', 'date'],
+  date: [
+  'ngày',
+  'ngày tháng năm',
+  'ngày, tháng, năm',
+  'ngay thang nam',
+  'date'
+],
   checkIn: ['chấm công', 'cham cong', 'check in', 'checkin'],
   plate: ['bks', 'biển số', 'bien so', 'plate'],
   driver: ['lái xe', 'lai xe', 'driver'],
@@ -171,7 +177,6 @@ const importExcel = async (userId, fileBuffer) => {
 
     for (const row of rows) {
       const date = parseExcelDate(row.date);
-      const checkIn = safeTrim(row.checkIn);
       const plate = safeTrim(row.plate);
       const driverName = safeTrim(row.driver);
       const customerName = safeTrim(row.customer);
@@ -211,21 +216,14 @@ const importExcel = async (userId, fileBuffer) => {
         driver = await orderRepository.getDriverByPlate(dbClient, plate);
       }
 
-      // Keep owner_driver_id and vehicle_id as null during Excel import to prevent violating uq_driver_one_active_trip.
-      // The driver name and plate are still preserved and displayed via notes.
-      const finalDriverId = null;
-      const finalVehicleId = null;
+      const finalDriverId = driver?.id ?? null;
+      const finalVehicleId = driver?.vehicle_id ?? null;
       const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
 
-      const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
+      // Completed status bypasses uq_driver_one_active_trip constraint and allows driver/vehicle assignment
+      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
-        `Ngày: ${date}`,
-        checkIn ? `Chấm công: ${checkIn}` : '',
-        plate ? `BKS: ${plate}` : '',
-        driverName ? `Lái xe: ${driverName}` : '',
-        customerName ? `Khách hàng: ${customerName}` : '',
-        route ? `Hành trình: ${route}` : '',
         distance ? `Quãng đường: ${distance}` : '',
         note ? `${note}` : '',
       ].filter(Boolean).join(' | ');
@@ -243,6 +241,7 @@ const importExcel = async (userId, fileBuffer) => {
           status: shipmentStatus,
           payment_type: 'cash',
           notes,
+          created_at: date,
         },
         shipmentData: {
           vehicle_group_id: finalVehicleGroupId,
@@ -256,6 +255,7 @@ const importExcel = async (userId, fileBuffer) => {
           status: shipmentStatus,
           payment_type: 'cash',
           notes,
+          created_at: date,
         },
       });
 

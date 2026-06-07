@@ -91,7 +91,7 @@ function buildTripFromOrder(order) {
     orderId: order.id,
     date: noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : ""),
     checkIn: noteInfo.checkIn || "",
-    plate: noteInfo.plate || order.plate || "",
+    plate: noteInfo.plate || order.plate_number || "",
     driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
     customerName: order.customer_name || noteInfo.customer || "",
     route: noteInfo.route || (order.pickup_address && order.delivery_address ? `${order.pickup_address} - ${order.delivery_address}` : order.cargo_name || ""),
