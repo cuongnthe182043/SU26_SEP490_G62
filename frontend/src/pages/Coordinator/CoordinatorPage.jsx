@@ -33,6 +33,44 @@ const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").tr
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
+const formatDateForInput = (value) => {
+  if (!value) return "";
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, day, month, year] = slash;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+};
+
+const splitRoute = (route) => {
+  const text = String(route ?? "").trim();
+  if (!text) return { pickup: "", delivery: "" };
+  const parts = text.split(/\s+-\s+/);
+  if (parts.length < 2) return { pickup: text, delivery: "" };
+  return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
+};
+
+const buildOrderNotes = (values, selectedDriver) => [
+  values.date ? `Ngày: ${values.date}` : "",
+  selectedDriver?.plate_number ? `BKS: ${selectedDriver.plate_number}` : "",
+  selectedDriver?.full_name ? `Lái xe: ${selectedDriver.full_name}` : "",
+  values.customer_name ? `Khách hàng: ${values.customer_name}` : "",
+  values.customer_phone ? `SĐT: ${values.customer_phone}` : "",
+  values.pickup_address && values.delivery_address
+    ? `Hành trình: ${values.pickup_address} - ${values.delivery_address}`
+    : "",
+  values.distance ? `Quãng đường: ${values.distance}` : "",
+  values.estimated_price ? `Cước xe: ${values.estimated_price}` : "",
+  values.note,
+].filter(Boolean).join(" | ");
+
 
 function parseNotes(notes) {
   const result = {
@@ -44,6 +82,9 @@ function parseNotes(notes) {
     route: "",
     distance: "",
     fare: "",
+    customerPhone: "",
+    pickupAddress: "",
+    deliveryAddress: "",
     notesText: "",
   };
   
@@ -65,6 +106,15 @@ function parseNotes(notes) {
     
     const customerMatch = part.match(/^Khách hàng:\s*(.+)$/i);
     if (customerMatch) { result.customer = customerMatch[1].trim(); return; }
+
+    const phoneMatch = part.match(/^SĐT:\s*(.+)$/i);
+    if (phoneMatch) { result.customerPhone = phoneMatch[1].trim(); return; }
+
+    const pickupMatch = part.match(/^Điểm lấy hàng:\s*(.+)$/i);
+    if (pickupMatch) { result.pickupAddress = pickupMatch[1].trim(); return; }
+
+    const deliveryMatch = part.match(/^Điểm giao hàng:\s*(.+)$/i);
+    if (deliveryMatch) { result.deliveryAddress = deliveryMatch[1].trim(); return; }
     
     const routeMatch = part.match(/^Hành trình:\s*(.+)$/i);
     if (routeMatch) { result.route = routeMatch[1].trim(); return; }
@@ -77,7 +127,7 @@ function parseNotes(notes) {
   });
   
   const noteParts = parts.filter(part => 
-    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|Hành trình|Quãng đường|Cước xe):/i)
+    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|SĐT|Điểm lấy hàng|Điểm giao hàng|Hành trình|Quãng đường|Cước xe):/i)
   );
   result.notesText = noteParts.join(" | ");
   
@@ -91,15 +141,27 @@ function extractDriverName(notes) {
 
 function buildTripFromOrder(order) {
   const noteInfo = parseNotes(order.notes);
+  const pickupAddress = order.pickup_address || noteInfo.pickupAddress || "";
+  const deliveryAddress = order.delivery_address || noteInfo.deliveryAddress || "";
+  const date = noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
+
   return {
     id: `#${order.id}`,
     orderId: order.id,
-    date: noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : ""),
+    date,
+    dateInput: formatDateForInput(noteInfo.date || order.created_at),
     checkIn: noteInfo.checkIn || "",
     plate: noteInfo.plate || order.plate_number || "",
+    driverId: order.owner_driver_id || "",
+    vehicleGroupId: order.vehicle_group_id || "",
     driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
     customerName: order.customer_name || noteInfo.customer || "",
-    route: noteInfo.route || (order.pickup_address && order.delivery_address ? `${order.pickup_address} - ${order.delivery_address}` : order.cargo_name || ""),
+    customerPhone: order.customer_phone || noteInfo.customerPhone || "",
+    cargoName: order.cargo_name || "",
+    cargoWeightKg: order.cargo_weight_kg || "",
+    pickupAddress,
+    deliveryAddress,
+    route: noteInfo.route || (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
     distance: noteInfo.distance || "",
     fare: noteInfo.fare || order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
@@ -113,6 +175,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [importing, setImporting] = useState(false);
@@ -122,6 +185,9 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter, setDateToFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -184,6 +250,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const filteredTrips = useMemo(() => {
     const query = deferredSearchQuery.trim().toLowerCase();
+    const customer = customerFilter.trim().toLowerCase();
 
     return trips.filter((trip) => {
       const matchesTab =
@@ -192,13 +259,32 @@ export default function CoordinatorPage({ user, onLogout }) {
         (activeTab === "waiting" && trip.status === "Waiting");
 
       if (!matchesTab) return false;
+
+      const tripDate = trip.dateInput || formatDateForInput(trip.date);
+      if (dateFromFilter && (!tripDate || tripDate < dateFromFilter)) return false;
+      if (dateToFilter && (!tripDate || tripDate > dateToFilter)) return false;
+
+      if (customer && !String(trip.customerName || "").toLowerCase().includes(customer)) {
+        return false;
+      }
+
       if (!query) return true;
 
-      return [trip.id, trip.title, trip.pickup, trip.delivery, trip.driverName, trip.status]
+      return [
+        trip.id,
+        trip.orderId,
+        trip.cargoName,
+        trip.pickupAddress,
+        trip.deliveryAddress,
+        trip.route,
+        trip.driverName,
+        trip.customerName,
+        trip.status,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [activeTab, deferredSearchQuery, trips]);
+  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery, trips]);
 
   
 
@@ -216,7 +302,9 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDate = new Date(`${form.date}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(selectedDate.getTime()) || selectedDate < today) {
+      if (Number.isNaN(selectedDate.getTime())) {
+        errors.date = "Ngày không hợp lệ";
+      } else if (!editingTrip && selectedDate < today) {
         errors.date = "Ngày không được trước hôm nay";
       }
     }
@@ -308,6 +396,42 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingTrip(null);
+    setForm(emptyForm);
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const openEditModal = (trip) => {
+    const routeAddresses = splitRoute(trip.route);
+    const driver = drivers.find((item) => String(item.id) === String(trip.driverId));
+    setEditingTrip(trip);
+    setForm({
+      date: trip.dateInput || formatDateForInput(trip.date),
+      driver_id: trip.driverId ? String(trip.driverId) : "",
+      customer_name: trip.customerName || "",
+      customer_phone: trip.customerPhone || "",
+      cargo_name: trip.cargoName || "",
+      cargo_weight_kg: trip.cargoWeightKg || "",
+      distance: trip.distance || "",
+      pickup_address: trip.pickupAddress || routeAddresses.pickup,
+      delivery_address: trip.deliveryAddress || routeAddresses.delivery,
+      estimated_price: trip.fare || "",
+      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+      note: trip.notes || "",
+    });
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const closeOrderModal = () => {
+    setCreateOpen(false);
+    setEditingTrip(null);
+    setForm(emptyForm);
+    setFormErrors({});
+  };
+
   const handleCreateOrder = async (event) => {
     event.preventDefault();
     setMessage("");
@@ -327,51 +451,43 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDriver = drivers.find(
         (driver) => String(driver.id) === String(form.driver_id),
       );
-      const selectedPlate = selectedDriver?.plate_number || "";
-      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || "";
+      const noteDriver = selectedDriver || (editingTrip ? {
+        plate_number: editingTrip.plate,
+        full_name: editingTrip.driverName,
+      } : null);
+      const selectedPlate = noteDriver?.plate_number || "";
+      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
 
-      const data = await apiRequest("/api/orders", {
-        method: "POST",
+      const payload = {
+        date: form.date,
+        plate: selectedPlate,
+        driver_id: form.driver_id || "",
+        customer_name: form.customer_name,
+        customer_phone: form.customer_phone,
+        cargo_name: form.cargo_name,
+        cargo_weight_kg: form.cargo_weight_kg,
+        pickup_address: form.pickup_address,
+        delivery_address: form.delivery_address,
+        estimated_price: form.estimated_price,
+        vehicle_group_id: selectedVehicleGroupId,
+        notes: buildOrderNotes(form, noteDriver),
+      };
+
+      const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
+        method: editingTrip ? "PATCH" : "POST",
         token,
-        body: {
-          date: form.date,
-          plate: selectedPlate,
-          driver_id: form.driver_id || "",
-          customer_name: form.customer_name,
-          customer_phone: form.customer_phone,
-          cargo_name: form.cargo_name,
-          cargo_weight_kg: form.cargo_weight_kg,
-          pickup_address: form.pickup_address,
-          delivery_address: form.delivery_address,
-          estimated_price: form.estimated_price,
-          vehicle_group_id: selectedVehicleGroupId,
-          notes: [
-            form.distance ? `Quãng đường: ${form.distance}` : "",
-            form.note,
-          ].filter(Boolean).join(" | "),
-        },
+        body: payload,
       });
 
-      setTrips((currentTrips) => [
-        {
-          id: `tmp-${data.order.id}`,
-          orderId: data.order.id,
-          date: form.date,
-          status: data.order.status,
-          plate: selectedPlate,
-          driverName: selectedDriver?.full_name || extractDriverName(data.order.notes) || "",
-          customerName: form.customer_name,
-          route: `${form.pickup_address} - ${form.delivery_address}`,
-          distance: form.distance,
-          fare: form.estimated_price,
-          notes: form.note,
-          rawNotes: data.order.notes || "",
-        },
-        ...currentTrips.filter((trip) => trip.orderId !== data.order.id),
-      ]);
+      const savedTrip = buildTripFromOrder(data.order);
+      setTrips((currentTrips) => editingTrip
+        ? currentTrips.map((trip) => (trip.orderId === savedTrip.orderId ? savedTrip : trip))
+        : [savedTrip, ...currentTrips.filter((trip) => trip.orderId !== savedTrip.orderId)]
+      );
 
       setCreateOpen(false);
-      setMessage(data.message || "Order created successfully.");
+      setEditingTrip(null);
+      setMessage(data.message || (editingTrip ? "Order updated successfully." : "Order created successfully."));
       setMessageType("success");
       setForm(emptyForm);
       setFormErrors({});
@@ -432,7 +548,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               {importing ? "Importing..." : "+ Import Excel"}
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
             </label>
-            <button className="primary-btn" onClick={() => setCreateOpen(true)}>
+            <button className="primary-btn" onClick={openCreateModal}>
               + Tạo mới
             </button>
             <div className="top-profile">
@@ -461,7 +577,43 @@ export default function CoordinatorPage({ user, onLogout }) {
             <p>Manage and dispatch active transport trips.</p>
           </div> */}
           <div></div>
-          <div className="filters">
+          <div className="filters order-filters">
+            <label className="filter-field">
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={dateFromFilter}
+                onChange={(event) => setDateFromFilter(event.target.value)}
+              />
+            </label>
+            <label className="filter-field">
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={dateToFilter}
+                min={dateFromFilter || undefined}
+                onChange={(event) => setDateToFilter(event.target.value)}
+              />
+            </label>
+            <label className="filter-field filter-field-customer">
+              <span>Khách hàng</span>
+              <input
+                value={customerFilter}
+                onChange={(event) => setCustomerFilter(event.target.value)}
+                placeholder="Lọc theo khách hàng"
+              />
+            </label>
+            <button
+              type="button"
+              className="filter"
+              onClick={() => {
+                setDateFromFilter("");
+                setDateToFilter("");
+                setCustomerFilter("");
+              }}
+            >
+              Xóa lọc
+            </button>
             {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
@@ -484,14 +636,14 @@ export default function CoordinatorPage({ user, onLogout }) {
         </section>
 
         {createOpen && (
-          <section className="modal-backdrop" onClick={() => setCreateOpen(false)}>
+          <section className="modal-backdrop" onClick={closeOrderModal}>
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
               <div className="panel-head">
                 <div>
-                  <h2>Tạo đơn</h2>
-                  <p>Fill the form based on the Excel sheet structure.</p>
+                  <h2>{editingTrip ? `Chỉnh sửa đơn #${editingTrip.orderId}` : "Tạo đơn"}</h2>
+                  <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Fill the form based on the Excel sheet structure."}</p>
                 </div>
-                <button className="ghost-btn" onClick={() => setCreateOpen(false)}>
+                <button className="ghost-btn" type="button" onClick={closeOrderModal}>
                   x
                 </button>
               </div>
@@ -506,7 +658,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       type="date"
                       value={form.date}
                       onChange={(event) => updateField("date", event.target.value)}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={editingTrip ? undefined : new Date().toISOString().slice(0, 10)}
                       className={formErrors.date ? "input-error" : ""}
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
@@ -683,11 +835,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
 
                 <div className="form-actions full">
-                  <button type="button" className="filter" onClick={() => setCreateOpen(false)}>
+                  <button type="button" className="filter" onClick={closeOrderModal}>
                     Cancel
                   </button>
                   <button type="submit" className="primary-btn" disabled={creating}>
-                    {creating ? "Creating..." : "Create"}
+                    {creating ? (editingTrip ? "Updating..." : "Creating...") : (editingTrip ? "Update" : "Create")}
                   </button>
                 </div>
               </form>
@@ -756,7 +908,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       </td>
                       <td>
                         <div className="table-actions">
-                          <button className="table-edit-btn" aria-label="Edit order">
+                          <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
                             ✎
                           </button>
                         </div>

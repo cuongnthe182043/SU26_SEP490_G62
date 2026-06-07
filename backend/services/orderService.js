@@ -183,6 +183,18 @@ const createOrder = async (userId, payload) => {
 
         const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
+        const orderNotes = safeTrim(notes) || buildNotes({
+            date: normalizedDate,
+            checkIn: check_in,
+            plate: driver?.plate_number || plate,
+            driverName: driver?.full_name,
+            customerName: customer_name,
+            customerPhone: customer_phone,
+            pickupAddress: pickup_address,
+            deliveryAddress: delivery_address,
+            notes,
+        });
+
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,
             userId,
@@ -195,7 +207,7 @@ const createOrder = async (userId, payload) => {
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
-                notes: notes,
+                notes: orderNotes,
             },
             shipmentData: {
                 vehicle_group_id: finalVehicleGroupId,
@@ -208,7 +220,7 @@ const createOrder = async (userId, payload) => {
                 estimated_price: normalizedPrice,
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
-                notes: notes,
+                notes: orderNotes,
             },
             assignmentData: finalDriverId && finalVehicleId ? {
                 driver_id: finalDriverId,
@@ -357,6 +369,10 @@ const updateOrder = async (orderId, payload) => {
         delivery_address,
         estimated_price,
         notes,
+        date,
+        plate,
+        driver_id,
+        vehicle_group_id,
     } = payload;
 
     return orderRepository.updateOrder(orderId, {
@@ -368,6 +384,10 @@ const updateOrder = async (orderId, payload) => {
         delivery_address,
         estimated_price,
         notes,
+        date,
+        plate,
+        driver_id,
+        vehicle_group_id,
     }, normalizeNumber, safeTrim, normalizePhone);
 };
 

@@ -126,6 +126,41 @@
   border: 1px solid rgba(20, 30, 70, 0.14);
 }
 .coordinator-shell .filter.active { background: #18227f; color: #fff; }
+
+.coordinator-shell .order-filters {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.coordinator-shell .filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  color: #2a3144;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coordinator-shell .filter-field-customer {
+  min-width: 220px;
+}
+
+.coordinator-shell .filter-field input {
+  min-height: 46px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #2a3144;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.coordinator-shell .filter-field input:focus {
+  border-color: #18227f;
+  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
+}
 .coordinator-shell .notice {
   margin-bottom: 16px;
   padding: 14px 16px;
