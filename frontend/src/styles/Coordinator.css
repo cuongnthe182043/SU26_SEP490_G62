@@ -126,6 +126,41 @@
   border: 1px solid rgba(20, 30, 70, 0.14);
 }
 .coordinator-shell .filter.active { background: #18227f; color: #fff; }
+
+.coordinator-shell .order-filters {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.coordinator-shell .filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  color: #2a3144;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coordinator-shell .filter-field-customer {
+  min-width: 220px;
+}
+
+.coordinator-shell .filter-field input {
+  min-height: 46px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #2a3144;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.coordinator-shell .filter-field input:focus {
+  border-color: #18227f;
+  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
+}
 .coordinator-shell .notice {
   margin-bottom: 16px;
   padding: 14px 16px;
@@ -213,6 +248,8 @@
 .coordinator-shell .table-address-cell {
   max-width: 260px;
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.35;
 }
 
@@ -498,5 +535,185 @@
 
   .coordinator-shell .pagination-actions {
     justify-content: space-between;
+  }
+}
+
+.coordinator-shell.sidebar-collapsed {
+  grid-template-columns: 88px 1fr;
+}
+
+.coordinator-shell .sidebar {
+  position: relative;
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+
+.coordinator-shell .sidebar-toggle {
+  position: absolute;
+  top: 22px;
+  right: -15px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(20, 30, 70, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #18227f;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 6px 14px rgba(32, 40, 71, 0.12);
+  z-index: 3;
+}
+
+.coordinator-shell .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coordinator-shell .nav-icon {
+  display: inline-flex;
+  width: 20px;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.coordinator-shell.sidebar-collapsed .sidebar {
+  padding: 28px 14px;
+}
+
+.coordinator-shell.sidebar-collapsed .brand,
+.coordinator-shell.sidebar-collapsed .nav-item {
+  justify-content: center;
+}
+
+.coordinator-shell.sidebar-collapsed .nav-label {
+  display: none;
+}
+
+.coordinator-shell .top-profile {
+  position: relative;
+}
+
+.coordinator-shell .profile-trigger {
+  border: 0;
+  cursor: pointer;
+}
+
+.coordinator-shell .profile-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 220px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+  z-index: 20;
+}
+
+.coordinator-shell .profile-menu-name {
+  font-weight: 800;
+  color: #1f2430;
+}
+
+.coordinator-shell .profile-menu-email {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: #6a7182;
+  word-break: break-all;
+}
+
+.coordinator-shell .profile-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: #fff1f1;
+  color: #b91c1c;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+/* Color-coded trip statuses */
+.coordinator-shell .trip-status.status-available,
+.coordinator-shell .trip-status.status-new {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.coordinator-shell .trip-status.status-claimed {
+  background: #fef3c7;
+  color: #d97706;
+}
+.coordinator-shell .trip-status.status-picking {
+  background: #ffedd5;
+  color: #ea580c;
+}
+.coordinator-shell .trip-status.status-loaded {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+.coordinator-shell .trip-status.status-transit {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+.coordinator-shell .trip-status.status-arrived {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+.coordinator-shell .trip-status.status-completed {
+  background: #dcfce7;
+  color: #15803d;
+}
+.coordinator-shell .trip-status.status-cancelled,
+.coordinator-shell .trip-status.status-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.coordinator-shell .trip-status.status-returning {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+/* Absent driver (no check-in) row styling */
+.coordinator-shell .orders-table tr.row-no-checkin {
+  background-color: #fffbeb !important;
+}
+.coordinator-shell .orders-table tr.row-no-checkin td {
+  background-color: #fffbeb !important;
+}
+.coordinator-shell .table-route-cell {
+  min-width: 400px;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: white;
+  z-index: 9999;
+  animation: slideIn 0.3s ease;
+}
+
+.notification.success {
+  background: #16a34a;
+}
+
+.notification.error {
+  background: #dc2626;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
   }
 }
