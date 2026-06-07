@@ -1,6 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
+import { message as toast } from "antd";
 
 const emptyForm = {
   date: "",
@@ -194,7 +195,27 @@ export default function CoordinatorPage({ user, onLogout }) {
   useEffect(() => {
     localStorage.removeItem("coordinatorTrips");
   }, []);
+  
 
+  useEffect(() => {
+  if (!message) return;
+
+  switch (messageType) {
+    case "success":
+      toast.success(message);
+      break;
+    case "error":
+      toast.error(message);
+      break;
+    case "warning":
+      toast.warning(message);
+      break;
+    default:
+      toast.info(message);
+  }
+
+  setMessage("");
+}, [message, messageType]);
   useEffect(() => {
     const loadOrders = async () => { 
       try {
@@ -498,7 +519,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setCreating(false);
     }
   };
-
+  
   return (
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
@@ -847,7 +868,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           </section>
         )}
 
-        {message && <div className={`notice notice-${messageType}`}>{message}</div>}
+        
 
         <section className="orders-panel">
           <div className="panel-head">
@@ -926,4 +947,5 @@ export default function CoordinatorPage({ user, onLogout }) {
       </main>
     </div>
   );
+  
 }
