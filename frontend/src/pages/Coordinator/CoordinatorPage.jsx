@@ -34,21 +34,73 @@ const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
 
+function parseNotes(notes) {
+  const result = {
+    date: "",
+    checkIn: "",
+    plate: "",
+    driver: "",
+    customer: "",
+    route: "",
+    distance: "",
+    notesText: "",
+  };
+  
+  if (!notes) return result;
+  
+  const parts = notes.split(" | ");
+  parts.forEach(part => {
+    const dateMatch = part.match(/^Ngày:\s*(.+)$/i);
+    if (dateMatch) { result.date = dateMatch[1].trim(); return; }
+    
+    const checkInMatch = part.match(/^Chấm công:\s*(.+)$/i);
+    if (checkInMatch) { result.checkIn = checkInMatch[1].trim(); return; }
+    
+    const plateMatch = part.match(/^BKS:\s*(.+)$/i);
+    if (plateMatch) { result.plate = plateMatch[1].trim(); return; }
+    
+    const driverMatch = part.match(/^Lái xe:\s*(.+)$/i);
+    if (driverMatch) { result.driver = driverMatch[1].trim(); return; }
+    
+    const customerMatch = part.match(/^Khách hàng:\s*(.+)$/i);
+    if (customerMatch) { result.customer = customerMatch[1].trim(); return; }
+    
+    const routeMatch = part.match(/^Hành trình:\s*(.+)$/i);
+    if (routeMatch) { result.route = routeMatch[1].trim(); return; }
+    
+    const distanceMatch = part.match(/^Quãng đường:\s*(.+)$/i);
+    if (distanceMatch) { result.distance = distanceMatch[1].trim(); return; }
+  });
+  
+  const noteParts = parts.filter(part => 
+    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|Hành trình|Quãng đường):/i)
+  );
+  result.notesText = noteParts.join(" | ");
+  
+  return result;
+}
+
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
   return match?.[1]?.trim() || "";
 }
 
 function buildTripFromOrder(order) {
+  const noteInfo = parseNotes(order.notes);
   return {
     id: `#${order.id}`,
     orderId: order.id,
-    title: order.cargo_name,
+    date: noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : ""),
+    checkIn: noteInfo.checkIn || "",
+    plate: noteInfo.plate || order.plate || "",
+    driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
+    customerName: order.customer_name || noteInfo.customer || "",
+    route: noteInfo.route || (order.pickup_address && order.delivery_address ? `${order.pickup_address} - ${order.delivery_address}` : order.cargo_name || ""),
+    distance: noteInfo.distance || "",
+    fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
-    pickup: order.pickup_address,
-    delivery: order.delivery_address,
-    weight: `${order.cargo_weight_kg ?? ""}kg`,
-    driverName: order.driver_name || extractDriverName(order.notes) || "",
+    notes: noteInfo.notesText || "",
+    rawNotes: order.notes || "",
   };
 }
 
@@ -236,6 +288,11 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       setMessage(`Imported ${data.rows?.length || 0} rows from Excel.`);
       setMessageType("success");
+
+      // Reload orders from database to show the newly imported ones reactively
+      const updatedData = await apiRequest("/api/orders", { token });
+      const dbTrips = (updatedData.orders || []).map(buildTripFromOrder);
+      setTrips(dbTrips);
     } catch (err) {
       setMessage(err.message || "Unable to import Excel file.");
       setMessageType("error");
@@ -640,41 +697,54 @@ export default function CoordinatorPage({ user, onLogout }) {
               <thead>
                 <tr>
                   <th>Mã đơn</th>
+                  <th>Ngày</th>
+                  <th>Chấm công</th>
+                  <th>BKS</th>
+                  <th>Lái xe</th>
+                  <th>Khách hàng</th>
+                  <th>Hành trình</th>
+                  <th>Quãng đường</th>
+                  <th>Cước xe</th>
+                  <th>Ghi chú</th>
                   <th>Trạng thái</th>
-                  <th>Sản phẩm</th>
-                  <th>Điểm lấy hàng</th>
-                  <th>Điểm giao hàng</th>
-                  <th>Khối lượng</th>
-                  <th>Tài xế</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="empty-table-cell">
+                    <td colSpan="12" className="empty-table-cell">
                       No orders yet. Create an order or import an Excel file to load data.
                     </td>
                   </tr>
                 ) : (
                   filteredTrips.map((trip) => (
-                    <tr key={trip.id}>
+                    <tr key={trip.id} className={!trip.checkIn ? "row-no-checkin" : ""}>
                       <td>
                         <span className="trip-id">
                           #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
                         </span>
                       </td>
-                      <td>
-                        <span className="trip-status">{trip.status}</span>
-                      </td>
-                      <td className="table-route-cell">{trip.title || "-"}</td>
-                      <td className="table-address-cell">{trip.pickup}</td>
-                      <td className="table-address-cell">{trip.delivery}</td>
-                      <td>{trip.weight}</td>
+                      <td>{trip.date || "-"}</td>
+                      <td>{trip.checkIn || "-"}</td>
+                      <td>{trip.plate || "-"}</td>
                       <td>{trip.driverName || "Unassigned"}</td>
+                      <td>{trip.customerName || "-"}</td>
+                      <td className="table-route-cell">{trip.route || "-"}</td>
+                      <td>{trip.distance || "-"}</td>
+                      <td>
+                        {typeof trip.fare === "number"
+                          ? trip.fare.toLocaleString("vi-VN") + " đ"
+                          : trip.fare || "-"}
+                      </td>
+                      <td className="table-address-cell">{trip.notes || "-"}</td>
+                      <td>
+                        <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
+                          {trip.status}
+                        </span>
+                      </td>
                       <td>
                         <div className="table-actions">
-                          
                           <button className="table-edit-btn" aria-label="Edit order">
                             ✎
                           </button>

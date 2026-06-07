@@ -598,3 +598,51 @@
   padding: 10px 12px;
   text-align: left;
 }
+
+/* Color-coded trip statuses */
+.coordinator-shell .trip-status.status-available,
+.coordinator-shell .trip-status.status-new {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.coordinator-shell .trip-status.status-claimed {
+  background: #fef3c7;
+  color: #d97706;
+}
+.coordinator-shell .trip-status.status-picking {
+  background: #ffedd5;
+  color: #ea580c;
+}
+.coordinator-shell .trip-status.status-loaded {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+.coordinator-shell .trip-status.status-transit {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+.coordinator-shell .trip-status.status-arrived {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+.coordinator-shell .trip-status.status-completed {
+  background: #dcfce7;
+  color: #15803d;
+}
+.coordinator-shell .trip-status.status-cancelled,
+.coordinator-shell .trip-status.status-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.coordinator-shell .trip-status.status-returning {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+/* Absent driver (no check-in) row styling */
+.coordinator-shell .orders-table tr.row-no-checkin {
+  background-color: #fffbeb !important;
+}
+.coordinator-shell .orders-table tr.row-no-checkin td {
+  background-color: #fffbeb !important;
+}

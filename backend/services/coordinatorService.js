@@ -1,4 +1,7 @@
 const XLSX = require('xlsx');
+const pool = require('../config/database');
+const orderRepository = require('../repositories/orderRepository');
+const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const COLUMN_ALIASES = {
   date: ['ngày', 'ngay', 'date'],
@@ -77,10 +80,196 @@ const parseSpreadsheet = (buffer) => {
     }));
 };
 
-const importExcel = async (fileBuffer) => {
+const safeTrim = (value) => String(value ?? '').trim();
+
+const parseExcelDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value).trim();
+  const isoLike = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoLike) return text;
+
+  const slashLike = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashLike) {
+    const [, day, month, year] = slashLike;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+};
+
+const normalizeNumber = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const cleanStr = String(value)
+    .replace(/đ/g, '')
+    .replace(/d/g, '')
+    .replace(/\s/g, '')
+    .trim();
+  let parsedStr = cleanStr;
+  if ((cleanStr.match(/\./g) || []).length > 1) {
+    parsedStr = cleanStr.replace(/\./g, '');
+  } else if (cleanStr.includes('.') && cleanStr.includes(',')) {
+    if (cleanStr.indexOf(',') < cleanStr.indexOf('.')) {
+      parsedStr = cleanStr.replace(/,/g, '');
+    } else {
+      parsedStr = cleanStr.replace(/\./g, '').replace(/,/g, '.');
+    }
+  } else if (cleanStr.includes(',')) {
+    if ((cleanStr.match(/,/g) || []).length > 1) {
+      parsedStr = cleanStr.replace(/,/g, '');
+    } else {
+      const parts = cleanStr.split(',');
+      if (parts[1].length === 3) {
+        parsedStr = cleanStr.replace(/,/g, '');
+      } else {
+        parsedStr = cleanStr.replace(/,/g, '.');
+      }
+    }
+  }
+  const numericValue = Number(parsedStr);
+  if (Number.isNaN(numericValue)) return null;
+  return numericValue;
+};
+
+const parseRoute = (routeStr) => {
+  const route = safeTrim(routeStr);
+  if (!route) return { pickupAddress: 'Chưa xác định', deliveryAddress: 'Chưa xác định' };
+  const parts = route.split(/ - |-/);
+  if (parts.length >= 2) {
+    return {
+      pickupAddress: parts[0].trim(),
+      deliveryAddress: parts[1].trim()
+    };
+  }
+  return {
+    pickupAddress: route,
+    deliveryAddress: route
+  };
+};
+
+const importExcel = async (userId, fileBuffer) => {
   if (!fileBuffer) throw new Error('Thiếu file Excel');
   const rows = parseSpreadsheet(fileBuffer);
-  return { rows };
+  if (!rows.length) return { rows: [] };
+
+  let dbClient = null;
+  const createdOrders = [];
+
+  try {
+    dbClient = await pool.connect();
+    await dbClient.query('BEGIN');
+
+    const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+    if (!defaultVehicleGroupId) {
+      throw new Error('Chưa có nhóm xe trong hệ thống');
+    }
+
+    for (const row of rows) {
+      const date = parseExcelDate(row.date);
+      const checkIn = safeTrim(row.checkIn);
+      const plate = safeTrim(row.plate);
+      const driverName = safeTrim(row.driver);
+      const customerName = safeTrim(row.customer);
+      const route = safeTrim(row.route);
+      const distance = safeTrim(row.distance);
+      const fare = normalizeNumber(row.fare);
+      const note = safeTrim(row.note);
+
+      if (!date) {
+        throw new Error('Ngày tháng năm là bắt buộc trong file Excel');
+      }
+
+      const { pickupAddress, deliveryAddress } = parseRoute(route);
+
+      let customer = null;
+      if (customerName) {
+        const existingCust = await dbClient.query(
+          `SELECT id FROM customers WHERE full_name = $1 LIMIT 1`,
+          [customerName]
+        );
+        if (existingCust.rows[0]) {
+          customer = existingCust.rows[0];
+        } else {
+          const randomPhone = '0' + Math.floor(100000000 + Math.random() * 900000000);
+          const newCust = await dbClient.query(
+            `INSERT INTO customers (customer_type, full_name, contact_person, phone)
+             VALUES ('individual', $1, $1, $2)
+             RETURNING id`,
+            [customerName, randomPhone]
+          );
+          customer = newCust.rows[0];
+        }
+      }
+
+      let driver = null;
+      if (plate) {
+        driver = await orderRepository.getDriverByPlate(dbClient, plate);
+      }
+
+      const finalDriverId = driver?.id ?? null;
+      const finalVehicleId = driver?.vehicle_id ?? null;
+      const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
+
+      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
+
+      const notes = [
+        `Ngày: ${date}`,
+        checkIn ? `Chấm công: ${checkIn}` : '',
+        plate ? `BKS: ${plate}` : '',
+        driverName ? `Lái xe: ${driverName}` : '',
+        customerName ? `Khách hàng: ${customerName}` : '',
+        route ? `Hành trình: ${route}` : '',
+        distance ? `Quãng đường: ${distance}` : '',
+        note ? `${note}` : '',
+      ].filter(Boolean).join(' | ');
+
+      const result = await orderRepository.importOrderWithShipment({
+        client: dbClient,
+        userId,
+        orderData: {
+          customer_id: customer?.id ?? null,
+          cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
+          cargo_weight_kg: null,
+          pickup_address: pickupAddress,
+          delivery_address: deliveryAddress,
+          estimated_price: fare || 0,
+          status: shipmentStatus,
+          payment_type: 'cash',
+          notes,
+        },
+        shipmentData: {
+          vehicle_group_id: finalVehicleGroupId,
+          owner_driver_id: finalDriverId,
+          vehicle_id: finalVehicleId,
+          pickup_address: pickupAddress,
+          delivery_address: deliveryAddress,
+          cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
+          cargo_weight_kg: null,
+          estimated_price: fare || 0,
+          status: shipmentStatus,
+          payment_type: 'cash',
+          notes,
+        },
+      });
+
+      createdOrders.push(result.order);
+    }
+
+    await dbClient.query('COMMIT');
+    return { rows: createdOrders };
+  } catch (err) {
+    if (dbClient) {
+      await dbClient.query('ROLLBACK');
+    }
+    throw err;
+  } finally {
+    dbClient?.release?.();
+  }
 };
 
 module.exports = { importExcel };
