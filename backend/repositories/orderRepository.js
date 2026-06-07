@@ -23,7 +23,8 @@ const selectOrderProjection = `
         delivery.address AS delivery_address,
         c.full_name AS customer_name,
         c.phone AS customer_phone,
-        d.full_name AS driver_name
+        d.full_name AS driver_name,
+        v.plate_number AS plate_number
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
     LEFT JOIN LATERAL (
@@ -48,6 +49,7 @@ const selectOrderProjection = `
         LIMIT 1
     ) delivery ON TRUE
     LEFT JOIN profiles d ON d.id = os.owner_driver_id
+    LEFT JOIN vehicles v ON v.id = os.vehicle_id
 `;
 
 const listOrders = async () => {

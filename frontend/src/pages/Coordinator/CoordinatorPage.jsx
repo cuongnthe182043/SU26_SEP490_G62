@@ -26,7 +26,6 @@ const requiredFields = [
   { key: "cargo_weight_kg", label: "Khối lượng" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
-  { key: "estimated_price", label: "Cước xe" },
 ];
 
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
@@ -227,10 +226,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
     }
 
-    const price = normalizeNumericText(form.estimated_price);
-    if (price && (!isFiniteNumber(price) || Number(price) < 0)) {
-      errors.estimated_price = "Cước xe phải là số không âm";
-    }
+
 
     const distance = normalizeDistanceText(form.distance);
     if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
@@ -584,7 +580,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   
                 </div>
 
-                <div className="form-row form-row-3">
+                <div className="form-row form-row-2">
                   <label>
                     <span>Khối lượng</span>
                     <input
@@ -609,20 +605,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.distance && (
                       <div className="field-error">{formErrors.distance}</div>
-                    )}
-                  </label>
-                  <label>
-                    <span>Cước xe</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={form.estimated_price}
-                      onChange={(event) => updateField("estimated_price", event.target.value)}
-                      className={formErrors.estimated_price ? "input-error" : ""}
-                    />
-                    {formErrors.estimated_price && (
-                      <div className="field-error">{formErrors.estimated_price}</div>
                     )}
                   </label>
                 </div>
@@ -698,7 +680,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                 <tr>
                   <th>Mã đơn</th>
                   <th>Ngày</th>
-                  <th>Chấm công</th>
                   <th>BKS</th>
                   <th>Lái xe</th>
                   <th>Khách hàng</th>
@@ -713,7 +694,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               <tbody>
                 {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan="12" className="empty-table-cell">
+                    <td colSpan="11" className="empty-table-cell">
                       No orders yet. Create an order or import an Excel file to load data.
                     </td>
                   </tr>
@@ -726,7 +707,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                         </span>
                       </td>
                       <td>{trip.date || "-"}</td>
-                      <td>{trip.checkIn || "-"}</td>
                       <td>{trip.plate || "-"}</td>
                       <td>{trip.driverName || "Unassigned"}</td>
                       <td>{trip.customerName || "-"}</td>

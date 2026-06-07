@@ -103,9 +103,11 @@ const createOrder = async (userId, payload) => {
         notes,
     } = payload;
 
-    if (!pickup_address || !delivery_address || estimated_price === undefined || estimated_price === null || estimated_price === '') {
+    if (!pickup_address || !delivery_address) {
         throw new Error('Thiếu thông tin bắt buộc');
     }
+
+    const finalEstimatedPrice = (estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price;
 
     const normalizedDate = normalizeDateInput(date);
     if (normalizedDate && isBeforeToday(normalizedDate)) {
@@ -113,7 +115,7 @@ const createOrder = async (userId, payload) => {
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
-    const normalizedPrice = normalizeNumber(estimated_price);
+    const normalizedPrice = normalizeNumber(finalEstimatedPrice);
     const normalizedDriverId = driver_id ? Number(driver_id) : null;
     let dbClient = null;
 

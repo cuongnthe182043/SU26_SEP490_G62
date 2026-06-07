@@ -211,11 +211,13 @@ const importExcel = async (userId, fileBuffer) => {
         driver = await orderRepository.getDriverByPlate(dbClient, plate);
       }
 
-      const finalDriverId = driver?.id ?? null;
-      const finalVehicleId = driver?.vehicle_id ?? null;
+      // Keep owner_driver_id and vehicle_id as null during Excel import to prevent violating uq_driver_one_active_trip.
+      // The driver name and plate are still preserved and displayed via notes.
+      const finalDriverId = null;
+      const finalVehicleId = null;
       const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
 
-      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
+      const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
         `Ngày: ${date}`,
