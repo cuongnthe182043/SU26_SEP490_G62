@@ -24,6 +24,7 @@ const requiredFields = [
   { key: "customer_phone", label: "SĐT" },
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
+  { key: "estimated_price", label: "Cước xe" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
 ];
@@ -42,6 +43,7 @@ function parseNotes(notes) {
     customer: "",
     route: "",
     distance: "",
+    fare: "",
     notesText: "",
   };
   
@@ -69,10 +71,13 @@ function parseNotes(notes) {
     
     const distanceMatch = part.match(/^Quãng đường:\s*(.+)$/i);
     if (distanceMatch) { result.distance = distanceMatch[1].trim(); return; }
+
+    const fareMatch = part.match(/^Cước xe:\s*(.+)$/i);
+    if (fareMatch) { result.fare = fareMatch[1].trim(); return; }
   });
   
   const noteParts = parts.filter(part => 
-    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|Hành trình|Quãng đường):/i)
+    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|Hành trình|Quãng đường|Cước xe):/i)
   );
   result.notesText = noteParts.join(" | ");
   
@@ -96,7 +101,7 @@ function buildTripFromOrder(order) {
     customerName: order.customer_name || noteInfo.customer || "",
     route: noteInfo.route || (order.pickup_address && order.delivery_address ? `${order.pickup_address} - ${order.delivery_address}` : order.cargo_name || ""),
     distance: noteInfo.distance || "",
-    fare: order.estimated_price || order.total_estimated_price || 0,
+    fare: noteInfo.fare || order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: noteInfo.notesText || "",
     rawNotes: order.notes || "",
@@ -233,6 +238,11 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.distance = "Quãng đường phải là số lớn hơn 0";
     }
 
+    const estimatedPrice = normalizeNumericText(form.estimated_price);
+    if (estimatedPrice && (!isFiniteNumber(estimatedPrice) || Number(estimatedPrice) < 0)) {
+      errors.estimated_price = "Cước xe phải là số không âm";
+    }
+
     setFormErrors(errors);
     return errors;
   };
@@ -346,12 +356,16 @@ export default function CoordinatorPage({ user, onLogout }) {
         {
           id: `tmp-${data.order.id}`,
           orderId: data.order.id,
-          title: data.order.cargo_name,
+          date: form.date,
           status: data.order.status,
-          pickup: data.order.pickup_address,
-          delivery: data.order.delivery_address,
-          weight: `${data.order.cargo_weight_kg ?? ""}kg`,
+          plate: selectedPlate,
           driverName: selectedDriver?.full_name || extractDriverName(data.order.notes) || "",
+          customerName: form.customer_name,
+          route: `${form.pickup_address} - ${form.delivery_address}`,
+          distance: form.distance,
+          fare: form.estimated_price,
+          notes: form.note,
+          rawNotes: data.order.notes || "",
         },
         ...currentTrips.filter((trip) => trip.orderId !== data.order.id),
       ]);
@@ -605,6 +619,23 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.distance && (
                       <div className="field-error">{formErrors.distance}</div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="form-row form-row-2">
+                  <label>
+                    <span>Cước xe</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={form.estimated_price}
+                      onChange={(event) => updateField("estimated_price", event.target.value)}
+                      className={formErrors.estimated_price ? "input-error" : ""}
+                    />
+                    {formErrors.estimated_price && (
+                      <div className="field-error">{formErrors.estimated_price}</div>
                     )}
                   </label>
                 </div>

@@ -41,17 +41,37 @@ const buildHeaderMap = (headerRow) => {
   const map = new Map();
   headerRow.forEach((cell, index) => {
     const normalized = normalizeKey(cell);
-    map.set(normalized, index);
+    if (normalized) map.set(normalized, index);
   });
   return map;
 };
 
-const extractValue = (row, headerMap, aliases) => {
+const getHeaderIndex = (headerMap, aliases) => {
   for (const alias of aliases) {
     const index = headerMap.get(normalizeKey(alias));
-    if (index !== undefined) return row[index] ?? '';
+    if (index !== undefined) return index;
   }
-  return '';
+  return undefined;
+};
+
+const extractValue = (row, headerMap, aliases) => {
+  const index = getHeaderIndex(headerMap, aliases);
+  return index !== undefined ? row[index] ?? '' : '';
+};
+
+const extractRouteValue = (row, headerMap) => {
+  const routeIndex = getHeaderIndex(headerMap, COLUMN_ALIASES.route);
+  if (routeIndex === undefined) return '';
+
+  const nextKnownIndex = Array.from(headerMap.values())
+    .filter((index) => index > routeIndex)
+    .sort((a, b) => a - b)[0] ?? row.length;
+
+  return row
+    .slice(routeIndex, nextKnownIndex)
+    .map((value) => safeTrim(value))
+    .filter(Boolean)
+    .join(' ');
 };
 
 const parseSpreadsheet = (buffer) => {
@@ -72,7 +92,7 @@ const parseSpreadsheet = (buffer) => {
       plate: extractValue(row, headerMap, COLUMN_ALIASES.plate),
       driver: extractValue(row, headerMap, COLUMN_ALIASES.driver),
       customer: extractValue(row, headerMap, COLUMN_ALIASES.customer),
-      route: extractValue(row, headerMap, COLUMN_ALIASES.route),
+      route: extractRouteValue(row, headerMap),
       distance: extractValue(row, headerMap, COLUMN_ALIASES.distance),
       fare: extractValue(row, headerMap, COLUMN_ALIASES.fare),
       ticket: extractValue(row, headerMap, COLUMN_ALIASES.ticket),
@@ -87,6 +107,13 @@ const parseSpreadsheet = (buffer) => {
 };
 
 const safeTrim = (value) => String(value ?? '').trim();
+
+const normalizeText = (value) => safeTrim(value)
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '');
+
+const isLeaveNote = (value) => normalizeText(value) === 'nghi';
 
 const parseExcelDate = (value) => {
   if (!value) return null;
@@ -185,6 +212,10 @@ const importExcel = async (userId, fileBuffer) => {
       const fare = normalizeNumber(row.fare);
       const note = safeTrim(row.note);
 
+      if (isLeaveNote(note)) {
+        continue;
+      }
+
       if (!date) {
         throw new Error('Ngày tháng năm là bắt buộc trong file Excel');
       }
@@ -211,10 +242,11 @@ const importExcel = async (userId, fileBuffer) => {
         }
       }
 
-      let driver = null;
-      if (plate) {
-        driver = await orderRepository.getDriverByPlate(dbClient, plate);
-      }
+      const driver = await orderRepository.findOrCreateDriverWithVehicle(dbClient, {
+        driverName,
+        plateNumber: plate,
+        vehicleGroupId: defaultVehicleGroupId,
+      });
 
       const finalDriverId = driver?.id ?? null;
       const finalVehicleId = driver?.vehicle_id ?? null;
@@ -224,7 +256,11 @@ const importExcel = async (userId, fileBuffer) => {
       const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
+        plate ? `BKS: ${plate}` : '',
+        driverName ? `Lái xe: ${driverName}` : '',
+        route ? `Hành trình: ${route}` : '',
         distance ? `Quãng đường: ${distance}` : '',
+        fare !== null ? `Cước xe: ${fare}` : '',
         note ? `${note}` : '',
       ].filter(Boolean).join(' | ');
 

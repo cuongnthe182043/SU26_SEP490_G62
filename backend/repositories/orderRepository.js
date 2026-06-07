@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
 const { ASSIGNMENT_TYPE } = require('../constants/tripConstants');
 
@@ -98,11 +99,119 @@ const getDriverByPlate = async (client, plateNumber) => {
          FROM vehicles v
          LEFT JOIN drivers d ON d.vehicle_id = v.id
          LEFT JOIN profiles p ON p.id = d.profile_id
-         WHERE v.plate_number = $1
+         WHERE UPPER(v.plate_number) = UPPER($1)
          LIMIT 1`,
         [plateNumber],
     );
     return result.rows[0] ?? null;
+};
+
+const findDriverByName = async (client, driverName) => {
+    if (!driverName) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         JOIN roles r ON r.id = p.role_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE r.name = 'driver' AND LOWER(p.full_name) = LOWER($1)
+         LIMIT 1`,
+        [driverName],
+    );
+    return result.rows[0] ?? null;
+};
+
+const createImportedDriverAccount = async (client, driverName) => {
+    const roleResult = await client.query(
+        `SELECT id FROM roles WHERE name = 'driver' LIMIT 1`,
+    );
+    const roleId = roleResult.rows[0]?.id;
+    if (!roleId) throw new Error('Không tìm thấy vai trò tài xế trong hệ thống');
+
+    const baseEmail = String(driverName || 'driver')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '.')
+        .replace(/^\.+|\.+$/g, '') || 'driver';
+    const email = `imported.${baseEmail}.${Date.now()}.${Math.floor(Math.random() * 10000)}@local.invalid`;
+
+    const passwordHash = await bcrypt.hash(`Imported@${Date.now()}`, 10);
+    const accountResult = await client.query(
+        `INSERT INTO accounts (email, password_hash, role_id, is_active)
+         VALUES ($1, $2, $3, TRUE)
+         RETURNING id`,
+        [email, passwordHash, roleId],
+    );
+    const accountId = accountResult.rows[0].id;
+
+    await client.query(
+        `INSERT INTO profiles (id, full_name, role_id)
+         VALUES ($1, $2, $3)`,
+        [accountId, driverName || `Tài xế ${accountId}`, roleId],
+    );
+
+    await client.query(
+        `INSERT INTO drivers (profile_id, license_number, hire_date)
+         VALUES ($1, $2, CURRENT_DATE)`,
+        [accountId, `IMPORT-${accountId}`],
+    );
+
+    return accountId;
+};
+
+const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, vehicleGroupId }) => {
+    const name = String(driverName || '').trim();
+    const plate = String(plateNumber || '').trim().toUpperCase();
+    if (!name && !plate) return null;
+
+    let vehicle = null;
+    if (plate) {
+        const vehicleResult = await client.query(
+            `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
+             VALUES ($1, $2, 'available')
+             ON CONFLICT (plate_number) DO UPDATE
+             SET vehicle_group_id = COALESCE(vehicles.vehicle_group_id, EXCLUDED.vehicle_group_id),
+                 updated_at = NOW()
+             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id`,
+            [plate, vehicleGroupId],
+        );
+        vehicle = vehicleResult.rows[0];
+    }
+
+    const driverByPlate = plate ? await getDriverByPlate(client, plate) : null;
+    if (driverByPlate?.id) return driverByPlate;
+
+    let driver = name ? await findDriverByName(client, name) : null;
+    let driverId = driver?.id;
+    if (!driverId && name) {
+        driverId = await createImportedDriverAccount(client, name);
+    }
+
+    if (!driverId) return null;
+
+    if (vehicle?.id) {
+        await client.query(
+            `UPDATE drivers
+             SET vehicle_id = $2
+             WHERE profile_id = $1 AND (vehicle_id IS NULL OR vehicle_id = $2)`,
+            [driverId, vehicle.id],
+        );
+        await client.query(
+            `UPDATE vehicles
+             SET assigned_driver_id = $2, updated_at = NOW()
+             WHERE id = $1 AND (assigned_driver_id IS NULL OR assigned_driver_id = $2)`,
+            [vehicle.id, driverId],
+        );
+    }
+
+    return getDriverById(client, driverId);
 };
 
 const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
@@ -323,6 +432,7 @@ module.exports = {
     listOrders,
     getDriverById,
     getDriverByPlate,
+    findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,
     findOrCreateCustomer,
     createOrderWithShipment,

@@ -213,6 +213,8 @@
 .coordinator-shell .table-address-cell {
   max-width: 260px;
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.35;
 }
 
