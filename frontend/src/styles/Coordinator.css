@@ -648,3 +648,9 @@
 .coordinator-shell .orders-table tr.row-no-checkin td {
   background-color: #fffbeb !important;
 }
+.coordinator-shell .table-route-cell {
+  min-width: 400px;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}

@@ -19,8 +19,8 @@ const emptyForm = {
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  { key: "driver_id", label: "Tài xế" },
-  { key: "vehicle_group_id", label: "Nhóm xe" },
+  
+  
   { key: "customer_phone", label: "SĐT" },
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
