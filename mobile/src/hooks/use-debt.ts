@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { debtService } from '@/services/debt-service';
-import type { DriverDebt, DebtSummary, DebtPayment } from '@/services/debt-service';
+import type { DriverDebt, DebtSummary, DebtPayment, SubmitRepaymentPayload } from '@/services/debt-service';
 
 type DebtState = {
     debts: DriverDebt[];
@@ -65,4 +65,40 @@ export function useDebtPayments(debtId: number) {
     }, [debtId]);
 
     return { ...state, reload: load };
+}
+
+type SubmitState = { isSubmitting: boolean; error: string | null };
+
+export function useSubmitRepayment() {
+    const [state, setState] = useState<SubmitState>({ isSubmitting: false, error: null });
+
+    const submit = useCallback(async (debtId: number, payload: SubmitRepaymentPayload): Promise<boolean> => {
+        if (!payload.receiptUri) {
+            setState({ isSubmitting: false, error: 'Chưa chụp ảnh chứng từ' });
+            return false;
+        }
+        setState({ isSubmitting: true, error: null });
+        try {
+            await debtService.submitRepayment(debtId, payload);
+            setState({ isSubmitting: false, error: null });
+            return true;
+        } catch (err) {
+            setState({
+                isSubmitting: false,
+                error: err instanceof Error ? err.message : 'Gửi yêu cầu thất bại',
+            });
+            return false;
+        }
+    }, []);
+
+    const cancel = useCallback(async (paymentId: number): Promise<boolean> => {
+        try {
+            await debtService.cancelRepayment(paymentId);
+            return true;
+        } catch {
+            return false;
+        }
+    }, []);
+
+    return { ...state, submit, cancel };
 }

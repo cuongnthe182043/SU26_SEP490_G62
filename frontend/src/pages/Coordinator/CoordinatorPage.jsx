@@ -1,6 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
+import { message as toast } from "antd";
 
 const emptyForm = {
   date: "",
@@ -19,20 +20,120 @@ const emptyForm = {
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  { key: "driver_id", label: "Tài xế" },
-  { key: "vehicle_group_id", label: "Nhóm xe" },
+  
+  
   { key: "customer_phone", label: "SĐT" },
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
+  { key: "estimated_price", label: "Cước xe" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
-  { key: "estimated_price", label: "Cước xe" },
 ];
 
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
-const ORDERS_PER_PAGE = 10;
+
+const formatDateForInput = (value) => {
+  if (!value) return "";
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, day, month, year] = slash;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+};
+
+const splitRoute = (route) => {
+  const text = String(route ?? "").trim();
+  if (!text) return { pickup: "", delivery: "" };
+  const parts = text.split(/\s+-\s+/);
+  if (parts.length < 2) return { pickup: text, delivery: "" };
+  return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
+};
+
+const buildOrderNotes = (values, selectedDriver) => [
+  values.date ? `Ngày: ${values.date}` : "",
+  selectedDriver?.plate_number ? `BKS: ${selectedDriver.plate_number}` : "",
+  selectedDriver?.full_name ? `Lái xe: ${selectedDriver.full_name}` : "",
+  values.customer_name ? `Khách hàng: ${values.customer_name}` : "",
+  values.customer_phone ? `SĐT: ${values.customer_phone}` : "",
+  values.pickup_address && values.delivery_address
+    ? `Hành trình: ${values.pickup_address} - ${values.delivery_address}`
+    : "",
+  values.distance ? `Quãng đường: ${values.distance}` : "",
+  values.estimated_price ? `Cước xe: ${values.estimated_price}` : "",
+  values.note,
+].filter(Boolean).join(" | ");
+
+
+function parseNotes(notes) {
+  const result = {
+    date: "",
+    checkIn: "",
+    plate: "",
+    driver: "",
+    customer: "",
+    route: "",
+    distance: "",
+    fare: "",
+    customerPhone: "",
+    pickupAddress: "",
+    deliveryAddress: "",
+    notesText: "",
+  };
+  
+  if (!notes) return result;
+  
+  const parts = notes.split(" | ");
+  parts.forEach(part => {
+    const dateMatch = part.match(/^Ngày:\s*(.+)$/i);
+    if (dateMatch) { result.date = dateMatch[1].trim(); return; }
+    
+    const checkInMatch = part.match(/^Chấm công:\s*(.+)$/i);
+    if (checkInMatch) { result.checkIn = checkInMatch[1].trim(); return; }
+    
+    const plateMatch = part.match(/^BKS:\s*(.+)$/i);
+    if (plateMatch) { result.plate = plateMatch[1].trim(); return; }
+    
+    const driverMatch = part.match(/^Lái xe:\s*(.+)$/i);
+    if (driverMatch) { result.driver = driverMatch[1].trim(); return; }
+    
+    const customerMatch = part.match(/^Khách hàng:\s*(.+)$/i);
+    if (customerMatch) { result.customer = customerMatch[1].trim(); return; }
+
+    const phoneMatch = part.match(/^SĐT:\s*(.+)$/i);
+    if (phoneMatch) { result.customerPhone = phoneMatch[1].trim(); return; }
+
+    const pickupMatch = part.match(/^Điểm lấy hàng:\s*(.+)$/i);
+    if (pickupMatch) { result.pickupAddress = pickupMatch[1].trim(); return; }
+
+    const deliveryMatch = part.match(/^Điểm giao hàng:\s*(.+)$/i);
+    if (deliveryMatch) { result.deliveryAddress = deliveryMatch[1].trim(); return; }
+    
+    const routeMatch = part.match(/^Hành trình:\s*(.+)$/i);
+    if (routeMatch) { result.route = routeMatch[1].trim(); return; }
+    
+    const distanceMatch = part.match(/^Quãng đường:\s*(.+)$/i);
+    if (distanceMatch) { result.distance = distanceMatch[1].trim(); return; }
+
+    const fareMatch = part.match(/^Cước xe:\s*(.+)$/i);
+    if (fareMatch) { result.fare = fareMatch[1].trim(); return; }
+  });
+  
+  const noteParts = parts.filter(part => 
+    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|SĐT|Điểm lấy hàng|Điểm giao hàng|Hành trình|Quãng đường|Cước xe):/i)
+  );
+  result.notesText = noteParts.join(" | ");
+  
+  return result;
+}
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
@@ -40,15 +141,33 @@ function extractDriverName(notes) {
 }
 
 function buildTripFromOrder(order) {
+  const noteInfo = parseNotes(order.notes);
+  const pickupAddress = order.pickup_address || noteInfo.pickupAddress || "";
+  const deliveryAddress = order.delivery_address || noteInfo.deliveryAddress || "";
+  const date = noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
+
   return {
     id: `#${order.id}`,
     orderId: order.id,
-    title: order.cargo_name,
+    date,
+    dateInput: formatDateForInput(noteInfo.date || order.created_at),
+    checkIn: noteInfo.checkIn || "",
+    plate: noteInfo.plate || order.plate_number || "",
+    driverId: order.owner_driver_id || "",
+    vehicleGroupId: order.vehicle_group_id || "",
+    driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
+    customerName: order.customer_name || noteInfo.customer || "",
+    customerPhone: order.customer_phone || noteInfo.customerPhone || "",
+    cargoName: order.cargo_name || "",
+    cargoWeightKg: order.cargo_weight_kg || "",
+    pickupAddress,
+    deliveryAddress,
+    route: noteInfo.route || (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
+    distance: noteInfo.distance || "",
+    fare: noteInfo.fare || order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
-    pickup: order.pickup_address,
-    delivery: order.delivery_address,
-    weight: `${order.cargo_weight_kg ?? ""}kg`,
-    driverName: order.driver_name || extractDriverName(order.notes) || "",
+    notes: noteInfo.notesText || "",
+    rawNotes: order.notes || "",
   };
 }
 
@@ -57,6 +176,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [importing, setImporting] = useState(false);
@@ -64,40 +184,47 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter, setDateToFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
-    try {
-      const storedTrips = localStorage.getItem("coordinatorTrips");
-      if (!storedTrips) return;
-
-      const parsedTrips = JSON.parse(storedTrips);
-      if (Array.isArray(parsedTrips)) {
-        setTrips(parsedTrips);
-      }
-    } catch (error) {
-      console.error("Failed to load trips:", error);
-    }
+    localStorage.removeItem("coordinatorTrips");
   }, []);
+  
 
   useEffect(() => {
-    localStorage.setItem("coordinatorTrips", JSON.stringify(trips));
-  }, [trips]);
+  if (!message) return;
 
+  switch (messageType) {
+    case "success":
+      toast.success(message);
+      break;
+    case "error":
+      toast.error(message);
+      break;
+    case "warning":
+      toast.warning(message);
+      break;
+    default:
+      toast.info(message);
+  }
+
+  setMessage("");
+}, [message, messageType]);
   useEffect(() => {
     const loadOrders = async () => { 
       try {
         const token = localStorage.getItem("token");
         const data = await apiRequest("/api/orders", { token });
         const dbTrips = (data.orders || []).map(buildTripFromOrder);
-
-        setTrips((currentTrips) => {
-          const customTrips = currentTrips.filter((trip) => String(trip.id).startsWith("tmp-"));
-          return [...dbTrips, ...customTrips];
-        });
+        setTrips(dbTrips);
       } catch (error) {
-        setMessage(error.message || "Unable to load order list.");
+        setMessage(error.message || "Không thể load danh sách đơn.");
         setMessageType("error");
       }
     };
@@ -144,6 +271,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const filteredTrips = useMemo(() => {
     const query = deferredSearchQuery.trim().toLowerCase();
+    const customer = customerFilter.trim().toLowerCase();
 
     return trips.filter((trip) => {
       const matchesTab =
@@ -152,30 +280,34 @@ export default function CoordinatorPage({ user, onLogout }) {
         (activeTab === "waiting" && trip.status === "Waiting");
 
       if (!matchesTab) return false;
+
+      const tripDate = trip.dateInput || formatDateForInput(trip.date);
+      if (dateFromFilter && (!tripDate || tripDate < dateFromFilter)) return false;
+      if (dateToFilter && (!tripDate || tripDate > dateToFilter)) return false;
+
+      if (customer && !String(trip.customerName || "").toLowerCase().includes(customer)) {
+        return false;
+      }
+
       if (!query) return true;
 
-      return [trip.id, trip.title, trip.pickup, trip.delivery, trip.driverName, trip.status]
+      return [
+        trip.id,
+        trip.orderId,
+        trip.cargoName,
+        trip.pickupAddress,
+        trip.deliveryAddress,
+        trip.route,
+        trip.driverName,
+        trip.customerName,
+        trip.status,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [activeTab, deferredSearchQuery, trips]);
+  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery, trips]);
 
-
-  const totalPages = Math.max(1, Math.ceil(filteredTrips.length / ORDERS_PER_PAGE));
-  const paginatedTrips = useMemo(() => {
-    const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
-    return filteredTrips.slice(startIndex, startIndex + ORDERS_PER_PAGE);
-  }, [currentPage, filteredTrips]);
-  const pageStart = filteredTrips.length === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
-  const pageEnd = Math.min(currentPage * ORDERS_PER_PAGE, filteredTrips.length);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, deferredSearchQuery]);
-
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages));
-  }, [totalPages]);
+  
 
   const validateForm = () => {
     const errors = {};
@@ -191,7 +323,9 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDate = new Date(`${form.date}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(selectedDate.getTime()) || selectedDate < today) {
+      if (Number.isNaN(selectedDate.getTime())) {
+        errors.date = "Ngày không hợp lệ";
+      } else if (!editingTrip && selectedDate < today) {
         errors.date = "Ngày không được trước hôm nay";
       }
     }
@@ -206,14 +340,16 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
     }
 
-    const price = normalizeNumericText(form.estimated_price);
-    if (price && (!isFiniteNumber(price) || Number(price) < 0)) {
-      errors.estimated_price = "Cước xe phải là số không âm";
-    }
+
 
     const distance = normalizeDistanceText(form.distance);
     if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
       errors.distance = "Quãng đường phải là số lớn hơn 0";
+    }
+
+    const estimatedPrice = normalizeNumericText(form.estimated_price);
+    if (estimatedPrice && (!isFiniteNumber(estimatedPrice) || Number(estimatedPrice) < 0)) {
+      errors.estimated_price = "Cước xe phải là số không âm";
     }
 
     setFormErrors(errors);
@@ -267,6 +403,11 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       setMessage(`Imported ${data.rows?.length || 0} rows from Excel.`);
       setMessageType("success");
+
+      // Reload orders from database to show the newly imported ones reactively
+      const updatedData = await apiRequest("/api/orders", { token });
+      const dbTrips = (updatedData.orders || []).map(buildTripFromOrder);
+      setTrips(dbTrips);
     } catch (err) {
       setMessage(err.message || "Unable to import Excel file.");
       setMessageType("error");
@@ -276,17 +417,53 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingTrip(null);
+    setForm(emptyForm);
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const openEditModal = (trip) => {
+    const routeAddresses = splitRoute(trip.route);
+    const driver = drivers.find((item) => String(item.id) === String(trip.driverId));
+    setEditingTrip(trip);
+    setForm({
+      date: trip.dateInput || formatDateForInput(trip.date),
+      driver_id: trip.driverId ? String(trip.driverId) : "",
+      customer_name: trip.customerName || "",
+      customer_phone: trip.customerPhone || "",
+      cargo_name: trip.cargoName || "",
+      cargo_weight_kg: trip.cargoWeightKg || "",
+      distance: trip.distance || "",
+      pickup_address: trip.pickupAddress || routeAddresses.pickup,
+      delivery_address: trip.deliveryAddress || routeAddresses.delivery,
+      estimated_price: trip.fare || "",
+      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+      note: trip.notes || "",
+    });
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const closeOrderModal = () => {
+    setCreateOpen(false);
+    setEditingTrip(null);
+    setForm(emptyForm);
+    setFormErrors({});
+  };
+
   const handleCreateOrder = async (event) => {
     event.preventDefault();
     setMessage("");
     setMessageType("info");
 
     const errors = validateForm();
-    // if (Object.keys(errors).length > 0) {
-    //   setMessage("Vui lòng kiểm tra các trường bắt buộc.");
-    //   setMessageType("error");
-    //   return;
-    // }
+    if (Object.keys(errors).length > 0) {
+      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
+      setMessageType("error");
+      return;
+    }
 
     setCreating(true);
 
@@ -295,47 +472,43 @@ export default function CoordinatorPage({ user, onLogout }) {
       const selectedDriver = drivers.find(
         (driver) => String(driver.id) === String(form.driver_id),
       );
-      const selectedPlate = selectedDriver?.plate_number || "";
-      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || "";
+      const noteDriver = selectedDriver || (editingTrip ? {
+        plate_number: editingTrip.plate,
+        full_name: editingTrip.driverName,
+      } : null);
+      const selectedPlate = noteDriver?.plate_number || "";
+      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
 
-      const data = await apiRequest("/api/orders", {
-        method: "POST",
+      const payload = {
+        date: form.date,
+        plate: selectedPlate,
+        driver_id: form.driver_id || "",
+        customer_name: form.customer_name,
+        customer_phone: form.customer_phone,
+        cargo_name: form.cargo_name,
+        cargo_weight_kg: form.cargo_weight_kg,
+        pickup_address: form.pickup_address,
+        delivery_address: form.delivery_address,
+        estimated_price: form.estimated_price,
+        vehicle_group_id: selectedVehicleGroupId,
+        notes: buildOrderNotes(form, noteDriver),
+      };
+
+      const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
+        method: editingTrip ? "PATCH" : "POST",
         token,
-        body: {
-          date: form.date,
-          plate: selectedPlate,
-          driver_id: form.driver_id || "",
-          customer_name: form.customer_name,
-          customer_phone: form.customer_phone,
-          cargo_name: form.cargo_name,
-          cargo_weight_kg: form.cargo_weight_kg,
-          pickup_address: form.pickup_address,
-          delivery_address: form.delivery_address,
-          estimated_price: form.estimated_price,
-          vehicle_group_id: selectedVehicleGroupId,
-          notes: [
-            form.distance ? `Quãng đường: ${form.distance}` : "",
-            form.note,
-          ].filter(Boolean).join(" | "),
-        },
+        body: payload,
       });
 
-      setTrips((currentTrips) => [
-        {
-          id: `tmp-${data.order.id}`,
-          orderId: data.order.id,
-          title: data.order.cargo_name,
-          status: data.order.status,
-          pickup: data.order.pickup_address,
-          delivery: data.order.delivery_address,
-          weight: `${data.order.cargo_weight_kg ?? ""}kg`,
-          driverName: selectedDriver?.full_name || extractDriverName(data.order.notes) || "",
-        },
-        ...currentTrips.filter((trip) => trip.orderId !== data.order.id),
-      ]);
+      const savedTrip = buildTripFromOrder(data.order);
+      setTrips((currentTrips) => editingTrip
+        ? currentTrips.map((trip) => (trip.orderId === savedTrip.orderId ? savedTrip : trip))
+        : [savedTrip, ...currentTrips.filter((trip) => trip.orderId !== savedTrip.orderId)]
+      );
 
       setCreateOpen(false);
-      setMessage(data.message || "Order created successfully.");
+      setEditingTrip(null);
+      setMessage(data.message || (editingTrip ? "Order updated successfully." : "Order created successfully."));
       setMessageType("success");
       setForm(emptyForm);
       setFormErrors({});
@@ -346,27 +519,38 @@ export default function CoordinatorPage({ user, onLogout }) {
       setCreating(false);
     }
   };
-
+  
   return (
-    <div className="coordinator-shell">
+    <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div>
           <div className="brand">
             <div className="brand-mark">L</div>
-            <div>
-              <div className="brand-name">Logistics HQ</div>
-              <div className="brand-sub">Coordinator dashboard</div>
-            </div>
+            {!sidebarCollapsed && (
+              <div>
+                <div className="brand-name">Logistics HQ</div>
+                <div className="brand-sub">Coordinator dashboard</div>
+              </div>
+            )}
           </div>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            aria-label={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+            title={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+          >
+            {sidebarCollapsed ? "›" : "‹"}
+          </button>
           <nav className="nav">
-            <button className="nav-item active">Đơn hàng</button>
+            <button className="nav-item active"><span className="nav-icon">☰</span><span className="nav-label">Đơn hàng</span></button>
             {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
             <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
-          Profile
+          <span className="nav-icon">⇥</span><span className="nav-label">Đăng xuất</span>
         </button>
       </aside>
 
@@ -385,10 +569,26 @@ export default function CoordinatorPage({ user, onLogout }) {
               {importing ? "Importing..." : "+ Import Excel"}
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
             </label>
-            <button className="primary-btn" onClick={() => setCreateOpen(true)}>
+            <button className="primary-btn" onClick={openCreateModal}>
               + Tạo mới
             </button>
-            <div className="avatar">{user?.full_name?.[0] || "A"}</div>
+            <div className="top-profile">
+              <button
+                className="avatar profile-trigger"
+                type="button"
+                onClick={() => setProfileMenuOpen((value) => !value)}
+                title={user?.email}
+              >
+                {user?.full_name?.[0] || "A"}
+              </button>
+              {profileMenuOpen && (
+                <div className="profile-menu">
+                  <div className="profile-menu-name">{user?.full_name || user?.email || "Coordinator"}</div>
+                  <div className="profile-menu-email">{user?.email}</div>
+                  <button type="button" onClick={handleLogout}>Đăng xuất</button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -398,7 +598,43 @@ export default function CoordinatorPage({ user, onLogout }) {
             <p>Manage and dispatch active transport trips.</p>
           </div> */}
           <div></div>
-          <div className="filters">
+          <div className="filters order-filters">
+            <label className="filter-field">
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={dateFromFilter}
+                onChange={(event) => setDateFromFilter(event.target.value)}
+              />
+            </label>
+            <label className="filter-field">
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={dateToFilter}
+                min={dateFromFilter || undefined}
+                onChange={(event) => setDateToFilter(event.target.value)}
+              />
+            </label>
+            <label className="filter-field filter-field-customer">
+              <span>Khách hàng</span>
+              <input
+                value={customerFilter}
+                onChange={(event) => setCustomerFilter(event.target.value)}
+                placeholder="Lọc theo khách hàng"
+              />
+            </label>
+            <button
+              type="button"
+              className="filter"
+              onClick={() => {
+                setDateFromFilter("");
+                setDateToFilter("");
+                setCustomerFilter("");
+              }}
+            >
+              Xóa lọc
+            </button>
             {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
@@ -421,14 +657,14 @@ export default function CoordinatorPage({ user, onLogout }) {
         </section>
 
         {createOpen && (
-          <section className="modal-backdrop" onClick={() => setCreateOpen(false)}>
+          <section className="modal-backdrop" onClick={closeOrderModal}>
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
               <div className="panel-head">
                 <div>
-                  <h2>Tạo đơn</h2>
-                  <p>Fill the form based on the Excel sheet structure.</p>
+                  <h2>{editingTrip ? `Chỉnh sửa đơn #${editingTrip.orderId}` : "Tạo đơn"}</h2>
+                  <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Fill the form based on the Excel sheet structure."}</p>
                 </div>
-                <button className="ghost-btn" onClick={() => setCreateOpen(false)}>
+                <button className="ghost-btn" type="button" onClick={closeOrderModal}>
                   x
                 </button>
               </div>
@@ -443,7 +679,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       type="date"
                       value={form.date}
                       onChange={(event) => updateField("date", event.target.value)}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={editingTrip ? undefined : new Date().toISOString().slice(0, 10)}
                       className={formErrors.date ? "input-error" : ""}
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
@@ -531,7 +767,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   
                 </div>
 
-                <div className="form-row form-row-3">
+                <div className="form-row form-row-2">
                   <label>
                     <span>Khối lượng</span>
                     <input
@@ -558,6 +794,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.distance}</div>
                     )}
                   </label>
+                </div>
+
+                <div className="form-row form-row-2">
                   <label>
                     <span>Cước xe</span>
                     <input
@@ -617,11 +856,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
 
                 <div className="form-actions full">
-                  <button type="button" className="filter" onClick={() => setCreateOpen(false)}>
+                  <button type="button" className="filter" onClick={closeOrderModal}>
                     Cancel
                   </button>
                   <button type="submit" className="primary-btn" disabled={creating}>
-                    {creating ? "Creating..." : "Create"}
+                    {creating ? (editingTrip ? "Updating..." : "Creating...") : (editingTrip ? "Update" : "Create")}
                   </button>
                 </div>
               </form>
@@ -629,7 +868,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           </section>
         )}
 
-        {message && <div className={`notice notice-${messageType}`}>{message}</div>}
+        
 
         <section className="orders-panel">
           <div className="panel-head">
@@ -644,42 +883,53 @@ export default function CoordinatorPage({ user, onLogout }) {
               <thead>
                 <tr>
                   <th>Mã đơn</th>
+                  <th>Ngày</th>
+                  <th>BKS</th>
+                  <th>Lái xe</th>
+                  <th>Khách hàng</th>
+                  <th>Hành trình</th>
+                  <th>Quãng đường</th>
+                  <th>Cước xe</th>
+                  <th>Ghi chú</th>
                   <th>Trạng thái</th>
-                  <th>Sản phẩm</th>
-                  <th>Điểm lấy hàng</th>
-                  <th>Điểm giao hàng</th>
-                  <th>Khối lượng</th>
-                  <th>Tài xế</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="empty-table-cell">
+                    <td colSpan="11" className="empty-table-cell">
                       No orders yet. Create an order or import an Excel file to load data.
                     </td>
                   </tr>
                 ) : (
-                  paginatedTrips.map((trip) => (
-                    <tr key={trip.id}>
+                  filteredTrips.map((trip) => (
+                    <tr key={trip.id} className={!trip.checkIn ? "row-no-checkin" : ""}>
                       <td>
                         <span className="trip-id">
                           #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
                         </span>
                       </td>
-                      <td>
-                        <span className="trip-status">{trip.status}</span>
-                      </td>
-                      <td className="table-route-cell">{trip.title || "-"}</td>
-                      <td className="table-address-cell">{trip.pickup}</td>
-                      <td className="table-address-cell">{trip.delivery}</td>
-                      <td>{trip.weight}</td>
+                      <td>{trip.date || "-"}</td>
+                      <td>{trip.plate || "-"}</td>
                       <td>{trip.driverName || "Unassigned"}</td>
+                      <td>{trip.customerName || "-"}</td>
+                      <td className="table-route-cell">{trip.route || "-"}</td>
+                      <td>{trip.distance || "-"}</td>
+                      <td>
+                        {typeof trip.fare === "number"
+                          ? trip.fare.toLocaleString("vi-VN") + " đ"
+                          : trip.fare || "-"}
+                      </td>
+                      <td className="table-address-cell">{trip.notes || "-"}</td>
+                      <td>
+                        <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
+                          {trip.status}
+                        </span>
+                      </td>
                       <td>
                         <div className="table-actions">
-                          
-                          <button className="table-edit-btn" aria-label="Edit order">
+                          <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
                             ✎
                           </button>
                         </div>
@@ -691,35 +941,11 @@ export default function CoordinatorPage({ user, onLogout }) {
             </table>
           </div>
 
-          <div className="pagination-bar">
-            <span>
-              Hiển thị {pageStart}-{pageEnd} / {filteredTrips.length} đơn
-            </span>
-            <div className="pagination-actions">
-              <button
-                type="button"
-                className="pagination-btn"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                disabled={currentPage === 1}
-              >
-                Trước
-              </button>
-              <span className="pagination-page">
-                Trang {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                className="pagination-btn"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Sau
-              </button>
-            </div>
-          </div>
+          
         </section>
 
       </main>
     </div>
   );
+  
 }
