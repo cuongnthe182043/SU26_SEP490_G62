@@ -1,4 +1,4 @@
-import { Bell, ChevronRight, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
+import { Banknote, Bell, CalendarOff, ChevronRight, DollarSign, HandCoins, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -204,7 +204,7 @@ export function DriverHomeScreen() {
                         </XStack>
                     </Pressable>
 
-                    <Pressable onPress={() => router.push('/active-trip')}>
+                    {/* <Pressable onPress={() => router.push('/active-trip')}>
                         <XStack
                             alignItems="center" padding="$4"
                             borderRadius={appTheme.radius.lg}
@@ -228,7 +228,7 @@ export function DriverHomeScreen() {
                             </YStack>
                             <ChevronRight size={18} color={appTheme.colors.textMuted} />
                         </XStack>
-                    </Pressable>
+                    </Pressable> */}
 
                     <Pressable onPress={() => router.push('/kpi')}>
                         <XStack
@@ -250,6 +250,110 @@ export function DriverHomeScreen() {
                                 </Text>
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
                                     Theo dõi hiệu suất và bảng xếp hạng
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/bill')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.primarySoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <HandCoins size={22} color={appTheme.colors.primary} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Bill thu hộ
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Tạo bill báo thu tiền khách — chờ kế toán xác nhận
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/debt')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <Banknote size={22} color={appTheme.colors.danger} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Công nợ
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Xem công nợ do kế toán tạo
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/payroll')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.successSoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <DollarSign size={22} color={appTheme.colors.success} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Lương & Ứng lương
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Xem lương ước tính và yêu cầu ứng
+                                </Text>
+                            </YStack>
+                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
+                        </XStack>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.push('/leave')}>
+                        <XStack
+                            alignItems="center" padding="$4"
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1} borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface} gap="$3"
+                        >
+                            <XStack
+                                width={44} height={44} borderRadius={16}
+                                backgroundColor={appTheme.colors.warningSoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <CalendarOff size={22} color={appTheme.colors.warning} />
+                            </XStack>
+                            <YStack flex={1}>
+                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                    Đăng ký nghỉ
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Xem ngày công và đăng ký nghỉ phép
                                 </Text>
                             </YStack>
                             <ChevronRight size={18} color={appTheme.colors.textMuted} />

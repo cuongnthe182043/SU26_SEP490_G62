@@ -42,6 +42,7 @@ const getLeaderboard = async (driverId, { month, year } = {}) => {
         vehicle_group_name: vehicleGroupInfo.vehicle_group_name,
         month: m,
         year:  y,
+        total_in_group: Number(rows[0]?.total_in_group ?? 0),
         leaderboard: rows,
     };
 };

@@ -1,43 +1,60 @@
+const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
-const { SHIPMENT_STATUS, ASSIGNMENT_TYPE } = require('../constants/tripConstants');
+const { ASSIGNMENT_TYPE } = require('../constants/tripConstants');
+
+const selectOrderProjection = `
+    SELECT
+        o.id,
+        o.customer_id,
+        o.cargo_name,
+        o.cargo_weight_kg,
+        o.payment_type,
+        o.total_estimated_price,
+        o.total_estimated_price AS estimated_price,
+        o.derived_status,
+        os.status,
+        o.notes,
+        o.created_at,
+        o.updated_at,
+        os.id AS shipment_id,
+        os.completed_at,
+        os.vehicle_group_id,
+        os.owner_driver_id,
+        pickup.address AS pickup_address,
+        delivery.address AS delivery_address,
+        c.full_name AS customer_name,
+        c.phone AS customer_phone,
+        d.full_name AS driver_name,
+        v.plate_number AS plate_number
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN LATERAL (
+        SELECT s1.*
+        FROM order_shipments s1
+        WHERE s1.order_id = o.id
+        ORDER BY s1.shipment_index ASC
+        LIMIT 1
+    ) os ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT ts.address
+        FROM trip_stops ts
+        WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'
+        ORDER BY ts.stop_index ASC
+        LIMIT 1
+    ) pickup ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT ts.address
+        FROM trip_stops ts
+        WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery'
+        ORDER BY ts.stop_index ASC
+        LIMIT 1
+    ) delivery ON TRUE
+    LEFT JOIN profiles d ON d.id = os.owner_driver_id
+    LEFT JOIN vehicles v ON v.id = os.vehicle_id
+`;
 
 const listOrders = async () => {
-    const result = await pool.query(
-        `SELECT
-            o.id,
-            o.customer_id,
-            o.cargo_name,
-            o.cargo_weight_kg,
-            o.pickup_address,
-            o.delivery_address,
-            o.estimated_price,
-            o.status,
-            o.notes,
-            o.created_at,
-            o.updated_at,
-            s.completed_at,
-            c.full_name AS customer_name,
-            c.phone AS customer_phone,
-            d.full_name AS driver_name
-         FROM orders o
-         LEFT JOIN customers c ON c.id = o.customer_id
-         LEFT JOIN LATERAL (
-            SELECT s1.completed_at
-            FROM order_shipments s1
-            WHERE s1.order_id = o.id
-            ORDER BY s1.shipment_index DESC
-            LIMIT 1
-         ) s ON TRUE
-         LEFT JOIN LATERAL (
-            SELECT pr.full_name
-            FROM order_shipments os
-            LEFT JOIN profiles pr ON pr.id = os.owner_driver_id
-            WHERE os.order_id = o.id
-            ORDER BY os.shipment_index ASC
-            LIMIT 1
-         ) d ON TRUE
-         ORDER BY o.created_at DESC`,
-    );
+    const result = await pool.query(`${selectOrderProjection} ORDER BY o.created_at DESC`);
     return result.rows;
 };
 
@@ -61,6 +78,14 @@ const getDriverById = async (client, driverId) => {
     return result.rows[0] ?? null;
 };
 
+
+const getDefaultVehicleGroupId = async (client) => {
+    const result = await client.query(
+        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
+    );
+    return result.rows[0]?.id ?? null;
+};
+
 const getDriverByPlate = async (client, plateNumber) => {
     if (!plateNumber) return null;
     const result = await client.query(
@@ -74,11 +99,119 @@ const getDriverByPlate = async (client, plateNumber) => {
          FROM vehicles v
          LEFT JOIN drivers d ON d.vehicle_id = v.id
          LEFT JOIN profiles p ON p.id = d.profile_id
-         WHERE v.plate_number = $1
+         WHERE UPPER(v.plate_number) = UPPER($1)
          LIMIT 1`,
         [plateNumber],
     );
     return result.rows[0] ?? null;
+};
+
+const findDriverByName = async (client, driverName) => {
+    if (!driverName) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         JOIN roles r ON r.id = p.role_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE r.name = 'driver' AND LOWER(p.full_name) = LOWER($1)
+         LIMIT 1`,
+        [driverName],
+    );
+    return result.rows[0] ?? null;
+};
+
+const createImportedDriverAccount = async (client, driverName) => {
+    const roleResult = await client.query(
+        `SELECT id FROM roles WHERE name = 'driver' LIMIT 1`,
+    );
+    const roleId = roleResult.rows[0]?.id;
+    if (!roleId) throw new Error('Không tìm thấy vai trò tài xế trong hệ thống');
+
+    const baseEmail = String(driverName || 'driver')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '.')
+        .replace(/^\.+|\.+$/g, '') || 'driver';
+    const email = `imported.${baseEmail}.${Date.now()}.${Math.floor(Math.random() * 10000)}@local.invalid`;
+
+    const passwordHash = await bcrypt.hash(`Imported@${Date.now()}`, 10);
+    const accountResult = await client.query(
+        `INSERT INTO accounts (email, password_hash, role_id, is_active)
+         VALUES ($1, $2, $3, TRUE)
+         RETURNING id`,
+        [email, passwordHash, roleId],
+    );
+    const accountId = accountResult.rows[0].id;
+
+    await client.query(
+        `INSERT INTO profiles (id, full_name, role_id)
+         VALUES ($1, $2, $3)`,
+        [accountId, driverName || `Tài xế ${accountId}`, roleId],
+    );
+
+    await client.query(
+        `INSERT INTO drivers (profile_id, license_number, hire_date)
+         VALUES ($1, $2, CURRENT_DATE)`,
+        [accountId, `IMPORT-${accountId}`],
+    );
+
+    return accountId;
+};
+
+const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, vehicleGroupId }) => {
+    const name = String(driverName || '').trim();
+    const plate = String(plateNumber || '').trim().toUpperCase();
+    if (!name && !plate) return null;
+
+    let vehicle = null;
+    if (plate) {
+        const vehicleResult = await client.query(
+            `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
+             VALUES ($1, $2, 'available')
+             ON CONFLICT (plate_number) DO UPDATE
+             SET vehicle_group_id = COALESCE(vehicles.vehicle_group_id, EXCLUDED.vehicle_group_id),
+                 updated_at = NOW()
+             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id`,
+            [plate, vehicleGroupId],
+        );
+        vehicle = vehicleResult.rows[0];
+    }
+
+    const driverByPlate = plate ? await getDriverByPlate(client, plate) : null;
+    if (driverByPlate?.id) return driverByPlate;
+
+    let driver = name ? await findDriverByName(client, name) : null;
+    let driverId = driver?.id;
+    if (!driverId && name) {
+        driverId = await createImportedDriverAccount(client, name);
+    }
+
+    if (!driverId) return null;
+
+    if (vehicle?.id) {
+        await client.query(
+            `UPDATE drivers
+             SET vehicle_id = $2
+             WHERE profile_id = $1 AND (vehicle_id IS NULL OR vehicle_id = $2)`,
+            [driverId, vehicle.id],
+        );
+        await client.query(
+            `UPDATE vehicles
+             SET assigned_driver_id = $2, updated_at = NOW()
+             WHERE id = $1 AND (assigned_driver_id IS NULL OR assigned_driver_id = $2)`,
+            [vehicle.id, driverId],
+        );
+    }
+
+    return getDriverById(client, driverId);
 };
 
 const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
@@ -103,6 +236,16 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
     return createdCustomer.rows[0];
 };
 
+const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone) => {
+    await client.query(
+        `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
+         VALUES
+            ($1, 1, 'pickup', $2, $4, $5),
+            ($1, 2, 'delivery', $3, $4, $5)`,
+        [shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null],
+    );
+};
+
 const createOrderWithShipment = async ({
     client,
     userId,
@@ -112,39 +255,48 @@ const createOrderWithShipment = async ({
 }) => {
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
             userId,
             orderData.cargo_name,
             orderData.cargo_weight_kg,
-            orderData.pickup_address,
-            orderData.delivery_address,
-            orderData.estimated_price,
-            orderData.status,
+            orderData.payment_type || 'cash',
+            orderData.estimated_price || 0,
             orderData.notes,
+            orderData.created_at || null,
         ],
     );
 
     const order = orderResult.rows[0];
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, status, notes, created_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             order.id,
             shipmentData.vehicle_group_id,
             shipmentData.owner_driver_id,
-            shipmentData.pickup_address,
-            shipmentData.delivery_address,
+            shipmentData.vehicle_id || null,
+            shipmentData.cargo_name || order.cargo_name,
             shipmentData.cargo_weight_kg,
             shipmentData.estimated_price,
             shipmentData.status,
             shipmentData.notes,
+            shipmentData.created_at || null,
         ],
+    );
+
+    await insertStops(
+        client,
+        shipmentResult.rows[0].id,
+        shipmentData.pickup_address,
+        shipmentData.delivery_address,
+        orderData.customer_name,
+        orderData.customer_phone,
     );
 
     if (assignmentData?.driver_id && assignmentData?.vehicle_id) {
@@ -162,52 +314,158 @@ const createOrderWithShipment = async ({
         );
     }
 
-    return { order, shipment: shipmentResult.rows[0] };
+    return {
+        order: {
+            ...order,
+            estimated_price: order.total_estimated_price,
+            pickup_address: shipmentData.pickup_address,
+            delivery_address: shipmentData.delivery_address,
+            status: shipmentData.status,
+            driver_name: null,
+        },
+        shipment: shipmentResult.rows[0],
+    };
 };
 
 const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
-    const orderResult = await client.query(
-        `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, pickup_address, delivery_address, estimated_price, status, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', $8)
-         RETURNING *`,
-        [
-            orderData.customer_id,
-            userId,
-            orderData.cargo_name,
-            orderData.cargo_weight_kg,
-            orderData.pickup_address,
-            orderData.delivery_address,
-            orderData.estimated_price,
-            orderData.notes,
-        ],
-    );
+    return createOrderWithShipment({
+        client,
+        userId,
+        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
+        shipmentData: {
+            ...shipmentData,
+            cargo_name: orderData.cargo_name,
+            vehicle_group_id: shipmentData.vehicle_group_id,
+            owner_driver_id: shipmentData.owner_driver_id || null,
+            vehicle_id: shipmentData.vehicle_id || null,
+            status: shipmentData.status || 'available',
+            created_at: shipmentData.created_at || null,
+        },
+    });
+};
 
-    const order = orderResult.rows[0];
-    const shipmentResult = await client.query(
-        `INSERT INTO order_shipments
-            (order_id, shipment_index, vehicle_group_id, owner_driver_id, pickup_address, delivery_address, cargo_weight_kg, estimated_price, status, notes, completed_at)
-         VALUES ($1, 1, 1, NULL, $2, $3, $4, $5, 'available', $6, NULL)
-         RETURNING *`,
-        [
-            order.id,
-            shipmentData.pickup_address,
-            shipmentData.delivery_address,
-            shipmentData.cargo_weight_kg,
-            shipmentData.estimated_price,
-            shipmentData.notes,
-        ],
-    );
+const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone) => {
+    const {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+        plate,
+        driver_id,
+        vehicle_group_id,
+    } = payload;
 
-    return { order, shipment: shipmentResult.rows[0] };
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const customer = (customer_name || customer_phone)
+            ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
+            : null;
+        const normalizedDriverId = driver_id ? Number(driver_id) : null;
+        const driver = normalizedDriverId ? await getDriverById(client, normalizedDriverId) : await getDriverByPlate(client, plate);
+
+        if (driver_id && !driver) {
+            throw new Error('Tài xế không tồn tại');
+        }
+
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? null;
+
+        const orderResult = await client.query(
+            `UPDATE orders
+             SET customer_id = COALESCE($6, customer_id),
+                 cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
+                 cargo_weight_kg = COALESCE($3, cargo_weight_kg),
+                 total_estimated_price = COALESCE($4, total_estimated_price),
+                 notes = COALESCE(NULLIF($5, ''), notes),
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [
+                orderId,
+                safeTrim(cargo_name),
+                normalizeNumber(cargo_weight_kg),
+                normalizeNumber(estimated_price),
+                safeTrim(notes) || [
+                    customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
+                    customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
+                ].filter(Boolean).join(' | ') || null,
+                customer?.id ?? null,
+            ],
+        );
+
+        if (!orderResult.rows[0]) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const shipmentResult = await client.query(
+            `SELECT id FROM order_shipments WHERE order_id = $1 ORDER BY shipment_index ASC LIMIT 1`,
+            [orderId],
+        );
+        const shipmentId = shipmentResult.rows[0]?.id;
+
+        if (shipmentId) {
+            await client.query(
+                `UPDATE order_shipments
+                 SET cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
+                     cargo_weight_kg = COALESCE($3, cargo_weight_kg),
+                     estimated_price = COALESCE($4, estimated_price),
+                     notes = COALESCE(NULLIF($5, ''), notes),
+                     owner_driver_id = COALESCE($6, owner_driver_id),
+                     vehicle_id = COALESCE($7, vehicle_id),
+                     vehicle_group_id = COALESCE($8, vehicle_group_id),
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [
+                    shipmentId,
+                    safeTrim(cargo_name),
+                    normalizeNumber(cargo_weight_kg),
+                    normalizeNumber(estimated_price),
+                    safeTrim(notes),
+                    driver?.id ?? null,
+                    driver?.vehicle_id ?? null,
+                    finalVehicleGroupId,
+                ],
+            );
+
+            if (safeTrim(pickup_address)) {
+                await client.query(
+                    `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
+                    [shipmentId, safeTrim(pickup_address)],
+                );
+            }
+            if (safeTrim(delivery_address)) {
+                await client.query(
+                    `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
+                    [shipmentId, safeTrim(delivery_address)],
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);
+        return updated.rows[0] ?? null;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 module.exports = {
     listOrders,
     getDriverById,
     getDriverByPlate,
+    findOrCreateDriverWithVehicle,
+    getDefaultVehicleGroupId,
     findOrCreateCustomer,
     createOrderWithShipment,
     importOrderWithShipment,
-    SHIPMENT_STATUS,
+    updateOrder,
 };

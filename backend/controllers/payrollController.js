@@ -40,4 +40,15 @@ const getMyAdvances = async (req, res) => {
     }
 };
 
-module.exports = { getMyPayrolls, requestAdvance, getMyAdvances };
+// GET /api/payroll/estimate?month=6&year=2026
+const getEstimate = async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        const data = await payrollService.getPayrollEstimate(req.user.userId, { month, year });
+        res.json(data);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+module.exports = { getMyPayrolls, requestAdvance, getMyAdvances, getEstimate };

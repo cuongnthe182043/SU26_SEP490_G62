@@ -2,20 +2,21 @@ const express = require('express');
 const router = express.Router();
 
 // Import all route modules
-const authRoutes         = require('./authRoutes');
-const tripRoutes         = require('./tripRoutes');
-const profileRoutes      = require('./profileRoutes');
-const coordinatorRoutes  = require('./coordinatorRoutes');
-const orderRoutes        = require('./orderRoutes');
-const driverRoutes       = require('./driverRoutes');
-const adminRoutes        = require('./adminRoutes');
-const expenseRoutes      = require('./expenseRoutes');
-const incidentRoutes     = require('./incidentRoutes');
+const authRoutes = require('./authRoutes');
+const tripRoutes = require('./tripRoutes');
+const profileRoutes = require('./profileRoutes');
+const coordinatorRoutes = require('./coordinatorRoutes');
+const orderRoutes = require('./orderRoutes');
+const driverRoutes = require('./driverRoutes');
+const adminRoutes = require('./adminRoutes');
+const expenseRoutes = require('./expenseRoutes');
+const incidentRoutes = require('./incidentRoutes');
 const notificationRoutes = require('./notificationRoutes');
-const kpiRoutes          = require('./kpiRoutes');
-const payrollRoutes      = require('./payrollRoutes');
-const debtRoutes         = require('./debtRoutes');
+const kpiRoutes = require('./kpiRoutes');
+const payrollRoutes = require('./payrollRoutes');
+const debtRoutes = require('./debtRoutes');
 const vehicleManagementRoutes = require('./vehicleManagementRoutes');
+const leaveRoutes = require('./leaveRoutes');
 const accountantRoutes = require('./accountant/accountantRoutes');
 
 // Register route modules
@@ -35,5 +36,7 @@ router.use('/api/notifications', notificationRoutes);
 router.use('/api/kpi', kpiRoutes);
 router.use('/api/payroll', payrollRoutes);
 router.use('/api/debts', debtRoutes);
+router.use('/api/leave', leaveRoutes);
+
 
 module.exports = router;

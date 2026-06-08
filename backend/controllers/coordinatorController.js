@@ -6,7 +6,7 @@ const importExcel = async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng upload file Excel' });
     }
 
-    const result = await coordinatorService.importExcel(req.file.buffer);
+    const result = await coordinatorService.importExcel(req.user.userId, req.file.buffer);
     res.json({ message: 'Import Excel thành công', ...result });
   } catch (err) {
     res.status(422).json({ error: err.message });
