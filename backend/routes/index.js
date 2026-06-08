@@ -15,6 +15,7 @@ const notificationRoutes = require('./notificationRoutes');
 const kpiRoutes          = require('./kpiRoutes');
 const payrollRoutes      = require('./payrollRoutes');
 const debtRoutes         = require('./debtRoutes');
+const vehicleManagementRoutes = require('./vehicleManagementRoutes');
 const accountantRoutes = require('./accountant/accountantRoutes');
 
 // Register route modules
@@ -27,6 +28,7 @@ router.use('/api/coordinator', coordinatorRoutes);
 router.use('/api/orders', orderRoutes);
 router.use('/api/drivers', driverRoutes);
 router.use('/api/admin', adminRoutes);
+router.use('/api/admin', vehicleManagementRoutes);
 router.use('/api/expenses', expenseRoutes);
 router.use('/api/incidents', incidentRoutes);
 router.use('/api/notifications', notificationRoutes);

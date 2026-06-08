@@ -1,0 +1,25 @@
+const express = require('express');
+const vehicleManagementController = require('../controllers/vehicleManagementController');
+const { verifyToken, requireRole } = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+router.use(verifyToken);
+router.use(requireRole('manager'));
+
+router.get('/vehicle-groups', vehicleManagementController.listVehicleGroups);
+router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
+router.get('/vehicle-groups/:id', vehicleManagementController.getVehicleGroupDetail);
+router.put('/vehicle-groups/:id', vehicleManagementController.updateVehicleGroup);
+router.delete('/vehicle-groups/:id', vehicleManagementController.deleteVehicleGroup);
+
+router.get('/vehicles/driver-options', vehicleManagementController.listAssignableDrivers);
+router.get('/vehicles', vehicleManagementController.listVehicles);
+router.post('/vehicles', vehicleManagementController.createVehicle);
+router.get('/vehicles/:id', vehicleManagementController.getVehicleDetail);
+router.put('/vehicles/:id', vehicleManagementController.updateVehicle);
+router.patch('/vehicles/:id/status', vehicleManagementController.changeVehicleStatus);
+router.patch('/vehicles/:id/driver-assignment', vehicleManagementController.setVehicleDriverAssignment);
+router.delete('/vehicles/:id', vehicleManagementController.softDeleteVehicle);
+
+module.exports = router;
