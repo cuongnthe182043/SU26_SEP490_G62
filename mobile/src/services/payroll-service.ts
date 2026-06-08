@@ -46,7 +46,10 @@ export type PayrollEstimate = {
     kpi_bonus: string;
     top_driver_bonus: string;
     insurance_employee: string;
+    insurance_salary_base: string;
     advance_deduction: string;
+    driver_debt_deduction: string;
+    max_advance_amount: string;
     estimated_gross: string;
     estimated_net: string;
 };

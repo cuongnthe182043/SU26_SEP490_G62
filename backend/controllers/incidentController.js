@@ -37,6 +37,17 @@ const createIncident = async (req, res) => {
     }
 };
 
+// ─── GET /api/incidents/my/counts ────────────────────────────────────────────
+
+const getMyCounts = async (req, res) => {
+    try {
+        const counts = await incidentService.getMyCounts(req.user.userId);
+        res.json(counts);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // ─── GET /api/incidents/my ────────────────────────────────────────────────────
 
 const getMyIncidents = async (req, res) => {
@@ -123,6 +134,6 @@ const updateMyIncident = async (req, res) => {
 };
 
 module.exports = {
-    createIncident, getMyIncidents, getIncidentDetail,
+    createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };

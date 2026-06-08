@@ -21,6 +21,8 @@ export type KpiRecord = {
     kpi_bonus_achieved: boolean;
     // Rule 4 — Thưởng lái xe xuất sắc nhất
     top_driver_bonus_reward: string | null;
+    // On-Time KPI (BR-020)
+    on_time_rate: string;
 };
 
 export type LeaderboardRow = {
