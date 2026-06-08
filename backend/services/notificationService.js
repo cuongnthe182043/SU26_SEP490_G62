@@ -1,6 +1,7 @@
 const notificationRepository = require('../repositories/notificationRepository');
-const notificationGateway = require('./notificationGateway');
-const fcmService = require('./fcmService');
+const notificationGateway    = require('./notificationGateway');
+const fcmService             = require('./fcmService');
+const pool                   = require('../config/database');
 
 const createForUser = async (userId, payload, options = {}) => {
     if (!userId) throw new Error('userId is required');
@@ -60,12 +61,49 @@ const listForUser = async (userId, { limit = 20, page = 1 } = {}) => {
     };
 };
 
-const markAsRead = (userId, notificationId) => {
-    return notificationRepository.markAsRead(userId, notificationId);
+const markAsRead = async (userId, notificationId) => {
+    const notification = await notificationRepository.markAsRead(userId, notificationId);
+    if (notification) notificationGateway.notifyRead(userId, notificationId);
+    return notification;
 };
 
-const markAllAsRead = (userId) => {
-    return notificationRepository.markAllAsRead(userId);
+const markAllAsRead = async (userId) => {
+    await notificationRepository.markAllAsRead(userId);
+    notificationGateway.notifyAllRead(userId);
+};
+
+// ─── Gửi tới toàn bộ user đang online theo role ───────────────────────────────
+// Dùng cho coordinator / manager / accountant nhận alert real-time
+// mà không cần query DB lấy danh sách userId trước.
+//
+// Lưu ý: KHÔNG lưu vào DB — chỉ push WS real-time.
+// Dùng createForUsers() nếu cần lưu lịch sử notification.
+const broadcastToRole = (role, payload) => {
+    notificationGateway.broadcastToRole(role, {
+        type: 'notification.created',
+        notification: {
+            id:           null,
+            title:        payload.title,
+            message:      payload.message ?? '',
+            type:         payload.type    ?? 'SYSTEM_ALERT',
+            entity_type:  payload.entityType ?? null,
+            target_id:    payload.entityId   ?? null,
+            is_read:      false,
+            created_at:   new Date().toISOString(),
+            display_mode: payload.displayMode ?? 'toast',
+        },
+    });
+};
+
+// ─── Lấy tất cả userId theo role để dùng với createForUsers() ─────────────────
+const getUserIdsByRole = async (role) => {
+    const result = await pool.query(
+        `SELECT p.id FROM profiles p
+         JOIN roles r ON r.id = p.role_id
+         WHERE r.role_name = $1`,
+        [role],
+    );
+    return result.rows.map((r) => r.id);
 };
 
 const getById = async (userId, notificationId) => {
@@ -81,6 +119,8 @@ const getById = async (userId, notificationId) => {
 module.exports = {
     createForUser,
     createForUsers,
+    broadcastToRole,
+    getUserIdsByRole,
     listForUser,
     markAsRead,
     markAllAsRead,

@@ -60,4 +60,7 @@ export const incidentService = {
 
     getShipmentIncidents: (shipmentId: number): Promise<{ incidents: import('@/types/incident').Incident[] }> =>
         apiClient.get(`/api/incidents/shipment/${shipmentId}`),
+
+    getCounts: (): Promise<{ open_count: number; closed_count: number }> =>
+        apiClient.get('/api/incidents/my/counts'),
 };
