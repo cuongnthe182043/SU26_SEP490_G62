@@ -1,6 +1,11 @@
 const pool = require('../config/database');
 
-// ─── Driver: KPI cá nhân ──────────────────────────────────────────────────────
+// ─── Driver: KPI cá nhân + bonus eligibility ──────────────────────────────────
+// Trả thêm:
+//   revenue_rank / trips_rank      — vị trí trong nhóm xe (Rule 4 context)
+//   kpi_bonus_threshold/reward     — ngưỡng & thưởng vượt KPI per nhóm (Rule 5)
+//   kpi_bonus_achieved             — đã vượt ngưỡng chưa
+//   top_driver_bonus_reward        — giải "Lái xe xuất sắc nhất" per nhóm (Rule 4)
 
 const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
     const conditions = ['k.driver_id = $1'];
@@ -13,14 +18,59 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
             k.id, k.month, k.year,
             k.completed_shipments,
             k.total_revenue::text,
-            k.late_deliveries,
             k.incident_count,
             k.major_incident_count,
             k.critical_incident_count,
-            k.on_time_rate::text,
-            vg.name AS vehicle_group_name
+            vg.name AS vehicle_group_name,
+
+            -- Xếp hạng trong nhóm xe tháng đó (phục vụ hiển thị Rule 4)
+            COALESCE(lb.revenue_rank, 0)::int   AS revenue_rank,
+            COALESCE(lb.trips_rank,   0)::int   AS trips_rank,
+
+            -- Rule 5: Thưởng vượt KPI — lấy rule đầu tiên active theo nhóm
+            br_kpi.reward_amount::text                          AS kpi_bonus_reward,
+            (br_kpi.conditions_json->>'min_revenue')::text      AS kpi_bonus_threshold,
+            CASE
+                WHEN br_kpi.id IS NOT NULL
+                     AND k.total_revenue >= (br_kpi.conditions_json->>'min_revenue')::numeric
+                THEN TRUE ELSE FALSE
+            END                                                 AS kpi_bonus_achieved,
+
+            -- Rule 4: Thưởng lái xe xuất sắc nhất tháng — lấy rule đầu tiên active
+            br_top.reward_amount::text                          AS top_driver_bonus_reward
+
          FROM kpi_records k
          JOIN vehicle_groups vg ON vg.id = k.vehicle_group_id
+
+         -- Rank từ view sẵn có (đã PARTITION BY vehicle_group_id, year, month)
+         LEFT JOIN v_leaderboard lb
+            ON lb.driver_id        = k.driver_id
+            AND lb.vehicle_group_id = k.vehicle_group_id
+            AND lb.year             = k.year
+            AND lb.month            = k.month
+
+         -- Rule 5 rule config
+         LEFT JOIN LATERAL (
+             SELECT id, reward_amount, conditions_json
+             FROM bonus_rules
+             WHERE vehicle_group_id = k.vehicle_group_id
+               AND bonus_type = 'kpi'
+               AND is_active  = TRUE
+             ORDER BY id
+             LIMIT 1
+         ) br_kpi ON TRUE
+
+         -- Rule 4 rule config
+         LEFT JOIN LATERAL (
+             SELECT id, reward_amount
+             FROM bonus_rules
+             WHERE vehicle_group_id = k.vehicle_group_id
+               AND bonus_type = 'top_revenue'
+               AND is_active  = TRUE
+             ORDER BY id
+             LIMIT 1
+         ) br_top ON TRUE
+
          WHERE ${conditions.join(' AND ')}
          ORDER BY k.year DESC, k.month DESC`,
         params,
@@ -44,6 +94,7 @@ const getDriverVehicleGroupId = async (driverId) => {
 
 // ─── Driver: Leaderboard trong nhóm xe của mình (BR-028) ─────────────────────
 // Luôn trả về rank của driver hiện tại dù không trong top 20
+// Thêm total_in_group: tổng số driver có KPI trong nhóm tháng đó
 
 const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
     const result = await pool.query(
@@ -55,7 +106,8 @@ const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
                 on_time_rate::text,
                 incident_count,
                 revenue_rank,
-                trips_rank
+                trips_rank,
+                COUNT(*) OVER () AS total_in_group
             FROM v_leaderboard
             WHERE vehicle_group_id = $1 AND year = $2 AND month = $3
          )
@@ -66,23 +118,26 @@ const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
         [vehicleGroupId, year, month, driverId],
     );
 
-    // Nếu driver không nằm trong top 20, lấy thêm rank của họ
     const rows = result.rows;
     const alreadyInTop = rows.some((r) => r.driver_id === driverId);
     if (!alreadyInTop) {
         const myRank = await pool.query(
-            `SELECT
-                driver_id, driver_name,
-                completed_shipments,
-                total_revenue::text,
-                on_time_rate::text,
-                incident_count,
-                revenue_rank,
-                trips_rank,
-                TRUE AS is_me
-             FROM v_leaderboard
-             WHERE vehicle_group_id = $1 AND year = $2 AND month = $3
-               AND driver_id = $4`,
+            `WITH board AS (
+                SELECT
+                    driver_id, driver_name,
+                    completed_shipments,
+                    total_revenue::text,
+                    on_time_rate::text,
+                    incident_count,
+                    revenue_rank,
+                    trips_rank,
+                    COUNT(*) OVER () AS total_in_group
+                FROM v_leaderboard
+                WHERE vehicle_group_id = $1 AND year = $2 AND month = $3
+             )
+             SELECT *, TRUE AS is_me
+             FROM board
+             WHERE driver_id = $4`,
             [vehicleGroupId, year, month, driverId],
         );
         if (myRank.rows[0]) rows.push(myRank.rows[0]);
@@ -154,10 +209,11 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
     return result.rows;
 };
 
-// Tính lại KPI cho 1 driver trong 1 tháng cụ thể rồi UPSERT vào kpi_records
-// Gọi tự động sau mỗi lần trip hoàn thành
+// ─── Tính lại KPI cho 1 driver trong 1 tháng rồi UPSERT vào kpi_records ──────
+// Gọi tự động sau mỗi lần trip hoàn thành (fire-and-forget)
+// Doanh thu KPI chỉ tính actual_price (BR-026) — không fallback estimated_price
+
 const recalculateDriverKPI = async (driverId, month, year) => {
-    // 1. Lấy vehicle_group_id của driver
     const vgRes = await pool.query(
         `SELECT v.vehicle_group_id
          FROM drivers d
@@ -166,13 +222,16 @@ const recalculateDriverKPI = async (driverId, month, year) => {
         [driverId],
     );
     const vehicleGroupId = vgRes.rows[0]?.vehicle_group_id;
-    if (!vehicleGroupId) return null; // driver chưa được gán xe, bỏ qua
+    if (!vehicleGroupId) return null;
 
-    // 2. Thống kê chuyến hoàn thành trong tháng
+    // Doanh thu KPI = giá trị chuyến, không phụ thuộc trạng thái thanh toán.
+    // actual_price được set bởi coordinator/accountant (chưa có ở driver scope).
+    // Khi bên đó thêm setActualPrice, phải gọi recalculateAfterCompletion ngay sau để KPI tự cập nhật.
+    // Hiện tại actual_price luôn NULL → KPI dùng estimated_price, hoàn toàn đúng.
     const shipRes = await pool.query(
         `SELECT
-            COUNT(*)                                                           AS completed_shipments,
-            COALESCE(SUM(COALESCE(actual_price, estimated_price, 0)), 0)      AS total_revenue
+            COUNT(*)                                                        AS completed_shipments,
+            COALESCE(SUM(COALESCE(actual_price, estimated_price, 0)), 0)   AS total_revenue
          FROM order_shipments
          WHERE owner_driver_id = $1
            AND status = 'completed'
@@ -182,7 +241,6 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const { completed_shipments, total_revenue } = shipRes.rows[0];
 
-    // 3. Thống kê sự cố do driver tạo trong tháng
     const incRes = await pool.query(
         `SELECT
             COUNT(*)                                               AS incident_count,
@@ -196,7 +254,6 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const { incident_count, major_incident_count, critical_incident_count } = incRes.rows[0];
 
-    // 4. UPSERT vào kpi_records — nếu đã có thì cập nhật, chưa có thì tạo mới
     const result = await pool.query(
         `INSERT INTO kpi_records
             (driver_id, vehicle_group_id, month, year,

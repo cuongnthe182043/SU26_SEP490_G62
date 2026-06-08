@@ -268,7 +268,7 @@ export function LeaderboardScreen() {
                             #{sortMode === 'revenue' ? myRow.revenue_rank : myRow.trips_rank}
                         </Text>
                         <Text fontSize={12} color={appTheme.colors.textMuted}>
-                            / {data?.leaderboard.length ?? 0} tài xế
+                            / {data?.total_in_group ?? 0} tài xế trong nhóm
                         </Text>
                     </XStack>
                 ) : null}

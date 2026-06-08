@@ -1,43 +1,14 @@
 const pool = require('../config/database');
 
 const recordCashPayment = async ({ shipmentId, amount, collectedBy, notes }) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        const payResult = await client.query(
-            `INSERT INTO shipment_payments
-                 (shipment_id, payment_type, amount, collected_by, notes, collected_at)
-             VALUES ($1, 'cash_collected', $2, $3, $4, NOW())
-             RETURNING *`,
-            [shipmentId, amount, collectedBy, notes ?? null],
-        );
-        const payment = payResult.rows[0];
-
-        // Lấy order_id từ shipment
-        const osRes = await client.query(
-            `SELECT order_id FROM order_shipments WHERE id = $1`,
-            [shipmentId],
-        );
-        const orderId = osRes.rows[0]?.order_id ?? null;
-
-        // Tạo driver debt: driver đã thu tiền nhưng chưa nộp về công ty (§15 TH2, §16)
-        const debtRes = await client.query(
-            `INSERT INTO debts
-                 (debt_type, driver_id, shipment_id, order_id, total_amount, status)
-             VALUES ('driver', $1, $2, $3, $4, 'unpaid')
-             RETURNING *`,
-            [collectedBy, shipmentId, orderId, amount],
-        );
-
-        await client.query('COMMIT');
-        return { payment, debt: debtRes.rows[0] };
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    const result = await pool.query(
+        `INSERT INTO shipment_payments
+             (shipment_id, payment_type, amount, collected_by, notes, collected_at)
+         VALUES ($1, 'cash_collected', $2, $3, $4, NOW())
+         RETURNING *`,
+        [shipmentId, amount, collectedBy, notes ?? null],
+    );
+    return { payment: result.rows[0] };
 };
 
 const addPaymentReceipt = async (paymentId, fileUrl) => {
@@ -109,4 +80,14 @@ const getShipmentFinancialSummary = async (shipmentId) => {
     };
 };
 
-module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary };
+// Tạo driver debt ngay khi driver thu tiền mặt từ khách (§15 TH2)
+const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }) => {
+    await pool.query(
+        `INSERT INTO debts
+             (debt_type, driver_id, shipment_id, order_id, total_amount, notes)
+         VALUES ('driver', $1, $2, $3, $4, $5)`,
+        [driverId, shipmentId ?? null, orderId ?? null, amount, notes ?? null],
+    );
+};
+
+module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary, createDriverDebt };

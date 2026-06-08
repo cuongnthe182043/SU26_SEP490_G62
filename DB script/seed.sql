@@ -213,18 +213,63 @@ LIMIT 1;
 
 --------------------------------------------------------------------------------
 -- 13. BONUS RULES
+-- Rule 5: Thưởng vượt KPI — 2,000,000₫ nếu doanh thu vượt ngưỡng theo nhóm xe
+-- Rule 4: Thưởng lái xe xuất sắc nhất tháng — 1,000,000₫ cho driver doanh thu cao nhất nhóm
 --------------------------------------------------------------------------------
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Small Van Weekly Bonus', 'kpi', 500000, '{"description":"Complete 10 trips without incident"}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Small Van Weekly Bonus');
 
+-- Rule 5: Thưởng vượt KPI — Small Van (1-2 tấn)
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Medium Truck Monthly Bonus', 'kpi', 2000000, '{"description":"Complete 50 trips with 95%+ on-time rate"}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Medium Truck Monthly Bonus');
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+       'Thưởng vượt KPI — Small Van',
+       'kpi', 2000000,
+       '{"min_revenue": 50000000}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
 
+-- Rule 5: Thưởng vượt KPI — Medium Truck (2-5 tấn)
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000), 'Large Truck Monthly Bonus', 'kpi', 3000000, '{"description":"Complete 40 trips with 98%+ on-time rate"}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules WHERE title = 'Large Truck Monthly Bonus');
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+       'Thưởng vượt KPI — Medium Truck',
+       'kpi', 2000000,
+       '{"min_revenue": 65000000}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+
+-- Rule 5: Thưởng vượt KPI — Large Truck (5-10 tấn)
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+       'Thưởng vượt KPI — Large Truck',
+       'kpi', 2000000,
+       '{"min_revenue": 70000000}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
+
+-- Rule 4: Lái xe xuất sắc nhất tháng — Small Van (1-2 tấn)
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+       'Lái xe xuất sắc nhất tháng — Small Van',
+       'top_revenue', 1000000,
+       '{"rank": 1}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
+
+-- Rule 4: Lái xe xuất sắc nhất tháng — Medium Truck (2-5 tấn)
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+       'Lái xe xuất sắc nhất tháng — Medium Truck',
+       'top_revenue', 1000000,
+       '{"rank": 1}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+
+-- Rule 4: Lái xe xuất sắc nhất tháng — Large Truck (5-10 tấn)
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
+SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+       'Lái xe xuất sắc nhất tháng — Large Truck',
+       'top_revenue', 1000000,
+       '{"rank": 1}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
 
 --------------------------------------------------------------------------------
 -- 14. DRIVER PERFORMANCE / KPI RECORDS

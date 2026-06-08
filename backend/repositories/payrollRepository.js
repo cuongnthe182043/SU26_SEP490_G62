@@ -81,4 +81,111 @@ const getDriverAdvances = async (driverId, { status = null } = {}) => {
     return result.rows;
 };
 
-module.exports = { getDriverPayrolls, createSalaryAdvance, getDriverAdvances };
+// ─── Estimate lương tháng hiện tại (computed, không phải finalized) ───────────
+// Công thức: (base/28) × working_days + 15% doanh thu + phụ cấp 200k + thưởng − BHXH
+// BHXH người lao động: 5,310,000 × 10.5% = 557,550₫ (mức lương cơ sở vùng I 2025)
+
+const BHXH_EMPLOYEE = 557550;
+const PHONE_ALLOWANCE = 200000;
+
+const getPayrollEstimate = async (driverId, { month, year }) => {
+    // 1. Thông tin driver
+    const driverRes = await pool.query(
+        `SELECT d.hire_date, d.revenue_share_percent
+         FROM drivers d WHERE d.profile_id = $1`,
+        [driverId],
+    );
+    if (!driverRes.rows[0]) throw new Error('Driver không tồn tại');
+    const { hire_date, revenue_share_percent } = driverRes.rows[0];
+
+    const hireDate = new Date(hire_date);
+    const now = new Date();
+    const monthsOfService = (now.getFullYear() - hireDate.getFullYear()) * 12
+        + (now.getMonth() - hireDate.getMonth());
+    const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
+
+    // 2. Số ngày nghỉ không lương tháng này
+    const leaveRes = await pool.query(
+        `SELECT
+            COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved') AS unpaid_days
+         FROM leave_requests
+         WHERE driver_id = $1
+           AND EXTRACT(MONTH FROM leave_date) = $2
+           AND EXTRACT(YEAR  FROM leave_date) = $3`,
+        [driverId, month, year],
+    );
+    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0);
+    const actualWorkingDays = Math.max(0, 28 - unpaidDays);
+    const proRatedBase = (baseSalary / 28) * actualWorkingDays;
+    const absencePenalty = baseSalary - proRatedBase;
+
+    // 3. Doanh thu & bonus từ KPI tháng này
+    const kpiRes = await pool.query(
+        `SELECT
+            k.total_revenue,
+            lb.revenue_rank,
+            br_kpi.reward_amount                                AS kpi_bonus_reward,
+            (br_kpi.conditions_json->>'min_revenue')::numeric   AS kpi_threshold,
+            br_top.reward_amount                                AS top_driver_reward
+         FROM kpi_records k
+         LEFT JOIN v_leaderboard lb
+            ON lb.driver_id = k.driver_id AND lb.vehicle_group_id = k.vehicle_group_id
+            AND lb.year = k.year AND lb.month = k.month
+         LEFT JOIN LATERAL (
+             SELECT reward_amount, conditions_json FROM bonus_rules
+             WHERE vehicle_group_id = k.vehicle_group_id AND bonus_type = 'kpi' AND is_active = TRUE
+             ORDER BY id LIMIT 1
+         ) br_kpi ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT reward_amount FROM bonus_rules
+             WHERE vehicle_group_id = k.vehicle_group_id AND bonus_type = 'top_revenue' AND is_active = TRUE
+             ORDER BY id LIMIT 1
+         ) br_top ON TRUE
+         WHERE k.driver_id = $1 AND k.month = $2 AND k.year = $3`,
+        [driverId, month, year],
+    );
+    const kpi = kpiRes.rows[0] ?? {};
+    const totalRevenue = Number(kpi.total_revenue ?? 0);
+    const revenuePct   = Number(revenue_share_percent ?? 15);
+    const revenueBonus = totalRevenue * (revenuePct / 100);
+
+    const kpiBonus = (kpi.kpi_bonus_reward && kpi.kpi_threshold && totalRevenue >= Number(kpi.kpi_threshold))
+        ? Number(kpi.kpi_bonus_reward) : 0;
+    const topDriverBonus = (Number(kpi.revenue_rank) === 1 && kpi.top_driver_reward)
+        ? Number(kpi.top_driver_reward) : 0;
+
+    // 4. Tiền ứng lương đã được duyệt tháng này
+    const advRes = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) AS advance_total
+         FROM salary_advances
+         WHERE driver_id = $1 AND request_month = $2 AND request_year = $3
+           AND status IN ('approved','paid')`,
+        [driverId, month, year],
+    );
+    const advanceDeduction = Number(advRes.rows[0].advance_total ?? 0);
+
+    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
+    const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction;
+
+    return {
+        month, year,
+        months_of_service:    monthsOfService,
+        base_salary:          baseSalary.toFixed(2),
+        actual_working_days:  actualWorkingDays,
+        unpaid_days:          unpaidDays,
+        absence_penalty:      absencePenalty.toFixed(2),
+        pro_rated_base:       proRatedBase.toFixed(2),
+        total_revenue:        totalRevenue.toFixed(2),
+        revenue_share_pct:    revenuePct.toFixed(2),
+        revenue_bonus:        revenueBonus.toFixed(2),
+        phone_allowance:      PHONE_ALLOWANCE.toFixed(2),
+        kpi_bonus:            kpiBonus.toFixed(2),
+        top_driver_bonus:     topDriverBonus.toFixed(2),
+        insurance_employee:   BHXH_EMPLOYEE.toFixed(2),
+        advance_deduction:    advanceDeduction.toFixed(2),
+        estimated_gross:      estimatedGross.toFixed(2),
+        estimated_net:        estimatedNet.toFixed(2),
+    };
+};
+
+module.exports = { getDriverPayrolls, createSalaryAdvance, getDriverAdvances, getPayrollEstimate };

@@ -21,25 +21,52 @@ const getMyDebtSummary = async (req, res) => {
     }
 };
 
-// POST /api/debts/:id/remit
-// Body: { amount, paymentMethod, notes }
-const remitDebt = async (req, res) => {
+// GET /api/debts/:id/payments
+const getDebtPayments = async (req, res) => {
     try {
         const debtId = Number(req.params.id);
         if (!debtId) return res.status(400).json({ error: 'Debt ID không hợp lệ' });
+        const data = await debtService.getDebtPayments(req.user.userId, debtId);
+        res.json({ payments: data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
 
+// POST /api/debts/:id/repayments  (multipart: receipt file)
+const submitRepayment = async (req, res) => {
+    try {
+        const debtId = Number(req.params.id);
+        if (!debtId) return res.status(400).json({ error: 'Debt ID không hợp lệ' });
+        const receiptUrl = req.file?.path ?? null;
         const { amount, paymentMethod, notes } = req.body;
         if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
-
-        const updated = await debtService.remitDebt(req.user.userId, debtId, { amount, paymentMethod, notes });
-        res.json({ message: 'Nộp tiền thành công', debt: updated });
+        const data = await debtService.submitRepayment(
+            req.user.userId, debtId, { amount, paymentMethod, notes }, receiptUrl,
+        );
+        res.status(201).json({ message: 'Đã gửi yêu cầu nộp tiền. Đang chờ kế toán xác nhận.', payment: data });
     } catch (err) {
-        const code = err.message.includes('không thuộc về') ? 403
-            : err.message.includes('vượt quá') ? 422
-            : err.message.includes('đã thanh toán') ? 409
+        const code = err.message.includes('quyền') ? 403
+            : err.message.includes('bắt buộc') ? 422
+            : err.message.includes('không tìm') ? 404
             : 400;
         res.status(code).json({ error: err.message });
     }
 };
 
-module.exports = { getMyDebts, getMyDebtSummary, remitDebt };
+// DELETE /api/debts/repayments/:paymentId
+const cancelRepayment = async (req, res) => {
+    try {
+        const paymentId = Number(req.params.paymentId);
+        if (!paymentId) return res.status(400).json({ error: 'Payment ID không hợp lệ' });
+        await debtService.cancelRepayment(req.user.userId, paymentId);
+        res.json({ message: 'Đã huỷ yêu cầu nộp tiền' });
+    } catch (err) {
+        const code = err.message.includes('quyền') ? 403
+            : err.message.includes('Không tìm') ? 404
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = { getMyDebts, getMyDebtSummary, getDebtPayments, submitRepayment, cancelRepayment };
