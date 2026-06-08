@@ -48,6 +48,14 @@ export function useCreateBill() {
     const [state, setState] = useState<CreateState>({ isSubmitting: false, error: null });
 
     const submit = useCallback(async (payload: CreateBillPayload): Promise<boolean> => {
+        if (!payload.shipmentId) {
+            setState({ isSubmitting: false, error: 'Chưa chọn chuyến' });
+            return false;
+        }
+        if (!payload.receiptUri) {
+            setState({ isSubmitting: false, error: 'Chưa chụp ảnh biên lai' });
+            return false;
+        }
         setState({ isSubmitting: true, error: null });
         try {
             await billService.create(payload);

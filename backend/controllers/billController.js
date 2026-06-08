@@ -39,20 +39,32 @@ const getMyBill = async (req, res) => {
     }
 };
 
-// POST /api/bills
+// POST /api/bills  (multipart/form-data: receipt file + body: shipmentId, amount, paymentMethod, notes)
 const createBill = async (req, res) => {
     try {
-        const { shipmentId, amount, paymentMethod, notes, receiptUrl } = req.body;
-        if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
+        const { shipmentId, amount, paymentMethod, notes } = req.body;
+        const receiptUrl = req.file?.path ?? null;
+
+        if (!shipmentId) return res.status(400).json({ error: 'Mã chuyến (shipmentId) là bắt buộc' });
+        if (!amount)     return res.status(400).json({ error: 'Số tiền là bắt buộc' });
+        if (!receiptUrl) return res.status(400).json({ error: 'Ảnh biên lai là bắt buộc' });
+
         const data = await billService.createBill(req.user.userId, {
-            shipmentId, amount, paymentMethod, notes, receiptUrl,
+            shipmentId: Number(shipmentId),
+            amount,
+            paymentMethod,
+            notes,
+            receiptUrl,
         });
         res.status(201).json({
             message: 'Đã tạo bill. Đang chờ kế toán xác nhận.',
             bill: data,
         });
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('không tồn tại') ? 404
+            : 400;
+        res.status(code).json({ error: err.message });
     }
 };
 
