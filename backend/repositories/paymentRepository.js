@@ -80,4 +80,14 @@ const getShipmentFinancialSummary = async (shipmentId) => {
     };
 };
 
-module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary };
+// Tạo driver debt ngay khi driver thu tiền mặt từ khách (§15 TH2)
+const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }) => {
+    await pool.query(
+        `INSERT INTO debts
+             (debt_type, driver_id, shipment_id, order_id, total_amount, notes)
+         VALUES ('driver', $1, $2, $3, $4, $5)`,
+        [driverId, shipmentId ?? null, orderId ?? null, amount, notes ?? null],
+    );
+};
+
+module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary, createDriverDebt };
