@@ -194,13 +194,14 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         const result = await client.query(
             `UPDATE order_shipments
              SET owner_driver_id = $1,
-                 status          = $2,
+                 vehicle_id      = $2,
+                 status          = $3,
                  claimed_at      = NOW(),
                  version         = version + 1,
                  updated_at      = NOW()
-             WHERE id = $3
+             WHERE id = $4
              RETURNING *`,
-            [driverId, SHIPMENT_STATUS.CLAIMED, shipmentId],
+            [driverId, vehicleId, SHIPMENT_STATUS.CLAIMED, shipmentId],
         );
         const claimed = result.rows[0];
 
