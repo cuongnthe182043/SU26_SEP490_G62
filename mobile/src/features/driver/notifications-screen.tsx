@@ -326,7 +326,7 @@ export function NotificationsScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
-            <ScreenHeader title="Thông báo" right={headerRight} />
+            <ScreenHeader title="Thông báo" showBack right={headerRight} />
 
             <FlatList
                 data={displayed}
