@@ -82,11 +82,13 @@ const getDriverAdvances = async (driverId, { status = null } = {}) => {
 };
 
 // ─── Estimate lương tháng hiện tại (computed, không phải finalized) ───────────
-// Công thức: (base/28) × working_days + 15% doanh thu + phụ cấp 200k + thưởng − BHXH
-// BHXH người lao động: 5,310,000 × 10.5% = 557,550₫ (mức lương cơ sở vùng I 2025)
+// Công thức: (base/28) × working_days + revenue_share% + phụ cấp + thưởng − BHXH − advance − driver_debt
+// BHXH người lao động: vùng I 2025 → mức lương cơ sở 5,310,000 × 10.5%
 
-const BHXH_EMPLOYEE = 557550;
-const PHONE_ALLOWANCE = 200000;
+const INSURANCE_SALARY_BASE = 5_310_000;
+const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
+const PHONE_ALLOWANCE        = 200_000;
+const MAX_ADVANCE_AMOUNT     = 5_000_000;
 
 const getPayrollEstimate = async (driverId, { month, year }) => {
     // 1. Thông tin driver
@@ -164,28 +166,48 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const advanceDeduction = Number(advRes.rows[0].advance_total ?? 0);
 
+    // 5. Công nợ driver chưa nộp (BR-020 / Payroll §24)
+    const debtRes = await pool.query(
+        `SELECT COALESCE(SUM(total_amount - paid_amount), 0) AS remaining
+         FROM debts
+         WHERE driver_id = $1
+           AND debt_type = 'driver'
+           AND status IN ('unpaid','partial','overdue')`,
+        [driverId],
+    );
+    const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
+
     const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
-    const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction;
+    const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
 
     return {
         month, year,
-        months_of_service:    monthsOfService,
-        base_salary:          baseSalary.toFixed(2),
-        actual_working_days:  actualWorkingDays,
-        unpaid_days:          unpaidDays,
-        absence_penalty:      absencePenalty.toFixed(2),
-        pro_rated_base:       proRatedBase.toFixed(2),
-        total_revenue:        totalRevenue.toFixed(2),
-        revenue_share_pct:    revenuePct.toFixed(2),
-        revenue_bonus:        revenueBonus.toFixed(2),
-        phone_allowance:      PHONE_ALLOWANCE.toFixed(2),
-        kpi_bonus:            kpiBonus.toFixed(2),
-        top_driver_bonus:     topDriverBonus.toFixed(2),
-        insurance_employee:   BHXH_EMPLOYEE.toFixed(2),
-        advance_deduction:    advanceDeduction.toFixed(2),
-        estimated_gross:      estimatedGross.toFixed(2),
-        estimated_net:        estimatedNet.toFixed(2),
+        months_of_service:      monthsOfService,
+        base_salary:            baseSalary.toFixed(2),
+        actual_working_days:    actualWorkingDays,
+        unpaid_days:            unpaidDays,
+        absence_penalty:        absencePenalty.toFixed(2),
+        pro_rated_base:         proRatedBase.toFixed(2),
+        total_revenue:          totalRevenue.toFixed(2),
+        revenue_share_pct:      revenuePct.toFixed(2),
+        revenue_bonus:          revenueBonus.toFixed(2),
+        phone_allowance:        PHONE_ALLOWANCE.toFixed(2),
+        kpi_bonus:              kpiBonus.toFixed(2),
+        top_driver_bonus:       topDriverBonus.toFixed(2),
+        insurance_employee:     BHXH_EMPLOYEE.toFixed(2),
+        insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),
+        advance_deduction:      advanceDeduction.toFixed(2),
+        driver_debt_deduction:  driverDebtDeduction.toFixed(2),
+        max_advance_amount:     MAX_ADVANCE_AMOUNT.toFixed(2),
+        estimated_gross:        estimatedGross.toFixed(2),
+        estimated_net:          estimatedNet.toFixed(2),
     };
 };
 
-module.exports = { getDriverPayrolls, createSalaryAdvance, getDriverAdvances, getPayrollEstimate };
+module.exports = {
+    getDriverPayrolls,
+    createSalaryAdvance,
+    getDriverAdvances,
+    getPayrollEstimate,
+    MAX_ADVANCE_AMOUNT,
+};
