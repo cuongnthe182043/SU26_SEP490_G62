@@ -1,5 +1,9 @@
-import { Banknote, Bell, CalendarOff, ChevronRight, DollarSign, HandCoins, MapPin, Package, PackageCheck, Trophy, Truck } from 'lucide-react-native';
-import { Pressable } from 'react-native';
+import {
+    Banknote, Bell, CalendarOff,
+    Package, PackageCheck,
+    TriangleAlert, Truck,
+} from 'lucide-react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -11,6 +15,7 @@ import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
 import { useActiveTrip } from '@/hooks/use-active-trip';
+import { useNotifications } from '@/hooks/use-notifications';
 import { useProfile } from '@/hooks/use-profile';
 import { useTripStats } from '@/hooks/use-trip-stats';
 import type { TripStatus } from '@/types/trip';
@@ -20,23 +25,16 @@ import type { TripStatus } from '@/types/trip';
 function ActiveTripBanner({ onPress }: { onPress: () => void }) {
     const { trip, isLoading } = useActiveTrip();
 
-    if (isLoading) {
-        return <ActiveTripBannerSkeleton />;
-    }
+    if (isLoading) return <ActiveTripBannerSkeleton />;
 
     if (!trip) {
         return (
             <Pressable onPress={() => router.push('/trip-pool')} style={{ borderRadius: appTheme.radius.xl }}>
                 <YStack
-                    padding="$5"
-                    borderRadius={appTheme.radius.xl}
-                    borderWidth={1.5}
-                    borderColor={appTheme.colors.border}
-                    borderStyle="dashed"
-                    alignItems="center"
-                    justifyContent="center"
-                    gap="$2"
-                    minHeight={100}
+                    padding="$5" borderRadius={appTheme.radius.xl}
+                    borderWidth={1.5} borderColor={appTheme.colors.border}
+                    borderStyle="dashed" alignItems="center" justifyContent="center"
+                    gap="$2" minHeight={100}
                 >
                     <XStack
                         width={48} height={48} borderRadius={18}
@@ -59,11 +57,8 @@ function ActiveTripBanner({ onPress }: { onPress: () => void }) {
     return (
         <Pressable onPress={onPress} style={{ borderRadius: appTheme.radius.xl }}>
             <YStack
-                gap="$4"
-                padding="$5"
-                borderRadius={appTheme.radius.xl}
-                backgroundColor={appTheme.colors.primary}
-                overflow="hidden"
+                gap="$4" padding="$5" borderRadius={appTheme.radius.xl}
+                backgroundColor={appTheme.colors.primary} overflow="hidden"
             >
                 <XStack
                     position="absolute" right={-36} top={-40}
@@ -115,16 +110,75 @@ function ActiveTripBanner({ onPress }: { onPress: () => void }) {
     );
 }
 
+// ─── Quick action grid item ───────────────────────────────────────────────────
+
+type ActionItem = {
+    route: string;
+    icon: React.ReactNode;
+    label: string;
+    sub: string;
+    iconBg: string;
+};
+
+function GridAction({ item }: { item: ActionItem }) {
+    return (
+        <Pressable
+            onPress={() => router.push(item.route as never)}
+            style={({ pressed }) => [s.gridCard, pressed && { opacity: 0.75 }]}
+        >
+            <View style={[s.gridIcon, { backgroundColor: item.iconBg }]}>
+                {item.icon}
+            </View>
+            <Text fontSize={13} fontWeight="900" color={appTheme.colors.text} numberOfLines={1}>
+                {item.label}
+            </Text>
+            <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={2} lineHeight={15}>
+                {item.sub}
+            </Text>
+        </Pressable>
+    );
+}
+
 // ─── Home screen ──────────────────────────────────────────────────────────────
+
+const GRID_ACTIONS: ActionItem[] = [
+    {
+        route: '/trip-pool',
+        icon: <PackageCheck size={24} color={appTheme.colors.primary} />,
+        label: 'Nhận chuyến',
+        sub: 'Danh sách chuyến phù hợp',
+        iconBg: appTheme.colors.primarySoft,
+    },
+    {
+        route: '/debt',
+        icon: <Banknote size={24} color={appTheme.colors.danger} />,
+        label: 'Công nợ',
+        sub: 'Nộp tiền thu hộ về cty',
+        iconBg: appTheme.colors.dangerSoft,
+    },
+    {
+        route: '/leave',
+        icon: <CalendarOff size={24} color={appTheme.colors.warning} />,
+        label: 'Nghỉ phép',
+        sub: 'Đăng ký ngày nghỉ',
+        iconBg: appTheme.colors.warningSoft,
+    },
+    {
+        route: '/report-incident',
+        icon: <TriangleAlert size={24} color="#EA580C" />,
+        label: 'Báo sự cố',
+        sub: 'Tai nạn, hỏng xe...',
+        iconBg: '#FFF7ED',
+    },
+];
 
 export function DriverHomeScreen() {
     const insets = useSafeAreaInsets();
     const { profile, isLoading: profileLoading } = useProfile();
     const { stats } = useTripStats();
+    const { unreadCount } = useNotifications();
 
-    const displayName = profileLoading
-        ? '...'
-        : (profile?.full_name ?? 'Tài xế');
+    const displayName = profileLoading ? '...' : (profile?.full_name ?? 'Tài xế');
 
     return (
         <>
@@ -132,235 +186,116 @@ export function DriverHomeScreen() {
             <ScrollView
                 flex={1}
                 backgroundColor={appTheme.colors.background}
-                contentInsetAdjustmentBehavior="automatic"
                 contentContainerStyle={{
                     flexGrow: 1,
                     paddingHorizontal: appTheme.spacing.screenX,
-                    paddingTop: insets.top + 16,
+                    paddingTop: insets.top + 8,
                     paddingBottom: appTheme.spacing.screenBottom,
                     gap: 20,
                 }}
             >
-                {/* Greeting */}
+                {/* Header */}
                 <XStack alignItems="center" justifyContent="space-between">
                     <YStack gap={2}>
-                        <Text fontSize={14} color={appTheme.colors.textMuted}>Xin chào</Text>
-                        <Text fontSize={26} lineHeight={32} fontWeight="900" color={appTheme.colors.text}>
+                        <Text fontSize={13} color={appTheme.colors.textMuted}>Xin chào</Text>
+                        <Text fontSize={24} lineHeight={30} fontWeight="900" color={appTheme.colors.text}>
                             {displayName}
                         </Text>
                     </YStack>
-                    <XStack
-                        width={46} height={46} borderRadius={18}
-                        alignItems="center" justifyContent="center"
-                        backgroundColor={appTheme.colors.primarySoft}
+
+                    {/* Notification bell */}
+                    <Pressable
+                        onPress={() => router.push('/notifications')}
+                        style={s.bellBtn}
                     >
                         <Bell size={21} color={appTheme.colors.primary} />
-                    </XStack>
+                        {unreadCount > 0 ? (
+                            <View style={s.badge}>
+                                <Text style={s.badgeText}>
+                                    {unreadCount > 99 ? '99+' : String(unreadCount)}
+                                </Text>
+                            </View>
+                        ) : null}
+                    </Pressable>
                 </XStack>
 
-                {/* Active trip banner */}
+                {/* Active trip */}
                 <ActiveTripBanner onPress={() => router.push('/active-trip')} />
 
-                {/* Quick stats */}
+                {/* Stats */}
                 {stats ? (
                     <XStack gap="$3" flexWrap="wrap">
-                        <StatCard value={String(stats.today_total)}     label="Chuyến hôm nay" />
-                        <StatCard value={String(stats.today_completed)}  label="Hoàn thành" />
-                        <StatCard value={String(stats.month_completed)}  label="HT tháng này" />
+                        <StatCard value={String(stats.today_total)}    label="Chuyến hôm nay" />
+                        <StatCard value={String(stats.today_completed)} label="Hoàn thành" />
+                        <StatCard value={String(stats.month_completed)} label="HT tháng này" />
                     </XStack>
                 ) : (
                     <StatRowSkeleton />
                 )}
 
-                {/* Quick actions */}
+                {/* Quick actions — 2-col grid */}
                 <YStack gap={10}>
-                    <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
+                    <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
                         Thao tác nhanh
                     </Text>
-
-                    <Pressable onPress={() => router.push('/trip-pool')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.primarySoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <PackageCheck size={22} color={appTheme.colors.primary} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Danh sách chuyến
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Xem và nhận chuyến phù hợp nhóm xe
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
-
-                    {/* <Pressable onPress={() => router.push('/active-trip')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.successSoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <MapPin size={22} color={appTheme.colors.success} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Chuyến hiện tại
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Quản lý và cập nhật trạng thái chuyến
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable> */}
-
-                    <Pressable onPress={() => router.push('/kpi')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor='#FEF9C3'
-                                alignItems="center" justifyContent="center"
-                            >
-                                <Trophy size={22} color='#CA8A04' />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    KPI & Xếp hạng
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Theo dõi hiệu suất và bảng xếp hạng
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
-
-                    <Pressable onPress={() => router.push('/bill')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.primarySoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <HandCoins size={22} color={appTheme.colors.primary} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Bill thu hộ
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Tạo bill báo thu tiền khách — chờ kế toán xác nhận
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
-
-                    <Pressable onPress={() => router.push('/debt')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.dangerSoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <Banknote size={22} color={appTheme.colors.danger} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Công nợ
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Xem công nợ do kế toán tạo
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
-
-                    <Pressable onPress={() => router.push('/payroll')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.successSoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <DollarSign size={22} color={appTheme.colors.success} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Lương & Ứng lương
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Xem lương ước tính và yêu cầu ứng
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
-
-                    <Pressable onPress={() => router.push('/leave')}>
-                        <XStack
-                            alignItems="center" padding="$4"
-                            borderRadius={appTheme.radius.lg}
-                            borderWidth={1} borderColor={appTheme.colors.border}
-                            backgroundColor={appTheme.colors.surface} gap="$3"
-                        >
-                            <XStack
-                                width={44} height={44} borderRadius={16}
-                                backgroundColor={appTheme.colors.warningSoft}
-                                alignItems="center" justifyContent="center"
-                            >
-                                <CalendarOff size={22} color={appTheme.colors.warning} />
-                            </XStack>
-                            <YStack flex={1}>
-                                <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    Đăng ký nghỉ
-                                </Text>
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Xem ngày công và đăng ký nghỉ phép
-                                </Text>
-                            </YStack>
-                            <ChevronRight size={18} color={appTheme.colors.textMuted} />
-                        </XStack>
-                    </Pressable>
+                    <XStack gap={10} flexWrap="wrap">
+                        {GRID_ACTIONS.map((item) => (
+                            <GridAction key={item.route} item={item} />
+                        ))}
+                    </XStack>
                 </YStack>
+
+
             </ScrollView>
         </>
     );
 }
+
+const GRID_CARD_SIZE = '47%' as const;
+
+const s = StyleSheet.create({
+    bellBtn: {
+        width: 46,
+        height: 46,
+        borderRadius: 18,
+        backgroundColor: appTheme.colors.primarySoft,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    badge: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        minWidth: 17,
+        height: 17,
+        borderRadius: 9,
+        backgroundColor: appTheme.colors.danger,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 3,
+        borderWidth: 1.5,
+        borderColor: appTheme.colors.background,
+    },
+    badgeText: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: '#fff',
+        lineHeight: 13,
+    },
+    gridCard: {
+        width: GRID_CARD_SIZE,
+        backgroundColor: appTheme.colors.surface,
+        borderRadius: appTheme.radius.lg,
+        borderWidth: 1,
+        borderColor: appTheme.colors.border,
+        padding: 14,
+        gap: 8,
+    },
+    gridIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+});
