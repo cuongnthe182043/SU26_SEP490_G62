@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
     Platform, Pressable, RefreshControl, ScrollView,
     StyleSheet, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
-    AlertTriangle, CheckCircle2, Clock, Plus, RotateCcw, XCircle,
+    AlertTriangle, Camera, CheckCircle2, Clock, Plus, RotateCcw, XCircle,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }      from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
 import { appTheme }     from '@/theme/app-theme';
+import { CameraModal }  from '@/features/trips/components/camera-modal';
 import { useCashCollection, useCreateCollection } from '@/hooks/use-cash-collection';
 import type { CashCollection, CollectionPaymentMethod } from '@/services/cash-collection-service';
 
@@ -199,9 +200,11 @@ function CreateModal({
     onClose: () => void;
     onSuccess: () => void;
 }) {
-    const [amount, setAmount] = useState('');
-    const [method, setMethod] = useState<CollectionPaymentMethod>('cash');
-    const [notes,  setNotes]  = useState('');
+    const [amount,     setAmount]     = useState('');
+    const [method,     setMethod]     = useState<CollectionPaymentMethod>('cash');
+    const [notes,      setNotes]      = useState('');
+    const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [showCamera, setShowCamera] = useState(false);
     const { isSubmitting, error, submit } = useCreateCollection();
 
     const handleSubmit = async () => {
@@ -210,13 +213,33 @@ function CreateModal({
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
         }
-        const ok = await submit({ amount: n, paymentMethod: method, notes: notes.trim() || undefined });
+        if (!receiptUri) {
+            Alert.alert('Thiếu ảnh biên lai', 'Vui lòng chụp ảnh biên lai trước khi gửi (BR-018)');
+            return;
+        }
+        const ok = await submit({
+            amount: n,
+            paymentMethod: method,
+            notes: notes.trim() || undefined,
+            receiptUri,
+        });
         if (ok) {
             Alert.alert('Thành công', 'Đã báo thu hộ. Kế toán sẽ xác nhận sớm.', [
                 { text: 'Đóng', onPress: onSuccess },
             ]);
         }
     };
+
+    if (showCamera) {
+        return (
+            <CameraModal
+                visible
+                label="Chụp ảnh biên lai"
+                onCapture={(uri) => { setReceiptUri(uri); setShowCamera(false); }}
+                onClose={() => setShowCamera(false)}
+            />
+        );
+    }
 
     return (
         <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -267,7 +290,28 @@ function CreateModal({
                         ))}
                     </XStack>
 
+                    {/* BR-018: ảnh biên lai bắt buộc, chụp realtime */}
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={6}>
+                        Ảnh biên lai <Text color={appTheme.colors.danger}>*</Text>
+                    </Text>
+                    {receiptUri ? (
+                        <Pressable onPress={() => setShowCamera(true)} style={s.previewWrap}>
+                            <Image source={{ uri: receiptUri }} style={s.preview} resizeMode="cover" />
+                            <View style={s.previewOverlay}>
+                                <Camera size={18} color="#fff" />
+                                <Text fontSize={11} color="#fff" fontWeight="700">Chụp lại</Text>
+                            </View>
+                        </Pressable>
+                    ) : (
+                        <Pressable style={s.cameraBtn} onPress={() => setShowCamera(true)}>
+                            <Camera size={22} color={appTheme.colors.primary} />
+                            <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
+                                Chụp ảnh biên lai
+                            </Text>
+                        </Pressable>
+                    )}
+
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={14} marginBottom={6}>
                         Ghi chú (không bắt buộc)
                     </Text>
                     <TextInput
@@ -498,4 +542,22 @@ const s = StyleSheet.create({
         borderWidth: 1, borderColor: appTheme.colors.border,
     },
     confirmBtn: { backgroundColor: appTheme.colors.primary },
+    cameraBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+        height: 64, borderRadius: 14,
+        borderWidth: 1.5, borderColor: appTheme.colors.primaryMuted,
+        borderStyle: 'dashed',
+        backgroundColor: appTheme.colors.primarySoft,
+    },
+    previewWrap: {
+        height: 120, borderRadius: 14, overflow: 'hidden',
+        borderWidth: 1.5, borderColor: appTheme.colors.successBorder,
+    },
+    preview: { width: '100%', height: '100%' },
+    previewOverlay: {
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        paddingVertical: 8,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+    },
 });

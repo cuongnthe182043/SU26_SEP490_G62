@@ -39,11 +39,13 @@ const getMyCollection = async (req, res) => {
     }
 };
 
-// POST /api/cash-collections
+// POST /api/cash-collections  (multipart/form-data, field: receipt)
 const createCollection = async (req, res) => {
     try {
-        const { shipmentId, amount, paymentMethod, notes, receiptUrl } = req.body;
-        if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
+        const { shipmentId, amount, paymentMethod, notes } = req.body;
+        if (!amount)     return res.status(400).json({ error: 'Số tiền là bắt buộc' });
+        if (!req.file)   return res.status(400).json({ error: 'Ảnh biên lai là bắt buộc (BR-018)' });
+        const receiptUrl = req.file.path;
         const data = await cashCollectionService.createCollection(req.user.userId, {
             shipmentId, amount, paymentMethod, notes, receiptUrl,
         });

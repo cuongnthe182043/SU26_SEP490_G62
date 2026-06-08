@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import {
-    Banknote, Bell, CalendarOff,
+    AlertOctagon, Banknote, Bell, CalendarOff,
     Package, PackageCheck,
     TriangleAlert, Truck,
 } from 'lucide-react-native';
@@ -14,10 +15,11 @@ import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
-import { useActiveTrip } from '@/hooks/use-active-trip';
+import { useActiveTrip }   from '@/hooks/use-active-trip';
+import { useHomeSummary }  from '@/hooks/use-home-summary';
 import { useNotifications } from '@/hooks/use-notifications';
-import { useProfile } from '@/hooks/use-profile';
-import { useTripStats } from '@/hooks/use-trip-stats';
+import { useProfile }      from '@/hooks/use-profile';
+import { useTripStats }    from '@/hooks/use-trip-stats';
 import type { TripStatus } from '@/types/trip';
 
 // ─── Active trip banner ───────────────────────────────────────────────────────
@@ -177,6 +179,10 @@ export function DriverHomeScreen() {
     const { profile, isLoading: profileLoading } = useProfile();
     const { stats } = useTripStats();
     const { unreadCount } = useNotifications();
+    const { debt_remaining, open_incident_count, reload: reloadSummary } = useHomeSummary();
+
+    // Load summary on mount
+    useEffect(() => { reloadSummary(); }, [reloadSummary]);
 
     const displayName = profileLoading ? '...' : (profile?.full_name ?? 'Tài xế');
 
@@ -233,6 +239,62 @@ export function DriverHomeScreen() {
                     <StatRowSkeleton />
                 )}
 
+                {/* Finance summary — BR spec §5 */}
+                {debt_remaining > 0 ? (
+                    <Pressable onPress={() => router.push('/debt')} style={{ borderRadius: appTheme.radius.lg }}>
+                        <XStack
+                            padding={16} borderRadius={appTheme.radius.lg}
+                            backgroundColor={appTheme.colors.dangerSoft}
+                            borderWidth={1.5} borderColor={appTheme.colors.dangerBorder}
+                            alignItems="center" gap={12}
+                        >
+                            <XStack
+                                width={42} height={42} borderRadius={14}
+                                backgroundColor={appTheme.colors.danger + '22'}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <Banknote size={20} color={appTheme.colors.danger} />
+                            </XStack>
+                            <YStack flex={1} gap={2}>
+                                <Text fontSize={13} fontWeight="900" color={appTheme.colors.dangerText}>
+                                    Còn công nợ chưa nộp
+                                </Text>
+                                <Text fontSize={12} color={appTheme.colors.dangerText}>
+                                    {debt_remaining.toLocaleString('vi-VN')}₫ — Nhấn để xử lý
+                                </Text>
+                            </YStack>
+                        </XStack>
+                    </Pressable>
+                ) : null}
+
+                {/* Incident summary — BR spec §5 */}
+                {open_incident_count > 0 ? (
+                    <Pressable onPress={() => router.push('/incidents')} style={{ borderRadius: appTheme.radius.lg }}>
+                        <XStack
+                            padding={16} borderRadius={appTheme.radius.lg}
+                            backgroundColor="#FFF7ED"
+                            borderWidth={1.5} borderColor="#FDBA74"
+                            alignItems="center" gap={12}
+                        >
+                            <XStack
+                                width={42} height={42} borderRadius={14}
+                                backgroundColor="#EA580C22"
+                                alignItems="center" justifyContent="center"
+                            >
+                                <AlertOctagon size={20} color="#EA580C" />
+                            </XStack>
+                            <YStack flex={1} gap={2}>
+                                <Text fontSize={13} fontWeight="900" color="#EA580C">
+                                    {open_incident_count} sự cố đang mở
+                                </Text>
+                                <Text fontSize={12} color="#EA580C">
+                                    Đang chờ điều phối viên xử lý
+                                </Text>
+                            </YStack>
+                        </XStack>
+                    </Pressable>
+                ) : null}
+
                 {/* Quick actions — 2-col grid */}
                 <YStack gap={10}>
                     <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
@@ -244,7 +306,6 @@ export function DriverHomeScreen() {
                         ))}
                     </XStack>
                 </YStack>
-
 
             </ScrollView>
         </>
