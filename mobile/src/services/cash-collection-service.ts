@@ -33,7 +33,7 @@ export type CreateCollectionPayload = {
     paymentMethod?: CollectionPaymentMethod;
     shipmentId?: number;
     notes?: string;
-    receiptUrl?: string;
+    receiptUri: string;  // BR-018: ảnh biên lai bắt buộc, chụp realtime
 };
 
 type Filters = {
@@ -60,12 +60,24 @@ export const cashCollectionService = {
     getById: (id: number): Promise<{ collection: CashCollection }> =>
         apiClient.get(`/api/cash-collections/${id}`),
 
-    create: (payload: CreateCollectionPayload): Promise<{ message: string; collection: CashCollection }> =>
-        apiClient.post('/api/cash-collections', {
-            amount:        payload.amount,
-            paymentMethod: payload.paymentMethod ?? 'cash',
-            shipmentId:    payload.shipmentId,
-            notes:         payload.notes,
-            receiptUrl:    payload.receiptUrl,
-        }),
+    create: (payload: CreateCollectionPayload): Promise<{ message: string; collection: CashCollection }> => {
+        const formData = new FormData();
+        formData.append('amount',        String(payload.amount));
+        formData.append('paymentMethod', payload.paymentMethod ?? 'cash');
+        if (payload.shipmentId) formData.append('shipmentId', String(payload.shipmentId));
+        if (payload.notes?.trim()) formData.append('notes', payload.notes.trim());
+
+        const filename = payload.receiptUri.split('/').pop() ?? 'receipt.jpg';
+        const ext      = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const mimeMap: Record<string, string> = {
+            jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+        };
+        formData.append('receipt', {
+            uri:  payload.receiptUri,
+            name: filename,
+            type: mimeMap[ext] ?? 'image/jpeg',
+        } as unknown as Blob);
+
+        return apiClient.postForm('/api/cash-collections', formData);
+    },
 };

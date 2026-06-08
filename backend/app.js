@@ -6,11 +6,13 @@ const swaggerUi = require('swagger-ui-express');
 const routes = require('./routes');
 const swaggerDocument = require('./config/swagger');
 const { initNotificationGateway } = require('./services/notificationGateway');
+const { initCronJobs }           = require('./cron/debtCron');
 
 const app = express();
 const port = process.env.PORT || 9999;
 const server = http.createServer(app);
 initNotificationGateway(server);
+initCronJobs();
 
 // Middleware
 app.use(express.json());
