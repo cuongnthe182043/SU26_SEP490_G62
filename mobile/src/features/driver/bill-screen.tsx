@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
     Platform, Pressable, RefreshControl, ScrollView,
     StyleSheet, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { AlertTriangle, CheckCircle2, Clock, Plus, RotateCcw, XCircle } from 'lucide-react-native';
+import { AlertTriangle, Camera, CheckCircle2, Clock, Plus, RotateCcw, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }      from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
 import { appTheme }     from '@/theme/app-theme';
 import { useBill, useCreateBill } from '@/hooks/use-bill';
+import { useActiveTrip } from '@/hooks/use-active-trip';
+import { CameraModal }   from '@/features/trips/components/camera-modal';
 import type { Bill, BillPaymentMethod } from '@/services/bill-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -191,21 +193,51 @@ const METHODS: { value: BillPaymentMethod; label: string }[] = [
 ];
 
 function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-    const [amount, setAmount] = useState('');
-    const [method, setMethod] = useState<BillPaymentMethod>('cash');
-    const [notes,  setNotes]  = useState('');
+    const [amount,     setAmount]     = useState('');
+    const [method,     setMethod]     = useState<BillPaymentMethod>('cash');
+    const [notes,      setNotes]      = useState('');
+    const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [showCamera, setShowCamera] = useState(false);
+
+    const { trip } = useActiveTrip();
     const { isSubmitting, error, submit } = useCreateBill();
+
+    const BILL_STATUSES = ['transit', 'arrived', 'completed'];
+    const shipmentId   = trip && BILL_STATUSES.includes(trip.status) ? trip.id : null;
+    const shipmentInfo = trip
+        ? `Chuyến #${trip.id} (Đơn #${trip.order_id}) — ${trip.cargo_name ?? 'Hàng hóa'}`
+        : null;
 
     const handleSubmit = async () => {
         const n = Number(amount.replace(/[^0-9]/g, ''));
-        if (!n || n <= 0) { Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ'); return; }
-        const ok = await submit({ amount: n, paymentMethod: method, notes: notes.trim() || undefined });
+        if (!n || n <= 0)  { Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ'); return; }
+        if (!shipmentId)   { Alert.alert('Lỗi', 'Không có chuyến đang thực hiện'); return; }
+        if (!receiptUri)   { Alert.alert('Lỗi', 'Vui lòng chụp ảnh biên lai'); return; }
+
+        const ok = await submit({
+            shipmentId,
+            amount:       n,
+            receiptUri,
+            paymentMethod: method,
+            notes:         notes.trim() || undefined,
+        });
         if (ok) {
             Alert.alert('Thành công', 'Đã tạo bill. Kế toán sẽ xác nhận sớm.', [
                 { text: 'Đóng', onPress: onSuccess },
             ]);
         }
     };
+
+    if (showCamera) {
+        return (
+            <CameraModal
+                visible
+                label="Chụp biên lai thanh toán"
+                onCapture={(uri) => { setReceiptUri(uri); setShowCamera(false); }}
+                onClose={() => setShowCamera(false)}
+            />
+        );
+    }
 
     return (
         <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -220,9 +252,33 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
                     <Text fontSize={17} fontWeight="900" color={appTheme.colors.text} marginBottom={4}>
                         Tạo bill thu hộ
                     </Text>
-                    <Text fontSize={13} color={appTheme.colors.textMuted} marginBottom={20}>
+                    <Text fontSize={13} color={appTheme.colors.textMuted} marginBottom={16}>
                         Kế toán sẽ xác nhận. Trong lúc chờ không tính là công nợ.
                     </Text>
+
+                    {/* Chuyến gắn với bill */}
+                    <YStack
+                        marginBottom={16} padding={12} borderRadius={appTheme.radius.md}
+                        backgroundColor={shipmentId ? appTheme.colors.primarySoft : appTheme.colors.dangerSoft}
+                        borderWidth={1}
+                        borderColor={shipmentId ? appTheme.colors.primaryMuted : appTheme.colors.dangerBorder}
+                    >
+                        <Text fontSize={10} color={appTheme.colors.textMuted}>CHUYẾN</Text>
+                        <Text fontSize={13} fontWeight="700"
+                            color={shipmentId ? appTheme.colors.primary : appTheme.colors.danger}
+                        >
+                            {shipmentInfo ?? 'Không có chuyến đang thực hiện'}
+                        </Text>
+                        {trip && !shipmentId ? (
+                            <Text fontSize={11} color={appTheme.colors.danger} marginTop={2}>
+                                Chuyến đang ở trạng thái "{trip.status}" — chỉ tạo bill khi transit / arrived / completed
+                            </Text>
+                        ) : !trip ? (
+                            <Text fontSize={11} color={appTheme.colors.danger} marginTop={2}>
+                                Chỉ tạo bill khi đang có chuyến (transit / arrived)
+                            </Text>
+                        ) : null}
+                    </YStack>
 
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={6}>
                         Số tiền thu hộ (₫)
@@ -256,7 +312,29 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
                         ))}
                     </XStack>
 
+                    {/* Ảnh biên lai — bắt buộc */}
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={6}>
+                        Ảnh biên lai <Text fontSize={12} color={appTheme.colors.danger}>(bắt buộc)</Text>
+                    </Text>
+                    <Pressable onPress={() => setShowCamera(true)} style={s.photoBtn}>
+                        {receiptUri ? (
+                            <Image source={{ uri: receiptUri }} style={s.photoPreview} resizeMode="cover" />
+                        ) : (
+                            <YStack alignItems="center" gap={6}>
+                                <Camera size={24} color={appTheme.colors.primary} />
+                                <Text fontSize={12} color={appTheme.colors.primary} fontWeight="700">
+                                    Chụp biên lai
+                                </Text>
+                            </YStack>
+                        )}
+                    </Pressable>
+                    {receiptUri ? (
+                        <Pressable onPress={() => setShowCamera(true)}>
+                            <Text fontSize={11} color={appTheme.colors.primary} marginTop={4}>Chụp lại</Text>
+                        </Pressable>
+                    ) : null}
+
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={6} marginTop={14}>
                         Ghi chú (không bắt buộc)
                     </Text>
                     <TextInput
@@ -277,9 +355,9 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
                             <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Huỷ</Text>
                         </Pressable>
                         <Pressable
-                            style={[s.actionBtn, s.confirmBtn, isSubmitting && { opacity: 0.6 }]}
+                            style={[s.actionBtn, s.confirmBtn, (!shipmentId || isSubmitting) && { opacity: 0.5 }]}
                             onPress={handleSubmit}
-                            disabled={isSubmitting}
+                            disabled={!shipmentId || isSubmitting}
                         >
                             {isSubmitting
                                 ? <ActivityIndicator color="#fff" size="small" />
@@ -457,4 +535,11 @@ const s = StyleSheet.create({
     actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     cancelBtn: { backgroundColor: appTheme.colors.surfaceSoft, borderWidth: 1, borderColor: appTheme.colors.border },
     confirmBtn: { backgroundColor: appTheme.colors.primary },
+    photoBtn: {
+        height: 100, borderRadius: 14,
+        borderWidth: 1.5, borderColor: appTheme.colors.primaryMuted, borderStyle: 'dashed',
+        backgroundColor: appTheme.colors.primarySoft,
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    photoPreview: { width: '100%', height: '100%' },
 });

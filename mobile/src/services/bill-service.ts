@@ -29,11 +29,11 @@ export type BillSummary = {
 };
 
 export type CreateBillPayload = {
+    shipmentId: number;
     amount: number;
+    receiptUri: string;
     paymentMethod?: BillPaymentMethod;
-    shipmentId?: number;
     notes?: string;
-    receiptUrl?: string;
 };
 
 type Filters = {
@@ -60,12 +60,17 @@ export const billService = {
     getById: (id: number): Promise<{ bill: Bill }> =>
         apiClient.get(`/api/bills/${id}`),
 
-    create: (payload: CreateBillPayload): Promise<{ message: string; bill: Bill }> =>
-        apiClient.post('/api/bills', {
-            amount:        payload.amount,
-            paymentMethod: payload.paymentMethod ?? 'cash',
-            shipmentId:    payload.shipmentId,
-            notes:         payload.notes,
-            receiptUrl:    payload.receiptUrl,
-        }),
+    create: (payload: CreateBillPayload): Promise<{ message: string; bill: Bill }> => {
+        const form = new FormData();
+        form.append('shipmentId',   String(payload.shipmentId));
+        form.append('amount',       String(payload.amount));
+        form.append('paymentMethod', payload.paymentMethod ?? 'cash');
+        if (payload.notes) form.append('notes', payload.notes);
+        form.append('receipt', {
+            uri:  payload.receiptUri,
+            name: 'receipt.jpg',
+            type: 'image/jpeg',
+        } as unknown as Blob);
+        return apiClient.postForm('/api/bills', form);
+    },
 };
