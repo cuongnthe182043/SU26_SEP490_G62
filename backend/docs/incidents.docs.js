@@ -107,3 +107,75 @@
  *       403:
  *         description: Không có quyền (chỉ Coordinator)
  */
+
+/**
+ * @swagger
+ * /api/incidents/my/counts:
+ *   get:
+ *     tags: [Incidents]
+ *     summary: Số lượng sự cố mở / đóng của driver hiện tại (dùng cho dashboard)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: open_count, closed_count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 open_count:   { type: integer, example: 2 }
+ *                 closed_count: { type: integer, example: 5 }
+ */
+
+/**
+ * @swagger
+ * /api/incidents/{id}:
+ *   patch:
+ *     tags: [Incidents]
+ *     summary: Driver cập nhật thêm thông tin sự cố của chính mình (chưa được resolve)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: "Cập nhật thêm: xe đã kéo về xưởng"
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       403:
+ *         description: Không phải sự cố của mình hoặc đã resolved
+ *       404:
+ *         description: Không tìm thấy
+ */
+
+/**
+ * @swagger
+ * /api/incidents/shipment/{shipmentId}:
+ *   get:
+ *     tags: [Incidents]
+ *     summary: Danh sách sự cố của một shipment (chuyến vận chuyển)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: shipmentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Danh sách sự cố liên quan đến shipment
+ *       404:
+ *         description: Không tìm thấy shipment
+ */
