@@ -2,10 +2,9 @@ import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { HouseLine, BellSimple, Clock, GearSix } from "phosphor-react-native";
+import { HouseLine, ChartBar, Clock, Money, GearSix } from "phosphor-react-native";
 import { appTheme } from "@/theme/app-theme";
 import { AppText } from "./app-text";
-import { useNotifications } from "@/hooks/use-notifications";
 
 type TabConfig = {
   key: string;
@@ -18,58 +17,23 @@ type TabConfig = {
 };
 
 const TABS: TabConfig[] = [
-  { key: "index", label: "Trang chủ", Icon: HouseLine },
-  { key: "notifications", label: "Thông báo", Icon: BellSimple },
-  { key: "history", label: "Lịch sử", Icon: Clock },
-  { key: "profile", label: "Cài đặt", Icon: GearSix },
+  { key: "index",   label: "Trang chủ", Icon: HouseLine },
+  { key: "kpi",     label: "KPI",       Icon: ChartBar  },
+  { key: "history", label: "Lịch sử",   Icon: Clock     },
+  { key: "payroll", label: "Lương",     Icon: Money     },
+  { key: "profile", label: "Cài đặt",   Icon: GearSix   },
 ];
 
 const TAB_HEIGHT = 68;
-
-function UnreadBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  const label = count > 99 ? "99+" : String(count);
-  return (
-    <View
-      style={{
-        position: "absolute",
-        top: -4,
-        right: -6,
-        minWidth: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: appTheme.colors.danger,
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: 3,
-        borderWidth: 1.5,
-        borderColor: appTheme.colors.background,
-      }}
-    >
-      <AppText
-        style={{
-          fontSize: 9,
-          fontWeight: "700",
-          color: "#fff",
-          lineHeight: 13,
-        }}
-      >
-        {label}
-      </AppText>
-    </View>
-  );
-}
 
 function TabItem({
   config,
   isActive,
   onPress,
-  badge,
 }: {
   config: TabConfig;
   isActive: boolean;
   onPress: () => void;
-  badge?: number;
 }) {
   const scale = useRef(new Animated.Value(isActive ? 1 : 0.94)).current;
 
@@ -80,15 +44,11 @@ function TabItem({
       tension: 100,
       friction: 10,
     }).start();
-  }, [isActive]);
+  }, [isActive, scale]);
 
   const { Icon } = config;
-  const iconColor = isActive
-    ? appTheme.colors.primary
-    : appTheme.colors.textMuted;
-  const labelColor = isActive
-    ? appTheme.colors.primary
-    : appTheme.colors.textMuted;
+  const iconColor  = isActive ? appTheme.colors.primary : appTheme.colors.textMuted;
+  const labelColor = isActive ? appTheme.colors.primary : appTheme.colors.textMuted;
 
   return (
     <Pressable
@@ -102,20 +62,16 @@ function TabItem({
       }}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        <View style={{ position: "relative" }}>
-          <Icon
-            size={isActive ? 28 : 24}
-            color={iconColor}
-            weight={isActive ? "fill" : "regular"}
-          />
-          {badge !== undefined && <UnreadBadge count={badge} />}
-        </View>
+        <Icon
+          size={24}
+          color={iconColor}
+          weight={isActive ? "fill" : "regular"}
+        />
       </Animated.View>
 
       <AppText
-        variant="caption"
         style={{
-          fontSize: 12,
+          fontSize: 11,
           color: labelColor,
           fontWeight: isActive ? "700" : "400",
         }}
@@ -128,7 +84,6 @@ function TabItem({
 
 export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { unreadCount } = useNotifications();
 
   return (
     <View
@@ -151,7 +106,6 @@ export function BottomTabBar({ state, navigation }: BottomTabBarProps) {
           key={tab.key}
           config={tab}
           isActive={state.index === index}
-          badge={tab.key === "notifications" ? unreadCount : undefined}
           onPress={() => {
             const event = navigation.emit({
               type: "tabPress",

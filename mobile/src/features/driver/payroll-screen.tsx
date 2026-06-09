@@ -162,9 +162,17 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 <SalaryRow
                     label="BHXH người lao động (10.5%)"
                     value={`- ${fmtMoney(e.insurance_employee)}`}
-                    sub="Mức lương đóng: 5,310,000₫"
+                    sub={`Mức lương đóng: ${fmtMoneyFull(e.insurance_salary_base)}`}
                     tone="negative"
                 />
+
+                {Number(e.driver_debt_deduction) > 0 ? (
+                    <SalaryRow
+                        label="Công nợ tài xế chưa nộp"
+                        value={`- ${fmtMoney(e.driver_debt_deduction)}`}
+                        tone="negative"
+                    />
+                ) : null}
 
                 {Number(e.advance_deduction) > 0 ? (
                     <SalaryRow
@@ -279,8 +287,8 @@ function AdvanceCard({ a }: { a: SalaryAdvance }) {
 
 // ─── Advance request modal ────────────────────────────────────────────────────
 
-function AdvanceModal({ month, year, onClose, onSuccess }: {
-    month: number; year: number; onClose: () => void; onSuccess: () => void;
+function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
+    month: number; year: number; maxAmount: number; onClose: () => void; onSuccess: () => void;
 }) {
     const [amount, setAmount] = useState('');
     const [reason, setReason] = useState('');
@@ -292,7 +300,10 @@ function AdvanceModal({ month, year, onClose, onSuccess }: {
     const handleSubmit = async () => {
         const n = Number(amount.replace(/[^0-9]/g, ''));
         if (!n || n <= 0) { Alert.alert('Lỗi', 'Nhập số tiền hợp lệ'); return; }
-        if (n > 5_000_000) { Alert.alert('Lỗi', 'Tối đa 5,000,000₫'); return; }
+        if (n > maxAmount) {
+            Alert.alert('Lỗi', `Tối đa ${maxAmount.toLocaleString('vi-VN')}₫`);
+            return;
+        }
         const ok = await request({ amount: n, reason: reason.trim() || undefined, requestMonth: month, requestYear: year });
         if (ok) {
             Alert.alert('Thành công', 'Yêu cầu ứng lương đã gửi. Chờ quản lý duyệt.', [
@@ -314,7 +325,7 @@ function AdvanceModal({ month, year, onClose, onSuccess }: {
                         Yêu cầu ứng lương
                     </Text>
                     <Text fontSize={13} color={appTheme.colors.textMuted} marginBottom={16}>
-                        Tháng {month}/{year} · Tối đa 5,000,000₫
+                        Tháng {month}/{year} · Tối đa {maxAmount.toLocaleString('vi-VN')}₫
                     </Text>
 
                     {!isToday25 ? (
@@ -340,7 +351,7 @@ function AdvanceModal({ month, year, onClose, onSuccess }: {
                         value={amount}
                         onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))}
                         keyboardType="numeric"
-                        placeholder="Tối đa 5,000,000"
+                        placeholder={`Tối đa ${maxAmount.toLocaleString('vi-VN')}`}
                         placeholderTextColor={appTheme.colors.textMuted}
                     />
 
@@ -556,7 +567,8 @@ export function PayrollScreen() {
                     >
                         <Info size={12} color={appTheme.colors.primary} style={{ marginTop: 2 }} />
                         <AppText variant="caption" flex={1}>
-                            Chỉ được ứng vào ngày 25 hàng tháng · Tối đa 5,000,000₫ / tháng
+                            Chỉ được ứng vào ngày 25 hàng tháng
+                            {estimate ? ` · Tối đa ${Number(estimate.max_advance_amount).toLocaleString('vi-VN')}₫ / tháng` : ''}
                         </AppText>
                     </XStack>
 
@@ -578,6 +590,7 @@ export function PayrollScreen() {
                 <AdvanceModal
                     month={now.getMonth() + 1}
                     year={now.getFullYear()}
+                    maxAmount={estimate ? Number(estimate.max_advance_amount) : 5_000_000}
                     onClose={() => setShowAdvanceModal(false)}
                     onSuccess={() => { setShowAdvanceModal(false); loadAdv(); }}
                 />
