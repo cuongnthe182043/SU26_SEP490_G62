@@ -15,6 +15,7 @@ const COLUMN_ALIASES = {
   plate: ['bks', 'biển số', 'bien so', 'plate'],
   driver: ['lái xe', 'lai xe', 'driver'],
   customer: ['khách hàng', 'khach hang', 'customer'],
+  customerPhone: ['sđt', 'sdt', 'số điện thoại', 'so dien thoai', 'phone', 'customer phone'],
   route: ['hành trình', 'hanh trinh', 'route'],
   distance: ['quãng đường', 'quang duong', 'distance'],
   fare: ['cước xe', 'cuoc xe', 'fare'],
@@ -33,6 +34,7 @@ const normalizeKey = (value) =>
     .trim()
     .toLowerCase()
     .normalize('NFD')
+    .replace(/đ/g, 'd')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[^\w\s/.-]/g, '');
@@ -92,6 +94,7 @@ const parseSpreadsheet = (buffer) => {
       plate: extractValue(row, headerMap, COLUMN_ALIASES.plate),
       driver: extractValue(row, headerMap, COLUMN_ALIASES.driver),
       customer: extractValue(row, headerMap, COLUMN_ALIASES.customer),
+      customerPhone: extractValue(row, headerMap, COLUMN_ALIASES.customerPhone),
       route: extractRouteValue(row, headerMap),
       distance: extractValue(row, headerMap, COLUMN_ALIASES.distance),
       fare: extractValue(row, headerMap, COLUMN_ALIASES.fare),
@@ -111,7 +114,10 @@ const safeTrim = (value) => String(value ?? '').trim();
 const normalizeText = (value) => safeTrim(value)
   .toLowerCase()
   .normalize('NFD')
+  .replace(/đ/g, 'd')
   .replace(/[\u0300-\u036f]/g, '');
+
+const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
 
 const isLeaveNote = (value) => normalizeText(value) === 'nghi';
 
@@ -207,6 +213,7 @@ const importExcel = async (userId, fileBuffer) => {
       const plate = safeTrim(row.plate);
       const driverName = safeTrim(row.driver);
       const customerName = safeTrim(row.customer);
+      const customerPhone = normalizePhone(row.customerPhone);
       const route = safeTrim(row.route);
       const distance = safeTrim(row.distance);
       const fare = normalizeNumber(row.fare);
@@ -223,23 +230,23 @@ const importExcel = async (userId, fileBuffer) => {
       const { pickupAddress, deliveryAddress } = parseRoute(route);
 
       let customer = null;
-      if (customerName) {
-        const existingCust = await dbClient.query(
-          `SELECT id FROM customers WHERE full_name = $1 LIMIT 1`,
-          [customerName]
+      if (customerPhone) {
+        customer = await orderRepository.findOrCreateCustomer(
+          dbClient,
+          customerName,
+          customerPhone,
+          normalizePhone,
+          safeTrim,
         );
-        if (existingCust.rows[0]) {
-          customer = existingCust.rows[0];
-        } else {
-          const randomPhone = '0' + Math.floor(100000000 + Math.random() * 900000000);
-          const newCust = await dbClient.query(
-            `INSERT INTO customers (customer_type, full_name, contact_person, phone)
-             VALUES ('individual', $1, $1, $2)
-             RETURNING id`,
-            [customerName, randomPhone]
-          );
-          customer = newCust.rows[0];
-        }
+      } else if (customerName) {
+        const existingCust = await dbClient.query(
+          `SELECT id, full_name, phone
+           FROM customers
+           WHERE LOWER(full_name) = LOWER($1)
+           LIMIT 1`,
+          [customerName],
+        );
+        customer = existingCust.rows[0] ?? null;
       }
 
       const driver = await orderRepository.findOrCreateDriverWithVehicle(dbClient, {
@@ -255,12 +262,13 @@ const importExcel = async (userId, fileBuffer) => {
       const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
       const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
 
-      // Completed status bypasses uq_driver_one_active_trip constraint and allows driver/vehicle assignment
-      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
+      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
         plate ? `BKS: ${plate}` : '',
         driverName ? `Lái xe: ${driverName}` : '',
+        customerName ? `Khách hàng: ${customerName}` : '',
+        customerPhone ? `SĐT: ${customerPhone}` : '',
         route ? `Hành trình: ${route}` : '',
         distance ? `Quãng đường: ${distance}` : '',
         fare !== null ? `Cước xe: ${fare}` : '',
@@ -277,8 +285,9 @@ const importExcel = async (userId, fileBuffer) => {
           pickup_address: pickupAddress,
           delivery_address: deliveryAddress,
           estimated_price: fare || 0,
-          status: shipmentStatus,
           payment_type: 'cash',
+          customer_name: customerName,
+          customer_phone: customerPhone,
           notes,
           created_at: date,
         },
