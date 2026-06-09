@@ -44,25 +44,11 @@ const canCancelTrip = (trip) => {
   return Boolean(trip.orderId) && !["completed", "cancelled", "failed"].includes(status);
 };
 const shouldHighlightNoCheckIn = (trip) => {
-  const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.rawNotes ?? ""));
+  const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
   return hasCheckInMarker && !String(trip.checkIn ?? "").trim();
 };
 
-const formatDateForInput = (value) => {
-  if (!value) return "";
-  const text = String(value).trim();
-  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
-  const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) {
-    const [, day, month, year] = slash;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  }
-
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-};
 
 const splitRoute = (route) => {
   const text = String(route ?? "").trim();
@@ -72,82 +58,10 @@ const splitRoute = (route) => {
   return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
 };
 
-const buildOrderNotes = (values, selectedDriver) => [
-  values.date ? `Ngày: ${values.date}` : "",
-  selectedDriver?.plate_number ? `BKS: ${selectedDriver.plate_number}` : "",
-  selectedDriver?.full_name ? `Lái xe: ${selectedDriver.full_name}` : "",
-  values.customer_name ? `Khách hàng: ${values.customer_name}` : "",
-  values.customer_phone ? `SĐT: ${values.customer_phone}` : "",
-  values.pickup_address && values.delivery_address
-    ? `Hành trình: ${values.pickup_address} - ${values.delivery_address}`
-    : "",
-  values.distance ? `Quãng đường: ${values.distance}` : "",
-  values.estimated_price ? `Cước xe: ${values.estimated_price}` : "",
-  values.note,
-].filter(Boolean).join(" | ");
 
 
-function parseNotes(notes) {
-  const result = {
-    date: "",
-    checkIn: "",
-    plate: "",
-    driver: "",
-    customer: "",
-    route: "",
-    distance: "",
-    fare: "",
-    customerPhone: "",
-    pickupAddress: "",
-    deliveryAddress: "",
-    notesText: "",
-  };
-  
-  if (!notes) return result;
-  
-  const parts = notes.split(" | ");
-  parts.forEach(part => {
-    const dateMatch = part.match(/^Ngày:\s*(.+)$/i);
-    if (dateMatch) { result.date = dateMatch[1].trim(); return; }
-    
-    const checkInMatch = part.match(/^Chấm công:\s*(.+)$/i);
-    if (checkInMatch) { result.checkIn = checkInMatch[1].trim(); return; }
-    
-    const plateMatch = part.match(/^BKS:\s*(.+)$/i);
-    if (plateMatch) { result.plate = plateMatch[1].trim(); return; }
-    
-    const driverMatch = part.match(/^Lái xe:\s*(.+)$/i);
-    if (driverMatch) { result.driver = driverMatch[1].trim(); return; }
-    
-    const customerMatch = part.match(/^Khách hàng:\s*(.+)$/i);
-    if (customerMatch) { result.customer = customerMatch[1].trim(); return; }
 
-    const phoneMatch = part.match(/^SĐT:\s*(.+)$/i);
-    if (phoneMatch) { result.customerPhone = phoneMatch[1].trim(); return; }
 
-    const pickupMatch = part.match(/^Điểm lấy hàng:\s*(.+)$/i);
-    if (pickupMatch) { result.pickupAddress = pickupMatch[1].trim(); return; }
-
-    const deliveryMatch = part.match(/^Điểm giao hàng:\s*(.+)$/i);
-    if (deliveryMatch) { result.deliveryAddress = deliveryMatch[1].trim(); return; }
-    
-    const routeMatch = part.match(/^Hành trình:\s*(.+)$/i);
-    if (routeMatch) { result.route = routeMatch[1].trim(); return; }
-    
-    const distanceMatch = part.match(/^Quãng đường:\s*(.+)$/i);
-    if (distanceMatch) { result.distance = distanceMatch[1].trim(); return; }
-
-    const fareMatch = part.match(/^Cước xe:\s*(.+)$/i);
-    if (fareMatch) { result.fare = fareMatch[1].trim(); return; }
-  });
-  
-  const noteParts = parts.filter(part => 
-    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|SĐT|Điểm lấy hàng|Điểm giao hàng|Hành trình|Quãng đường|Cước xe):/i)
-  );
-  result.notesText = noteParts.join(" | ");
-  
-  return result;
-}
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
@@ -155,33 +69,31 @@ function extractDriverName(notes) {
 }
 
 function buildTripFromOrder(order) {
-  const noteInfo = parseNotes(order.notes);
-  const pickupAddress = order.pickup_address || noteInfo.pickupAddress || "";
-  const deliveryAddress = order.delivery_address || noteInfo.deliveryAddress || "";
-  const date = noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
+  const pickupAddress = order.pickup_address ||  "";
+  const deliveryAddress = order.delivery_address ||  "";
+  const date = (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: formatDateForInput(noteInfo.date || order.created_at),
-    checkIn: noteInfo.checkIn || "",
-    plate: noteInfo.plate || order.plate_number || "",
+    dateInput: order.created_at,
+    checkIn:  "",
+    plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",
     vehicleGroupId: order.vehicle_group_id || "",
-    driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
-    customerName: order.customer_name || noteInfo.customer || "",
-    customerPhone: order.customer_phone || noteInfo.customerPhone || "",
+    driverName: order.driver_name ||  "",
+    customerName: order.customer_name || "",
+    customerPhone: order.customer_phone ||  "",
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
     pickupAddress,
     deliveryAddress,
-    route: noteInfo.route || (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance: noteInfo.distance || "",
-    fare: noteInfo.fare || order.estimated_price || order.total_estimated_price || 0,
+    route:  (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
+    distance:  "",
+    fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
-    notes: noteInfo.notesText || "",
-    rawNotes: order.notes || "",
+    notes: order.notes,
   };
 }
 
@@ -206,9 +118,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  useEffect(() => {
-    localStorage.removeItem("coordinatorTrips");
-  }, []);
+
   
 
   useEffect(() => {
@@ -529,7 +439,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         delivery_address: form.delivery_address,
         estimated_price: form.estimated_price,
         vehicle_group_id: selectedVehicleGroupId,
-        notes: buildOrderNotes(form, noteDriver),
+        notes: form.note,
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
@@ -959,7 +869,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           ? trip.fare.toLocaleString("vi-VN") + " đ"
                           : trip.fare || "-"}
                       </td>
-                      <td className="table-address-cell">{trip.notes || "-"}</td>
+                      <td className="table-address-cell">{trip.notes}</td>
                       <td>
                         <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
                           {trip.status}
