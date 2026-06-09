@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Button, Descriptions, Input, Modal, Space, Table, Tag, Typography, message } from "antd";
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Descriptions, Dropdown, Input, Modal, Space, Table, Tag, Typography, message } from "antd";
+import { DeleteOutlined, EditOutlined, EllipsisOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import VehicleGroupModal from "./VehicleGroupModal";
 import {
   createVehicleGroup,
@@ -154,19 +154,36 @@ export default function VehicleGroupList() {
     {
       title: "Actions",
       key: "actions",
-      render: (_, record) => (
-        <Space>
-          <Button icon={<EyeOutlined />} onClick={() => handleOpenDetail(record)}>
-            Details
-          </Button>
-          <Button icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>
-            Edit
-          </Button>
-          <Button danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-            Delete
-          </Button>
-        </Space>
-      ),
+      width: 80,
+      render: (_, record) => {
+        const items = [
+          {
+            key: "details",
+            icon: <EyeOutlined />,
+            label: "Details",
+            onClick: () => handleOpenDetail(record),
+          },
+          {
+            key: "edit",
+            icon: <EditOutlined />,
+            label: "Edit",
+            onClick: () => handleOpenEdit(record),
+          },
+          {
+            key: "delete",
+            icon: <DeleteOutlined />,
+            label: "Delete",
+            danger: true,
+            onClick: () => handleDelete(record),
+          },
+        ];
+
+        return (
+          <Dropdown menu={{ items }} trigger={["click"]}>
+            <Button icon={<EllipsisOutlined />} aria-label={`Actions for vehicle group ${record.name}`} />
+          </Dropdown>
+        );
+      },
     },
   ];
 

@@ -46,7 +46,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status)
 SELECT '51-E33333',
        (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
-       'Kia', 'K200', 2000, 2023, 'available'
+       'Kia', 'K200', 2000, 2023, 'active'
 WHERE NOT EXISTS (SELECT 1 FROM vehicles WHERE plate_number = '51-E33333');
 
 INSERT INTO drivers (profile_id, license_number, license_expiry_date, hire_date, revenue_share_percent)
@@ -54,15 +54,6 @@ SELECT p.id, 'DL654321', '2028-06-30', '2024-06-01', 15
 FROM profiles p JOIN accounts a ON a.id = p.id
 WHERE a.email = 'driver2@example.com'
 ON CONFLICT (profile_id) DO NOTHING;
-
-UPDATE vehicles SET assigned_driver_id = (
-    SELECT p.id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com'
-) WHERE plate_number = '51-E33333' AND assigned_driver_id IS NULL;
-
-UPDATE drivers SET vehicle_id = (SELECT id FROM vehicles WHERE plate_number = '51-E33333')
-WHERE profile_id = (
-    SELECT p.id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com'
-) AND vehicle_id IS NULL;
 
 -- ─── SCENARIO 1: X2C — Shipment có 2 runs, đang AVAILABLE trong pool ─────────
 -- Driver nào cũng nhận được (nhóm Small Van)

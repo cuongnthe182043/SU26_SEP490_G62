@@ -35,6 +35,7 @@ const uploadPaymentReceipt = makeUploader(UPLOAD.FOLDERS.PAYMENT_RECEIPT);
 const uploadIncident       = makeUploader(UPLOAD.FOLDERS.INCIDENT);
 const uploadAvatar         = makeUploader(UPLOAD.FOLDERS.AVATAR);
 const uploadExpense        = makeUploader(UPLOAD.FOLDERS.EXPENSE);
+const uploadMaintenanceBill = makeUploader(UPLOAD.FOLDERS.MAINTENANCE_BILL);
 const uploadDebtRepayment          = makeUploader(UPLOAD.FOLDERS.DEBT_REPAYMENT);
 const uploadCashCollectionReceipt  = makeUploader(UPLOAD.FOLDERS.CASH_COLLECTION_RECEIPT);
 
@@ -59,4 +60,4 @@ const uploadTripComplete = multer({
     },
 });
 
-module.exports = { uploadProof, uploadReceipt, uploadPaymentReceipt, uploadIncident, uploadAvatar, uploadExpense, uploadTripComplete, uploadDebtRepayment, uploadCashCollectionReceipt };
+module.exports = { uploadProof, uploadReceipt, uploadPaymentReceipt, uploadIncident, uploadAvatar, uploadExpense, uploadMaintenanceBill, uploadTripComplete, uploadDebtRepayment, uploadCashCollectionReceipt };

@@ -20,6 +20,7 @@ router.get('/vehicles/:id', vehicleManagementController.getVehicleDetail);
 router.put('/vehicles/:id', vehicleManagementController.updateVehicle);
 router.post('/vehicles/:id/send-to-maintenance', vehicleManagementController.sendVehicleToMaintenance);
 router.post('/vehicles/:id/complete-maintenance', vehicleManagementController.completeMaintenance);
+router.post('/vehicles/:id/verify-maintenance', vehicleManagementController.verifyMaintenance);
 router.post('/vehicles/:id/mark-broken', vehicleManagementController.markVehicleAsBroken);
 router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle);
 router.post('/vehicles/:id/retire', vehicleManagementController.retireVehicle);

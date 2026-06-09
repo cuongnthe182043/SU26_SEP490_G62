@@ -165,7 +165,7 @@
  * /api/admin/vehicles/driver-options:
  *   get:
  *     tags: [Vehicle Management]
- *     summary: List drivers available for assignment
+ *     summary: List drivers available for vehicle assignment and maintenance selection
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -174,7 +174,7 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Driver options with current assignment info
+ *         description: Driver options with current assignment info, active shipment flags, and maintenance eligibility
  */
 
 /**
@@ -247,10 +247,10 @@
  *     summary: Create maintenance record and move vehicle to maintenance
  *     security:
  *       - bearerAuth: []
- * /api/admin/vehicles/{id}/complete-maintenance:
+ * /api/admin/vehicles/{id}/verify-maintenance:
  *   post:
  *     tags: [Vehicle Management]
- *     summary: Complete open maintenance and move vehicle to active
+ *     summary: Verify completed maintenance and move vehicle to active
  *     security:
  *       - bearerAuth: []
  * /api/admin/vehicles/{id}/mark-broken:

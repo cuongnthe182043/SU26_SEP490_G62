@@ -19,6 +19,10 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
     LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id
 `;
 
+const ACTIVE_SHIPMENT_STATUS_CONDITION = `
+    os.status IN ('claimed', 'picking', 'loaded', 'transit', 'arrived', 'returning')
+`;
+
 const VEHICLE_DETAIL_SELECT = `
     SELECT
         v.id,
@@ -44,6 +48,11 @@ const VEHICLE_DETAIL_SELECT = `
         lm.maintenance_type AS active_maintenance_type,
         lm.description AS active_maintenance_description,
         lm.maintenance_date AS active_maintenance_date,
+        lm.bill_pics AS active_maintenance_bill_pics,
+        lm.completed_at AS active_maintenance_completed_at,
+        lm.performed_by AS active_maintenance_performed_by,
+        mp.full_name AS active_maintenance_performed_by_name,
+        lm.status AS active_maintenance_status,
         li.id AS active_failure_id,
         li.incident_type AS active_failure_type,
         li.description AS active_failure_description,
@@ -58,13 +67,18 @@ const VEHICLE_DETAIL_SELECT = `
             mr.id,
             mr.maintenance_type,
             mr.description,
-            mr.maintenance_date
+            mr.maintenance_date,
+            mr.bill_pics,
+            mr.completed_at,
+            mr.status,
+            mr.performed_by
         FROM maintenance_records mr
         WHERE mr.vehicle_id = v.id
-          AND mr.status = 'open'
+          AND mr.status IN ('open', 'pending_verification')
         ORDER BY mr.started_at DESC, mr.id DESC
         LIMIT 1
     ) lm ON TRUE
+    LEFT JOIN profiles mp ON mp.id = lm.performed_by
     LEFT JOIN LATERAL (
         SELECT
             i.id,
@@ -302,10 +316,17 @@ const getDriverById = async (driverId, db = pool) => {
             d.vehicle_id,
             p.full_name,
             a.email,
-            d.license_number
+            d.license_number,
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS active_shipment_count
+             FROM order_shipments os
+             WHERE os.owner_driver_id = d.profile_id
+               AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
+         ) active_shipments ON TRUE
          WHERE d.profile_id = $1`,
         [driverId],
     );
@@ -321,11 +342,18 @@ const listDriverOptions = async () => {
             d.license_number,
             d.vehicle_id AS current_vehicle_id,
             v.plate_number AS current_vehicle_plate,
-            v.status AS current_vehicle_status
+            v.status AS current_vehicle_status,
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
          LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS active_shipment_count
+             FROM order_shipments os
+             WHERE os.owner_driver_id = d.profile_id
+               AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
+         ) active_shipments ON TRUE
          ORDER BY p.full_name ASC, d.profile_id ASC`,
     );
     return result.rows;
@@ -336,7 +364,7 @@ const hasOpenMaintenanceRecord = async (vehicleId, db = pool) => {
         `SELECT id
          FROM maintenance_records
          WHERE vehicle_id = $1
-           AND status = 'open'
+           AND status IN ('open', 'pending_verification')
          LIMIT 1`,
         [vehicleId],
     );
@@ -684,8 +712,8 @@ const createMaintenanceRecordAndSetStatus = async ({
 const completeMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
-    managerId,
-    completionNote = null,
+    driverId,
+    billPics = [],
     performedBy = null,
 }) => {
     const client = await pool.connect();
@@ -732,14 +760,104 @@ const completeMaintenanceRecordAndSetStatus = async ({
 
         await client.query(
             `UPDATE maintenance_records
-             SET status = 'completed',
+             SET status = 'pending_verification',
                  completed_at = NOW(),
-                 completion_note = $2,
+                 bill_pics = $2::jsonb,
                  completed_by = $3,
                  performed_by = COALESCE($4, performed_by),
                  updated_at = NOW()
              WHERE id = $1`,
-            [record.id, completionNote, managerId, performedBy],
+            [record.id, JSON.stringify(billPics), driverId, performedBy],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'complete_maintenance', $2, $2, 'maintenance_record', $3, $4, $5)`,
+            [vehicleId, vehicle.status, record.id, 'Driver marked maintenance ready for verification', driverId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId: record.id, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const verifyMaintenanceRecordAndSetStatus = async ({
+    vehicleId,
+    maintenanceRecordId,
+    managerId,
+    note = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId];
+        let idClause = '';
+        if (maintenanceRecordId !== null) {
+            params.push(maintenanceRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const recordResult = await client.query(
+            `SELECT id, bill_pics
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status = 'pending_verification'
+               ${idClause}
+             ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = recordResult.rows[0];
+        if (!record) {
+            const err = new Error('Maintenance record awaiting verification not found');
+            err.code = 'PENDING_MAINTENANCE_NOT_FOUND';
+            throw err;
+        }
+
+        const billPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];
+        if (billPics.length === 0) {
+            const err = new Error('Maintenance bill evidence is required before verification');
+            err.code = 'MAINTENANCE_BILL_REQUIRED';
+            throw err;
+        }
+
+        await client.query(
+            `UPDATE maintenance_records
+             SET status = 'completed',
+                 verified_by = $2,
+                 verified_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [record.id, managerId],
         );
 
         await client.query(
@@ -762,7 +880,7 @@ const completeMaintenanceRecordAndSetStatus = async ({
                 created_by
             )
             VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
-            [vehicleId, vehicle.status, record.id, completionNote, managerId],
+            [vehicleId, vehicle.status, record.id, note, managerId],
         );
 
         await client.query('COMMIT');
@@ -1034,6 +1152,32 @@ const listVehicleStatusHistory = async (vehicleId) => {
     return result.rows;
 };
 
+const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool) => {
+    const result = await db.query(
+        `SELECT id, vehicle_id, performed_by, status, bill_pics
+         FROM maintenance_records
+         WHERE vehicle_id = $1
+           AND performed_by = $2
+           AND status = 'open'
+         ORDER BY started_at DESC, id DESC
+         LIMIT 1`,
+        [vehicleId, driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const updateMaintenanceBillPics = async (maintenanceRecordId, billPics, db = pool) => {
+    const result = await db.query(
+        `UPDATE maintenance_records
+         SET bill_pics = $2::jsonb,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, bill_pics`,
+        [maintenanceRecordId, JSON.stringify(billPics)],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     listVehicleGroups,
     getVehicleGroupById,
@@ -1055,8 +1199,11 @@ module.exports = {
     updateVehicleStatus,
     createMaintenanceRecordAndSetStatus,
     completeMaintenanceRecordAndSetStatus,
+    verifyMaintenanceRecordAndSetStatus,
     createFailureRecordAndSetStatus,
     resolveFailureRecordAndSetStatus,
     retireVehicle,
     listVehicleStatusHistory,
+    getActiveMaintenanceRecordForDriver,
+    updateMaintenanceBillPics,
 };
