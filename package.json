@@ -2,9 +2,11 @@
   "name": "su26-sep490-g62",
   "private": true,
   "scripts": {
-    "postinstall": "npm run mobile:install",
+    "postinstall": "npm run install:all",
+    "install:all": "npm run backend:install && npm run mobile:install",
     "start": "npm run mobile",
-    "setup": "npm run mobile:install",
+    "setup": "npm run install:all",
+    "backend:install": "npm --prefix backend install",
     "mobile": "npm --prefix mobile start",
     "mobile:dev": "npm --prefix mobile run dev",
     "mobile:clear": "npm --prefix mobile run start:clear",
