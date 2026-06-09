@@ -53,3 +53,69 @@
  *       422:
  *         description: Dữ liệu không hợp lệ
  */
+
+/**
+ * @swagger
+ * /api/orders/import-excel:
+ *   post:
+ *     tags: [Orders]
+ *     summary: Import nhiều orders từ file Excel
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: File .xlsx theo template
+ *     responses:
+ *       200:
+ *         description: Kết quả import (success_count, failed_rows)
+ *       422:
+ *         description: File không đúng định dạng
+ */
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   patch:
+ *     tags: [Orders]
+ *     summary: Cập nhật thông tin order (Coordinator / Admin)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pickup_address:      { type: string }
+ *               destination_address: { type: string }
+ *               vehicle_group:       { type: string }
+ *               cargo_note:          { type: string }
+ *               priority:
+ *                 type: string
+ *                 enum: [low, normal, high]
+ *               status:
+ *                 type: string
+ *                 enum: [pending, in_progress, completed, cancelled]
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       404:
+ *         description: Không tìm thấy order
+ *       422:
+ *         description: Dữ liệu không hợp lệ
+ */
