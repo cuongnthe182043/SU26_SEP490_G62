@@ -143,6 +143,22 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
     return incidentRepository.getIncidentById(incident.id);
 };
 
+const getMyCounts = async (driverId) => {
+    const result = await require('../config/database').query(
+        `SELECT
+            COUNT(*) FILTER (WHERE status IN ('open','investigating'))   AS open_count,
+            COUNT(*) FILTER (WHERE status IN ('resolved','closed'))      AS closed_count
+         FROM incidents
+         WHERE reported_by = $1`,
+        [driverId],
+    );
+    const row = result.rows[0];
+    return {
+        open_count:   Number(row.open_count   ?? 0),
+        closed_count: Number(row.closed_count ?? 0),
+    };
+};
+
 const getMyIncidents = async (driverId, page = 1, limit = 20) => {
     const offset = (page - 1) * limit;
     const { rows, total } = await incidentRepository.getIncidentsByDriver(driverId, { limit, offset });
@@ -197,6 +213,6 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
 };
 
 module.exports = {
-    createIncident, getMyIncidents, getIncidentDetail,
+    createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };

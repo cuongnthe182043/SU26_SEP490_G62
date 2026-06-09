@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
     AlertTriangle, Award, ChevronLeft, ChevronRight,
-    Star, TrendingUp, Trophy, Truck,
+    Clock, Star, TrendingUp, Trophy, Truck,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -262,20 +262,28 @@ function KpiSection({ record }: { record: KpiRecord }) {
                 />
             </XStack>
 
-            {/* Incidents */}
-            <StatCard
-                icon={<AlertTriangle size={18} color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success} />}
-                label="Sự cố trong tháng"
-                value={String(record.incident_count)}
-                sub={
-                    record.critical_incident_count > 0
-                        ? `${record.critical_incident_count} khẩn cấp`
-                        : record.major_incident_count > 0
-                            ? `${record.major_incident_count} nghiêm trọng`
-                            : 'Không có sự cố nghiêm trọng'
-                }
-                color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success}
-            />
+            {/* On-Time KPI + Incidents */}
+            <XStack gap={12}>
+                <StatCard
+                    icon={<Clock size={18} color={Number(record.on_time_rate) >= 90 ? appTheme.colors.success : appTheme.colors.warning} />}
+                    label="Giao đúng hạn"
+                    value={`${record.on_time_rate}%`}
+                    color={Number(record.on_time_rate) >= 90 ? appTheme.colors.success : appTheme.colors.warning}
+                />
+                <StatCard
+                    icon={<AlertTriangle size={18} color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success} />}
+                    label="Sự cố tháng này"
+                    value={String(record.incident_count)}
+                    sub={
+                        record.critical_incident_count > 0
+                            ? `${record.critical_incident_count} khẩn cấp`
+                            : record.major_incident_count > 0
+                                ? `${record.major_incident_count} nghiêm trọng`
+                                : 'Không có sự cố nghiêm trọng'
+                    }
+                    color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success}
+                />
+            </XStack>
 
             {/* Rule 5 */}
             <KpiBonusCard record={record} />

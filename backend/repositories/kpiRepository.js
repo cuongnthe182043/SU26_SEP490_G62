@@ -37,7 +37,9 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
             END                                                 AS kpi_bonus_achieved,
 
             -- Rule 4: Thưởng lái xe xuất sắc nhất tháng — lấy rule đầu tiên active
-            br_top.reward_amount::text                          AS top_driver_bonus_reward
+            br_top.reward_amount::text                          AS top_driver_bonus_reward,
+
+            k.on_time_rate::text
 
          FROM kpi_records k
          JOIN vehicle_groups vg ON vg.id = k.vehicle_group_id
@@ -241,6 +243,26 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const { completed_shipments, total_revenue } = shipRes.rows[0];
 
+    // Tỷ lệ giao đúng hạn (BR-020 KPI): hoàn thành trước deadline hoặc không có deadline
+    const otRes = await pool.query(
+        `SELECT
+            CASE
+                WHEN COUNT(*) = 0 THEN 100
+                ELSE ROUND(
+                    COUNT(*) FILTER (WHERE deadline_at IS NULL OR completed_at <= deadline_at) * 100.0
+                    / COUNT(*),
+                    1
+                )
+            END AS on_time_rate
+         FROM order_shipments
+         WHERE owner_driver_id = $1
+           AND status = 'completed'
+           AND EXTRACT(MONTH FROM completed_at) = $2
+           AND EXTRACT(YEAR  FROM completed_at) = $3`,
+        [driverId, month, year],
+    );
+    const onTimeRate = Number(otRes.rows[0].on_time_rate ?? 100);
+
     const incRes = await pool.query(
         `SELECT
             COUNT(*)                                               AS incident_count,
@@ -258,11 +280,13 @@ const recalculateDriverKPI = async (driverId, month, year) => {
         `INSERT INTO kpi_records
             (driver_id, vehicle_group_id, month, year,
              completed_shipments, total_revenue,
-             late_deliveries, incident_count, major_incident_count, critical_incident_count)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9)
+             late_deliveries, on_time_rate,
+             incident_count, major_incident_count, critical_incident_count)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10)
          ON CONFLICT (driver_id, month, year) DO UPDATE SET
              completed_shipments     = EXCLUDED.completed_shipments,
              total_revenue           = EXCLUDED.total_revenue,
+             on_time_rate            = EXCLUDED.on_time_rate,
              incident_count          = EXCLUDED.incident_count,
              major_incident_count    = EXCLUDED.major_incident_count,
              critical_incident_count = EXCLUDED.critical_incident_count,
@@ -271,6 +295,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
         [
             driverId, vehicleGroupId, month, year,
             Number(completed_shipments), Number(total_revenue),
+            onTimeRate,
             Number(incident_count), Number(major_incident_count), Number(critical_incident_count),
         ],
     );

@@ -18,6 +18,8 @@ const debtRoutes = require('./debtRoutes');
 const vehicleManagementRoutes = require('./vehicleManagementRoutes');
 const leaveRoutes = require('./leaveRoutes');
 const accountantRoutes = require('./accountant/accountantRoutes');
+const cashCollectionRoutes   = require('./cashCollectionRoutes');
+
 
 // Register route modules
 router.use('/auth', authRoutes);
@@ -36,7 +38,7 @@ router.use('/api/notifications', notificationRoutes);
 router.use('/api/kpi', kpiRoutes);
 router.use('/api/payroll', payrollRoutes);
 router.use('/api/debts', debtRoutes);
-router.use('/api/leave', leaveRoutes);
-
+router.use('/api/leave',            leaveRoutes);
+router.use('/api/cash-collections', cashCollectionRoutes);
 
 module.exports = router;

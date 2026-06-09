@@ -1,4 +1,5 @@
 const payrollRepository = require('../repositories/payrollRepository');
+const { MAX_ADVANCE_AMOUNT } = payrollRepository;
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -12,11 +13,9 @@ const getMyPayrolls = async (driverId, { month, year } = {}) => {
 // ─── Salary Advance ───────────────────────────────────────────────────────────
 
 // BR-029: Driver request → Manager approve → Accountant disburse
-const MAX_ADVANCE = 5_000_000;
-
 const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, requestYear }) => {
     if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
-    if (Number(amount) > MAX_ADVANCE) throw new Error(`Số tiền ứng lương tối đa là ${MAX_ADVANCE.toLocaleString('vi-VN')}₫`);
+    if (Number(amount) > MAX_ADVANCE_AMOUNT) throw new Error(`Số tiền ứng lương tối đa là ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}₫`);
     const m = Number(requestMonth);
     const y = Number(requestYear);
     if (!m || m < 1 || m > 12) throw new Error('Tháng không hợp lệ (1-12)');
