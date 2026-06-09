@@ -11,5 +11,6 @@ router.get('/', orderController.listOrders);
 router.post('/import-excel', uploadExcel.single('file'), orderController.importOrders);
 router.post('/', orderController.createOrder);
 router.patch('/:id', orderController.updateOrder);
+router.delete('/:id', orderController.cancelOrder);
 
 module.exports = router;

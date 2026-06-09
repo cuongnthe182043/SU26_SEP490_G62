@@ -22,7 +22,6 @@ const requiredFields = [
   { key: "date", label: "Ngày tháng" },
   
   
-  { key: "customer_phone", label: "SĐT" },
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
   { key: "estimated_price", label: "Cước xe" },
@@ -33,6 +32,21 @@ const requiredFields = [
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
+
+const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
+const STATUS_TABS = {
+  all: null,
+  new: new Set(["available"]),
+  waiting: new Set(["claimed", "picking", "loaded", "transit", "arrived", "returning"]),
+};
+const canCancelTrip = (trip) => {
+  const status = normalizeStatus(trip.status);
+  return Boolean(trip.orderId) && !["completed", "cancelled", "failed"].includes(status);
+};
+const shouldHighlightNoCheckIn = (trip) => {
+  const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.rawNotes ?? ""));
+  return hasCheckInMarker && !String(trip.checkIn ?? "").trim();
+};
 
 const formatDateForInput = (value) => {
   if (!value) return "";
@@ -274,10 +288,9 @@ export default function CoordinatorPage({ user, onLogout }) {
     const customer = customerFilter.trim().toLowerCase();
 
     return trips.filter((trip) => {
-      const matchesTab =
-        activeTab === "all" ||
-        (activeTab === "new" && trip.status === "New") ||
-        (activeTab === "waiting" && trip.status === "Waiting");
+      const normalizedStatus = normalizeStatus(trip.status);
+      const allowedStatuses = STATUS_TABS[activeTab];
+      const matchesTab = !allowedStatuses || allowedStatuses.has(normalizedStatus);
 
       if (!matchesTab) return false;
 
@@ -451,6 +464,31 @@ export default function CoordinatorPage({ user, onLogout }) {
     setEditingTrip(null);
     setForm(emptyForm);
     setFormErrors({});
+  };
+
+  const handleCancelOrder = async (trip) => {
+    if (!canCancelTrip(trip)) return;
+
+    const confirmed = window.confirm(`Bạn có chắc muốn hủy đơn #${trip.orderId}?`);
+    if (!confirmed) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const data = await apiRequest(`/api/orders/${trip.orderId}`, {
+        method: "DELETE",
+        token,
+        body: { reason: "Coordinator cancelled order" },
+      });
+      const cancelledTrip = buildTripFromOrder(data.order);
+      setTrips((currentTrips) => currentTrips.map((item) => (
+        item.orderId === cancelledTrip.orderId ? cancelledTrip : item
+      )));
+      setMessage(data.message || "Đã hủy đơn hàng.");
+      setMessageType("success");
+    } catch (err) {
+      setMessage(err.message || "Không thể hủy đơn hàng.");
+      setMessageType("error");
+    }
   };
 
   const handleCreateOrder = async (event) => {
@@ -635,24 +673,24 @@ export default function CoordinatorPage({ user, onLogout }) {
             >
               Xóa lọc
             </button>
-            {/* <button
+            <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
-              All
-            </button> */}
-            {/* <button
+              Tất cả
+            </button>
+            <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
-              New
+              Mới
             </button>
             <button
               className={activeTab === "waiting" ? "filter active" : "filter"}
               onClick={() => setActiveTab("waiting")}
             >
-              Waiting
-            </button> */}
+              Đang xử lý
+            </button>
           </div>
         </section>
 
@@ -904,7 +942,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </tr>
                 ) : (
                   filteredTrips.map((trip) => (
-                    <tr key={trip.id} className={!trip.checkIn ? "row-no-checkin" : ""}>
+                    <tr key={trip.id} className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
                       <td>
                         <span className="trip-id">
                           #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
@@ -931,6 +969,16 @@ export default function CoordinatorPage({ user, onLogout }) {
                         <div className="table-actions">
                           <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
                             ✎
+                          </button>
+                          <button
+                            className="table-cancel-btn"
+                            type="button"
+                            aria-label="Cancel order"
+                            title="Hủy đơn"
+                            disabled={!canCancelTrip(trip)}
+                            onClick={() => handleCancelOrder(trip)}
+                          >
+                            ✕
                           </button>
                         </div>
                       </td>

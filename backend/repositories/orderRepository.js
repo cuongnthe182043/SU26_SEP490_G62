@@ -224,22 +224,36 @@ const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, 
 
 const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
     const normalizedPhone = normalizePhone(customerPhone);
-    if (!normalizedPhone) return null;
+    const normalizedName = safeTrim(customerName);
 
-    const existingCustomer = await client.query(
-        `SELECT id, full_name, phone
-         FROM customers
-         WHERE phone = $1
-         LIMIT 1`,
-        [normalizedPhone],
-    );
-    if (existingCustomer.rows[0]) return existingCustomer.rows[0];
+    if (normalizedPhone) {
+        const existingCustomer = await client.query(
+            `SELECT id, full_name, phone
+             FROM customers
+             WHERE phone = $1
+             LIMIT 1`,
+            [normalizedPhone],
+        );
+        if (existingCustomer.rows[0]) return existingCustomer.rows[0];
+    } else if (normalizedName) {
+        const existingCustomer = await client.query(
+            `SELECT id, full_name, phone
+             FROM customers
+             WHERE LOWER(full_name) = LOWER($1)
+               AND phone IS NULL
+             LIMIT 1`,
+            [normalizedName],
+        );
+        if (existingCustomer.rows[0]) return existingCustomer.rows[0];
+    } else {
+        return null;
+    }
 
     const createdCustomer = await client.query(
         `INSERT INTO customers (customer_type, full_name, contact_person, phone)
          VALUES ('individual', $1, $1, $2)
          RETURNING id, full_name, phone`,
-        [safeTrim(customerName) || normalizedPhone, normalizedPhone],
+        [normalizedName || normalizedPhone, normalizedPhone || null],
     );
     return createdCustomer.rows[0];
 };
@@ -466,6 +480,54 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
     }
 };
 
+const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const shipmentResult = await client.query(
+            `SELECT id, status
+             FROM order_shipments
+             WHERE order_id = $1
+             ORDER BY shipment_index ASC
+             LIMIT 1
+             FOR UPDATE`,
+            [orderId],
+        );
+        const shipment = shipmentResult.rows[0];
+        if (!shipment) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        if (['completed', 'cancelled'].includes(String(shipment.status).toLowerCase())) {
+            throw new Error('Không thể hủy đơn đã hoàn tất hoặc đã hủy');
+        }
+
+        await client.query(
+            `UPDATE order_shipments
+             SET status = 'cancelled', cancel_reason = $2, cancelled_at = NOW(), updated_at = NOW()
+             WHERE id = $1`,
+            [shipment.id, reason],
+        );
+        await client.query(
+            `UPDATE orders
+             SET derived_status = 'cancelled', updated_at = NOW()
+             WHERE id = $1`,
+            [orderId],
+        );
+
+        await client.query('COMMIT');
+        const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);
+        return updated.rows[0] ?? null;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     listOrders,
     getDriverById,
@@ -476,4 +538,5 @@ module.exports = {
     createOrderWithShipment,
     importOrderWithShipment,
     updateOrder,
+    cancelOrder,
 };
