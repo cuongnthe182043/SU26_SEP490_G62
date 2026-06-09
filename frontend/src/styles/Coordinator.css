@@ -307,7 +307,8 @@
   gap: 18px;
 }
 
-.coordinator-shell .table-edit-btn {
+.coordinator-shell .table-edit-btn,
+.coordinator-shell .table-cancel-btn {
   width: 36px;
   height: 36px;
   border: 1px solid rgba(20, 30, 70, 0.16);
@@ -316,6 +317,16 @@
   cursor: pointer;
   color: #18227f;
   font-size: 16px;
+}
+
+.coordinator-shell .table-cancel-btn {
+  border-color: rgba(185, 28, 28, 0.24);
+  color: #b91c1c;
+}
+
+.coordinator-shell .table-cancel-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .loading-screen {
   min-height: 100vh;

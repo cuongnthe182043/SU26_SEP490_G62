@@ -398,4 +398,8 @@ const updateOrder = async (orderId, payload) => {
     }, normalizeNumber, safeTrim, normalizePhone);
 };
 
-module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder };
+const cancelOrder = async (orderId, reason) => {
+    return orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+};
+
+module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder };
