@@ -28,6 +28,7 @@ const selectOrderProjection = `
         v.plate_number AS plate_number
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
+
     LEFT JOIN LATERAL (
         SELECT s1.*
         FROM order_shipments s1
@@ -35,6 +36,7 @@ const selectOrderProjection = `
         ORDER BY s1.shipment_index ASC
         LIMIT 1
     ) os ON TRUE
+     
     LEFT JOIN LATERAL (
         SELECT ts.address
         FROM trip_stops ts
@@ -42,6 +44,7 @@ const selectOrderProjection = `
         ORDER BY ts.stop_index ASC
         LIMIT 1
     ) pickup ON TRUE
+
     LEFT JOIN LATERAL (
         SELECT ts.address
         FROM trip_stops ts
@@ -49,6 +52,7 @@ const selectOrderProjection = `
         ORDER BY ts.stop_index ASC
         LIMIT 1
     ) delivery ON TRUE
+
     LEFT JOIN profiles d ON d.id = os.owner_driver_id
     LEFT JOIN vehicles v ON v.id = os.vehicle_id
 `;
@@ -79,7 +83,7 @@ const getDriverById = async (client, driverId) => {
     return result.rows[0] ?? null;
 };
 
-
+//If vehicle group id is not selected, to set default but fe set auto when choose driver
 const getDefaultVehicleGroupId = async (client) => {
     const result = await client.query(
         `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
@@ -87,6 +91,7 @@ const getDefaultVehicleGroupId = async (client) => {
     return result.rows[0]?.id ?? null;
 };
 
+//Get driver Infor if have plate 
 const getDriverByPlate = async (client, plateNumber) => {
     if (!plateNumber) return null;
     const result = await client.query(
@@ -107,7 +112,7 @@ const getDriverByPlate = async (client, plateNumber) => {
     );
     return result.rows[0] ?? null;
 };
-
+//Find driver by name
 const findDriverByName = async (client, driverName) => {
     if (!driverName) return null;
     const result = await client.query(
