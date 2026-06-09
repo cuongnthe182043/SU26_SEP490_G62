@@ -247,9 +247,12 @@ const importExcel = async (userId, fileBuffer) => {
         plateNumber: plate,
         vehicleGroupId: defaultVehicleGroupId,
       });
+      if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
+        throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${driver.vehicle_status})`);
+      }
 
       const finalDriverId = driver?.id ?? null;
-      const finalVehicleId = driver?.vehicle_id ?? null;
+      const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
       const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
 
       // Completed status bypasses uq_driver_one_active_trip constraint and allows driver/vehicle assignment

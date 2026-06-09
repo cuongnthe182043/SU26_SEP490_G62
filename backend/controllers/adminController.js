@@ -1,48 +1,26 @@
-const profileRepository = require('../repositories/profileRepository');
-const bcrypt = require('bcryptjs');
+const adminService = require('../services/adminService');
 
 const getAllUsers = async (req, res) => {
     try {
-        const users = await profileRepository.getAllUsers();
+        const users = await adminService.getAllUsers();
         res.json({ users });
     } catch (err) {
         console.error('Error fetching all users:', err);
-        res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+        const status = err.status || 500;
+        res.status(status).json({ error: err.status ? err.message : 'Failed to fetch users', details: err.message });
     }
 };
 
 const createUser = async (req, res) => {
     try {
         const { email, full_name, phone, role } = req.body;
-        const password = '123123'; // Mặc định password
-        if (!email || !role) {
-            return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (email, role).' });
-        }
-
-        if (role === 'manager') {
-            return res.status(403).json({ error: 'Không được phép tạo thêm tài khoản Quản lý.' });
-        }
-
-        const roleId = await profileRepository.getRoleIdByName(role);
-        if (!roleId) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
-
-        const existingAccount = await profileRepository.getAccountByEmail(email);
-        if (existingAccount) return res.status(409).json({ error: 'Email đã tồn tại.' });
-
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
-
-        const newId = await profileRepository.adminCreateUser(email, passwordHash, roleId, full_name || '', phone || null);
-        
-        // Gửi mail bất đồng bộ (không await để không chặn API response)
-        const emailService = require('../services/emailService');
-        emailService.sendWelcomeEmail(email, password, full_name, role);
-
+        const newId = await adminService.createUser(email, full_name, phone, role);
         res.status(201).json({ message: 'Tạo người dùng thành công.', id: newId });
     } catch (err) {
         console.error('Error creating user:', err);
-        const errorMsg = err.code === '23505' ? 'Số điện thoại hoặc Email đã tồn tại.' : 'Lỗi máy chủ.';
-        res.status(500).json({ error: errorMsg, details: err.message });
+        const status = err.status || 500;
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
 
@@ -50,22 +28,13 @@ const updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
         const { full_name, phone, role } = req.body;
-        
-        if (!role) return res.status(400).json({ error: 'Vai trò không được để trống.' });
-
-        if (role === 'manager') {
-            return res.status(403).json({ error: 'Không được phép cấp quyền Quản lý.' });
-        }
-
-        const roleId = await profileRepository.getRoleIdByName(role);
-        if (!roleId) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
-
-        await profileRepository.adminUpdateUser(userId, { full_name, phone }, roleId);
+        await adminService.updateUser(userId, full_name, phone, role);
         res.json({ message: 'Cập nhật thành công.' });
     } catch (err) {
         console.error('Error updating user:', err);
-        const errorMsg = err.code === '23505' ? 'Số điện thoại đã tồn tại.' : 'Lỗi máy chủ.';
-        res.status(500).json({ error: errorMsg, details: err.message });
+        const status = err.status || 500;
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
 
@@ -73,18 +42,14 @@ const toggleUserStatus = async (req, res) => {
     try {
         const userId = req.params.id;
         const { is_active } = req.body;
-        
-        if (is_active === undefined) return res.status(400).json({ error: 'Thiếu is_active.' });
-        
-        if (Number(userId) === req.user.userId) {
-            return res.status(400).json({ error: 'Không thể tự khoá tài khoản của chính mình.' });
-        }
+        const currentUserId = req.user.userId;
 
-        await profileRepository.adminToggleUserStatus(userId, is_active);
+        await adminService.toggleUserStatus(userId, is_active, currentUserId);
         res.json({ message: `Đã ${is_active ? 'mở khoá' : 'khoá'} tài khoản.` });
     } catch (err) {
         console.error('Error toggling user status:', err);
-        res.status(500).json({ error: 'Lỗi máy chủ', details: err.message });
+        const status = err.status || 500;
+        res.status(status).json({ error: err.status ? err.message : 'Lỗi máy chủ', details: err.message });
     }
 };
 
