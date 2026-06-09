@@ -2,22 +2,24 @@ const express = require('express');
 const router = express.Router();
 
 // Import all route modules
-const authRoutes         = require('./authRoutes');
-const tripRoutes         = require('./tripRoutes');
-const profileRoutes      = require('./profileRoutes');
-const coordinatorRoutes  = require('./coordinatorRoutes');
-const orderRoutes        = require('./orderRoutes');
-const driverRoutes       = require('./driverRoutes');
-const adminRoutes        = require('./adminRoutes');
-const expenseRoutes      = require('./expenseRoutes');
-const incidentRoutes     = require('./incidentRoutes');
+const authRoutes = require('./authRoutes');
+const tripRoutes = require('./tripRoutes');
+const profileRoutes = require('./profileRoutes');
+const coordinatorRoutes = require('./coordinatorRoutes');
+const orderRoutes = require('./orderRoutes');
+const driverRoutes = require('./driverRoutes');
+const adminRoutes = require('./adminRoutes');
+const expenseRoutes = require('./expenseRoutes');
+const incidentRoutes = require('./incidentRoutes');
 const notificationRoutes = require('./notificationRoutes');
-const kpiRoutes          = require('./kpiRoutes');
-const payrollRoutes      = require('./payrollRoutes');
-const debtRoutes             = require('./debtRoutes');
-const leaveRoutes            = require('./leaveRoutes');
-const accountantRoutes       = require('./accountant/accountantRoutes');
+const kpiRoutes = require('./kpiRoutes');
+const payrollRoutes = require('./payrollRoutes');
+const debtRoutes = require('./debtRoutes');
+const vehicleManagementRoutes = require('./vehicleManagementRoutes');
+const leaveRoutes = require('./leaveRoutes');
+const accountantRoutes = require('./accountant/accountantRoutes');
 const cashCollectionRoutes   = require('./cashCollectionRoutes');
+
 
 // Register route modules
 router.use('/auth', authRoutes);
@@ -29,6 +31,7 @@ router.use('/api/coordinator', coordinatorRoutes);
 router.use('/api/orders', orderRoutes);
 router.use('/api/drivers', driverRoutes);
 router.use('/api/admin', adminRoutes);
+router.use('/api/admin', vehicleManagementRoutes);
 router.use('/api/expenses', expenseRoutes);
 router.use('/api/incidents', incidentRoutes);
 router.use('/api/notifications', notificationRoutes);
