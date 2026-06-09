@@ -151,6 +151,10 @@ const createOrder = async (userId, payload) => {
             throw new Error('BKS không tồn tại hoặc chưa được gán cho tài xế');
         }
 
+        if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
+            throw new Error(`Xe gắn với tài xế hiện không sẵn sàng cho điều phối (trạng thái: ${driver.vehicle_status})`);
+        }
+
         if (plate && driver && driver.plate_number && driver.plate_number !== safeTrim(plate)) {
             throw new Error('BKS không khớp với tài xế đã chọn');
         }
@@ -160,7 +164,7 @@ const createOrder = async (userId, payload) => {
         }
 
         const finalDriverId = driver?.id ?? null;
-        const finalVehicleId = driver?.vehicle_id ?? null;
+        const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
         const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? defaultVehicleGroupId;
 
@@ -300,8 +304,11 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 plateNumber: plate,
                 vehicleGroupId: defaultVehicleGroupId,
             });
+            if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
+                throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${driver.vehicle_status})`);
+            }
             const finalDriverId = driver?.id ?? null;
-            const finalVehicleId = driver?.vehicle_id ?? null;
+            const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
             const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
             const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
 

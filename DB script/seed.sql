@@ -88,10 +88,10 @@ WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 t
 -- 7. FLEET VEHICLES
 --------------------------------------------------------------------------------
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status) VALUES
-('51-A12345', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Toyota', 'Hiace', 2000, 2021, 'available'),
-('51-B67890', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Hino', 'FC', 5000, 2020, 'available'),
+('51-A12345', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Toyota', 'Hiace', 2000, 2021, 'active'),
+('51-B67890', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Hino', 'FC', 5000, 2020, 'active'),
 ('51-C11111', (SELECT id FROM vehicle_groups WHERE price_per_km = 25000), 'Hyundai', 'HD120S', 10000, 2019, 'maintenance'),
-('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford', 'Transit', 2000, 2022, 'available')
+('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford', 'Transit', 2000, 2022, 'active')
 ON CONFLICT (plate_number) DO NOTHING;
 
 --------------------------------------------------------------------------------
@@ -284,11 +284,32 @@ ON CONFLICT DO NOTHING;
 --------------------------------------------------------------------------------
 -- 15. MAINTENANCE MANAGEMENT
 --------------------------------------------------------------------------------
-INSERT INTO maintenance_records (vehicle_id, maintenance_type, description, cost, maintenance_date)
-SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15'
+INSERT INTO maintenance_records (
+    vehicle_id,
+    maintenance_type,
+    description,
+    cost,
+    maintenance_date,
+    status,
+    started_at,
+    created_at,
+    updated_at
+)
+SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15', 'open', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days'
 FROM vehicles v
 WHERE v.plate_number = '51-C11111'
 AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id AND mr.maintenance_date = '2026-05-15');
+
+INSERT INTO vehicle_status_history (vehicle_id, action_type, from_status, to_status, note, created_at)
+SELECT v.id, 'send_to_maintenance', 'active', 'maintenance', 'Seeded maintenance workflow', NOW() - INTERVAL '24 days'
+FROM vehicles v
+WHERE v.plate_number = '51-C11111'
+AND NOT EXISTS (
+    SELECT 1
+    FROM vehicle_status_history vsh
+    WHERE vsh.vehicle_id = v.id
+      AND vsh.action_type = 'send_to_maintenance'
+);
 
 --------------------------------------------------------------------------------
 -- SEED VALIDATION TEST SUMMARY
