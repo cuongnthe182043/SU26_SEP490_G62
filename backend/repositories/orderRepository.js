@@ -403,7 +403,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
                  cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                  total_estimated_price = COALESCE($4, total_estimated_price),
-                 notes = COALESCE(NULLIF($5, ''), notes),
+                 notes = $5,
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -412,10 +412,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 safeTrim(cargo_name),
                 normalizeNumber(cargo_weight_kg),
                 normalizeNumber(estimated_price),
-                safeTrim(notes) || [
-                    customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
-                    customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
-                ].filter(Boolean).join(' | ') || null,
+                notes !== undefined ? safeTrim(notes) : null,
                 customer?.id ?? null,
             ],
         );
