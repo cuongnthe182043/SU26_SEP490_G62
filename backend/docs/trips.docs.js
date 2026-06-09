@@ -274,3 +274,242 @@
  *       422:
  *         description: Không đủ điều kiện hủy (trip đã qua trạng thái PICKING)
  */
+
+/**
+ * @swagger
+ * /api/trips/{id}/loaded:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Xác nhận đã lấy hàng — PICKING → LOADED (bắt buộc ảnh, BR-013/014)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [proof]
+ *             properties:
+ *               proof:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh chụp thực tế khi lấy hàng (camera realtime)
+ *     responses:
+ *       200:
+ *         description: Trip chuyển sang LOADED
+ *       422:
+ *         description: Thiếu ảnh hoặc trip không ở trạng thái PICKING
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/mark-unpaid:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Báo khách chưa thanh toán — tạo Customer Debt (TH3)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 example: 500000
+ *               notes:
+ *                 type: string
+ *                 example: Khách hẹn thanh toán sau
+ *     responses:
+ *       200:
+ *         description: Đã tạo Customer Debt
+ *       400:
+ *         description: Số tiền không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/return-complete:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Hoàn tất trả hàng — RETURNING → COMPLETED (ảnh không bắt buộc)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               proof:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh xác nhận trả hàng (tuỳ chọn)
+ *     responses:
+ *       200:
+ *         description: Trip chuyển sang COMPLETED
+ *       422:
+ *         description: Trip không ở trạng thái RETURNING
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/payment:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Ghi nhận khách thanh toán tiền mặt cho driver — tạo Driver Debt (TH2)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [amount, receipt]
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 example: 1500000
+ *               paymentMethod:
+ *                 type: string
+ *                 enum: [cash, bank_transfer]
+ *                 default: cash
+ *               notes:
+ *                 type: string
+ *               receipt:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh biên lai (bắt buộc)
+ *     responses:
+ *       201:
+ *         description: Đã ghi nhận, tạo Driver Debt
+ *       422:
+ *         description: Thiếu ảnh hoặc số tiền không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/payments:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Danh sách thanh toán đã ghi nhận cho chuyến
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Danh sách payment records
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/payment-summary:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Tổng quan thanh toán của chuyến (tổng thu, còn nợ)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: total_collected, remaining, payment_status
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/stops:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Danh sách stops của chuyến theo thứ tự (BR-011)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Mảng stops với sequence_order, type (PICKUP/DELIVERY), status
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/stops/{stopId}/arrive:
+ *   patch:
+ *     tags: [Trips]
+ *     summary: Xác nhận đã tới điểm stop
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: stopId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Stop chuyển sang arrived
+ *       422:
+ *         description: Stop trước chưa hoàn thành (BR-011)
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/stops/{stopId}/complete:
+ *   patch:
+ *     tags: [Trips]
+ *     summary: Hoàn thành stop (lấy hàng hoặc giao hàng)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: stopId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Stop hoàn thành
+ *       422:
+ *         description: Chưa arrive hoặc stop không thuộc chuyến này
+ */
