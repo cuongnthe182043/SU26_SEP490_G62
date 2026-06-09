@@ -43,7 +43,7 @@ const login = async (email, password) => {
     }
 
     
-    if (profile && profile.is_active === false) {
+    if (account.is_active === false) {
         throw new AuthError('Tài khoản của bạn đã bị khoá.', 403);
     }
 
