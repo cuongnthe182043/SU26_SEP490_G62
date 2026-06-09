@@ -6,11 +6,12 @@ const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const normalizeNumber = (value) => {
     if (value === undefined || value === null || value === '') return null;
     const numericValue = Number(String(value).replace(/,/g, '').trim());
-    if (Number.isNaN(numericValue)) throw new Error('Số tiền hoặc khối lượng không hợp lệ');
+    if (Number.isNaN(numericValue)) throw new Error('Khối lượng không hợp lệ');
     return numericValue;
 };
 
 const safeTrim = (value) => String(value ?? '').trim();
+
 const normalizeText = (value) => safeTrim(value)
     .toLowerCase()
     .normalize('NFD')
@@ -48,19 +49,7 @@ const isBeforeToday = (dateText) => {
     return inputDate < today;
 };
 
-const buildNotes = ({ date, checkIn, plate, driverName, customerName, customerPhone, pickupAddress, deliveryAddress, notes }) => {
-    return [
-        date ? `Ngày: ${date}` : '',
-        checkIn ? `Chấm công: ${checkIn}` : '',
-        plate ? `BKS: ${plate}` : '',
-        driverName ? `Lái xe: ${driverName}` : '',
-        customerName ? `Khách hàng: ${customerName}` : '',
-        customerPhone ? `SĐT: ${customerPhone}` : '',
-        pickupAddress ? `Điểm lấy hàng: ${pickupAddress}` : '',
-        deliveryAddress ? `Điểm giao hàng: ${deliveryAddress}` : '',
-        notes ? safeTrim(notes) : '',
-    ].filter(Boolean).join(' | ') || null;
-};
+
 
 const parseRoute = (routeStr) => {
     const route = safeTrim(routeStr);
@@ -107,7 +96,6 @@ const listOrders = async () => {
 const createOrder = async (userId, payload) => {
     const {
         date,
-        check_in,
         plate,
         driver_id,
         customer_name,
@@ -122,7 +110,7 @@ const createOrder = async (userId, payload) => {
     } = payload;
 
     if (!pickup_address || !delivery_address) {
-        throw new Error('Thiếu thông tin bắt buộc');
+        throw new Error('Thiếu điểm nhận hoặc điểm đến');
     }
 
     const finalEstimatedPrice = (estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price;
@@ -133,14 +121,20 @@ const createOrder = async (userId, payload) => {
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
+    
     const normalizedPrice = normalizeNumber(finalEstimatedPrice);
+    
     const normalizedDriverId = driver_id ? Number(driver_id) : null;
+    
     let dbClient = null;
 
     try {
         dbClient = await pool.connect();
+
         await dbClient.query('BEGIN');
+        
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
+
         const driver = normalizedDriverId ? await orderRepository.getDriverById(dbClient, normalizedDriverId) : await orderRepository.getDriverByPlate(dbClient, plate);
 
         if (driver_id && !driver) {
@@ -187,17 +181,7 @@ const createOrder = async (userId, payload) => {
 
         const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
-        const orderNotes = safeTrim(notes) || buildNotes({
-            date: normalizedDate,
-            checkIn: check_in,
-            plate: driver?.plate_number || plate,
-            driverName: driver?.full_name,
-            customerName: customer_name,
-            customerPhone: customer_phone,
-            pickupAddress: pickup_address,
-            deliveryAddress: delivery_address,
-            notes,
-        });
+        const orderNotes = safeTrim(notes);
 
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,

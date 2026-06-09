@@ -227,44 +227,36 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
     const normalizedName = safeTrim(customerName);
 
     if (normalizedPhone) {
-        const existingCustomer = await client.query(
-            `SELECT id, full_name, phone
+        const existingCustomer = await client.query(// Nếu có khách hàng tìm bởi số điện thoại
+            `SELECT id, full_name, phone 
              FROM customers
              WHERE phone = $1
              LIMIT 1`,
-            [normalizedPhone],
+            [normalizedPhone],//Query tìm khách hàng 
         );
-        if (existingCustomer.rows[0]) return existingCustomer.rows[0];
-    } else if (normalizedName) {
-        const existingCustomer = await client.query(
-            `SELECT id, full_name, phone
-             FROM customers
-             WHERE LOWER(full_name) = LOWER($1)
-               AND phone IS NULL
-             LIMIT 1`,
-            [normalizedName],
-        );
-        if (existingCustomer.rows[0]) return existingCustomer.rows[0];
-    } else {
+        if (existingCustomer.rows[0]) return existingCustomer.rows[0];//Thì return khách hàng
+
+    }else {
         return null;
     }
 
     const createdCustomer = await client.query(
-        `INSERT INTO customers (customer_type, full_name, contact_person, phone)
-         VALUES ('individual', $1, $1, $2)
-         RETURNING id, full_name, phone`,
-        [normalizedName || normalizedPhone, normalizedPhone || null],
+        `INSERT INTO customers (customer_type, full_name, phone)
+        VALUE('individual', $1, $2)
+        RETURNING id, full_name, phone`,
+        [normalizedName || normalizedPhone, normalizedPhone],
     );
     return createdCustomer.rows[0];
 };
 
-const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone) => {
+
+const insertStops = async (client, shipmentId, stopType, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
     await client.query(
-        `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-         VALUES
-            ($1, 1, 'pickup', $2, $4, $5),
-            ($1, 2, 'delivery', $3, $4, $5)`,
-        [shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null],
+        `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
+        VALUES
+            ($1, 1, 'pickup', $2, $4, $5, $6),
+            ($1, 2, 'delivery', $3, $4, $5, $6),
+        `[shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null, notes],
     );
 };
 
@@ -403,7 +395,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  cargo_name = COALESCE(NULLIF($2, ''), cargo_name),
                  cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                  total_estimated_price = COALESCE($4, total_estimated_price),
-                 notes = COALESCE(NULLIF($5, ''), notes),
+                 notes = $5,
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -412,10 +404,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 safeTrim(cargo_name),
                 normalizeNumber(cargo_weight_kg),
                 normalizeNumber(estimated_price),
-                safeTrim(notes) || [
-                    customer_name ? `Khách hàng: ${safeTrim(customer_name)}` : '',
-                    customer_phone ? `SĐT: ${normalizePhone(customer_phone)}` : '',
-                ].filter(Boolean).join(' | ') || null,
+                notes !== undefined ? safeTrim(notes) : null,
                 customer?.id ?? null,
             ],
         );

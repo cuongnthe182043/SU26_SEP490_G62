@@ -264,16 +264,7 @@ const importExcel = async (userId, fileBuffer) => {
 
       const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
 
-      const notes = [
-        plate ? `BKS: ${plate}` : '',
-        driverName ? `Lái xe: ${driverName}` : '',
-        customerName ? `Khách hàng: ${customerName}` : '',
-        customerPhone ? `SĐT: ${customerPhone}` : '',
-        route ? `Hành trình: ${route}` : '',
-        distance ? `Quãng đường: ${distance}` : '',
-        fare !== null ? `Cước xe: ${fare}` : '',
-        note ? `${note}` : '',
-      ].filter(Boolean).join(' | ');
+      const notes = note;
 
       const result = await orderRepository.importOrderWithShipment({
         client: dbClient,
