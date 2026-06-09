@@ -75,6 +75,46 @@ export async function changeVehicleStatus(id, status) {
   });
 }
 
+export async function sendVehicleToMaintenance(id, payload) {
+  return apiRequest(`/api/admin/vehicles/${id}/send-to-maintenance`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
+export async function completeVehicleMaintenance(id, payload = {}) {
+  return apiRequest(`/api/admin/vehicles/${id}/complete-maintenance`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
+export async function markVehicleBroken(id, payload) {
+  return apiRequest(`/api/admin/vehicles/${id}/mark-broken`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
+export async function restoreVehicle(id, payload = {}) {
+  return apiRequest(`/api/admin/vehicles/${id}/restore`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
+export async function retireVehicle(id, payload = {}) {
+  return apiRequest(`/api/admin/vehicles/${id}/retire`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
 export async function assignVehicleDriver(id, assignedDriverId) {
   return apiRequest(`/api/admin/vehicles/${id}/driver-assignment`, {
     method: "PATCH",
