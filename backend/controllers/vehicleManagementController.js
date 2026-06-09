@@ -110,7 +110,16 @@ const sendVehicleToMaintenance = async (req, res) => {
 const completeMaintenance = async (req, res) => {
     try {
         const vehicle = await vehicleManagementService.completeMaintenance(req.params.id, req.user.userId, req.body);
-        res.json({ message: 'Vehicle maintenance completed successfully', vehicle });
+        res.json({ message: 'Vehicle maintenance marked ready for verification', vehicle });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const verifyMaintenance = async (req, res) => {
+    try {
+        const vehicle = await vehicleManagementService.verifyMaintenance(req.params.id, req.user.userId, req.body);
+        res.json({ message: 'Vehicle maintenance verified successfully', vehicle });
     } catch (err) {
         handleError(res, err);
     }
@@ -183,6 +192,7 @@ module.exports = {
     changeVehicleStatus,
     sendVehicleToMaintenance,
     completeMaintenance,
+    verifyMaintenance,
     markVehicleAsBroken,
     restoreVehicle,
     retireVehicle,

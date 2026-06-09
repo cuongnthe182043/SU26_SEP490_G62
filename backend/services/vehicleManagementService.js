@@ -55,6 +55,27 @@ const normalizeString = (value) => {
     return normalized || null;
 };
 
+const normalizeStringArray = (value, fieldName) => {
+    if (value === undefined || value === null || value === '') return [];
+
+    const rawValues = Array.isArray(value) ? value : [value];
+    const normalized = rawValues
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+
+    if (normalized.length === 0) {
+        throw createError(`${fieldName} must include at least one non-empty value`, 400);
+    }
+
+    return normalized;
+};
+
+const resolvePreferredValue = (value, fallback = null) => (
+    value === undefined || value === null || value === ''
+        ? (fallback ?? null)
+        : value
+);
+
 const normalizeVehicleGroupPayload = (payload = {}) => {
     const name = String(payload.name || '').trim();
     if (!name) throw createError('Vehicle group name is required', 400);
@@ -264,6 +285,31 @@ const validateAssignableDriver = async (assignedDriverId, vehicleId = null) => {
     return parsedDriverId;
 };
 
+const validateMaintenanceDriver = async (performedBy, { vehicle = null, currentPerformedById = null, required = true } = {}) => {
+    const parsedDriverId = parsePositiveInteger(performedBy, 'performed_by', { required });
+    if (parsedDriverId === null) return null;
+
+    const driver = await vehicleManagementRepository.getDriverById(parsedDriverId);
+    if (!driver) throw createError('performed_by driver does not exist', 400);
+
+    const isAssignedVehicleDriver = vehicle?.assigned_driver_id !== null
+        && vehicle?.assigned_driver_id !== undefined
+        && Number(vehicle.assigned_driver_id) === parsedDriverId;
+    const isCurrentPerformedDriver = currentPerformedById !== null
+        && currentPerformedById !== undefined
+        && Number(currentPerformedById) === parsedDriverId;
+    const hasActiveShipments = Number(driver.active_shipment_count || 0) > 0;
+
+    if (hasActiveShipments && !isAssignedVehicleDriver && !isCurrentPerformedDriver) {
+        throw createError(
+            'performed_by must be the assigned vehicle driver or a driver without active shipments',
+            409,
+        );
+    }
+
+    return parsedDriverId;
+};
+
 const createVehicle = async (payload) => {
     const requestedStatus = payload.status ? String(payload.status).trim() : 'active';
     if (!VEHICLE_STATUSES.includes(requestedStatus)) {
@@ -316,6 +362,10 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
     const maintenanceDate = parseNullableDate(payload.maintenance_date, 'maintenance_date') || new Date().toISOString().slice(0, 10);
     const nextDueDate = parseNullableDate(payload.next_due_date, 'next_due_date');
     const cost = parseNullableNumber(payload.cost, 'cost', { min: 0 });
+    const performedBy = await validateMaintenanceDriver(
+        resolvePreferredValue(payload.performed_by, vehicle.assigned_driver_id),
+        { vehicle, required: true },
+    );
 
     await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
         vehicleId: vehicle.id,
@@ -324,7 +374,7 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         description,
         maintenanceDate,
         nextDueDate,
-        performedBy: normalizeString(payload.performed_by),
+        performedBy,
         cost,
         note: normalizeString(payload.note) || description,
     });
@@ -335,13 +385,33 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
 const completeMaintenance = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
     ensureVehicleStatus(vehicle, ['maintenance'], 'Complete maintenance');
+    const currentPerformedById = vehicle.active_maintenance_performed_by ?? null;
+    const performedBy = await validateMaintenanceDriver(
+        resolvePreferredValue(payload.performed_by, currentPerformedById ?? vehicle.assigned_driver_id),
+        { vehicle, currentPerformedById, required: true },
+    );
+    const billPics = normalizeStringArray(payload.bill_pics, 'bill_pics');
 
     await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
         vehicleId: vehicle.id,
         maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
+        driverId: parsePositiveInteger(managerId, 'driver_id'),
+        billPics,
+        performedBy,
+    });
+
+    return getVehicleDetail(vehicle.id);
+};
+
+const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
+    const vehicle = await getVehicleOrThrow(vehicleId);
+    ensureVehicleStatus(vehicle, ['maintenance'], 'Verify maintenance');
+
+    await vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus({
+        vehicleId: vehicle.id,
+        maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
         managerId: parsePositiveInteger(managerId, 'manager_id'),
-        completionNote: normalizeString(payload.completion_note) || normalizeString(payload.note),
-        performedBy: normalizeString(payload.performed_by),
+        note: normalizeString(payload.verification_note) || normalizeString(payload.note) || 'Maintenance verified',
     });
 
     return getVehicleDetail(vehicle.id);
@@ -398,7 +468,7 @@ const retireVehicle = async (vehicleId, managerId, payload = {}) => {
     ensureVehicleNotRetired(vehicle, 'Retire vehicle');
 
     if (vehicle.status === 'maintenance') {
-        throw createError('Cannot retire a vehicle while maintenance is still open. Complete maintenance first.', 409);
+        throw createError('Cannot retire a vehicle while maintenance is still open. Verify or resolve maintenance first.', 409);
     }
 
     if (vehicle.status === 'broken' && vehicle.active_failure_id) {
@@ -429,7 +499,7 @@ const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
     case 'active->maintenance':
         return sendVehicleToMaintenance(vehicle.id, managerId, payload);
     case 'maintenance->active':
-        return completeMaintenance(vehicle.id, managerId, payload);
+        return verifyMaintenance(vehicle.id, managerId, payload);
     case 'active->broken':
         return markVehicleAsBroken(vehicle.id, managerId, payload);
     case 'broken->active':
@@ -473,11 +543,23 @@ const listAssignableDrivers = async (vehicleId = null) => {
     const currentVehicleId = vehicleId === null
         ? null
         : parsePositiveInteger(vehicleId, 'vehicle_id', { required: false });
+    const vehicle = currentVehicleId === null
+        ? null
+        : await vehicleManagementRepository.getVehicleById(currentVehicleId);
+
+    if (currentVehicleId !== null && !vehicle) {
+        throw createError('Vehicle not found', 404);
+    }
 
     const drivers = await vehicleManagementRepository.listDriverOptions();
     return drivers.map((driver) => ({
         ...driver,
         is_assignable: !driver.current_vehicle_id || Number(driver.current_vehicle_id) === Number(currentVehicleId),
+        has_active_shipment: Number(driver.active_shipment_count || 0) > 0,
+        is_selected_vehicle_driver: vehicle ? Number(vehicle.assigned_driver_id) === Number(driver.id) : false,
+        is_maintenance_eligible: vehicle
+            ? Number(vehicle.assigned_driver_id) === Number(driver.id) || Number(driver.active_shipment_count || 0) === 0
+            : Number(driver.active_shipment_count || 0) === 0,
     }));
 };
 
@@ -497,6 +579,7 @@ module.exports = {
     changeVehicleStatus,
     sendVehicleToMaintenance,
     completeMaintenance,
+    verifyMaintenance,
     markVehicleAsBroken,
     restoreVehicle,
     retireVehicle,
