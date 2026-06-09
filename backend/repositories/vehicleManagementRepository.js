@@ -11,10 +11,10 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
         vg.upgrade_allowed,
         vg.created_at,
         COUNT(v.id)::int AS vehicle_count,
-        COUNT(*) FILTER (WHERE v.status = 'available')::int AS available_vehicle_count,
-        COUNT(*) FILTER (WHERE v.status = 'in_delivery')::int AS in_delivery_vehicle_count,
+        COUNT(*) FILTER (WHERE v.status = 'active')::int AS active_vehicle_count,
         COUNT(*) FILTER (WHERE v.status = 'maintenance')::int AS maintenance_vehicle_count,
-        COUNT(*) FILTER (WHERE v.status = 'inactive')::int AS inactive_vehicle_count
+        COUNT(*) FILTER (WHERE v.status = 'broken')::int AS broken_vehicle_count,
+        COUNT(*) FILTER (WHERE v.status = 'retired')::int AS retired_vehicle_count
     FROM vehicle_groups vg
     LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id
 `;
@@ -39,12 +39,46 @@ const VEHICLE_DETAIL_SELECT = `
         d.license_number AS assigned_driver_license_number,
         v.status,
         v.created_at,
-        v.updated_at
+        v.updated_at,
+        lm.id AS active_maintenance_id,
+        lm.maintenance_type AS active_maintenance_type,
+        lm.description AS active_maintenance_description,
+        lm.maintenance_date AS active_maintenance_date,
+        li.id AS active_failure_id,
+        li.incident_type AS active_failure_type,
+        li.description AS active_failure_description,
+        li.severity_level AS active_failure_severity
     FROM vehicles v
     JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
     LEFT JOIN profiles p ON p.id = v.assigned_driver_id
     LEFT JOIN accounts a ON a.id = v.assigned_driver_id
     LEFT JOIN drivers d ON d.profile_id = v.assigned_driver_id
+    LEFT JOIN LATERAL (
+        SELECT
+            mr.id,
+            mr.maintenance_type,
+            mr.description,
+            mr.maintenance_date
+        FROM maintenance_records mr
+        WHERE mr.vehicle_id = v.id
+          AND mr.status = 'open'
+        ORDER BY mr.started_at DESC, mr.id DESC
+        LIMIT 1
+    ) lm ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT
+            i.id,
+            i.incident_type,
+            i.description,
+            i.severity_level
+        FROM incidents i
+        WHERE i.vehicle_id = v.id
+          AND i.incident_type = 'vehicle_breakdown'
+          AND i.shipment_id IS NULL
+          AND i.status IN ('open', 'investigating')
+        ORDER BY i.occurred_at DESC, i.id DESC
+        LIMIT 1
+    ) li ON TRUE
 `;
 
 const listVehicleGroups = async () => {
@@ -297,6 +331,32 @@ const listDriverOptions = async () => {
     return result.rows;
 };
 
+const hasOpenMaintenanceRecord = async (vehicleId, db = pool) => {
+    const result = await db.query(
+        `SELECT id
+         FROM maintenance_records
+         WHERE vehicle_id = $1
+           AND status = 'open'
+         LIMIT 1`,
+        [vehicleId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const hasOpenFailureRecord = async (vehicleId, db = pool) => {
+    const result = await db.query(
+        `SELECT id
+         FROM incidents
+         WHERE vehicle_id = $1
+           AND shipment_id IS NULL
+           AND incident_type = 'vehicle_breakdown'
+           AND status IN ('open', 'investigating')
+         LIMIT 1`,
+        [vehicleId],
+    );
+    return result.rows[0] ?? null;
+};
+
 const createVehicle = async ({
     plate_number,
     vehicle_group_id,
@@ -370,7 +430,6 @@ const updateVehicle = async (
         manufacture_year,
         purchase_date,
         assigned_driver_id,
-        status,
     },
 ) => {
     const client = await pool.connect();
@@ -426,7 +485,6 @@ const updateVehicle = async (
                 manufacture_year = $7,
                 purchase_date = $8,
                 assigned_driver_id = $9,
-                status = $10,
                 updated_at = NOW()
              WHERE id = $1
              RETURNING id`,
@@ -440,7 +498,6 @@ const updateVehicle = async (
                 manufacture_year,
                 purchase_date,
                 assigned_driver_id,
-                status,
             ],
         );
 
@@ -464,6 +521,519 @@ const updateVehicle = async (
     }
 };
 
+const updateVehicleStatus = async ({ vehicleId, nextStatus, actionType, managerId, note = null, referenceType = null, referenceId = null, metadata = null }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const currentResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const currentVehicle = currentResult.rows[0];
+        if (!currentVehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = $2,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId, nextStatus],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                metadata,
+                created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
+            [
+                vehicleId,
+                actionType,
+                currentVehicle.status,
+                nextStatus,
+                referenceType,
+                referenceId,
+                note,
+                metadata ? JSON.stringify(metadata) : null,
+                managerId,
+            ],
+        );
+
+        await client.query('COMMIT');
+        return { previousStatus: currentVehicle.status, nextStatus };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const createMaintenanceRecordAndSetStatus = async ({
+    vehicleId,
+    managerId,
+    maintenanceType,
+    description,
+    maintenanceDate,
+    nextDueDate = null,
+    performedBy = null,
+    cost = null,
+    note = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const openMaintenance = await hasOpenMaintenanceRecord(vehicleId, client);
+        if (openMaintenance) {
+            const err = new Error('Vehicle already has an active maintenance record');
+            err.code = 'OPEN_MAINTENANCE_EXISTS';
+            throw err;
+        }
+
+        const maintenanceResult = await client.query(
+            `INSERT INTO maintenance_records (
+                vehicle_id,
+                maintenance_type,
+                description,
+                cost,
+                maintenance_date,
+                next_due_date,
+                performed_by,
+                status,
+                started_at,
+                created_by,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', NOW(), $8, NOW(), NOW())
+            RETURNING id`,
+            [
+                vehicleId,
+                maintenanceType,
+                description,
+                cost,
+                maintenanceDate,
+                nextDueDate,
+                performedBy,
+                managerId,
+            ],
+        );
+        const maintenanceId = maintenanceResult.rows[0].id;
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'maintenance',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'send_to_maintenance', $2, 'maintenance', 'maintenance_record', $3, $4, $5)`,
+            [vehicleId, vehicle.status, maintenanceId, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const completeMaintenanceRecordAndSetStatus = async ({
+    vehicleId,
+    maintenanceRecordId,
+    managerId,
+    completionNote = null,
+    performedBy = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId];
+        let idClause = '';
+        if (maintenanceRecordId !== null) {
+            params.push(maintenanceRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const recordResult = await client.query(
+            `SELECT id, status
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status = 'open'
+               ${idClause}
+             ORDER BY started_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = recordResult.rows[0];
+        if (!record) {
+            const err = new Error('Active maintenance record not found');
+            err.code = 'OPEN_MAINTENANCE_NOT_FOUND';
+            throw err;
+        }
+
+        await client.query(
+            `UPDATE maintenance_records
+             SET status = 'completed',
+                 completed_at = NOW(),
+                 completion_note = $2,
+                 completed_by = $3,
+                 performed_by = COALESCE($4, performed_by),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [record.id, completionNote, managerId, performedBy],
+        );
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'active',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
+            [vehicleId, vehicle.status, record.id, completionNote, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId: record.id, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const createFailureRecordAndSetStatus = async ({
+    vehicleId,
+    managerId,
+    failureType,
+    description,
+    severityLevel,
+    occurredAt = null,
+    note = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const openFailure = await hasOpenFailureRecord(vehicleId, client);
+        if (openFailure) {
+            const err = new Error('Vehicle already has an active breakdown incident');
+            err.code = 'OPEN_FAILURE_EXISTS';
+            throw err;
+        }
+
+        const failureResult = await client.query(
+            `INSERT INTO incidents (
+                shipment_id,
+                vehicle_id,
+                reported_by,
+                incident_type,
+                severity_level,
+                description,
+                location,
+                estimated_loss,
+                occurred_at,
+                status
+            )
+            VALUES (NULL, $1, $2, 'vehicle_breakdown', $3, $4, $5, 0, COALESCE($6, NOW()), 'open')
+            RETURNING id`,
+            [vehicleId, managerId, severityLevel, description, failureType, occurredAt],
+        );
+        const failureId = failureResult.rows[0].id;
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'broken',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'mark_broken', $2, 'broken', 'incident', $3, $4, $5)`,
+            [vehicleId, vehicle.status, failureId, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { failureId, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const resolveFailureRecordAndSetStatus = async ({
+    vehicleId,
+    failureRecordId,
+    managerId,
+    resolutionNote = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId];
+        let idClause = '';
+        if (failureRecordId !== null) {
+            params.push(failureRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const failureResult = await client.query(
+            `SELECT id, status
+             FROM incidents
+             WHERE vehicle_id = $1
+               AND shipment_id IS NULL
+               AND incident_type = 'vehicle_breakdown'
+               AND status IN ('open', 'investigating')
+               ${idClause}
+             ORDER BY occurred_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = failureResult.rows[0];
+        if (!record) {
+            const err = new Error('Active breakdown incident not found');
+            err.code = 'OPEN_FAILURE_NOT_FOUND';
+            throw err;
+        }
+
+        await client.query(
+            `UPDATE incidents
+             SET status = 'resolved',
+                 resolution_note = $2,
+                 resolved_by = $3,
+                 resolved_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [record.id, resolutionNote, managerId],
+        );
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'active',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'restore_vehicle', $2, 'active', 'incident', $3, $4, $5)`,
+            [vehicleId, vehicle.status, record.id, resolutionNote, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { failureId: record.id, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const retireVehicle = async ({ vehicleId, managerId, note = null }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status, assigned_driver_id
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'retired',
+                 assigned_driver_id = NULL,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `UPDATE drivers
+             SET vehicle_id = NULL
+             WHERE vehicle_id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                note,
+                created_by
+            )
+            VALUES ($1, 'retire_vehicle', $2, 'retired', $3, $4)`,
+            [vehicleId, vehicle.status, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const listVehicleStatusHistory = async (vehicleId) => {
+    const result = await pool.query(
+        `SELECT
+            vsh.id,
+            vsh.action_type,
+            vsh.from_status,
+            vsh.to_status,
+            vsh.reference_type,
+            vsh.reference_id,
+            vsh.note,
+            vsh.metadata,
+            vsh.created_by,
+            p.full_name AS created_by_name,
+            vsh.created_at
+         FROM vehicle_status_history vsh
+         LEFT JOIN profiles p ON p.id = vsh.created_by
+         WHERE vsh.vehicle_id = $1
+         ORDER BY vsh.created_at DESC, vsh.id DESC`,
+        [vehicleId],
+    );
+    return result.rows;
+};
+
 module.exports = {
     listVehicleGroups,
     getVehicleGroupById,
@@ -478,6 +1048,15 @@ module.exports = {
     getVehicleGroupReferenceById,
     getDriverById,
     listDriverOptions,
+    hasOpenMaintenanceRecord,
+    hasOpenFailureRecord,
     createVehicle,
     updateVehicle,
+    updateVehicleStatus,
+    createMaintenanceRecordAndSetStatus,
+    completeMaintenanceRecordAndSetStatus,
+    createFailureRecordAndSetStatus,
+    resolveFailureRecordAndSetStatus,
+    retireVehicle,
+    listVehicleStatusHistory,
 };

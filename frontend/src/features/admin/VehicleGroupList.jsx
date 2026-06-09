@@ -138,7 +138,10 @@ export default function VehicleGroupList() {
       render: (_, record) => (
         <Space wrap>
           <Tag color="blue">{record.vehicle_count} total</Tag>
-          <Tag color="green">{record.available_vehicle_count} available</Tag>
+          <Tag color="green">{record.active_vehicle_count} active</Tag>
+          <Tag color="orange">{record.maintenance_vehicle_count} maintenance</Tag>
+          <Tag color="red">{record.broken_vehicle_count} broken</Tag>
+          <Tag>{record.retired_vehicle_count} retired</Tag>
         </Space>
       ),
     },
@@ -225,9 +228,9 @@ export default function VehicleGroupList() {
             </Descriptions.Item>
             <Descriptions.Item label="Upgrade Allowed">{detailGroup.upgrade_allowed ? "Yes" : "No"}</Descriptions.Item>
             <Descriptions.Item label="Vehicle Summary">
-              {detailGroup.vehicle_count} total, {detailGroup.available_vehicle_count} available,{" "}
-              {detailGroup.in_delivery_vehicle_count} in delivery, {detailGroup.maintenance_vehicle_count} maintenance,{" "}
-              {detailGroup.inactive_vehicle_count} inactive
+              {detailGroup.vehicle_count} total, {detailGroup.active_vehicle_count} active,{" "}
+              {detailGroup.maintenance_vehicle_count} maintenance, {detailGroup.broken_vehicle_count} broken,{" "}
+              {detailGroup.retired_vehicle_count} retired
             </Descriptions.Item>
           </Descriptions>
         ) : null}

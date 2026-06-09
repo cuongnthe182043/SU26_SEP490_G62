@@ -67,7 +67,8 @@ const getDriverById = async (client, driverId) => {
             p.phone,
             d.vehicle_id,
             v.plate_number,
-            v.vehicle_group_id
+            v.vehicle_group_id,
+            v.status AS vehicle_status
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          LEFT JOIN vehicles v ON v.id = d.vehicle_id
@@ -95,7 +96,8 @@ const getDriverByPlate = async (client, plateNumber) => {
             p.phone,
             d.vehicle_id,
             v.plate_number,
-            v.vehicle_group_id
+            v.vehicle_group_id,
+            v.status AS vehicle_status
          FROM vehicles v
          LEFT JOIN drivers d ON d.vehicle_id = v.id
          LEFT JOIN profiles p ON p.id = d.profile_id
@@ -115,7 +117,8 @@ const findDriverByName = async (client, driverName) => {
             p.phone,
             d.vehicle_id,
             v.plate_number,
-            v.vehicle_group_id
+            v.vehicle_group_id,
+            v.status AS vehicle_status
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN roles r ON r.id = p.role_id
@@ -175,11 +178,11 @@ const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, 
     if (plate) {
         const vehicleResult = await client.query(
             `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
-             VALUES ($1, $2, 'available')
+             VALUES ($1, $2, 'active')
              ON CONFLICT (plate_number) DO UPDATE
              SET vehicle_group_id = COALESCE(vehicles.vehicle_group_id, EXCLUDED.vehicle_group_id),
                  updated_at = NOW()
-             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id`,
+             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id, status`,
             [plate, vehicleGroupId],
         );
         vehicle = vehicleResult.rows[0];

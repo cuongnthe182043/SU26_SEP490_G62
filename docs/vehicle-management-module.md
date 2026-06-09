@@ -1,309 +1,121 @@
 # Vehicle Management Module
 
-## 1. Functional Requirements
+## Current Design After Refactor
 
-### Vehicle Group Management
-- Managers can list all vehicle groups with usage counters.
-- Managers can create a vehicle group with pricing and load configuration.
-- Managers can update vehicle group details.
-- Managers can view vehicle group details including counts by vehicle status.
-- Managers cannot delete a vehicle group when any vehicle still references it.
-- Vehicle group names must be unique.
+The manager vehicle module no longer treats `vehicles.status` as a free-form editable field.
+Status is now derived from explicit manager lifecycle actions:
 
-### Vehicle Management
-- Managers can list vehicles with server-side pagination.
-- Managers can search vehicles by plate number.
-- Managers can filter vehicles by status.
-- Managers can filter vehicles by vehicle group.
-- Managers can create vehicles.
-- Managers can update vehicles.
-- Managers can view vehicle details.
-- Managers can change vehicle status independently from full edits.
-- Managers can assign or unassign one driver to one vehicle.
-- Managers can soft delete a vehicle by setting `status = 'inactive'`.
+- `ACTIVE` → `Send to maintenance`
+- `MAINTENANCE` → `Complete maintenance`
+- `ACTIVE` → `Mark broken`
+- `BROKEN` → `Restore vehicle`
+- `ACTIVE|MAINTENANCE|BROKEN` → `Retire vehicle`
 
-### Validation Rules
-- `plate_number` must be unique.
-- `assigned_driver_id` can only point to one vehicle at a time.
-- `vehicle_group_id` must exist.
-- `manufacture_year` cannot be greater than the current year.
-- `load_capacity_kg` must be positive when provided.
-- Inactive vehicles cannot keep an assigned driver.
+Invalid transitions are blocked in the service layer, including:
 
-## 2. User Stories
+- `RETIRED -> ACTIVE`
+- `RETIRED -> MAINTENANCE`
+- `RETIRED -> BROKEN`
+- Any direct status edit through generic vehicle update
 
-- As a manager, I want to see all vehicle groups so I can manage pricing and capacity categories.
-- As a manager, I want to see how many vehicles are using each group so I can understand operational coverage.
-- As a manager, I want deletion of an in-use vehicle group to be blocked so I do not break existing vehicle records.
-- As a manager, I want to search vehicles by plate number so I can find a vehicle quickly.
-- As a manager, I want to filter vehicles by status and group so I can manage maintenance and operations.
-- As a manager, I want to assign a driver to a vehicle so dispatch data stays consistent.
-- As a manager, I want driver assignment to remain one-to-one so the same driver is not attached to multiple vehicles.
-- As a manager, I want to mark a vehicle inactive instead of hard deleting it so historical records remain intact.
+## Database Changes
 
-## 3. REST API Endpoints
+### Existing table reused
+- `vehicles.status`
+  Allowed values: `active`, `maintenance`, `broken`, `retired`
 
-### Vehicle Groups
-- `GET /api/admin/vehicle-groups`
-- `POST /api/admin/vehicle-groups`
-- `GET /api/admin/vehicle-groups/:id`
-- `PUT /api/admin/vehicle-groups/:id`
-- `DELETE /api/admin/vehicle-groups/:id`
+### Extended table
+- `maintenance_records`
+  Added workflow fields:
+  - `status` (`open|completed`)
+  - `started_at`
+  - `completed_at`
+  - `completion_note`
+  - `created_by`
+  - `completed_by`
+  - `updated_at`
 
-### Vehicles
-- `GET /api/admin/vehicles?page=1&limit=10&search=51H&status=available&vehicle_group_id=100000`
-- `POST /api/admin/vehicles`
-- `GET /api/admin/vehicles/:id`
-- `PUT /api/admin/vehicles/:id`
+### Existing table reused
+- `incidents`
+  Manager-side broken/restore actions reuse the existing incident model with:
+  - `incident_type = 'vehicle_breakdown'`
+  - `shipment_id = NULL`
+  - `vehicle_id = <vehicle>`
+
+- `vehicle_status_history`
+  Stores auditable lifecycle events:
+  - `send_to_maintenance`
+  - `complete_maintenance`
+  - `mark_broken`
+  - `restore_vehicle`
+  - `retire_vehicle`
+
+## Backend Structure
+
+### Repository
+- `backend/repositories/vehicleManagementRepository.js`
+  - exposes lifecycle-aware list/detail queries
+  - creates and closes maintenance/breakdown incident records transactionally
+  - writes `vehicle_status_history`
+  - retires vehicles by clearing assignment and setting status
+
+### Service
+- `backend/services/vehicleManagementService.js`
+  - forbids direct status edits
+  - validates transitions
+  - maps legacy `PATCH /vehicles/:id/status` to valid lifecycle actions only
+  - enforces active-only driver assignment
+
+### Controller + Routes
+- `backend/controllers/vehicleManagementController.js`
+- `backend/routes/vehicleManagementRoutes.js`
+
+New manager endpoints:
+
+- `POST /api/admin/vehicles/:id/send-to-maintenance`
+- `POST /api/admin/vehicles/:id/complete-maintenance`
+- `POST /api/admin/vehicles/:id/mark-broken`
+- `POST /api/admin/vehicles/:id/restore`
+- `POST /api/admin/vehicles/:id/retire`
+
+Compatibility endpoint retained:
+
 - `PATCH /api/admin/vehicles/:id/status`
-- `PATCH /api/admin/vehicles/:id/driver-assignment`
-- `DELETE /api/admin/vehicles/:id`
-- `GET /api/admin/vehicles/driver-options?vehicle_id=100001`
+  Only succeeds when the requested transition corresponds to a valid lifecycle action.
 
-## 4. Request / Response DTOs
+## UI Changes
 
-### `CreateVehicleGroupRequest`
-```json
-{
-  "name": "1T25",
-  "description": "1.25 ton truck",
-  "max_load_weight_kg": 1250,
-  "price_per_km": 18000,
-  "depreciation_per_km": 1200,
-  "upgrade_allowed": true
-}
-```
+### Vehicle form
+- `frontend/src/features/admin/VehicleModal.jsx`
+  - removed direct status dropdown
+  - kept vehicle master-data editing only
 
-### `VehicleGroupResponse`
-```json
-{
-  "id": 100000,
-  "name": "1T25",
-  "description": "1.25 ton truck",
-  "max_load_weight_kg": "1250.00",
-  "price_per_km": "18000.00",
-  "depreciation_per_km": "1200.00",
-  "upgrade_allowed": true,
-  "vehicle_count": 4,
-  "available_vehicle_count": 2,
-  "in_delivery_vehicle_count": 1,
-  "maintenance_vehicle_count": 1,
-  "inactive_vehicle_count": 0
-}
-```
+### Vehicle list
+- `frontend/src/features/admin/VehicleList.jsx`
+  - replaced status dropdown with action buttons
+  - added lifecycle dialogs for maintenance/broken/restore/retire
+  - detail modal now shows:
+    - current open maintenance
+    - current open breakdown incident
+    - status history timeline
 
-### `CreateVehicleRequest`
-```json
-{
-  "plate_number": "51H-12345",
-  "vehicle_group_id": 100000,
-  "brand": "Hyundai",
-  "model": "Porter",
-  "load_capacity_kg": 1200,
-  "manufacture_year": 2022,
-  "purchase_date": "2024-01-15",
-  "assigned_driver_id": 100123,
-  "status": "available"
-}
-```
+### Vehicle group list
+- `frontend/src/features/admin/VehicleGroupList.jsx`
+  - updated counters to `active / maintenance / broken / retired`
 
-### `VehicleResponse`
-```json
-{
-  "id": 100050,
-  "plate_number": "51H-12345",
-  "vehicle_group_id": 100000,
-  "vehicle_group_name": "1T25",
-  "brand": "Hyundai",
-  "model": "Porter",
-  "load_capacity_kg": "1200.00",
-  "manufacture_year": 2022,
-  "purchase_date": "2024-01-15",
-  "assigned_driver_id": 100123,
-  "assigned_driver_name": "Nguyen Van A",
-  "assigned_driver_email": "driver1@g62.vn",
-  "status": "available"
-}
-```
+## Migration Strategy
 
-### `PagedVehicleListResponse`
-```json
-{
-  "items": [],
-  "pagination": {
-    "page": 1,
-    "limit": 10,
-    "total": 32,
-    "totalPages": 4
-  },
-  "filters": {
-    "search": "51H",
-    "status": "available",
-    "vehicle_group_id": 100000
-  }
-}
-```
+1. Apply the schema update in `DB script/DB script.sql`.
+2. Migrate existing open maintenance rows:
+   - old rows become `status = 'open'` if the vehicle is currently `maintenance`
+   - otherwise mark historical rows as `completed`
+3. Seed `vehicle_status_history` for known current non-active states if historical provenance is missing.
+4. For any currently broken vehicles, create one open `incidents` row per vehicle with `incident_type = 'vehicle_breakdown'`, `shipment_id = NULL`, and `vehicle_id` set.
+5. Deploy backend before frontend so old clients still hit the compatibility endpoint instead of failing on removed status actions.
+6. Deploy frontend after backend to switch managers to lifecycle buttons.
 
-### `ChangeVehicleStatusRequest`
-```json
-{
-  "status": "maintenance"
-}
-```
+## Operational Rules
 
-### `AssignDriverRequest`
-```json
-{
-  "assigned_driver_id": 100123
-}
-```
-
-## 5. Database Queries
-
-### List vehicle groups
-```sql
-SELECT
-    vg.id,
-    vg.name,
-    vg.description,
-    vg.max_load_weight_kg,
-    vg.price_per_km,
-    vg.depreciation_per_km,
-    vg.upgrade_allowed,
-    COUNT(v.id)::int AS vehicle_count
-FROM vehicle_groups vg
-LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id
-GROUP BY vg.id
-ORDER BY vg.name ASC;
-```
-
-### Prevent delete when in use
-```sql
-SELECT COUNT(*)::int AS total
-FROM vehicles
-WHERE vehicle_group_id = $1;
-```
-
-### List vehicles with filters
-```sql
-SELECT
-    v.id,
-    v.plate_number,
-    v.status,
-    vg.name AS vehicle_group_name,
-    p.full_name AS assigned_driver_name
-FROM vehicles v
-JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
-LEFT JOIN profiles p ON p.id = v.assigned_driver_id
-WHERE ($1::text IS NULL OR LOWER(v.plate_number) LIKE LOWER('%' || $1 || '%'))
-  AND ($2::text IS NULL OR v.status = $2)
-  AND ($3::int IS NULL OR v.vehicle_group_id = $3)
-ORDER BY v.updated_at DESC
-LIMIT $4 OFFSET $5;
-```
-
-### Create vehicle with assignment sync
-```sql
-BEGIN;
-
-INSERT INTO vehicles (
-    plate_number,
-    vehicle_group_id,
-    brand,
-    model,
-    load_capacity_kg,
-    manufacture_year,
-    purchase_date,
-    assigned_driver_id,
-    status
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id;
-
-UPDATE drivers
-SET vehicle_id = $vehicle_id
-WHERE profile_id = $assigned_driver_id;
-
-COMMIT;
-```
-
-### Reassign / unassign driver transactionally
-```sql
-BEGIN;
-
-UPDATE drivers
-SET vehicle_id = NULL
-WHERE vehicle_id = $vehicle_id
-  AND ($assigned_driver_id::int IS NULL OR profile_id <> $assigned_driver_id);
-
-UPDATE drivers
-SET vehicle_id = $vehicle_id
-WHERE profile_id = $assigned_driver_id;
-
-UPDATE vehicles
-SET assigned_driver_id = $assigned_driver_id,
-    updated_at = NOW()
-WHERE id = $vehicle_id;
-
-COMMIT;
-```
-
-## 6. Backend Service Design
-
-### Layers
-- `vehicleManagementRoutes.js`
-  Handles manager-only route registration under `/api/admin`.
-- `vehicleManagementController.js`
-  Converts HTTP input/output and maps service errors to status codes.
-- `vehicleManagementService.js`
-  Enforces business rules:
-  - unique plate number
-  - unique vehicle group name
-  - valid vehicle group existence
-  - positive capacity
-  - no future manufacture year
-  - one driver per vehicle
-  - soft delete as `inactive`
-- `vehicleManagementRepository.js`
-  Owns SQL and transaction boundaries for vehicle assignment synchronization.
-
-### Important design note
-- The existing codebase uses `drivers.vehicle_id` in trip logic.
-- The `vehicles` table also stores `assigned_driver_id`.
-- This module updates both columns in the same transaction so the operational trip code stays consistent.
-
-## 7. Suggested React Management Screens
-
-### Vehicle Group List Screen
-- Search bar
-- Table with name, description, max load, rate, usage counters
-- Create button
-- Row actions: detail, edit, delete
-
-### Vehicle Group Detail Modal
-- Pricing fields
-- Upgrade allowed flag
-- Vehicle counts by status
-
-### Vehicle List Screen
-- Search by plate number
-- Status filter
-- Vehicle group filter
-- Paginated table
-- Row actions: detail, edit, assign/unassign driver, change status, inactivate
-
-### Vehicle Detail Modal
-- Vehicle master data
-- Vehicle group pricing info
-- Assigned driver info
-- Audit timestamps
-
-### Vehicle Form Modal
-- Plate number
-- Group selector
-- Brand and model
-- Load capacity
-- Manufacture year
-- Purchase date
-- Status
-- Driver selector with unavailable drivers disabled
+- Retired vehicles cannot be assigned to drivers.
+- Order/coordinator flows now reject non-`active` vehicles for future assignments/imported assignments.
+- Existing incident storage is reused for manager-side vehicle breakdowns without adding driver-side UI or workflow to this feature.

@@ -2,7 +2,7 @@
  * @swagger
  * tags:
  *   - name: Vehicle Management
- *     description: Manager vehicle group and vehicle management
+ *     description: Manager vehicle group and vehicle lifecycle management
  */
 
 /**
@@ -124,7 +124,7 @@
  *         name: status
  *         schema:
  *           type: string
- *           enum: [available, in_delivery, maintenance, inactive]
+ *           enum: [active, maintenance, broken, retired]
  *       - in: query
  *         name: vehicle_group_id
  *         schema: { type: integer }
@@ -154,7 +154,7 @@
  *               assigned_driver_id: { type: integer, nullable: true }
  *               status:
  *                 type: string
- *                 enum: [available, in_delivery, maintenance, inactive]
+ *                 enum: [active]
  *     responses:
  *       201:
  *         description: Vehicle created
@@ -197,7 +197,7 @@
  *         description: Vehicle not found
  *   put:
  *     tags: [Vehicle Management]
- *     summary: Update vehicle
+ *     summary: Update vehicle master data
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -221,15 +221,12 @@
  *               manufacture_year: { type: integer, nullable: true }
  *               purchase_date: { type: string, format: date, nullable: true }
  *               assigned_driver_id: { type: integer, nullable: true }
- *               status:
- *                 type: string
- *                 enum: [available, in_delivery, maintenance, inactive]
  *     responses:
  *       200:
  *         description: Vehicle updated
  *   delete:
  *     tags: [Vehicle Management]
- *     summary: Soft delete vehicle by marking it inactive
+ *     summary: Compatibility alias for retiring a vehicle
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -239,7 +236,41 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle marked inactive
+ *         description: Vehicle retired
+ */
+
+/**
+ * @swagger
+ * /api/admin/vehicles/{id}/send-to-maintenance:
+ *   post:
+ *     tags: [Vehicle Management]
+ *     summary: Create maintenance record and move vehicle to maintenance
+ *     security:
+ *       - bearerAuth: []
+ * /api/admin/vehicles/{id}/complete-maintenance:
+ *   post:
+ *     tags: [Vehicle Management]
+ *     summary: Complete open maintenance and move vehicle to active
+ *     security:
+ *       - bearerAuth: []
+ * /api/admin/vehicles/{id}/mark-broken:
+ *   post:
+ *     tags: [Vehicle Management]
+ *     summary: Create vehicle breakdown incident and move vehicle to broken
+ *     security:
+ *       - bearerAuth: []
+ * /api/admin/vehicles/{id}/restore:
+ *   post:
+ *     tags: [Vehicle Management]
+ *     summary: Resolve vehicle breakdown incident and move vehicle to active
+ *     security:
+ *       - bearerAuth: []
+ * /api/admin/vehicles/{id}/retire:
+ *   post:
+ *     tags: [Vehicle Management]
+ *     summary: Retire vehicle permanently from future operations
+ *     security:
+ *       - bearerAuth: []
  */
 
 /**
@@ -247,7 +278,7 @@
  * /api/admin/vehicles/{id}/status:
  *   patch:
  *     tags: [Vehicle Management]
- *     summary: Change vehicle status
+ *     summary: Compatibility endpoint that maps valid status transitions to lifecycle actions
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -265,10 +296,12 @@
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [available, in_delivery, maintenance, inactive]
+ *                 enum: [active, maintenance, broken, retired]
  *     responses:
  *       200:
- *         description: Vehicle status updated
+ *         description: Lifecycle action applied
+ *       409:
+ *         description: Invalid transition
  */
 
 /**
@@ -276,7 +309,7 @@
  * /api/admin/vehicles/{id}/driver-assignment:
  *   patch:
  *     tags: [Vehicle Management]
- *     summary: Assign or unassign driver from vehicle
+ *     summary: Assign or unassign driver from active vehicle
  *     security:
  *       - bearerAuth: []
  *     parameters:

@@ -2,12 +2,15 @@ import React, { useEffect, useState } from "react";
 import {
   Button,
   Descriptions,
+  Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Space,
   Table,
   Tag,
+  Timeline,
   Typography,
   message,
 } from "antd";
@@ -17,35 +20,97 @@ import {
   EditOutlined,
   EyeOutlined,
   SearchOutlined,
+  ToolOutlined,
   UserSwitchOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import VehicleModal from "./VehicleModal";
 import {
   assignVehicleDriver,
-  changeVehicleStatus,
+  completeVehicleMaintenance,
   createVehicle,
   fetchVehicleDetail,
   fetchVehicles,
-  softDeleteVehicle,
+  markVehicleBroken,
+  retireVehicle,
+  restoreVehicle,
+  sendVehicleToMaintenance,
   updateVehicle,
 } from "./vehicleManagementApi";
 
 const { Text, Title } = Typography;
 
 const statusColorMap = {
-  available: "green",
-  in_delivery: "blue",
+  active: "green",
   maintenance: "orange",
-  inactive: "default",
+  broken: "red",
+  retired: "default",
 };
 
 const statusOptions = [
   { label: "All Statuses", value: "" },
-  { label: "Available", value: "available" },
-  { label: "In Delivery", value: "in_delivery" },
+  { label: "Active", value: "active" },
   { label: "Maintenance", value: "maintenance" },
-  { label: "Inactive", value: "inactive" },
+  { label: "Broken", value: "broken" },
+  { label: "Retired", value: "retired" },
 ];
+
+const formatDateTime = (value) => {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
+const buildActionButtons = (record, handlers) => {
+  const buttons = [
+    <Button key="details" icon={<EyeOutlined />} onClick={() => handlers.openDetail(record)}>
+      Details
+    </Button>,
+    <Button key="edit" icon={<EditOutlined />} onClick={() => handlers.handleOpenEdit(record)}>
+      Edit
+    </Button>,
+    <Button
+      key="assign"
+      icon={<UserSwitchOutlined />}
+      onClick={() => handlers.handleDriverToggle(record)}
+      disabled={record.status !== "active"}
+    >
+      {record.assigned_driver_id ? "Unassign" : "Assign"}
+    </Button>,
+  ];
+
+  if (record.status === "active") {
+    buttons.push(
+      <Button key="maintenance" icon={<ToolOutlined />} onClick={() => handlers.handleSendToMaintenance(record)}>
+        Send to Maintenance
+      </Button>,
+      <Button key="broken" danger icon={<WarningOutlined />} onClick={() => handlers.handleMarkBroken(record)}>
+        Mark Broken
+      </Button>,
+      <Button key="retire" icon={<DeleteOutlined />} onClick={() => handlers.handleRetire(record)}>
+        Retire
+      </Button>
+    );
+  }
+
+  if (record.status === "maintenance") {
+    buttons.push(
+      <Button key="complete-maintenance" type="primary" icon={<ToolOutlined />} onClick={() => handlers.handleCompleteMaintenance(record)}>
+        Complete Maintenance
+      </Button>
+    );
+  }
+
+  if (record.status === "broken") {
+    buttons.push(
+      <Button key="restore" type="primary" icon={<ToolOutlined />} onClick={() => handlers.handleRestore(record)}>
+        Restore
+      </Button>
+    );
+  }
+
+  return buttons;
+};
 
 export default function VehicleList({ vehicleGroups }) {
   const [vehicles, setVehicles] = useState([]);
@@ -57,6 +122,18 @@ export default function VehicleList({ vehicleGroups }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [detailVehicle, setDetailVehicle] = useState(null);
+
+  const [maintenanceForm] = Form.useForm();
+  const [failureForm] = Form.useForm();
+  const [completeMaintenanceForm] = Form.useForm();
+  const [restoreForm] = Form.useForm();
+  const [retireForm] = Form.useForm();
+
+  const [maintenanceTarget, setMaintenanceTarget] = useState(null);
+  const [completeMaintenanceTarget, setCompleteMaintenanceTarget] = useState(null);
+  const [brokenTarget, setBrokenTarget] = useState(null);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [retireTarget, setRetireTarget] = useState(null);
 
   const loadVehicles = async ({
     page = pagination.current,
@@ -140,22 +217,6 @@ export default function VehicleList({ vehicleGroups }) {
     }
   };
 
-  const handleStatusChange = (vehicle, status) => {
-    Modal.confirm({
-      title: `Change status of ${vehicle.plate_number}?`,
-      content: `Set vehicle status to ${status}.`,
-      onOk: async () => {
-        try {
-          await changeVehicleStatus(vehicle.id, status);
-          message.success("Vehicle status updated");
-          await loadVehicles();
-        } catch (err) {
-          message.error(err.message);
-        }
-      },
-    });
-  };
-
   const handleDriverToggle = (vehicle) => {
     if (vehicle.assigned_driver_id) {
       Modal.confirm({
@@ -176,21 +237,99 @@ export default function VehicleList({ vehicleGroups }) {
     handleOpenEdit(vehicle);
   };
 
-  const handleSoftDelete = (vehicle) => {
-    Modal.confirm({
-      title: `Mark ${vehicle.plate_number} as inactive?`,
-      content: "This is a soft delete and keeps the record in the system.",
-      okType: "danger",
-      onOk: async () => {
-        try {
-          await softDeleteVehicle(vehicle.id);
-          message.success("Vehicle marked inactive");
-          await loadVehicles();
-        } catch (err) {
-          message.error(err.message);
-        }
-      },
+  const handleSendToMaintenance = (vehicle) => {
+    maintenanceForm.resetFields();
+    maintenanceForm.setFieldsValue({
+      maintenance_type: "scheduled",
+      maintenance_date: new Date().toISOString().slice(0, 10),
     });
+    setMaintenanceTarget(vehicle);
+  };
+
+  const submitMaintenance = async () => {
+    try {
+      const values = await maintenanceForm.validateFields();
+      await sendVehicleToMaintenance(maintenanceTarget.id, values);
+      message.success("Vehicle sent to maintenance");
+      setMaintenanceTarget(null);
+      await loadVehicles();
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err.message);
+    }
+  };
+
+  const handleCompleteMaintenance = (vehicle) => {
+    completeMaintenanceForm.resetFields();
+    setCompleteMaintenanceTarget(vehicle);
+  };
+
+  const submitCompleteMaintenance = async () => {
+    try {
+      const values = await completeMaintenanceForm.validateFields();
+      await completeVehicleMaintenance(completeMaintenanceTarget.id, values);
+      message.success("Maintenance completed");
+      setCompleteMaintenanceTarget(null);
+      await loadVehicles();
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err.message);
+    }
+  };
+
+  const handleMarkBroken = (vehicle) => {
+    failureForm.resetFields();
+    failureForm.setFieldsValue({ severity_level: "medium" });
+    setBrokenTarget(vehicle);
+  };
+
+  const submitBroken = async () => {
+    try {
+      const values = await failureForm.validateFields();
+      await markVehicleBroken(brokenTarget.id, values);
+      message.success("Vehicle marked as broken");
+      setBrokenTarget(null);
+      await loadVehicles();
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err.message);
+    }
+  };
+
+  const handleRestore = (vehicle) => {
+    restoreForm.resetFields();
+    setRestoreTarget(vehicle);
+  };
+
+  const submitRestore = async () => {
+    try {
+      const values = await restoreForm.validateFields();
+      await restoreVehicle(restoreTarget.id, values);
+      message.success("Vehicle restored");
+      setRestoreTarget(null);
+      await loadVehicles();
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err.message);
+    }
+  };
+
+  const handleRetire = (vehicle) => {
+    retireForm.resetFields();
+    setRetireTarget(vehicle);
+  };
+
+  const submitRetire = async () => {
+    try {
+      const values = await retireForm.validateFields();
+      await retireVehicle(retireTarget.id, values);
+      message.success("Vehicle retired");
+      setRetireTarget(null);
+      await loadVehicles();
+    } catch (err) {
+      if (err?.errorFields) return;
+      message.error(err.message);
+    }
   };
 
   const columns = [
@@ -217,7 +356,8 @@ export default function VehicleList({ vehicleGroups }) {
         <Space direction="vertical" size={0}>
           <Text>{[record.brand, record.model].filter(Boolean).join(" ") || "Not set"}</Text>
           <Text type="secondary">
-            {record.load_capacity_kg ? `${record.load_capacity_kg} kg` : "No capacity"}{record.manufacture_year ? ` • ${record.manufacture_year}` : ""}
+            {record.load_capacity_kg ? `${record.load_capacity_kg} kg` : "No capacity"}
+            {record.manufacture_year ? ` | ${record.manufacture_year}` : ""}
           </Text>
         </Space>
       ),
@@ -239,32 +379,23 @@ export default function VehicleList({ vehicleGroups }) {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status) => <Tag color={statusColorMap[status] || "default"}>{status}</Tag>,
+      render: (status) => <Tag color={statusColorMap[status] || "default"}>{String(status || "").toUpperCase()}</Tag>,
     },
     {
       title: "Actions",
       key: "actions",
       render: (_, record) => (
         <Space wrap>
-          <Button icon={<EyeOutlined />} onClick={() => openDetail(record)}>
-            Details
-          </Button>
-          <Button icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>
-            Edit
-          </Button>
-          <Button icon={<UserSwitchOutlined />} onClick={() => handleDriverToggle(record)}>
-            {record.assigned_driver_id ? "Unassign" : "Assign"}
-          </Button>
-          <Select
-            size="small"
-            value={record.status}
-            style={{ width: 140 }}
-            onChange={(value) => handleStatusChange(record, value)}
-            options={statusOptions.slice(1)}
-          />
-          <Button danger icon={<DeleteOutlined />} onClick={() => handleSoftDelete(record)}>
-            Inactivate
-          </Button>
+          {buildActionButtons(record, {
+            openDetail,
+            handleOpenEdit,
+            handleDriverToggle,
+            handleSendToMaintenance,
+            handleCompleteMaintenance,
+            handleMarkBroken,
+            handleRestore,
+            handleRetire,
+          })}
         </Space>
       ),
     },
@@ -330,36 +461,181 @@ export default function VehicleList({ vehicleGroups }) {
         title={detailVehicle ? `Vehicle: ${detailVehicle.plate_number}` : "Vehicle Details"}
         onCancel={() => setDetailVehicle(null)}
         footer={null}
-        width={760}
+        width={900}
       >
         {detailVehicle ? (
-          <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label="ID">{detailVehicle.id}</Descriptions.Item>
-            <Descriptions.Item label="Status">
-              <Tag color={statusColorMap[detailVehicle.status] || "default"}>{detailVehicle.status}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="Vehicle Group">{detailVehicle.vehicle_group_name}</Descriptions.Item>
-            <Descriptions.Item label="Price Per Km">{Number(detailVehicle.price_per_km).toLocaleString()}</Descriptions.Item>
-            <Descriptions.Item label="Brand">{detailVehicle.brand || "Not set"}</Descriptions.Item>
-            <Descriptions.Item label="Model">{detailVehicle.model || "Not set"}</Descriptions.Item>
-            <Descriptions.Item label="Load Capacity">
-              {detailVehicle.load_capacity_kg ? `${detailVehicle.load_capacity_kg} kg` : "Not set"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Manufacture Year">{detailVehicle.manufacture_year || "Not set"}</Descriptions.Item>
-            <Descriptions.Item label="Purchase Date">{detailVehicle.purchase_date || "Not set"}</Descriptions.Item>
-            <Descriptions.Item label="Upgrade Allowed">{detailVehicle.upgrade_allowed ? "Yes" : "No"}</Descriptions.Item>
-            <Descriptions.Item label="Assigned Driver">
-              {detailVehicle.assigned_driver_name
-                ? `${detailVehicle.assigned_driver_name} (${detailVehicle.assigned_driver_email})`
-                : "Unassigned"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Driver License">
-              {detailVehicle.assigned_driver_license_number || "Not set"}
-            </Descriptions.Item>
-            <Descriptions.Item label="Created At">{detailVehicle.created_at}</Descriptions.Item>
-            <Descriptions.Item label="Updated At">{detailVehicle.updated_at}</Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" style={{ width: "100%" }} size="large">
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="ID">{detailVehicle.id}</Descriptions.Item>
+              <Descriptions.Item label="Status">
+                <Tag color={statusColorMap[detailVehicle.status] || "default"}>{String(detailVehicle.status).toUpperCase()}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Vehicle Group">{detailVehicle.vehicle_group_name}</Descriptions.Item>
+              <Descriptions.Item label="Price Per Km">{Number(detailVehicle.price_per_km).toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item label="Brand">{detailVehicle.brand || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Model">{detailVehicle.model || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Load Capacity">
+                {detailVehicle.load_capacity_kg ? `${detailVehicle.load_capacity_kg} kg` : "Not set"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Manufacture Year">{detailVehicle.manufacture_year || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Purchase Date">{detailVehicle.purchase_date || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Upgrade Allowed">{detailVehicle.upgrade_allowed ? "Yes" : "No"}</Descriptions.Item>
+              <Descriptions.Item label="Assigned Driver">
+                {detailVehicle.assigned_driver_name
+                  ? `${detailVehicle.assigned_driver_name} (${detailVehicle.assigned_driver_email})`
+                  : "Unassigned"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Driver License">
+                {detailVehicle.assigned_driver_license_number || "Not set"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Open Maintenance">
+                {detailVehicle.active_maintenance_id
+                  ? `#${detailVehicle.active_maintenance_id} | ${detailVehicle.active_maintenance_type} | ${detailVehicle.active_maintenance_description || "No description"}`
+                  : "None"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Open Breakdown Incident">
+                {detailVehicle.active_failure_id
+                  ? `#${detailVehicle.active_failure_id} | ${detailVehicle.active_failure_type} | ${detailVehicle.active_failure_severity}`
+                  : "None"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Created At">{formatDateTime(detailVehicle.created_at)}</Descriptions.Item>
+              <Descriptions.Item label="Updated At">{formatDateTime(detailVehicle.updated_at)}</Descriptions.Item>
+            </Descriptions>
+
+            <div>
+              <Title level={5}>Lifecycle History</Title>
+              <Timeline
+                items={(detailVehicle.status_history || []).map((item) => ({
+                  color: statusColorMap[item.to_status] || "blue",
+                  children: (
+                    <Space direction="vertical" size={0}>
+                      <Text strong>{item.action_type}</Text>
+                      <Text type="secondary">
+                        {String(item.from_status).toUpperCase()} {"->"} {String(item.to_status).toUpperCase()}
+                      </Text>
+                      <Text type="secondary">
+                        {item.created_by_name || "Manager"} | {formatDateTime(item.created_at)}
+                      </Text>
+                      {item.note ? <Text>{item.note}</Text> : null}
+                    </Space>
+                  ),
+                }))}
+              />
+            </div>
+          </Space>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(maintenanceTarget)}
+        title={maintenanceTarget ? `Send ${maintenanceTarget.plate_number} to maintenance` : "Send to Maintenance"}
+        onCancel={() => setMaintenanceTarget(null)}
+        onOk={submitMaintenance}
+        okText="Confirm"
+      >
+        <Form form={maintenanceForm} layout="vertical">
+          <Form.Item label="Maintenance Type" name="maintenance_type" rules={[{ required: true, message: "Maintenance type is required" }]}>
+            <Select
+              options={[
+                { label: "Scheduled", value: "scheduled" },
+                { label: "Repair", value: "repair" },
+                { label: "Inspection", value: "inspection" },
+                { label: "Emergency", value: "emergency" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="Description" name="description" rules={[{ required: true, message: "Description is required" }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="Maintenance Date" name="maintenance_date" rules={[{ required: true, message: "Maintenance date is required" }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item label="Cost" name="cost">
+            <InputNumber style={{ width: "100%" }} min={0} precision={2} />
+          </Form.Item>
+          <Form.Item label="Performed By" name="performed_by">
+            <Input />
+          </Form.Item>
+          <Form.Item label="Note" name="note">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(completeMaintenanceTarget)}
+        title={completeMaintenanceTarget ? `Complete maintenance for ${completeMaintenanceTarget.plate_number}` : "Complete Maintenance"}
+        onCancel={() => setCompleteMaintenanceTarget(null)}
+        onOk={submitCompleteMaintenance}
+        okText="Complete"
+      >
+        <Form form={completeMaintenanceForm} layout="vertical">
+          <Form.Item label="Completion Note" name="completion_note" rules={[{ required: true, message: "Completion note is required" }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="Performed By" name="performed_by">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(brokenTarget)}
+        title={brokenTarget ? `Mark ${brokenTarget.plate_number} as broken` : "Mark Broken"}
+        onCancel={() => setBrokenTarget(null)}
+        onOk={submitBroken}
+        okText="Confirm"
+      >
+        <Form form={failureForm} layout="vertical">
+          <Form.Item label="Failure Type" name="failure_type" rules={[{ required: true, message: "Failure type is required" }]}>
+            <Input placeholder="engine_failure" />
+          </Form.Item>
+          <Form.Item label="Severity" name="severity_level" rules={[{ required: true, message: "Severity is required" }]}>
+            <Select
+              options={[
+                { label: "Low", value: "low" },
+                { label: "Medium", value: "medium" },
+                { label: "High", value: "high" },
+                { label: "Critical", value: "critical" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="Description" name="description" rules={[{ required: true, message: "Description is required" }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="Note" name="note">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(restoreTarget)}
+        title={restoreTarget ? `Restore ${restoreTarget.plate_number}` : "Restore Vehicle"}
+        onCancel={() => setRestoreTarget(null)}
+        onOk={submitRestore}
+        okText="Restore"
+      >
+        <Form form={restoreForm} layout="vertical">
+          <Form.Item label="Resolution Note" name="resolution_note" rules={[{ required: true, message: "Resolution note is required" }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(retireTarget)}
+        title={retireTarget ? `Retire ${retireTarget.plate_number}` : "Retire Vehicle"}
+        onCancel={() => setRetireTarget(null)}
+        onOk={submitRetire}
+        okText="Retire"
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={retireForm} layout="vertical">
+          <Form.Item label="Retirement Note" name="note" rules={[{ required: true, message: "Retirement note is required" }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

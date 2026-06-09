@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Form, Input, InputNumber, Modal, Select, message } from "antd";
+import { Alert, Form, Input, InputNumber, Modal, Select, message } from "antd";
 import { fetchDriverOptions } from "./vehicleManagementApi";
-
-const VEHICLE_STATUS_OPTIONS = [
-  { label: "Available", value: "available" },
-  { label: "In Delivery", value: "in_delivery" },
-  { label: "Maintenance", value: "maintenance" },
-  { label: "Inactive", value: "inactive" },
-];
 
 export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, vehicleGroups }) {
   const [form] = Form.useForm();
@@ -45,15 +38,11 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
         manufacture_year: editingVehicle.manufacture_year || null,
         purchase_date: editingVehicle.purchase_date || null,
         assigned_driver_id: editingVehicle.assigned_driver_id || null,
-        status: editingVehicle.status,
       });
       return;
     }
 
     form.resetFields();
-    form.setFieldsValue({
-      status: "available",
-    });
   }, [editingVehicle, form, open]);
 
   const handleOk = async () => {
@@ -73,6 +62,15 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
       width={720}
     >
       <Form form={form} layout="vertical">
+        {editingVehicle ? (
+          <Alert
+            type="info"
+            showIcon
+            message="Vehicle lifecycle status is managed by action buttons."
+            description="Use Send to Maintenance, Complete Maintenance, Mark Broken, Restore, or Retire from the vehicle list."
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <Form.Item
             label="Plate Number"
@@ -130,10 +128,6 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
 
           <Form.Item label="Purchase Date" name="purchase_date">
             <Input type="date" />
-          </Form.Item>
-
-          <Form.Item label="Status" name="status" rules={[{ required: true, message: "Status is required" }]}>
-            <Select options={VEHICLE_STATUS_OPTIONS} />
           </Form.Item>
         </div>
 
