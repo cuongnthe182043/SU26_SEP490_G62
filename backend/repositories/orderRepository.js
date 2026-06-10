@@ -585,6 +585,7 @@ const createOrderWithMultipleShipments = async ({
                     assignmentData.vehicle_id,
                     assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
                     assignmentData.assigned_by ?? null,
+                    assignmentData
                 ],
             );
         }

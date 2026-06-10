@@ -190,8 +190,6 @@ const createOrder = async (userId, payload) => {
                 vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
-                pickup_address: safeTrim(pickup_address),
-                delivery_address: safeTrim(delivery_address),
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
@@ -205,6 +203,8 @@ const createOrder = async (userId, payload) => {
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
                     assigned_by: userId,
+                    pickup_address: safeTrim(pickup_address),
+                    delivery_address: safeTrim(delivery_address),
                 } : null,
             });
         }
@@ -216,8 +216,6 @@ const createOrder = async (userId, payload) => {
                 customer_id: customer?.id ?? null,
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
-                pickup_address: safeTrim(pickup_address),
-                delivery_address: safeTrim(delivery_address),
                 payment_type: payload.payment_type,
                 notes: notes !== undefined ? safeTrim(notes) : '',
             },
