@@ -57,10 +57,94 @@ const selectOrderProjection = `
     LEFT JOIN vehicles v ON v.id = os.vehicle_id
 `;
 
-const listOrders = async () => {
-    const result = await pool.query(`${selectOrderProjection} ORDER BY o.created_at DESC`);
-    return result.rows;
+
+const parsePositiveInt = (value, fallback, max = 100) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, max);
 };
+
+const listOrders = async ({
+    page = 1,
+    limit = 10,
+    search = '',
+    status = '',
+    dateFrom = '',
+    dateTo = '',
+    customer = '',
+} = {}) => {
+    const normalizedPage = parsePositiveInt(page, 1, 1000000);
+    const normalizedLimit = parsePositiveInt(limit, 10, 100);
+    const offset = (normalizedPage - 1) * normalizedLimit;
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+        const statuses = String(status)
+            .split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean);
+        if (statuses.length) {
+            params.push(statuses);
+            conditions.push(`LOWER(os.status) = ANY($${params.length})`);
+        }
+    }
+
+    if (dateFrom) {
+        params.push(dateFrom);
+        conditions.push(`o.created_at::date >= $${params.length}::date`);
+    }
+
+    if (dateTo) {
+        params.push(dateTo);
+        conditions.push(`o.created_at::date <= $${params.length}::date`);
+    }
+
+    if (customer) {
+        params.push(`%${String(customer).trim().toLowerCase()}%`);
+        conditions.push(`LOWER(COALESCE(c.full_name, '')) LIKE $${params.length}`);
+    }
+
+    if (search) {
+        params.push(`%${String(search).trim().toLowerCase()}%`);
+        conditions.push(`(
+            LOWER(COALESCE(o.cargo_name, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(pickup.address, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(delivery.address, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(c.full_name, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(d.full_name, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(v.plate_number, '')) LIKE $${params.length}
+            OR LOWER(COALESCE(os.status, '')) LIKE $${params.length}
+        )`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM (${selectOrderProjection} ${whereClause}) counted_orders`,
+        params,
+    );
+
+    const rowsParams = [...params, normalizedLimit, offset];
+    const rowsResult = await pool.query(
+        `${selectOrderProjection}
+         ${whereClause}
+         ORDER BY o.created_at DESC, o.id DESC
+         LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
+        rowsParams,
+    );
+
+    const total = Number(countResult.rows[0]?.total ?? 0);
+    return {
+        orders: rowsResult.rows,
+        pagination: {
+            page: normalizedPage,
+            limit: normalizedLimit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / normalizedLimit)),
+        },
+    };
+};
+
 
 const getDriverById = async (client, driverId) => {
     if (!driverId) return null;
@@ -111,6 +195,67 @@ const getDriverByPlate = async (client, plateNumber) => {
         [plateNumber],
     );
     return result.rows[0] ?? null;
+};
+
+const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => {
+    if (!plateNumber) return null;
+    const params = [String(plateNumber).trim().toUpperCase()];
+    let groupFilter = '';
+    if (vehicleGroupId) {
+        params.push(Number(vehicleGroupId));
+        groupFilter = ` AND v.vehicle_group_id = $${params.length}`;
+    }
+    const result = await client.query(
+        `SELECT
+            v.id,
+            v.plate_number,
+            v.vehicle_group_id,
+            vg.name AS vehicle_group_name,
+            vg.price_per_km,
+            v.status AS vehicle_status
+         FROM vehicles v
+         JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+         WHERE UPPER(v.plate_number) = $1${groupFilter}
+         LIMIT 1`,
+        params,
+    );
+    return result.rows[0] ?? null;
+};
+
+const getVehicleGroupById = async (client, vehicleGroupId) => {
+    if (!vehicleGroupId) return null;
+    const result = await client.query(
+        `SELECT id, name, price_per_km
+         FROM vehicle_groups
+         WHERE id = $1
+         LIMIT 1`,
+        [vehicleGroupId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const listCoordinatorVehicleGroups = async () => {
+    const result = await pool.query(
+        `SELECT
+            vg.id,
+            vg.name,
+            vg.price_per_km,
+            COALESCE(
+                JSON_AGG(
+                    JSON_BUILD_OBJECT(
+                        'id', v.id,
+                        'plate_number', v.plate_number,
+                        'status', v.status
+                    ) ORDER BY v.plate_number
+                ) FILTER (WHERE v.id IS NOT NULL),
+                '[]'::json
+            ) AS vehicles
+         FROM vehicle_groups vg
+         LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id AND v.status = 'active'
+         GROUP BY vg.id
+         ORDER BY vg.name ASC, vg.id ASC`,
+    );
+    return result.rows;
 };
 //Find driver by name
 const findDriverByName = async (client, driverName) => {
@@ -242,7 +387,7 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
 
     const createdCustomer = await client.query(
         `INSERT INTO customers (customer_type, full_name, phone)
-        VALUE('individual', $1, $2)
+        VALUES('individual', $1, $2)
         RETURNING id, full_name, phone`,
         [normalizedName || normalizedPhone, normalizedPhone],
     );
@@ -250,13 +395,13 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
 };
 
 
-const insertStops = async (client, shipmentId, stopType, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
+const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
     await client.query(
         `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
-        VALUES
+         VALUES
             ($1, 1, 'pickup', $2, $4, $5, $6),
-            ($1, 2, 'delivery', $3, $4, $5, $6),
-        `[shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null, notes],
+            ($1, 2, 'delivery', $3, $4, $5, $6)`,
+        [shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null, notes || null],
     );
 };
 
@@ -370,7 +515,9 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         notes,
         plate,
         driver_id,
+        vehicle_id,
         vehicle_group_id,
+        distance,
     } = payload;
 
     const client = await pool.connect();
@@ -380,14 +527,26 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         const customer = (customer_name || customer_phone)
             ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
             : null;
-        const normalizedDriverId = driver_id ? Number(driver_id) : null;
-        const driver = normalizedDriverId ? await getDriverById(client, normalizedDriverId) : await getDriverByPlate(client, plate);
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : null;
+        const vehicleGroup = finalVehicleGroupId ? await getVehicleGroupById(client, finalVehicleGroupId) : null;
+        const vehicle = plate ? await getVehicleByPlate(client, plate, finalVehicleGroupId) : null;
 
-        if (driver_id && !driver) {
-            throw new Error('Tài xế không tồn tại');
+        if (plate && !vehicle) {
+            throw new Error('BKS không tồn tại trong nhóm xe đã chọn');
+        }
+        if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+            throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
         }
 
-        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? null;
+        const normalizedDistance = normalizeNumber(distance);
+        const calculatedPrice = normalizedDistance !== null && vehicleGroup
+            ? normalizedDistance * Number(vehicleGroup.price_per_km || 0)
+            : normalizeNumber(estimated_price);
+        const orderNotes = [
+            normalizedDistance !== null ? `Quãng đường: ${normalizedDistance}` : '',
+            vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '',
+            notes !== undefined ? safeTrim(notes) : '',
+        ].filter(Boolean).join(' | ');
 
         const orderResult = await client.query(
             `UPDATE orders
@@ -403,8 +562,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 orderId,
                 safeTrim(cargo_name),
                 normalizeNumber(cargo_weight_kg),
-                normalizeNumber(estimated_price),
-                notes !== undefined ? safeTrim(notes) : null,
+                calculatedPrice,
+                orderNotes,
                 customer?.id ?? null,
             ],
         );
@@ -427,7 +586,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                      cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                      estimated_price = COALESCE($4, estimated_price),
                      notes = COALESCE(NULLIF($5, ''), notes),
-                     owner_driver_id = COALESCE($6, owner_driver_id),
+                     owner_driver_id = $6,
                      vehicle_id = COALESCE($7, vehicle_id),
                      vehicle_group_id = COALESCE($8, vehicle_group_id),
                      updated_at = NOW()
@@ -436,10 +595,10 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     shipmentId,
                     safeTrim(cargo_name),
                     normalizeNumber(cargo_weight_kg),
-                    normalizeNumber(estimated_price),
-                    safeTrim(notes),
-                    driver?.id ?? null,
-                    driver?.vehicle_id ?? null,
+                    calculatedPrice,
+                    orderNotes,
+                    null,
+                    vehicle?.id ?? null,
                     finalVehicleGroupId,
                 ],
             );
@@ -521,6 +680,9 @@ module.exports = {
     listOrders,
     getDriverById,
     getDriverByPlate,
+    getVehicleByPlate,
+    getVehicleGroupById,
+    listCoordinatorVehicleGroups,
     findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,
     findOrCreateCustomer,
