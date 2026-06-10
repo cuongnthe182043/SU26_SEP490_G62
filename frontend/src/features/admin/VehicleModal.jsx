@@ -67,7 +67,7 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
             type="info"
             showIcon
             message="Vehicle lifecycle status is managed by action buttons."
-            description="Use Send to Maintenance, Complete Maintenance, Mark Broken, Restore, or Retire from the vehicle list."
+            description="Use Send to Maintenance, Verify Maintenance, Mark Broken, Restore, or Retire from the vehicle list."
             style={{ marginBottom: 16 }}
           />
         ) : null}
