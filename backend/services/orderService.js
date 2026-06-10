@@ -96,6 +96,7 @@ const listOrders = async (query = {}) => {
 const createOrder = async (userId, payload) => {
     const {
         date,
+        delivery_at,
         plate,
         driver_id,
         vehicle_id,
@@ -106,7 +107,6 @@ const createOrder = async (userId, payload) => {
         vehicle_group_id,
         pickup_address,
         delivery_address,
-        estimated_price,
         distance,
         notes,
     } = payload;
@@ -116,19 +116,21 @@ const createOrder = async (userId, payload) => {
     }
 
     const normalizedDistance = normalizeNumber(distance);
-    const hasDistancePricing = normalizedDistance !== null && vehicle_group_id;
-    const finalEstimatedPrice = hasDistancePricing
-        ? 0
-        : ((estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price);
+    if (normalizedDistance === null || normalizedDistance <= 0) {
+        throw new Error('Quãng đường là bắt buộc để tính cước');
+    }
 
-    const normalizedDate = normalizeDateInput(date);
-    if (normalizedDate && isBeforeToday(normalizedDate)) {
+    const normalizedDate = normalizeDateInput(delivery_at || date);
+    if (!normalizedDate) {
+        throw new Error('Ngày giao hàng là bắt buộc');
+    }
+    if (isBeforeToday(normalizedDate)) {
         throw new Error('Ngày không được trước hôm nay');
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
     
-    let normalizedPrice = normalizeNumber(finalEstimatedPrice);
+    let normalizedPrice = 0;
     
     let dbClient = null;
 
@@ -165,17 +167,14 @@ const createOrder = async (userId, payload) => {
             throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
         }
 
-        if (hasDistancePricing) {
-            normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
-        }
+        normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
 
         const finalDriverId = null;
         const finalVehicleId = vehicle?.id ?? null;
         const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
-        const distanceNote = normalizedDistance !== null ? `Quãng đường: ${normalizedDistance}` : '';
         const plateNote = vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '';
-        const orderNotes = [distanceNote, plateNote, safeTrim(notes)].filter(Boolean).join(' | ');
+        const orderNotes = [plateNote, safeTrim(notes)].filter(Boolean).join(' | ');
 
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,
@@ -200,6 +199,9 @@ const createOrder = async (userId, payload) => {
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
+                estimated_distance_km: normalizedDistance,
+                delivery_at: normalizedDate,
+                plate_number: vehicle.plate_number,
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
                 notes: orderNotes,
@@ -248,7 +250,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             const routeAddresses = parseRoute(route);
             const pickupAddress = safeTrim(row['Điểm lấy hàng'] ?? row.pickup_address) || routeAddresses.pickupAddress;
             const deliveryAddress = safeTrim(row['Điểm giao hàng'] ?? row.delivery_address) || routeAddresses.deliveryAddress;
-            const estimatedPrice = normalizeNumber(row['Cước xe'] ?? row.fare);
+            const distanceValue = normalizeNumber(row['Quãng đường'] ?? row.distance);
+            let estimatedPrice = 0;
             const cargoWeight = normalizeNumber(row['Khối lượng'] ?? row.cargo_weight_kg);
             const note = safeTrim(row['Ghi chú'] ?? row.notes ?? row.note);
 
@@ -260,10 +263,9 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             if (!date) missing.push('Ngày');
             if (!checkIn) missing.push('Chấm công');
             if (!plate) missing.push('BKS');
-            if (!driverName) missing.push('Tài xế');
             if (!pickupAddress) missing.push('Điểm lấy hàng');
             if (!deliveryAddress) missing.push('Điểm giao hàng');
-            if (estimatedPrice === null) missing.push('Cước xe');
+            if (distanceValue === null || distanceValue <= 0) missing.push('Quãng đường');
             if (missing.length > 0) {
                 throw new Error(`Thiếu thông tin bắt buộc trong file Excel: ${missing.join(', ')}`);
             }
@@ -273,18 +275,19 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             if (!defaultVehicleGroupId) {
                 throw new Error('Chưa có nhóm xe trong hệ thống');
             }
-            const driver = await orderRepository.findOrCreateDriverWithVehicle(dbClient, {
-                driverName,
-                plateNumber: plate,
-                vehicleGroupId: defaultVehicleGroupId,
-            });
-            if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
-                throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${driver.vehicle_status})`);
+            const vehicle = await orderRepository.getVehicleByPlate(dbClient, plate);
+            if (!vehicle) {
+                throw new Error(`BKS ${plate} không tồn tại trong hệ thống`);
             }
-            const finalDriverId = driver?.id ?? null;
-            const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
-            const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
-            const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
+            if (vehicle.vehicle_status !== 'active') {
+                throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${vehicle.vehicle_status})`);
+            }
+            const finalDriverId = null;
+            const finalVehicleId = vehicle.id;
+            const finalVehicleGroupId = vehicle.vehicle_group_id ?? defaultVehicleGroupId;
+            const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+            estimatedPrice = distanceValue * Number(vehicleGroup?.price_per_km || 0);
+            const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
             const notes = [
                 `Ngày: ${date}`,
@@ -294,7 +297,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 customerName ? `Khách hàng: ${customerName}` : '',
                 customerPhone ? `SĐT: ${customerPhone}` : '',
                 route ? `Hành trình: ${route}` : `Hành trình: ${pickupAddress} - ${deliveryAddress}`,
-                estimatedPrice !== null ? `Cước xe: ${estimatedPrice}` : '',
+                `Quãng đường: ${distanceValue}`,
+                `Cước xe: ${estimatedPrice}`,
                 row['Doanh thu'] ? `Doanh thu: ${safeTrim(row['Doanh thu'])}` : '',
                 note,
             ].filter(Boolean).join(' | ');
@@ -317,6 +321,9 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     delivery_address: deliveryAddress,
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
+                    estimated_distance_km: distanceValue,
+                    delivery_at: date,
+                    plate_number: plate,
                     notes,
                     vehicle_group_id: finalVehicleGroupId,
                     owner_driver_id: finalDriverId,
@@ -351,6 +358,7 @@ const updateOrder = async (orderId, payload) => {
         estimated_price,
         notes,
         date,
+        delivery_at,
         plate,
         driver_id,
         vehicle_id,
@@ -368,11 +376,13 @@ const updateOrder = async (orderId, payload) => {
         estimated_price,
         notes,
         date,
+        delivery_at,
         plate,
         driver_id,
         vehicle_id,
         vehicle_group_id,
         distance,
+        delivery_at: delivery_at || date,
     }, normalizeNumber, safeTrim, normalizePhone);
 };
 

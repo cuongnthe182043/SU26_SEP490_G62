@@ -14,7 +14,6 @@ const emptyForm = {
   distance: "",
   pickup_address: "",
   delivery_address: "",
-  estimated_price: "",
   vehicle_group_id: "",
   note: "",
 };
@@ -84,13 +83,14 @@ function extractDistance(notes) {
 function buildTripFromOrder(order) {
   const pickupAddress = order.pickup_address ||  "";
   const deliveryAddress = order.delivery_address ||  "";
-  const date = (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
+  const deliveryAt = order.delivery_at || order.created_at;
+  const date = (deliveryAt ? new Date(deliveryAt).toLocaleDateString('vi-VN') : "");
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: order.created_at,
+    dateInput: order.delivery_at || order.created_at,
     checkIn:  "",
     plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",
@@ -103,7 +103,7 @@ function buildTripFromOrder(order) {
     pickupAddress,
     deliveryAddress,
     route:  (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance: extractDistance(order.notes),
+    distance: order.estimated_distance_km || "",
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
@@ -296,11 +296,6 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.distance = "Quãng đường phải là số lớn hơn 0";
     }
 
-    const estimatedPrice = normalizeNumericText(form.estimated_price);
-    if (estimatedPrice && (!isFiniteNumber(estimatedPrice) || Number(estimatedPrice) < 0)) {
-      errors.estimated_price = "Cước xe phải là số không âm";
-    }
-
     setFormErrors(errors);
     return errors;
   };
@@ -327,12 +322,6 @@ export default function CoordinatorPage({ user, onLogout }) {
     if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(pricePerKm)) return "";
     return String(Math.round(distance * pricePerKm));
   }, [form.distance, selectedVehicleGroup]);
-
-  useEffect(() => {
-    if (calculatedFare) {
-      setForm((current) => ({ ...current, estimated_price: calculatedFare }));
-    }
-  }, [calculatedFare]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -389,7 +378,6 @@ export default function CoordinatorPage({ user, onLogout }) {
       distance: trip.distance || "",
       pickup_address: trip.pickupAddress || routeAddresses.pickup,
       delivery_address: trip.deliveryAddress || routeAddresses.delivery,
-      estimated_price: trip.fare || "",
       vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
       note: trip.notes || "",
     });
@@ -458,7 +446,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         cargo_weight_kg: form.cargo_weight_kg,
         pickup_address: form.pickup_address,
         delivery_address: form.delivery_address,
-        estimated_price: calculatedFare || form.estimated_price,
+        delivery_at: form.date,
         distance: form.distance,
         vehicle_group_id: selectedVehicleGroupId,
         notes: form.note,
@@ -641,7 +629,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
                 <div className="form-row form-row-3">
                   <label>
-                    <span>Ngày tháng</span>
+                    <span>Ngày giao hàng</span>
                     <input
                       type="date"
                       value={form.date}
@@ -762,18 +750,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                 <div className="form-row form-row-2">
                   <label>
                     <span>Cước xe</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={form.estimated_price}
-                      readOnly
-                      placeholder="Tự tính theo quãng đường x giá/km"
-                      className={formErrors.estimated_price ? "input-error" : ""}
-                    />
-                    {formErrors.estimated_price && (
-                      <div className="field-error">{formErrors.estimated_price}</div>
-                    )}
+                    <div className="readonly-fare">
+                      {calculatedFare ? `${Number(calculatedFare).toLocaleString("vi-VN")} đ` : "Tự tính theo quãng đường x giá/km"}
+                    </div>
                   </label>
                 </div>
 
