@@ -28,7 +28,6 @@ import {
   WarningOutlined,
 } from "@ant-design/icons";
 import VehicleModal from "./VehicleModal";
-import PageContainer, { CardSection } from "../../components/common/PageContainer";
 import {
   assignVehicleDriver,
   createVehicle,
@@ -47,32 +46,25 @@ import VehicleGroupList from "./VehicleGroupList";
 
 const { Text, Title } = Typography;
 
-const STATUS_COLOR = {
+const statusColorMap = {
   active: "green",
   maintenance: "orange",
   broken: "red",
   retired: "default",
 };
 
-const STATUS_LABEL = {
-  active: "Hoạt động",
-  maintenance: "Bảo dưỡng",
-  broken: "Hỏng",
-  retired: "Nghỉ",
-};
-
-const STATUS_OPTIONS = [
-  { label: "Tất cả trạng thái", value: "" },
-  { label: "Hoạt động", value: "active" },
-  { label: "Bảo dưỡng", value: "maintenance" },
-  { label: "Hỏng", value: "broken" },
-  { label: "Nghỉ", value: "retired" },
+const statusOptions = [
+  { label: "All Statuses", value: "" },
+  { label: "Active", value: "active" },
+  { label: "Maintenance", value: "maintenance" },
+  { label: "Broken", value: "broken" },
+  { label: "Retired", value: "retired" },
 ];
 
 const formatDateTime = (value) => {
-  if (!value) return "Chưa có";
+  if (!value) return "Not set";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("vi-VN");
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 };
 
 const MAINTENANCE_ACTIONS = new Set(["send_to_maintenance", "complete_maintenance"]);
@@ -240,8 +232,13 @@ export default function VehicleList() {
     try {
       setLoading(true);
       const data = await fetchVehicles({
-        page, limit, search: searchValue, status: statusValue, vehicle_group_id: groupValue,
+        page,
+        limit,
+        search: searchValue,
+        status: statusValue,
+        vehicle_group_id: groupValue,
       });
+
       setVehicles(data.items || []);
       setPagination({
         current: data.pagination?.page || page,
@@ -260,23 +257,37 @@ export default function VehicleList() {
     loadVehicles({ page: 1 });
   }, []);
 
-  const handleTableChange = (next) => loadVehicles({ page: next.current, limit: next.pageSize });
+  const handleTableChange = (nextPagination) => {
+    loadVehicles({
+      page: nextPagination.current,
+      limit: nextPagination.pageSize,
+    });
+  };
 
-  const handleFilterSubmit = () =>
+  const handleFilterSubmit = () => {
     loadVehicles({ page: 1, searchValue: search, statusValue: statusFilter, groupValue: groupFilter });
+  };
 
-  const handleOpenCreate = () => { setEditingVehicle(null); setModalOpen(true); };
-  const handleOpenEdit = (vehicle) => { setEditingVehicle(vehicle); setModalOpen(true); };
+  const handleOpenCreate = () => {
+    setEditingVehicle(null);
+    setModalOpen(true);
+  };
+
+  const handleOpenEdit = (vehicle) => {
+    setEditingVehicle(vehicle);
+    setModalOpen(true);
+  };
 
   const handleSubmit = async (values) => {
     try {
       if (editingVehicle) {
         await updateVehicle(editingVehicle.id, values);
-        message.success("Cập nhật xe thành công");
+        message.success("Vehicle updated");
       } else {
         await createVehicle(values);
-        message.success("Thêm xe thành công");
+        message.success("Vehicle created");
       }
+
       setModalOpen(false);
       setEditingVehicle(null);
       await loadVehicles();
@@ -297,13 +308,11 @@ export default function VehicleList() {
   const handleDriverToggle = (vehicle) => {
     if (vehicle.assigned_driver_id) {
       Modal.confirm({
-        title: `Hủy phân công tài xế khỏi xe ${vehicle.plate_number}?`,
-        okText: "Xác nhận",
-        cancelText: "Hủy",
+        title: `Unassign driver from ${vehicle.plate_number}?`,
         onOk: async () => {
           try {
             await assignVehicleDriver(vehicle.id, null);
-            message.success("Hủy phân công thành công");
+            message.success("Driver unassigned");
             await loadVehicles();
           } catch (err) {
             message.error(err.message);
@@ -312,6 +321,7 @@ export default function VehicleList() {
       });
       return;
     }
+
     handleOpenEdit(vehicle);
   };
 
@@ -330,7 +340,7 @@ export default function VehicleList() {
     try {
       const values = await maintenanceForm.validateFields();
       await sendVehicleToMaintenance(maintenanceTarget.id, values);
-      message.success("Gửi xe đi bảo dưỡng thành công");
+      message.success("Vehicle sent to maintenance");
       setMaintenanceTarget(null);
       await loadVehicles();
     } catch (err) {
@@ -372,7 +382,7 @@ export default function VehicleList() {
     try {
       const values = await failureForm.validateFields();
       await markVehicleBroken(brokenTarget.id, values);
-      message.success("Đã đánh dấu xe hỏng");
+      message.success("Vehicle marked as broken");
       setBrokenTarget(null);
       await loadVehicles();
     } catch (err) {
@@ -390,7 +400,7 @@ export default function VehicleList() {
     try {
       const values = await restoreForm.validateFields();
       await restoreVehicle(restoreTarget.id, values);
-      message.success("Khôi phục xe thành công");
+      message.success("Vehicle restored");
       setRestoreTarget(null);
       await loadVehicles();
     } catch (err) {
@@ -408,7 +418,7 @@ export default function VehicleList() {
     try {
       const values = await retireForm.validateFields();
       await retireVehicle(retireTarget.id, values);
-      message.success("Ngừng sử dụng xe thành công");
+      message.success("Vehicle retired");
       setRetireTarget(null);
       await loadVehicles();
     } catch (err) {
@@ -417,102 +427,57 @@ export default function VehicleList() {
     }
   };
 
-  const buildMoreMenu = (record) => {
-    const items = [
-      {
-        key: 'assign',
-        icon: <UserCog size={14} strokeWidth={SW} />,
-        label: record.assigned_driver_id ? 'Hủy phân công' : 'Phân công tài xế',
-        disabled: record.status !== 'active',
-        onClick: () => handleDriverToggle(record),
-      },
-      { type: 'divider' },
-    ];
-
-    if (record.status === 'active') {
-      items.push(
-        { key: 'maintenance', icon: <Wrench size={14} strokeWidth={SW} />, label: 'Gửi bảo dưỡng', onClick: () => handleSendToMaintenance(record) },
-        { key: 'broken', icon: <AlertTriangle size={14} strokeWidth={SW} />, label: 'Đánh dấu hỏng', danger: true, onClick: () => handleMarkBroken(record) },
-        { key: 'retire', icon: <Trash2 size={14} strokeWidth={SW} />, label: 'Ngừng sử dụng', onClick: () => handleRetire(record) },
-      );
-    }
-
-    if (record.status === 'maintenance') {
-      items.push({
-        key: 'complete-maintenance',
-        icon: <Check size={14} strokeWidth={SW} />,
-        label: 'Hoàn thành bảo dưỡng',
-        onClick: () => handleCompleteMaintenance(record),
-      });
-    }
-
-    if (record.status === 'broken') {
-      items.push({
-        key: 'restore',
-        icon: <Wrench size={14} strokeWidth={SW} />,
-        label: 'Khôi phục xe',
-        onClick: () => handleRestore(record),
-      });
-    }
-
-    return { items };
-  };
-
   const columns = [
     {
-      title: "Biển số",
+      title: "Plate",
       dataIndex: "plate_number",
       key: "plate_number",
       render: (value) => <Text strong>{value}</Text>,
     },
     {
-      title: "Nhóm xe",
+      title: "Group",
       key: "vehicle_group",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Text>{record.vehicle_group_name}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>#{record.vehicle_group_id}</Text>
+          <Text type="secondary">#{record.vehicle_group_id}</Text>
         </Space>
       ),
     },
     {
-      title: "Thông tin xe",
+      title: "Vehicle",
       key: "vehicle",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Text>{[record.brand, record.model].filter(Boolean).join(" ") || "Chưa cập nhật"}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {record.load_capacity_kg ? `${record.load_capacity_kg} kg` : "Chưa có tải trọng"}
-            {record.manufacture_year ? ` · ${record.manufacture_year}` : ""}
+          <Text>{[record.brand, record.model].filter(Boolean).join(" ") || "Not set"}</Text>
+          <Text type="secondary">
+            {record.load_capacity_kg ? `${record.load_capacity_kg} kg` : "No capacity"}
+            {record.manufacture_year ? ` | ${record.manufacture_year}` : ""}
           </Text>
         </Space>
       ),
     },
     {
-      title: "Tài xế phụ trách",
+      title: "Assigned Driver",
       key: "assigned_driver",
       render: (_, record) =>
         record.assigned_driver_id ? (
           <Space direction="vertical" size={0}>
             <Text>{record.assigned_driver_name}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>{record.assigned_driver_email}</Text>
+            <Text type="secondary">{record.assigned_driver_email}</Text>
           </Space>
         ) : (
-          <Text type="secondary">Chưa phân công</Text>
+          <Text type="secondary">Unassigned</Text>
         ),
     },
     {
-      title: "Trạng thái",
+      title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status) => (
-        <Tag color={STATUS_COLOR[status] || "default"}>
-          {STATUS_LABEL[status] || String(status).toUpperCase()}
-        </Tag>
-      ),
+      render: (status) => <Tag color={statusColorMap[status] || "default"}>{String(status || "").toUpperCase()}</Tag>,
     },
     {
-      title: "Thao tác",
+      title: "Actions",
       key: "actions",
       width: 80,
       render: (_, record) => (
@@ -615,54 +580,48 @@ export default function VehicleList() {
         onSubmit={handleSubmit}
       />
 
-      {/* Chi tiết xe */}
       <Modal
         open={Boolean(detailVehicle)}
-        title={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <Eye size={18} strokeWidth={SW} />
-            {detailVehicle ? `Xe: ${detailVehicle.plate_number}` : "Chi tiết xe"}
-          </span>
-        }
+        title={detailVehicle ? `Vehicle: ${detailVehicle.plate_number}` : "Vehicle Details"}
         onCancel={() => setDetailVehicle(null)}
         footer={null}
         width={900}
       >
-        {detailVehicle && (
+        {detailVehicle ? (
           <Space direction="vertical" style={{ width: "100%" }} size="large">
             <Descriptions bordered size="small" column={2}>
               <Descriptions.Item label="Status">
                 <Tag color={statusColorMap[detailVehicle.status] || "default"}>{String(detailVehicle.status).toUpperCase()}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Nhóm xe">{detailVehicle.vehicle_group_name}</Descriptions.Item>
-              <Descriptions.Item label="Giá / km">{Number(detailVehicle.price_per_km).toLocaleString()} đ</Descriptions.Item>
-              <Descriptions.Item label="Hãng xe">{detailVehicle.brand || "Chưa có"}</Descriptions.Item>
-              <Descriptions.Item label="Mẫu xe">{detailVehicle.model || "Chưa có"}</Descriptions.Item>
-              <Descriptions.Item label="Tải trọng">
-                {detailVehicle.load_capacity_kg ? `${detailVehicle.load_capacity_kg} kg` : "Chưa có"}
+              <Descriptions.Item label="Vehicle Group">{detailVehicle.vehicle_group_name}</Descriptions.Item>
+              <Descriptions.Item label="Price Per Km">{Number(detailVehicle.price_per_km).toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item label="Brand">{detailVehicle.brand || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Model">{detailVehicle.model || "Not set"}</Descriptions.Item>
+              <Descriptions.Item label="Load Capacity">
+                {detailVehicle.load_capacity_kg ? `${detailVehicle.load_capacity_kg} kg` : "Not set"}
               </Descriptions.Item>
               <Descriptions.Item label="Manufacture Year">{detailVehicle.manufacture_year || "Not set"}</Descriptions.Item>
               <Descriptions.Item label="Purchase Date">{detailVehicle.purchase_date || "Not set"}</Descriptions.Item>
               <Descriptions.Item label="Assigned Driver">
                 {detailVehicle.assigned_driver_name
                   ? `${detailVehicle.assigned_driver_name} (${detailVehicle.assigned_driver_email})`
-                  : "Chưa phân công"}
+                  : "Unassigned"}
               </Descriptions.Item>
-              <Descriptions.Item label="Bằng lái">
-                {detailVehicle.assigned_driver_license_number || "Chưa có"}
+              <Descriptions.Item label="Driver License">
+                {detailVehicle.assigned_driver_license_number || "Not set"}
               </Descriptions.Item>
-              <Descriptions.Item label="Bảo dưỡng hiện tại">
+              <Descriptions.Item label="Open Maintenance">
                 {detailVehicle.active_maintenance_id
                   ? `#${detailVehicle.active_maintenance_id} | ${detailVehicle.active_maintenance_type} | ${detailVehicle.active_maintenance_description || "No description"} | ${detailVehicle.active_maintenance_performed_by_name || "No driver"} | ${detailVehicle.active_maintenance_status || "open"}`
                   : "None"}
               </Descriptions.Item>
-              <Descriptions.Item label="Sự cố hỏng hóc">
+              <Descriptions.Item label="Open Breakdown Incident">
                 {detailVehicle.active_failure_id
-                  ? `#${detailVehicle.active_failure_id} · ${detailVehicle.active_failure_type} · ${detailVehicle.active_failure_severity}`
-                  : "Không có"}
+                  ? `#${detailVehicle.active_failure_id} | ${detailVehicle.active_failure_type} | ${detailVehicle.active_failure_severity}`
+                  : "None"}
               </Descriptions.Item>
-              <Descriptions.Item label="Ngày tạo">{formatDateTime(detailVehicle.created_at)}</Descriptions.Item>
-              <Descriptions.Item label="Cập nhật lần cuối">{formatDateTime(detailVehicle.updated_at)}</Descriptions.Item>
+              <Descriptions.Item label="Created At">{formatDateTime(detailVehicle.created_at)}</Descriptions.Item>
+              <Descriptions.Item label="Updated At">{formatDateTime(detailVehicle.updated_at)}</Descriptions.Item>
             </Descriptions>
 
             <div>
@@ -683,10 +642,9 @@ export default function VehicleList() {
               )}
             </div>
           </Space>
-        )}
+        ) : null}
       </Modal>
 
-      {/* Bảo dưỡng xe */}
       <Modal
         open={Boolean(maintenanceTarget)}
         title={maintenanceTarget ? `Send ${maintenanceTarget.plate_number} to maintenance` : "Send to Maintenance"}
@@ -695,28 +653,27 @@ export default function VehicleList() {
           setMaintenanceDriverOptions([]);
         }}
         onOk={submitMaintenance}
-        okText="Xác nhận"
-        cancelText="Hủy"
-        okButtonProps={{ icon: <Check size={15} strokeWidth={SW} /> }}
-        cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} /> }}
+        okText="Confirm"
       >
         <Form form={maintenanceForm} layout="vertical">
-          <Form.Item label="Loại bảo dưỡng" name="maintenance_type" rules={[{ required: true, message: "Vui lòng chọn loại bảo dưỡng" }]}>
-            <Select prefix={<Wrench size={15} strokeWidth={SW} />} options={[
-              { label: "Định kỳ", value: "scheduled" },
-              { label: "Sửa chữa", value: "repair" },
-              { label: "Kiểm tra", value: "inspection" },
-              { label: "Khẩn cấp", value: "emergency" },
-            ]} />
+          <Form.Item label="Maintenance Type" name="maintenance_type" rules={[{ required: true, message: "Maintenance type is required" }]}>
+            <Select
+              options={[
+                { label: "Scheduled", value: "scheduled" },
+                { label: "Repair", value: "repair" },
+                { label: "Inspection", value: "inspection" },
+                { label: "Emergency", value: "emergency" },
+              ]}
+            />
           </Form.Item>
-          <Form.Item label={fieldLabel(FileText, "Mô tả")} name="description" rules={[{ required: true, message: "Vui lòng nhập mô tả" }]}>
+          <Form.Item label="Description" name="description" rules={[{ required: true, message: "Description is required" }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label="Ngày bảo dưỡng" name="maintenance_date" rules={[{ required: true, message: "Vui lòng chọn ngày" }]}>
-            <Input type="date" prefix={<Calendar size={15} strokeWidth={SW} />} />
+          <Form.Item label="Maintenance Date" name="maintenance_date" rules={[{ required: true, message: "Maintenance date is required" }]}>
+            <Input type="date" />
           </Form.Item>
-          <Form.Item label="Chi phí (đ)" name="cost">
-            <InputNumber prefix={<Coins size={15} strokeWidth={SW} />} style={{ width: "100%" }} min={0} precision={0} formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} />
+          <Form.Item label="Cost" name="cost">
+            <InputNumber style={{ width: "100%" }} min={0} precision={2} />
           </Form.Item>
           <Form.Item
             label="Performed By"
@@ -732,7 +689,6 @@ export default function VehicleList() {
         </Form>
       </Modal>
 
-      {/* Hoàn thành bảo dưỡng */}
       <Modal
         open={Boolean(verifyMaintenanceTarget)}
         title={verifyMaintenanceTarget ? `Verify maintenance for ${verifyMaintenanceTarget.plate_number}` : "Verify Maintenance"}
@@ -773,69 +729,60 @@ export default function VehicleList() {
         </Form>
       </Modal>
 
-      {/* Đánh dấu hỏng */}
       <Modal
         open={Boolean(brokenTarget)}
-        title={brokenTarget ? `Đánh dấu hỏng: ${brokenTarget.plate_number}` : "Đánh dấu hỏng"}
+        title={brokenTarget ? `Mark ${brokenTarget.plate_number} as broken` : "Mark Broken"}
         onCancel={() => setBrokenTarget(null)}
         onOk={submitBroken}
-        okText="Xác nhận"
-        okButtonProps={{ danger: true, icon: <AlertTriangle size={15} strokeWidth={SW} /> }}
-        cancelText="Hủy"
-        cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} /> }}
+        okText="Confirm"
       >
         <Form form={failureForm} layout="vertical">
-          <Form.Item label="Loại lỗi" name="failure_type" rules={[{ required: true, message: "Vui lòng nhập loại lỗi" }]}>
-            <Input prefix={<AlertTriangle size={15} strokeWidth={SW} />} placeholder="Ví dụ: hỏng động cơ" />
+          <Form.Item label="Failure Type" name="failure_type" rules={[{ required: true, message: "Failure type is required" }]}>
+            <Input placeholder="engine_failure" />
           </Form.Item>
-          <Form.Item label="Mức độ nghiêm trọng" name="severity_level" rules={[{ required: true, message: "Vui lòng chọn mức độ" }]}>
-            <Select prefix={<Gauge size={15} strokeWidth={SW} />} options={[
-              { label: "Thấp", value: "low" },
-              { label: "Trung bình", value: "medium" },
-              { label: "Cao", value: "high" },
-              { label: "Nghiêm trọng", value: "critical" },
-            ]} />
+          <Form.Item label="Severity" name="severity_level" rules={[{ required: true, message: "Severity is required" }]}>
+            <Select
+              options={[
+                { label: "Low", value: "low" },
+                { label: "Medium", value: "medium" },
+                { label: "High", value: "high" },
+                { label: "Critical", value: "critical" },
+              ]}
+            />
           </Form.Item>
-          <Form.Item label={fieldLabel(FileText, "Mô tả")} name="description" rules={[{ required: true, message: "Vui lòng nhập mô tả" }]}>
+          <Form.Item label="Description" name="description" rules={[{ required: true, message: "Description is required" }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label={fieldLabel(StickyNote, "Ghi chú")} name="note">
+          <Form.Item label="Note" name="note">
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* Khôi phục xe */}
       <Modal
         open={Boolean(restoreTarget)}
-        title={restoreTarget ? `Khôi phục xe: ${restoreTarget.plate_number}` : "Khôi phục xe"}
+        title={restoreTarget ? `Restore ${restoreTarget.plate_number}` : "Restore Vehicle"}
         onCancel={() => setRestoreTarget(null)}
         onOk={submitRestore}
-        okText="Khôi phục"
-        cancelText="Hủy"
-        okButtonProps={{ icon: <RotateCcw size={15} strokeWidth={SW} /> }}
-        cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} /> }}
+        okText="Restore"
       >
         <Form form={restoreForm} layout="vertical">
-          <Form.Item label={fieldLabel(FileText, "Ghi chú khôi phục")} name="resolution_note" rules={[{ required: true, message: "Vui lòng nhập ghi chú" }]}>
+          <Form.Item label="Resolution Note" name="resolution_note" rules={[{ required: true, message: "Resolution note is required" }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* Ngừng sử dụng */}
       <Modal
         open={Boolean(retireTarget)}
-        title={retireTarget ? `Ngừng sử dụng: ${retireTarget.plate_number}` : "Ngừng sử dụng xe"}
+        title={retireTarget ? `Retire ${retireTarget.plate_number}` : "Retire Vehicle"}
         onCancel={() => setRetireTarget(null)}
         onOk={submitRetire}
-        okText="Xác nhận ngừng"
-        okButtonProps={{ danger: true, icon: <Ban size={15} strokeWidth={SW} /> }}
-        cancelText="Hủy"
-        cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} /> }}
+        okText="Retire"
+        okButtonProps={{ danger: true }}
       >
         <Form form={retireForm} layout="vertical">
-          <Form.Item label={fieldLabel(FileText, "Lý do ngừng sử dụng")} name="note" rules={[{ required: true, message: "Vui lòng nhập lý do" }]}>
+          <Form.Item label="Retirement Note" name="note" rules={[{ required: true, message: "Retirement note is required" }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

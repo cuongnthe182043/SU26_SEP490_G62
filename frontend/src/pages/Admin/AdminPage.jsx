@@ -11,13 +11,19 @@ import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
 import "../../styles/admin/Admin.css";
 
+const { Header, Sider, Content } = Layout;
+const { Title, Text } = Typography;
 
 export default function AdminPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
   const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = () => {
-    if (onLogout) { onLogout(); return; }
+    if (onLogout) {
+      onLogout();
+      return;
+    }
+
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.reload();
@@ -72,12 +78,9 @@ export default function AdminPage({ user, onLogout }) {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.surface }}>
-
-      <AppSidebar
-        user={user}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+    <Layout style={{ minHeight: "100vh" }}>
+      <Sider
+        collapsible
         collapsed={collapsed}
         onCollapse={(value) => setCollapsed(value)}
         theme="dark"

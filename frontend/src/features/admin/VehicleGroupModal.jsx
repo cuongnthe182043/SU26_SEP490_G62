@@ -6,6 +6,7 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
 
   useEffect(() => {
     if (!open) return;
+
     if (editingGroup) {
       form.setFieldsValue({
         name: editingGroup.name,
@@ -27,61 +28,33 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
   return (
     <Modal
       open={open}
-      title={
-        <div style={{ paddingBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600, color: '#0B1C30' }}>
-            <TagIcon size={18} strokeWidth={SW} />
-            {editingGroup ? 'Chỉnh sửa nhóm xe' : 'Thêm nhóm xe mới'}
-          </div>
-          <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
-            {editingGroup
-              ? `Cập nhật thông tin nhóm "${editingGroup.name}"`
-              : 'Cấu hình nhóm xe theo tải trọng và giá cước'}
-          </Text>
-        </div>
-      }
+      title={editingGroup ? "Update Vehicle Group" : "Create Vehicle Group"}
       onCancel={onClose}
       onOk={handleOk}
-      okText={editingGroup ? 'Lưu thay đổi' : 'Tạo nhóm xe'}
-      cancelText="Hủy"
-      okButtonProps={{ icon: <Check size={15} strokeWidth={SW} />, style: { borderRadius: 8 } }}
-      cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} />, style: { borderRadius: 8 } }}
-      width={520}
+      okText="Save"
+      cancelText="Cancel"
       destroyOnClose
-      styles={{ body: { paddingTop: 20 } }}
     >
-      <Form form={form} layout="vertical" requiredMark={false}>
+      <Form form={form} layout="vertical">
         <Form.Item
-          label="Tên nhóm xe"
+          label="Name"
           name="name"
-          rules={[{ required: true, message: "Vui lòng nhập tên nhóm xe" }]}
+          rules={[{ required: true, message: "Name is required" }]}
         >
-          <Input prefix={<TagIcon size={15} strokeWidth={SW} />} placeholder="VD: 1T25, 5m2, 8m2..." style={{ borderRadius: 8 }} />
+          <Input placeholder="1T25" />
         </Form.Item>
 
-        <Form.Item label={<span><FileText size={13} strokeWidth={SW} style={{ verticalAlign: -2, marginRight: 6 }} />Mô tả</span>} name="description">
-          <Input.TextArea
-            rows={3}
-            placeholder="Mô tả đặc điểm của nhóm xe này..."
-            style={{ borderRadius: 8 }}
-          />
+        <Form.Item label="Description" name="description">
+          <Input.TextArea rows={3} placeholder="Vehicle group description" />
         </Form.Item>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Form.Item
-            label="Tải trọng tối đa (kg)"
-            name="max_load_weight_kg"
-            rules={[{ type: "number", min: 0.01, message: "Phải lớn hơn 0" }]}
-          >
-            <InputNumber
-              prefix={<Weight size={15} strokeWidth={SW} />}
-              style={{ width: "100%", borderRadius: 8 }}
-              min={0.01}
-              precision={2}
-              placeholder="VD: 1250"
-              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-            />
-          </Form.Item>
+        <Form.Item
+          label="Max Load Weight (kg)"
+          name="max_load_weight_kg"
+          rules={[{ type: "number", min: 0.01, message: "Value must be positive" }]}
+        >
+          <InputNumber style={{ width: "100%" }} min={0.01} precision={2} />
+        </Form.Item>
 
         <Form.Item
           label="Price Per Km"
