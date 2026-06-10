@@ -609,6 +609,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 type="date"
                 value={dateFromFilter}
                 onChange={(event) => setDateFromFilter(event.target.value)}
+                
               />
             </label>
             <label className="filter-field">
@@ -626,7 +627,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 value={customerFilter}
                 onChange={(event) => setCustomerFilter(event.target.value)}
                 placeholder="Lọc theo khách hàng"
-                style={{ height: '45.6px' }}
+
               />
             </label>
             <button
