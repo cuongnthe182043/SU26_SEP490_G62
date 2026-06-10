@@ -487,6 +487,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     setCreating(true);
 
     try {
+      const token = localStorage.getItem("token");
       const payload = {
         date: form.date,
         customer_name: form.customer_name,
