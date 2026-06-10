@@ -5,28 +5,20 @@ import { message as toast } from "antd";
 
 const emptyForm = {
   date: "",
-  driver_id: "",
-  plate: "",
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
-  distance: "",
   pickup_address: "",
   delivery_address: "",
-  vehicle_group_id: "",
   note: "",
+  trips: [{ vehicle_group_id: "", plate: "", distance: "" }]
 };
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  
-  
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
-  { key: "distance", label: "Quãng đường" },
-  { key: "vehicle_group_id", label: "Nhóm xe" },
-  { key: "plate", label: "BKS" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
 ];
@@ -120,6 +112,11 @@ function buildTripFromOrder(order) {
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
+    trips: Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+      vehicle_group_id: order.vehicle_group_id || "",
+      plate: order.plate_number || "",
+      distance: order.estimated_distance_km || ""
+    }],
   };
 }
 
@@ -291,7 +288,6 @@ export default function CoordinatorPage({ user, onLogout }) {
         errors.date = "Ngày không được trước hôm nay";
       }
     }
-
     const phoneDigits = String(form.customer_phone ?? "").replace(/\D/g, "");
     if (form.customer_phone && !/^0\d{9,10}$/.test(phoneDigits)) {
       errors.customer_phone = "SĐT phải bắt đầu bằng 0 và có 10-11 chữ số";
@@ -302,11 +298,19 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
     }
 
-
-
-    const distance = normalizeDistanceText(form.distance);
-    if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
-      errors.distance = "Quãng đường phải là số lớn hơn 0";
+    if (form.trips && form.trips.length > 0) {
+      form.trips.forEach((trip, index) => {
+        if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
+        const dist = normalizeNumericText(trip.distance);
+        if (!dist) {
+          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
+        } else if (!isFiniteNumber(dist) || Number(dist) <= 0) {
+          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} phải > 0`;
+        }
+      });
+    } else {
+      errors.trips = "Cần ít nhất một chuyến xe";
     }
 
     setFormErrors(errors);
@@ -324,17 +328,51 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
-  const selectedVehicleGroup = useMemo(
-    () => vehicleGroups.find((group) => String(group.id) === String(form.vehicle_group_id)),
-    [form.vehicle_group_id, vehicleGroups],
-  );
-  const availablePlates = selectedVehicleGroup?.vehicles || [];
-  const calculatedFare = useMemo(() => {
-    const distance = Number(normalizeDistanceText(form.distance));
-    const pricePerKm = Number(selectedVehicleGroup?.price_per_km || 0);
-    if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(pricePerKm)) return "";
-    return String(Math.round(distance * pricePerKm));
-  }, [form.distance, selectedVehicleGroup]);
+  const updateTripField = (index, key, value) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) =>
+        i === index ? { ...trip, [key]: value } : trip
+      );
+      return { ...current, trips: updatedTrips };
+    });
+    const errKey = `trip_${index}_${key}`;
+    if (formErrors[errKey]) {
+      setFormErrors((cur) => { const n = { ...cur }; delete n[errKey]; return n; });
+    }
+  };
+
+  const addTrip = () => {
+    setForm((current) => ({
+      ...current,
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" }]
+    }));
+  };
+
+  const removeTrip = (index) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.filter((_, i) => i !== index)
+    }));
+  };
+
+  const getAvailablePlates = (vehicleGroupId) =>
+    vehicleGroups.find((g) => String(g.id) === String(vehicleGroupId))?.vehicles || [];
+
+  const getTripFare = (trip) => {
+    const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id));
+    const dist = Number(normalizeDistanceText(trip.distance));
+    const pricePerKm = Number(group?.price_per_km || 0);
+    if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(pricePerKm) || pricePerKm <= 0) return "";
+    return String(Math.round(dist * pricePerKm));
+  };
+
+  const totalFare = useMemo(() => {
+    if (!form.trips) return 0;
+    return form.trips.reduce((sum, trip) => {
+      const f = getTripFare(trip);
+      return sum + (f ? Number(f) : 0);
+    }, 0);
+  }, [form.trips, vehicleGroups]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -391,7 +429,11 @@ export default function CoordinatorPage({ user, onLogout }) {
       distance: trip.distance || "",
       pickup_address: trip.pickupAddress || routeAddresses.pickup,
       delivery_address: trip.deliveryAddress || routeAddresses.delivery,
-      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+      trips: trip.trips?.length > 0 ? trip.trips : [{
+        vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+        plate: trip.plate || "",
+        distance: trip.distance || ""
+      }],
       note: trip.notes || "",
     });
     setFormErrors({});
@@ -445,14 +487,8 @@ export default function CoordinatorPage({ user, onLogout }) {
     setCreating(true);
 
     try {
-      const token = localStorage.getItem("token");
-      const selectedPlate = form.plate || editingTrip?.plate || "";
-      const selectedVehicleGroupId = form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
-
       const payload = {
         date: form.date,
-        plate: selectedPlate,
-        driver_id: "",
         customer_name: form.customer_name,
         customer_phone: form.customer_phone,
         cargo_name: form.cargo_name,
@@ -460,9 +496,8 @@ export default function CoordinatorPage({ user, onLogout }) {
         pickup_address: form.pickup_address,
         delivery_address: form.delivery_address,
         delivery_at: form.date,
-        distance: form.distance,
-        vehicle_group_id: selectedVehicleGroupId,
         notes: form.note,
+        trips: form.trips,
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
@@ -640,7 +675,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               <form className="create-form" onSubmit={handleCreateOrder}>
                 <div className="sheet-caption full">Thông tin đơn hàng</div>
 
-                <div className="form-row form-row-3">
+                <div className="form-row form-row-1">
                   <label>
                     <span>Ngày giao hàng</span>
                     <input
@@ -651,46 +686,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                       className={formErrors.date ? "input-error" : ""}
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
-                  </label>
-                  <label>
-                    <span>BKS</span>
-                    <select
-                      value={form.plate}
-                      onChange={(event) => updateField("plate", event.target.value)}
-                      disabled={!form.vehicle_group_id}
-                      className={formErrors.plate ? "input-error" : ""}
-                    >
-                      <option value="">{form.vehicle_group_id ? "Chọn BKS" : "Chọn nhóm xe trước"}</option>
-                      {availablePlates.map((vehicle) => (
-                        <option key={vehicle.id} value={vehicle.plate_number}>
-                          {vehicle.plate_number}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.plate && (
-                      <div className="field-error">{formErrors.plate}</div>
-                    )}
-                  </label>
-                  <label>
-                    <span>Nhóm xe</span>
-                    <select
-                      value={form.vehicle_group_id}
-                      onChange={(event) => {
-                        updateField("vehicle_group_id", event.target.value);
-                        updateField("plate", "");
-                      }}
-                      className={formErrors.vehicle_group_id ? "input-error" : ""}
-                    >
-                      <option value="">Chọn nhóm xe</option>
-                      {vehicleGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.vehicle_group_id && (
-                      <div className="field-error">{formErrors.vehicle_group_id}</div>
-                    )}
                   </label>
                 </div>
 
@@ -727,13 +722,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
-                <div className="form-row form-row-note">
-                  
-                </div>
-
                 <div className="form-row form-row-2">
                   <label>
-                    <span>Khối lượng</span>
+                    <span>Khối lượng (tấn)</span>
                     <input
                       type="number"
                       min="0"
@@ -747,30 +738,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     )}
                   </label>
                   <label>
-                    <span>Quãng đường</span>
-                    <input
-                      value={form.distance}
-                      onChange={(event) => updateField("distance", event.target.value)}
-                      placeholder="VD: 120 km"
-                      className={formErrors.distance ? "input-error" : ""}
-                    />
-                    {formErrors.distance && (
-                      <div className="field-error">{formErrors.distance}</div>
-                    )}
-                  </label>
-                </div>
-
-                <div className="form-row form-row-2">
-                  <label>
-                    <span>Cước xe</span>
-                    <div className="readonly-fare">
-                      {calculatedFare ? `${Number(calculatedFare).toLocaleString("vi-VN")} đ` : "Tự tính theo quãng đường x giá/km"}
-                    </div>
-                  </label>
-                </div>
-
-                <div className="form-row form-row-2">
-                  <label>
                     <span>Điểm lấy hàng</span>
                     <input
                       value={form.pickup_address}
@@ -781,6 +748,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.pickup_address}</div>
                     )}
                   </label>
+                </div>
+
+                <div className="form-row form-row-1" style={{maxWidth:'100%'}}>
                   <label>
                     <span>Điểm giao hàng</span>
                     <input
@@ -793,6 +763,111 @@ export default function CoordinatorPage({ user, onLogout }) {
                     )}
                   </label>
                 </div>
+
+                <div className="sheet-caption full" style={{marginTop: 12}}>Chuyến xe</div>
+
+                {form.trips && form.trips.map((trip, index) => (
+                  <div key={index} className="trip-row full" style={{
+                    border: '1px solid #dde2f3',
+                    borderRadius: 16,
+                    padding: '14px 16px',
+                    background: '#f8f9ff',
+                    display: 'grid',
+                    gap: 12,
+                    position: 'relative'
+                  }}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 4}}>
+                      <strong style={{color:'#18227f', fontSize: 13}}>Chuyến {index + 1}</strong>
+                      {form.trips.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeTrip(index)}
+                          style={{border:'none', background:'#fee2e2', color:'#b91c1c', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:700, fontSize:13}}
+                        >
+                          Xóa
+                        </button>
+                      )}
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12}}>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>Nhóm xe</span>
+                        <select
+                          value={trip.vehicle_group_id}
+                          onChange={(e) => {
+                            updateTripField(index, 'vehicle_group_id', e.target.value);
+                            updateTripField(index, 'plate', '');
+                          }}
+                          className={formErrors[`trip_${index}_vehicle_group_id`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        >
+                          <option value="">Chọn nhóm xe</option>
+                          {vehicleGroups.map((group) => (
+                            <option key={group.id} value={group.id}>{group.name}</option>
+                          ))}
+                        </select>
+                        {formErrors[`trip_${index}_vehicle_group_id`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
+                        )}
+                      </label>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>BKS</span>
+                        <select
+                          value={trip.plate}
+                          onChange={(e) => updateTripField(index, 'plate', e.target.value)}
+                          disabled={!trip.vehicle_group_id}
+                          className={formErrors[`trip_${index}_plate`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        >
+                          <option value="">{trip.vehicle_group_id ? 'Chọn BKS' : 'Chọn nhóm xe trước'}</option>
+                          {getAvailablePlates(trip.vehicle_group_id).map((v) => (
+                            <option key={v.id} value={v.plate_number}>{v.plate_number}</option>
+                          ))}
+                        </select>
+                        {formErrors[`trip_${index}_plate`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_plate`]}</div>
+                        )}
+                      </label>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>Quãng đường (km)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={trip.distance}
+                          onChange={(e) => updateTripField(index, 'distance', e.target.value)}
+                          placeholder="VD: 120"
+                          className={formErrors[`trip_${index}_distance`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        />
+                        {formErrors[`trip_${index}_distance`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_distance`]}</div>
+                        )}
+                      </label>
+                    </div>
+                    {getTripFare(trip) && (
+                      <div style={{fontSize:13, color:'#18227f', fontWeight:600}}>
+                        Cước: {Number(getTripFare(trip)).toLocaleString('vi-VN')} đ
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="full" style={{display:'flex', gap:10, alignItems:'center', justifyContent:'space-between'}}>
+                  <button
+                    type="button"
+                    onClick={addTrip}
+                    style={{border:'1px dashed #18227f', background:'#eef1ff', color:'#18227f', borderRadius:14, padding:'10px 20px', cursor:'pointer', fontWeight:700, fontSize:14}}
+                  >
+                    + Thêm chuyến
+                  </button>
+                  {totalFare > 0 && (
+                    <div style={{fontWeight:700, fontSize:15, color:'#0f1d70'}}>
+                      Tổng cước: {totalFare.toLocaleString('vi-VN')} đ
+                    </div>
+                  )}
+                </div>
+
+
 
                 <div className="form-row form-row-note">
                   <label>
