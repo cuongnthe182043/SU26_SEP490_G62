@@ -5,27 +5,20 @@ import { message as toast } from "antd";
 
 const emptyForm = {
   date: "",
-  driver_id: "",
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
-  distance: "",
   pickup_address: "",
   delivery_address: "",
-  estimated_price: "",
-  vehicle_group_id: "",
   note: "",
+  trips: [{ vehicle_group_id: "", plate: "", distance: "" }]
 };
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  
-  
-  { key: "customer_phone", label: "SĐT" },
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
-  { key: "estimated_price", label: "Cước xe" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
 ];
@@ -34,21 +27,40 @@ const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").tr
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
-const formatDateForInput = (value) => {
-  if (!value) return "";
-  const text = String(value).trim();
-  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-
-  const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) {
-    const [, day, month, year] = slash;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+const formatDateForInput = (dateStr) => {
+  if (!dateStr) return "";
+  const parts = String(dateStr).split('/');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
-
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  const date = new Date(dateStr);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toISOString().slice(0, 10);
+  }
+  return "";
 };
+
+const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
+const STATUS_TABS = {
+  all: null,
+  new: new Set(["available"]),
+  waiting: new Set(["claimed", "picking", "loaded", "transit", "arrived", "returning"]),
+};
+const STATUS_QUERY = {
+  all: "",
+  new: "available",
+  waiting: "claimed,picking,loaded,transit,arrived,returning",
+};
+const canCancelTrip = (trip) => {
+  const status = normalizeStatus(trip.status);
+  return Boolean(trip.orderId) && !["completed", "cancelled", "failed"].includes(status);
+};
+const shouldHighlightNoCheckIn = (trip) => {
+  const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
+  return hasCheckInMarker && !String(trip.checkIn ?? "").trim();
+};
+
+
 
 const splitRoute = (route) => {
   const text = String(route ?? "").trim();
@@ -58,116 +70,53 @@ const splitRoute = (route) => {
   return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
 };
 
-const buildOrderNotes = (values, selectedDriver) => [
-  values.date ? `Ngày: ${values.date}` : "",
-  selectedDriver?.plate_number ? `BKS: ${selectedDriver.plate_number}` : "",
-  selectedDriver?.full_name ? `Lái xe: ${selectedDriver.full_name}` : "",
-  values.customer_name ? `Khách hàng: ${values.customer_name}` : "",
-  values.customer_phone ? `SĐT: ${values.customer_phone}` : "",
-  values.pickup_address && values.delivery_address
-    ? `Hành trình: ${values.pickup_address} - ${values.delivery_address}`
-    : "",
-  values.distance ? `Quãng đường: ${values.distance}` : "",
-  values.estimated_price ? `Cước xe: ${values.estimated_price}` : "",
-  values.note,
-].filter(Boolean).join(" | ");
 
 
-function parseNotes(notes) {
-  const result = {
-    date: "",
-    checkIn: "",
-    plate: "",
-    driver: "",
-    customer: "",
-    route: "",
-    distance: "",
-    fare: "",
-    customerPhone: "",
-    pickupAddress: "",
-    deliveryAddress: "",
-    notesText: "",
-  };
-  
-  if (!notes) return result;
-  
-  const parts = notes.split(" | ");
-  parts.forEach(part => {
-    const dateMatch = part.match(/^Ngày:\s*(.+)$/i);
-    if (dateMatch) { result.date = dateMatch[1].trim(); return; }
-    
-    const checkInMatch = part.match(/^Chấm công:\s*(.+)$/i);
-    if (checkInMatch) { result.checkIn = checkInMatch[1].trim(); return; }
-    
-    const plateMatch = part.match(/^BKS:\s*(.+)$/i);
-    if (plateMatch) { result.plate = plateMatch[1].trim(); return; }
-    
-    const driverMatch = part.match(/^Lái xe:\s*(.+)$/i);
-    if (driverMatch) { result.driver = driverMatch[1].trim(); return; }
-    
-    const customerMatch = part.match(/^Khách hàng:\s*(.+)$/i);
-    if (customerMatch) { result.customer = customerMatch[1].trim(); return; }
 
-    const phoneMatch = part.match(/^SĐT:\s*(.+)$/i);
-    if (phoneMatch) { result.customerPhone = phoneMatch[1].trim(); return; }
 
-    const pickupMatch = part.match(/^Điểm lấy hàng:\s*(.+)$/i);
-    if (pickupMatch) { result.pickupAddress = pickupMatch[1].trim(); return; }
-
-    const deliveryMatch = part.match(/^Điểm giao hàng:\s*(.+)$/i);
-    if (deliveryMatch) { result.deliveryAddress = deliveryMatch[1].trim(); return; }
-    
-    const routeMatch = part.match(/^Hành trình:\s*(.+)$/i);
-    if (routeMatch) { result.route = routeMatch[1].trim(); return; }
-    
-    const distanceMatch = part.match(/^Quãng đường:\s*(.+)$/i);
-    if (distanceMatch) { result.distance = distanceMatch[1].trim(); return; }
-
-    const fareMatch = part.match(/^Cước xe:\s*(.+)$/i);
-    if (fareMatch) { result.fare = fareMatch[1].trim(); return; }
-  });
-  
-  const noteParts = parts.filter(part => 
-    !part.match(/^(Ngày|Chấm công|BKS|Lái xe|Khách hàng|SĐT|Điểm lấy hàng|Điểm giao hàng|Hành trình|Quãng đường|Cước xe):/i)
-  );
-  result.notesText = noteParts.join(" | ");
-  
-  return result;
-}
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
   return match?.[1]?.trim() || "";
 }
 
+function extractDistance(notes) {
+  const match = String(notes ?? "").match(/Qu(?:ã|a)ng đường:\s*([^|]+)/i);
+  return match?.[1]?.trim() || "";
+}
+
 function buildTripFromOrder(order) {
-  const noteInfo = parseNotes(order.notes);
-  const pickupAddress = order.pickup_address || noteInfo.pickupAddress || "";
-  const deliveryAddress = order.delivery_address || noteInfo.deliveryAddress || "";
-  const date = noteInfo.date || (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
+  const pickupAddress = order.pickup_address ||  "";
+  const deliveryAddress = order.delivery_address ||  "";
+  const deliveryAt = order.delivery_at;
+  const date = (deliveryAt ? new Date(deliveryAt).toLocaleDateString('vi-VN') : "");
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: formatDateForInput(noteInfo.date || order.created_at),
-    checkIn: noteInfo.checkIn || "",
-    plate: noteInfo.plate || order.plate_number || "",
+    dateInput: order.delivery_at ? String(order.delivery_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
+    checkIn:  "",
+    plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",
     vehicleGroupId: order.vehicle_group_id || "",
-    driverName: order.driver_name || noteInfo.driver || extractDriverName(order.notes) || "",
-    customerName: order.customer_name || noteInfo.customer || "",
-    customerPhone: order.customer_phone || noteInfo.customerPhone || "",
+    driverName: order.driver_name ||  "",
+    customerName: order.customer_name || "",
+    customerPhone: order.customer_phone ||  "",
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
     pickupAddress,
     deliveryAddress,
-    route: noteInfo.route || (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance: noteInfo.distance || "",
-    fare: noteInfo.fare || order.estimated_price || order.total_estimated_price || 0,
+    route:  (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
+    distance: order.estimated_distance_km || "",
+    fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
-    notes: noteInfo.notesText || "",
-    rawNotes: order.notes || "",
+    notes: order.notes,
+    trips: Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+      vehicle_group_id: order.vehicle_group_id || "",
+      plate: order.plate_number || "",
+      distance: order.estimated_distance_km || ""
+    }],
   };
 }
 
@@ -179,6 +128,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
@@ -189,12 +139,11 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  useEffect(() => {
-    localStorage.removeItem("coordinatorTrips");
-  }, []);
+
   
 
   useEffect(() => {
@@ -216,35 +165,46 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   setMessage("");
 }, [message, messageType]);
+  const loadOrders = async (page = pagination.page) => {
+    try {
+      const token = localStorage.getItem("token");
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pagination.limit),
+      });
+      if (deferredSearchQuery.trim()) params.set("search", deferredSearchQuery.trim());
+      if (STATUS_QUERY[activeTab]) params.set("status", STATUS_QUERY[activeTab]);
+      if (dateFromFilter) params.set("dateFrom", dateFromFilter);
+      if (dateToFilter) params.set("dateTo", dateToFilter);
+      if (customerFilter.trim()) params.set("customer", customerFilter.trim());
+
+      const data = await apiRequest(`/api/orders?${params.toString()}`, { token });
+      const dbTrips = (data.orders || []).map(buildTripFromOrder);
+      setTrips(dbTrips);
+      setPagination(data.pagination || { page, limit: pagination.limit, total: dbTrips.length, totalPages: 1 });
+    } catch (error) {
+      setMessage(error.message || "Không thể load danh sách đơn.");
+      setMessageType("error");
+    }
+  };
+
   useEffect(() => {
-    const loadOrders = async () => { 
+    loadOrders(1);
+  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery]);
+
+  useEffect(() => {
+    const loadVehicleGroups = async () => {
       try {
         const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/orders", { token });
-        const dbTrips = (data.orders || []).map(buildTripFromOrder);
-        setTrips(dbTrips);
+        const data = await apiRequest("/api/coordinator/vehicle-groups", { token });
+        setVehicleGroups(data.vehicleGroups || []);
       } catch (error) {
-        setMessage(error.message || "Không thể load danh sách đơn.");
+        setMessage("Không thể tải danh sách nhóm xe/BKS.");
         setMessageType("error");
       }
     };
 
-    loadOrders();
-  }, []);
-
-  useEffect(() => {
-    const loadDrivers = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/drivers", { token });
-        setDrivers(data.drivers || []);
-      } catch (error) {
-        setMessage("Unable to load driver list.");
-        setMessageType("error");
-      }
-    };
-
-    loadDrivers();
+    loadVehicleGroups();
   }, []);
 
   useEffect(() => {
@@ -274,10 +234,9 @@ export default function CoordinatorPage({ user, onLogout }) {
     const customer = customerFilter.trim().toLowerCase();
 
     return trips.filter((trip) => {
-      const matchesTab =
-        activeTab === "all" ||
-        (activeTab === "new" && trip.status === "New") ||
-        (activeTab === "waiting" && trip.status === "Waiting");
+      const normalizedStatus = normalizeStatus(trip.status);
+      const allowedStatuses = STATUS_TABS[activeTab];
+      const matchesTab = !allowedStatuses || allowedStatuses.has(normalizedStatus);
 
       if (!matchesTab) return false;
 
@@ -329,7 +288,6 @@ export default function CoordinatorPage({ user, onLogout }) {
         errors.date = "Ngày không được trước hôm nay";
       }
     }
-
     const phoneDigits = String(form.customer_phone ?? "").replace(/\D/g, "");
     if (form.customer_phone && !/^0\d{9,10}$/.test(phoneDigits)) {
       errors.customer_phone = "SĐT phải bắt đầu bằng 0 và có 10-11 chữ số";
@@ -340,16 +298,19 @@ export default function CoordinatorPage({ user, onLogout }) {
       errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
     }
 
-
-
-    const distance = normalizeDistanceText(form.distance);
-    if (distance && (!isFiniteNumber(distance) || Number(distance) <= 0)) {
-      errors.distance = "Quãng đường phải là số lớn hơn 0";
-    }
-
-    const estimatedPrice = normalizeNumericText(form.estimated_price);
-    if (estimatedPrice && (!isFiniteNumber(estimatedPrice) || Number(estimatedPrice) < 0)) {
-      errors.estimated_price = "Cước xe phải là số không âm";
+    if (form.trips && form.trips.length > 0) {
+      form.trips.forEach((trip, index) => {
+        if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
+        const dist = normalizeNumericText(trip.distance);
+        if (!dist) {
+          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
+        } else if (!isFiniteNumber(dist) || Number(dist) <= 0) {
+          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} phải > 0`;
+        }
+      });
+    } else {
+      errors.trips = "Cần ít nhất một chuyến xe";
     }
 
     setFormErrors(errors);
@@ -367,20 +328,51 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
-  const vehicleGroups = useMemo(() => {
-    const seen = new Map();
-    drivers.forEach((driver) => {
-      if (!driver.vehicle_group_id) return;
-      const id = String(driver.vehicle_group_id);
-      if (!seen.has(id)) {
-        seen.set(id, {
-          id,
-          name: driver.vehicle_group_name || `Nhóm xe ${id}`,
-        });
-      }
+  const updateTripField = (index, key, value) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) =>
+        i === index ? { ...trip, [key]: value } : trip
+      );
+      return { ...current, trips: updatedTrips };
     });
-    return Array.from(seen.values());
-  }, [drivers]);
+    const errKey = `trip_${index}_${key}`;
+    if (formErrors[errKey]) {
+      setFormErrors((cur) => { const n = { ...cur }; delete n[errKey]; return n; });
+    }
+  };
+
+  const addTrip = () => {
+    setForm((current) => ({
+      ...current,
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" }]
+    }));
+  };
+
+  const removeTrip = (index) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.filter((_, i) => i !== index)
+    }));
+  };
+
+  const getAvailablePlates = (vehicleGroupId) =>
+    vehicleGroups.find((g) => String(g.id) === String(vehicleGroupId))?.vehicles || [];
+
+  const getTripFare = (trip) => {
+    const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id));
+    const dist = Number(normalizeDistanceText(trip.distance));
+    const pricePerKm = Number(group?.price_per_km || 0);
+    if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(pricePerKm) || pricePerKm <= 0) return "";
+    return String(Math.round(dist * pricePerKm));
+  };
+
+  const totalFare = useMemo(() => {
+    if (!form.trips) return 0;
+    return form.trips.reduce((sum, trip) => {
+      const f = getTripFare(trip);
+      return sum + (f ? Number(f) : 0);
+    }, 0);
+  }, [form.trips, vehicleGroups]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -405,9 +397,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setMessageType("success");
 
       // Reload orders from database to show the newly imported ones reactively
-      const updatedData = await apiRequest("/api/orders", { token });
-      const dbTrips = (updatedData.orders || []).map(buildTripFromOrder);
-      setTrips(dbTrips);
+      await loadOrders(1);
     } catch (err) {
       setMessage(err.message || "Unable to import Excel file.");
       setMessageType("error");
@@ -431,6 +421,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     setForm({
       date: trip.dateInput || formatDateForInput(trip.date),
       driver_id: trip.driverId ? String(trip.driverId) : "",
+      plate: trip.plate || "",
       customer_name: trip.customerName || "",
       customer_phone: trip.customerPhone || "",
       cargo_name: trip.cargoName || "",
@@ -438,8 +429,11 @@ export default function CoordinatorPage({ user, onLogout }) {
       distance: trip.distance || "",
       pickup_address: trip.pickupAddress || routeAddresses.pickup,
       delivery_address: trip.deliveryAddress || routeAddresses.delivery,
-      estimated_price: trip.fare || "",
-      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+      trips: trip.trips?.length > 0 ? trip.trips : [{
+        vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+        plate: trip.plate || "",
+        distance: trip.distance || ""
+      }],
       note: trip.notes || "",
     });
     setFormErrors({});
@@ -451,6 +445,31 @@ export default function CoordinatorPage({ user, onLogout }) {
     setEditingTrip(null);
     setForm(emptyForm);
     setFormErrors({});
+  };
+
+  const handleCancelOrder = async (trip) => {
+    if (!canCancelTrip(trip)) return;
+
+    const confirmed = window.confirm(`Bạn có chắc muốn hủy đơn #${trip.orderId}?`);
+    if (!confirmed) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const data = await apiRequest(`/api/orders/${trip.orderId}`, {
+        method: "DELETE",
+        token,
+        body: { reason: "Coordinator cancelled order" },
+      });
+      const cancelledTrip = buildTripFromOrder(data.order);
+      setTrips((currentTrips) => currentTrips.map((item) => (
+        item.orderId === cancelledTrip.orderId ? cancelledTrip : item
+      )));
+      setMessage(data.message || "Đã hủy đơn hàng.");
+      setMessageType("success");
+    } catch (err) {
+      setMessage(err.message || "Không thể hủy đơn hàng.");
+      setMessageType("error");
+    }
   };
 
   const handleCreateOrder = async (event) => {
@@ -469,29 +488,17 @@ export default function CoordinatorPage({ user, onLogout }) {
 
     try {
       const token = localStorage.getItem("token");
-      const selectedDriver = drivers.find(
-        (driver) => String(driver.id) === String(form.driver_id),
-      );
-      const noteDriver = selectedDriver || (editingTrip ? {
-        plate_number: editingTrip.plate,
-        full_name: editingTrip.driverName,
-      } : null);
-      const selectedPlate = noteDriver?.plate_number || "";
-      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
-
       const payload = {
         date: form.date,
-        plate: selectedPlate,
-        driver_id: form.driver_id || "",
         customer_name: form.customer_name,
         customer_phone: form.customer_phone,
         cargo_name: form.cargo_name,
         cargo_weight_kg: form.cargo_weight_kg,
         pickup_address: form.pickup_address,
         delivery_address: form.delivery_address,
-        estimated_price: form.estimated_price,
-        vehicle_group_id: selectedVehicleGroupId,
-        notes: buildOrderNotes(form, noteDriver),
+        delivery_at: form.date,
+        notes: form.note,
+        trips: form.trips,
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
@@ -501,10 +508,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       });
 
       const savedTrip = buildTripFromOrder(data.order);
-      setTrips((currentTrips) => editingTrip
-        ? currentTrips.map((trip) => (trip.orderId === savedTrip.orderId ? savedTrip : trip))
-        : [savedTrip, ...currentTrips.filter((trip) => trip.orderId !== savedTrip.orderId)]
-      );
+      await loadOrders(editingTrip ? pagination.page : 1);
 
       setCreateOpen(false);
       setEditingTrip(null);
@@ -635,24 +639,24 @@ export default function CoordinatorPage({ user, onLogout }) {
             >
               Xóa lọc
             </button>
-            {/* <button
+            <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
-              All
-            </button> */}
-            {/* <button
+              Tất cả
+            </button>
+            <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
             >
-              New
+              Mới
             </button>
             <button
               className={activeTab === "waiting" ? "filter active" : "filter"}
               onClick={() => setActiveTab("waiting")}
             >
-              Waiting
-            </button> */}
+              Đang xử lý
+            </button>
           </div>
         </section>
 
@@ -672,9 +676,9 @@ export default function CoordinatorPage({ user, onLogout }) {
               <form className="create-form" onSubmit={handleCreateOrder}>
                 <div className="sheet-caption full">Thông tin đơn hàng</div>
 
-                <div className="form-row form-row-3">
+                <div className="form-row form-row-1">
                   <label>
-                    <span>Ngày tháng</span>
+                    <span>Ngày giao hàng</span>
                     <input
                       type="date"
                       value={form.date}
@@ -683,50 +687,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                       className={formErrors.date ? "input-error" : ""}
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
-                  </label>
-                  <label>
-                    <span>Tài xế</span>
-                    <select
-                      value={form.driver_id}
-                      onChange={(event) => {
-                        const driverId = event.target.value;
-                        const driver = drivers.find((item) => String(item.id) === String(driverId));
-                        updateField("driver_id", driverId);
-                        updateField(
-                          "vehicle_group_id",
-                          driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "",
-                        );
-                      }}
-                      className={formErrors.driver_id ? "input-error" : ""}
-                    >
-                      <option value="">Chọn tài xế</option>
-                      {drivers.map((driver) => (
-                        <option key={driver.id} value={driver.id}>
-                          {driver.full_name} {driver.plate_number ? `- ${driver.plate_number}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.driver_id && (
-                      <div className="field-error">{formErrors.driver_id}</div>
-                    )}
-                  </label>
-                  <label>
-                    <span>Nhóm xe</span>
-                    <select
-                      value={form.vehicle_group_id}
-                      onChange={(event) => updateField("vehicle_group_id", event.target.value)}
-                      className={formErrors.vehicle_group_id ? "input-error" : ""}
-                    >
-                      <option value="">Chọn nhóm xe</option>
-                      {vehicleGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.vehicle_group_id && (
-                      <div className="field-error">{formErrors.vehicle_group_id}</div>
-                    )}
                   </label>
                 </div>
 
@@ -763,13 +723,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
-                <div className="form-row form-row-note">
-                  
-                </div>
-
                 <div className="form-row form-row-2">
                   <label>
-                    <span>Khối lượng</span>
+                    <span>Khối lượng (tấn)</span>
                     <input
                       type="number"
                       min="0"
@@ -783,38 +739,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     )}
                   </label>
                   <label>
-                    <span>Quãng đường</span>
-                    <input
-                      value={form.distance}
-                      onChange={(event) => updateField("distance", event.target.value)}
-                      placeholder="VD: 120 km"
-                      className={formErrors.distance ? "input-error" : ""}
-                    />
-                    {formErrors.distance && (
-                      <div className="field-error">{formErrors.distance}</div>
-                    )}
-                  </label>
-                </div>
-
-                <div className="form-row form-row-2">
-                  <label>
-                    <span>Cước xe</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={form.estimated_price}
-                      onChange={(event) => updateField("estimated_price", event.target.value)}
-                      className={formErrors.estimated_price ? "input-error" : ""}
-                    />
-                    {formErrors.estimated_price && (
-                      <div className="field-error">{formErrors.estimated_price}</div>
-                    )}
-                  </label>
-                </div>
-
-                <div className="form-row form-row-2">
-                  <label>
                     <span>Điểm lấy hàng</span>
                     <input
                       value={form.pickup_address}
@@ -825,6 +749,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.pickup_address}</div>
                     )}
                   </label>
+                </div>
+
+                <div className="form-row form-row-1" style={{maxWidth:'100%'}}>
                   <label>
                     <span>Điểm giao hàng</span>
                     <input
@@ -837,6 +764,111 @@ export default function CoordinatorPage({ user, onLogout }) {
                     )}
                   </label>
                 </div>
+
+                <div className="sheet-caption full" style={{marginTop: 12}}>Chuyến xe</div>
+
+                {form.trips && form.trips.map((trip, index) => (
+                  <div key={index} className="trip-row full" style={{
+                    border: '1px solid #dde2f3',
+                    borderRadius: 16,
+                    padding: '14px 16px',
+                    background: '#f8f9ff',
+                    display: 'grid',
+                    gap: 12,
+                    position: 'relative'
+                  }}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 4}}>
+                      <strong style={{color:'#18227f', fontSize: 13}}>Chuyến {index + 1}</strong>
+                      {form.trips.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeTrip(index)}
+                          style={{border:'none', background:'#fee2e2', color:'#b91c1c', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:700, fontSize:13}}
+                        >
+                          Xóa
+                        </button>
+                      )}
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12}}>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>Nhóm xe</span>
+                        <select
+                          value={trip.vehicle_group_id}
+                          onChange={(e) => {
+                            updateTripField(index, 'vehicle_group_id', e.target.value);
+                            updateTripField(index, 'plate', '');
+                          }}
+                          className={formErrors[`trip_${index}_vehicle_group_id`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        >
+                          <option value="">Chọn nhóm xe</option>
+                          {vehicleGroups.map((group) => (
+                            <option key={group.id} value={group.id}>{group.name}</option>
+                          ))}
+                        </select>
+                        {formErrors[`trip_${index}_vehicle_group_id`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
+                        )}
+                      </label>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>BKS</span>
+                        <select
+                          value={trip.plate}
+                          onChange={(e) => updateTripField(index, 'plate', e.target.value)}
+                          disabled={!trip.vehicle_group_id}
+                          className={formErrors[`trip_${index}_plate`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        >
+                          <option value="">{trip.vehicle_group_id ? 'Chọn BKS' : 'Chọn nhóm xe trước'}</option>
+                          {getAvailablePlates(trip.vehicle_group_id).map((v) => (
+                            <option key={v.id} value={v.plate_number}>{v.plate_number}</option>
+                          ))}
+                        </select>
+                        {formErrors[`trip_${index}_plate`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_plate`]}</div>
+                        )}
+                      </label>
+                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+                        <span>Quãng đường (km)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={trip.distance}
+                          onChange={(e) => updateTripField(index, 'distance', e.target.value)}
+                          placeholder="VD: 120"
+                          className={formErrors[`trip_${index}_distance`] ? 'input-error' : ''}
+                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                        />
+                        {formErrors[`trip_${index}_distance`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_distance`]}</div>
+                        )}
+                      </label>
+                    </div>
+                    {getTripFare(trip) && (
+                      <div style={{fontSize:13, color:'#18227f', fontWeight:600}}>
+                        Cước: {Number(getTripFare(trip)).toLocaleString('vi-VN')} đ
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="full" style={{display:'flex', gap:10, alignItems:'center', justifyContent:'space-between'}}>
+                  <button
+                    type="button"
+                    onClick={addTrip}
+                    style={{border:'1px dashed #18227f', background:'#eef1ff', color:'#18227f', borderRadius:14, padding:'10px 20px', cursor:'pointer', fontWeight:700, fontSize:14}}
+                  >
+                    + Thêm chuyến
+                  </button>
+                  {totalFare > 0 && (
+                    <div style={{fontWeight:700, fontSize:15, color:'#0f1d70'}}>
+                      Tổng cước: {totalFare.toLocaleString('vi-VN')} đ
+                    </div>
+                  )}
+                </div>
+
+
 
                 <div className="form-row form-row-note">
                   <label>
@@ -904,7 +936,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </tr>
                 ) : (
                   filteredTrips.map((trip) => (
-                    <tr key={trip.id} className={!trip.checkIn ? "row-no-checkin" : ""}>
+                    <tr key={trip.id} className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
                       <td>
                         <span className="trip-id">
                           #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
@@ -921,7 +953,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           ? trip.fare.toLocaleString("vi-VN") + " đ"
                           : trip.fare || "-"}
                       </td>
-                      <td className="table-address-cell">{trip.notes || "-"}</td>
+                      <td className="table-address-cell">{trip.notes}</td>
                       <td>
                         <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
                           {trip.status}
@@ -932,6 +964,16 @@ export default function CoordinatorPage({ user, onLogout }) {
                           <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
                             ✎
                           </button>
+                          <button
+                            className="table-cancel-btn"
+                            type="button"
+                            aria-label="Cancel order"
+                            title="Hủy đơn"
+                            disabled={!canCancelTrip(trip)}
+                            onClick={() => handleCancelOrder(trip)}
+                          >
+                            ✕
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -941,7 +983,27 @@ export default function CoordinatorPage({ user, onLogout }) {
             </table>
           </div>
 
-          
+          <div className="pagination-bar">
+            <button
+              type="button"
+              className="filter"
+              disabled={pagination.page <= 1}
+              onClick={() => loadOrders(pagination.page - 1)}
+            >
+              Trước
+            </button>
+            <span>
+              Trang {pagination.page} / {pagination.totalPages} · {pagination.total} đơn
+            </span>
+            <button
+              type="button"
+              className="filter"
+              disabled={pagination.page >= pagination.totalPages}
+              onClick={() => loadOrders(pagination.page + 1)}
+            >
+              Sau
+            </button>
+          </div>
         </section>
 
       </main>

@@ -7,7 +7,8 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
         vg.description,
         vg.max_load_weight_kg,
         vg.price_per_km,
-        vg.depreciation_per_km,
+        vg.status,
+        vg.upgrade_allowed,
         vg.created_at,
         COUNT(v.id)::int AS vehicle_count,
         COUNT(*) FILTER (WHERE v.status = 'active')::int AS active_vehicle_count,
@@ -18,14 +19,19 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
     LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id
 `;
 
+const ACTIVE_SHIPMENT_STATUS_CONDITION = `
+    os.status IN ('claimed', 'picking', 'loaded', 'transit', 'arrived', 'returning')
+`;
+
 const VEHICLE_DETAIL_SELECT = `
     SELECT
         v.id,
         v.plate_number,
         v.vehicle_group_id,
         vg.name AS vehicle_group_name,
+        vg.status AS vehicle_group_status,
         vg.price_per_km,
-        vg.depreciation_per_km,
+        vg.upgrade_allowed,
         v.brand,
         v.model,
         v.load_capacity_kg,
@@ -42,6 +48,11 @@ const VEHICLE_DETAIL_SELECT = `
         lm.maintenance_type AS active_maintenance_type,
         lm.description AS active_maintenance_description,
         lm.maintenance_date AS active_maintenance_date,
+        lm.bill_pics AS active_maintenance_bill_pics,
+        lm.completed_at AS active_maintenance_completed_at,
+        lm.performed_by AS active_maintenance_performed_by,
+        mp.full_name AS active_maintenance_performed_by_name,
+        lm.status AS active_maintenance_status,
         li.id AS active_failure_id,
         li.incident_type AS active_failure_type,
         li.description AS active_failure_description,
@@ -56,13 +67,18 @@ const VEHICLE_DETAIL_SELECT = `
             mr.id,
             mr.maintenance_type,
             mr.description,
-            mr.maintenance_date
+            mr.maintenance_date,
+            mr.bill_pics,
+            mr.completed_at,
+            mr.status,
+            mr.performed_by
         FROM maintenance_records mr
         WHERE mr.vehicle_id = v.id
-          AND mr.status = 'open'
+          AND mr.status IN ('open', 'pending_verification')
         ORDER BY mr.started_at DESC, mr.id DESC
         LIMIT 1
     ) lm ON TRUE
+    LEFT JOIN profiles mp ON mp.id = lm.performed_by
     LEFT JOIN LATERAL (
         SELECT
             i.id,
@@ -82,6 +98,7 @@ const VEHICLE_DETAIL_SELECT = `
 const listVehicleGroups = async () => {
     const result = await pool.query(
         `${VEHICLE_GROUP_DETAIL_SELECT}
+         WHERE vg.status = 'active'
          GROUP BY vg.id
          ORDER BY vg.name ASC, vg.id ASC`,
     );
@@ -122,7 +139,7 @@ const createVehicleGroup = async ({
     description,
     max_load_weight_kg,
     price_per_km,
-    depreciation_per_km,
+    upgrade_allowed,
 }) => {
     const result = await pool.query(
         `INSERT INTO vehicle_groups (
@@ -130,7 +147,7 @@ const createVehicleGroup = async ({
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km
+            upgrade_allowed
         )
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id`,
@@ -139,7 +156,7 @@ const createVehicleGroup = async ({
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
+            upgrade_allowed,
         ],
     );
     return result.rows[0]?.id ?? null;
@@ -152,7 +169,7 @@ const updateVehicleGroup = async (
         description,
         max_load_weight_kg,
         price_per_km,
-        depreciation_per_km,
+        upgrade_allowed,
     },
 ) => {
     const result = await pool.query(
@@ -162,7 +179,7 @@ const updateVehicleGroup = async (
             description = $3,
             max_load_weight_kg = $4,
             price_per_km = $5,
-            depreciation_per_km = $6
+            upgrade_allowed = $6
          WHERE id = $1
          RETURNING id`,
         [
@@ -171,25 +188,16 @@ const updateVehicleGroup = async (
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
+            upgrade_allowed,
         ],
     );
     return result.rows[0] ?? null;
 };
 
-const countVehiclesByGroupId = async (vehicleGroupId) => {
-    const result = await pool.query(
-        `SELECT COUNT(*)::int AS total
-         FROM vehicles
-         WHERE vehicle_group_id = $1`,
-        [vehicleGroupId],
-    );
-    return Number(result.rows[0]?.total ?? 0);
-};
-
 const deleteVehicleGroup = async (vehicleGroupId) => {
     const result = await pool.query(
-        `DELETE FROM vehicle_groups
+        `UPDATE vehicle_groups
+         SET status = 'hidden'
          WHERE id = $1
          RETURNING id`,
         [vehicleGroupId],
@@ -281,7 +289,8 @@ const getVehicleGroupReferenceById = async (vehicleGroupId, db = pool) => {
     const result = await db.query(
         `SELECT id, name
          FROM vehicle_groups
-         WHERE id = $1`,
+         WHERE status = 'active'
+           AND id = $1`,
         [vehicleGroupId],
     );
     return result.rows[0] ?? null;
@@ -294,10 +303,17 @@ const getDriverById = async (driverId, db = pool) => {
             d.vehicle_id,
             p.full_name,
             a.email,
-            d.license_number
+            d.license_number,
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS active_shipment_count
+             FROM order_shipments os
+             WHERE os.owner_driver_id = d.profile_id
+               AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
+         ) active_shipments ON TRUE
          WHERE d.profile_id = $1`,
         [driverId],
     );
@@ -313,11 +329,18 @@ const listDriverOptions = async () => {
             d.license_number,
             d.vehicle_id AS current_vehicle_id,
             v.plate_number AS current_vehicle_plate,
-            v.status AS current_vehicle_status
+            v.status AS current_vehicle_status,
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
          LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS active_shipment_count
+             FROM order_shipments os
+             WHERE os.owner_driver_id = d.profile_id
+               AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
+         ) active_shipments ON TRUE
          ORDER BY p.full_name ASC, d.profile_id ASC`,
     );
     return result.rows;
@@ -328,7 +351,7 @@ const hasOpenMaintenanceRecord = async (vehicleId, db = pool) => {
         `SELECT id
          FROM maintenance_records
          WHERE vehicle_id = $1
-           AND status = 'open'
+           AND status IN ('open', 'pending_verification')
          LIMIT 1`,
         [vehicleId],
     );
@@ -676,8 +699,8 @@ const createMaintenanceRecordAndSetStatus = async ({
 const completeMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
-    managerId,
-    completionNote = null,
+    driverId,
+    billPics = [],
     performedBy = null,
 }) => {
     const client = await pool.connect();
@@ -724,14 +747,143 @@ const completeMaintenanceRecordAndSetStatus = async ({
 
         await client.query(
             `UPDATE maintenance_records
-             SET status = 'completed',
+             SET status = 'pending_verification',
                  completed_at = NOW(),
-                 completion_note = $2,
+                 bill_pics = $2::jsonb,
                  completed_by = $3,
                  performed_by = COALESCE($4, performed_by),
                  updated_at = NOW()
              WHERE id = $1`,
-            [record.id, completionNote, managerId, performedBy],
+            [record.id, JSON.stringify(billPics), driverId, performedBy],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'complete_maintenance', $2, $2, 'maintenance_record', $3, $4, $5)`,
+            [vehicleId, vehicle.status, record.id, 'Driver marked maintenance ready for verification', driverId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId: record.id, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const verifyMaintenanceRecordAndSetStatus = async ({
+    vehicleId,
+    maintenanceRecordId,
+    managerId,
+    note = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId];
+        let idClause = '';
+        if (maintenanceRecordId !== null) {
+            params.push(maintenanceRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const recordResult = await client.query(
+            `SELECT
+                id,
+                bill_pics,
+                cost,
+                description,
+                maintenance_type,
+                maintenance_date
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status = 'pending_verification'
+               ${idClause}
+             ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = recordResult.rows[0];
+        if (!record) {
+            const err = new Error('Maintenance record awaiting verification not found');
+            err.code = 'PENDING_MAINTENANCE_NOT_FOUND';
+            throw err;
+        }
+
+        const billPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];
+        if (billPics.length === 0) {
+            const err = new Error('Maintenance bill evidence is required before verification');
+            err.code = 'MAINTENANCE_BILL_REQUIRED';
+            throw err;
+        }
+
+        const expenseAmount = Number(record.cost);
+        if (!Number.isFinite(expenseAmount) || expenseAmount <= 0) {
+            const err = new Error('Maintenance cost must be greater than 0 before verification');
+            err.code = 'MAINTENANCE_COST_REQUIRED';
+            throw err;
+        }
+
+        const expenseDescription = record.description?.trim?.() || `Vehicle maintenance (${record.maintenance_type})`;
+        const expenseResult = await client.query(
+            `INSERT INTO expenses (
+                shipment_id,
+                vehicle_id,
+                created_by,
+                expense_type,
+                amount,
+                description,
+                expense_date
+            )
+            VALUES (NULL, $1, $2, 'maintenance', $3, $4, $5)
+            RETURNING id`,
+            [vehicleId, managerId, expenseAmount, expenseDescription, record.maintenance_date],
+        );
+        const expenseId = expenseResult.rows[0].id;
+
+        for (const fileUrl of billPics) {
+            await client.query(
+                `INSERT INTO expense_attachments (expense_id, file_url)
+                 VALUES ($1, $2)`,
+                [expenseId, fileUrl],
+            );
+        }
+
+        await client.query(
+            `UPDATE maintenance_records
+             SET status = 'completed',
+                 expense_id = $2,
+                 verified_by = $3,
+                 verified_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [record.id, expenseId, managerId],
         );
 
         await client.query(
@@ -754,7 +906,7 @@ const completeMaintenanceRecordAndSetStatus = async ({
                 created_by
             )
             VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
-            [vehicleId, vehicle.status, record.id, completionNote, managerId],
+            [vehicleId, vehicle.status, record.id, note, managerId],
         );
 
         await client.query('COMMIT');
@@ -1026,13 +1178,38 @@ const listVehicleStatusHistory = async (vehicleId) => {
     return result.rows;
 };
 
+const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool) => {
+    const result = await db.query(
+        `SELECT id, vehicle_id, performed_by, status, bill_pics
+         FROM maintenance_records
+         WHERE vehicle_id = $1
+           AND performed_by = $2
+           AND status = 'open'
+         ORDER BY started_at DESC, id DESC
+         LIMIT 1`,
+        [vehicleId, driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const updateMaintenanceBillPics = async (maintenanceRecordId, billPics, db = pool) => {
+    const result = await db.query(
+        `UPDATE maintenance_records
+         SET bill_pics = $2::jsonb,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, bill_pics`,
+        [maintenanceRecordId, JSON.stringify(billPics)],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     listVehicleGroups,
     getVehicleGroupById,
     getVehicleGroupByName,
     createVehicleGroup,
     updateVehicleGroup,
-    countVehiclesByGroupId,
     deleteVehicleGroup,
     listVehicles,
     getVehicleById,
@@ -1047,8 +1224,11 @@ module.exports = {
     updateVehicleStatus,
     createMaintenanceRecordAndSetStatus,
     completeMaintenanceRecordAndSetStatus,
+    verifyMaintenanceRecordAndSetStatus,
     createFailureRecordAndSetStatus,
     resolveFailureRecordAndSetStatus,
     retireVehicle,
     listVehicleStatusHistory,
+    getActiveMaintenanceRecordForDriver,
+    updateMaintenanceBillPics,
 };

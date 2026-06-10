@@ -1,9 +1,5 @@
 import React, { useEffect } from "react";
-import { Form, Input, InputNumber, Modal, Typography } from "antd";
-import { Check, Coins, FileText, Tag as TagIcon, TrendingDown, Weight, X } from "lucide-react";
-
-const { Text } = Typography;
-const SW = 1.75;
+import { Form, Input, InputNumber, Modal } from "antd";
 
 export default function VehicleGroupModal({ open, onClose, onSubmit, editingGroup }) {
   const [form] = Form.useForm();
@@ -12,16 +8,15 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
     if (!open) return;
     if (editingGroup) {
       form.setFieldsValue({
-        name:                editingGroup.name,
-        description:         editingGroup.description || "",
-        max_load_weight_kg:  editingGroup.max_load_weight_kg ? Number(editingGroup.max_load_weight_kg) : null,
-        price_per_km:        Number(editingGroup.price_per_km),
-        depreciation_per_km: Number(editingGroup.depreciation_per_km || 0),
+        name: editingGroup.name,
+        description: editingGroup.description || "",
+        max_load_weight_kg: editingGroup.max_load_weight_kg ? Number(editingGroup.max_load_weight_kg) : null,
+        price_per_km: Number(editingGroup.price_per_km),
       });
-    } else {
-      form.resetFields();
-      form.setFieldsValue({ depreciation_per_km: 0 });
+      return;
     }
+
+    form.resetFields();
   }, [editingGroup, form, open]);
 
   const handleOk = async () => {
@@ -88,36 +83,13 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
             />
           </Form.Item>
 
-          <Form.Item
-            label="Giá / km (đ)"
-            name="price_per_km"
-            rules={[{ required: true, message: "Vui lòng nhập giá/km" }]}
-          >
-            <InputNumber
-              prefix={<Coins size={15} strokeWidth={SW} />}
-              style={{ width: "100%", borderRadius: 8 }}
-              min={0}
-              precision={0}
-              placeholder="VD: 15000"
-              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-            />
-          </Form.Item>
-
-          <Form.Item
-            label="Khấu hao / km (đ)"
-            name="depreciation_per_km"
-            rules={[{ required: true, message: "Vui lòng nhập khấu hao/km" }]}
-          >
-            <InputNumber
-              prefix={<TrendingDown size={15} strokeWidth={SW} />}
-              style={{ width: "100%", borderRadius: 8 }}
-              min={0}
-              precision={0}
-              placeholder="VD: 3000"
-              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-            />
-          </Form.Item>
-        </div>
+        <Form.Item
+          label="Price Per Km"
+          name="price_per_km"
+          rules={[{ required: true, message: "Price per km is required" }]}
+        >
+          <InputNumber style={{ width: "100%" }} min={0} precision={2} />
+        </Form.Item>
       </Form>
     </Modal>
   );
