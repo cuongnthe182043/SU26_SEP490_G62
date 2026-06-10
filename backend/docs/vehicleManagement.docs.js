@@ -33,7 +33,6 @@
  *               description: { type: string, nullable: true }
  *               max_load_weight_kg: { type: number, nullable: true, example: 1250 }
  *               price_per_km: { type: number, example: 18000 }
- *               depreciation_per_km: { type: number, example: 1200 }
  *               upgrade_allowed: { type: boolean, example: true }
  *     responses:
  *       201:
@@ -80,14 +79,13 @@
  *               description: { type: string, nullable: true }
  *               max_load_weight_kg: { type: number, nullable: true }
  *               price_per_km: { type: number }
- *               depreciation_per_km: { type: number }
  *               upgrade_allowed: { type: boolean }
  *     responses:
  *       200:
  *         description: Vehicle group updated
  *   delete:
  *     tags: [Vehicle Management]
- *     summary: Delete vehicle group if unused by vehicles
+ *     summary: Hide vehicle group from active lists
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -97,9 +95,9 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle group deleted
+ *         description: Vehicle group hidden
  *       409:
- *         description: Vehicle group is in use
+ *         description: Vehicle group cannot be hidden
  */
 
 /**

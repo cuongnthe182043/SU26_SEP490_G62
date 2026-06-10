@@ -47,7 +47,7 @@ const updateVehicleGroup = async (req, res) => {
 const deleteVehicleGroup = async (req, res) => {
     try {
         const result = await vehicleManagementService.deleteVehicleGroup(req.params.id);
-        res.json({ message: 'Vehicle group deleted successfully', id: result.id });
+        res.json({ message: 'Vehicle group hidden successfully', id: result.id });
     } catch (err) {
         handleError(res, err);
     }
@@ -119,7 +119,7 @@ const completeMaintenance = async (req, res) => {
 const verifyMaintenance = async (req, res) => {
     try {
         const vehicle = await vehicleManagementService.verifyMaintenance(req.params.id, req.user.userId, req.body);
-        res.json({ message: 'Vehicle maintenance verified successfully', vehicle });
+        res.json({ message: 'Vehicle maintenance verified!', vehicle });
     } catch (err) {
         handleError(res, err);
     }

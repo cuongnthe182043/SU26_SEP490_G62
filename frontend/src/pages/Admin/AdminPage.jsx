@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Layout, Menu, Typography, Dropdown, Space, Avatar } from "antd";
 import {
-  ApartmentOutlined,
   CarOutlined,
   DashboardOutlined,
   LogoutOutlined,
@@ -9,9 +8,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import UserList from "../../features/admin/UserList";
-import VehicleGroupList from "../../features/admin/VehicleGroupList";
 import VehicleList from "../../features/admin/VehicleList";
-import { fetchVehicleGroups } from "../../features/admin/vehicleManagementApi";
 import "../../styles/admin/Admin.css";
 
 const { Header, Sider, Content } = Layout;
@@ -20,15 +17,6 @@ const { Title, Text } = Typography;
 export default function AdminPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
   const [collapsed, setCollapsed] = useState(false);
-  const [vehicleGroups, setVehicleGroups] = useState([]);
-
-  useEffect(() => {
-    if (activeTab !== "vehicle-groups" && activeTab !== "vehicles") return;
-
-    fetchVehicleGroups()
-      .then((data) => setVehicleGroups(data.vehicleGroups || []))
-      .catch(() => setVehicleGroups([]));
-  }, [activeTab]);
 
   const handleLogout = () => {
     if (onLogout) {
@@ -52,11 +40,6 @@ export default function AdminPage({ user, onLogout }) {
       key: "users",
       icon: <UserOutlined />,
       label: "Nguoi dung",
-    },
-    {
-      key: "vehicle-groups",
-      icon: <ApartmentOutlined />,
-      label: "Nhom xe",
     },
     {
       key: "vehicles",
@@ -91,8 +74,7 @@ export default function AdminPage({ user, onLogout }) {
 
   const pageTitleMap = {
     users: "Quan ly Nguoi dung",
-    "vehicle-groups": "Quan ly Nhom Xe",
-    vehicles: "Quan ly Xe",
+    vehicles: "Quan ly Nhom Xe va Xe",
   };
 
   return (
@@ -146,8 +128,7 @@ export default function AdminPage({ user, onLogout }) {
 
         <Content style={{ margin: "24px 16px", padding: 0, minHeight: 280 }}>
           {activeTab === "users" && <UserList />}
-          {activeTab === "vehicle-groups" && <VehicleGroupList />}
-          {activeTab === "vehicles" && <VehicleList vehicleGroups={vehicleGroups} />}
+          {activeTab === "vehicles" && <VehicleList />}
         </Content>
       </Layout>
     </Layout>

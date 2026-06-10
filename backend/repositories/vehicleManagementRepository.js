@@ -7,7 +7,7 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
         vg.description,
         vg.max_load_weight_kg,
         vg.price_per_km,
-        vg.depreciation_per_km,
+        vg.status,
         vg.upgrade_allowed,
         vg.created_at,
         COUNT(v.id)::int AS vehicle_count,
@@ -29,8 +29,8 @@ const VEHICLE_DETAIL_SELECT = `
         v.plate_number,
         v.vehicle_group_id,
         vg.name AS vehicle_group_name,
+        vg.status AS vehicle_group_status,
         vg.price_per_km,
-        vg.depreciation_per_km,
         vg.upgrade_allowed,
         v.brand,
         v.model,
@@ -98,6 +98,7 @@ const VEHICLE_DETAIL_SELECT = `
 const listVehicleGroups = async () => {
     const result = await pool.query(
         `${VEHICLE_GROUP_DETAIL_SELECT}
+         WHERE vg.status = 'active'
          GROUP BY vg.id
          ORDER BY vg.name ASC, vg.id ASC`,
     );
@@ -138,7 +139,6 @@ const createVehicleGroup = async ({
     description,
     max_load_weight_kg,
     price_per_km,
-    depreciation_per_km,
     upgrade_allowed,
 }) => {
     const result = await pool.query(
@@ -147,17 +147,15 @@ const createVehicleGroup = async ({
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
             upgrade_allowed
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id`,
         [
             name,
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
             upgrade_allowed,
         ],
     );
@@ -171,7 +169,6 @@ const updateVehicleGroup = async (
         description,
         max_load_weight_kg,
         price_per_km,
-        depreciation_per_km,
         upgrade_allowed,
     },
 ) => {
@@ -182,8 +179,7 @@ const updateVehicleGroup = async (
             description = $3,
             max_load_weight_kg = $4,
             price_per_km = $5,
-            depreciation_per_km = $6,
-            upgrade_allowed = $7
+            upgrade_allowed = $6
          WHERE id = $1
          RETURNING id`,
         [
@@ -192,26 +188,16 @@ const updateVehicleGroup = async (
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
             upgrade_allowed,
         ],
     );
     return result.rows[0] ?? null;
 };
 
-const countVehiclesByGroupId = async (vehicleGroupId) => {
-    const result = await pool.query(
-        `SELECT COUNT(*)::int AS total
-         FROM vehicles
-         WHERE vehicle_group_id = $1`,
-        [vehicleGroupId],
-    );
-    return Number(result.rows[0]?.total ?? 0);
-};
-
 const deleteVehicleGroup = async (vehicleGroupId) => {
     const result = await pool.query(
-        `DELETE FROM vehicle_groups
+        `UPDATE vehicle_groups
+         SET status = 'hidden'
          WHERE id = $1
          RETURNING id`,
         [vehicleGroupId],
@@ -303,7 +289,8 @@ const getVehicleGroupReferenceById = async (vehicleGroupId, db = pool) => {
     const result = await db.query(
         `SELECT id, name
          FROM vehicle_groups
-         WHERE id = $1`,
+         WHERE status = 'active'
+           AND id = $1`,
         [vehicleGroupId],
     );
     return result.rows[0] ?? null;
@@ -826,7 +813,13 @@ const verifyMaintenanceRecordAndSetStatus = async ({
         }
 
         const recordResult = await client.query(
-            `SELECT id, bill_pics
+            `SELECT
+                id,
+                bill_pics,
+                cost,
+                description,
+                maintenance_type,
+                maintenance_date
              FROM maintenance_records
              WHERE vehicle_id = $1
                AND status = 'pending_verification'
@@ -850,14 +843,47 @@ const verifyMaintenanceRecordAndSetStatus = async ({
             throw err;
         }
 
+        const expenseAmount = Number(record.cost);
+        if (!Number.isFinite(expenseAmount) || expenseAmount <= 0) {
+            const err = new Error('Maintenance cost must be greater than 0 before verification');
+            err.code = 'MAINTENANCE_COST_REQUIRED';
+            throw err;
+        }
+
+        const expenseDescription = record.description?.trim?.() || `Vehicle maintenance (${record.maintenance_type})`;
+        const expenseResult = await client.query(
+            `INSERT INTO expenses (
+                shipment_id,
+                vehicle_id,
+                created_by,
+                expense_type,
+                amount,
+                description,
+                expense_date
+            )
+            VALUES (NULL, $1, $2, 'maintenance', $3, $4, $5)
+            RETURNING id`,
+            [vehicleId, managerId, expenseAmount, expenseDescription, record.maintenance_date],
+        );
+        const expenseId = expenseResult.rows[0].id;
+
+        for (const fileUrl of billPics) {
+            await client.query(
+                `INSERT INTO expense_attachments (expense_id, file_url)
+                 VALUES ($1, $2)`,
+                [expenseId, fileUrl],
+            );
+        }
+
         await client.query(
             `UPDATE maintenance_records
              SET status = 'completed',
-                 verified_by = $2,
+                 expense_id = $2,
+                 verified_by = $3,
                  verified_at = NOW(),
                  updated_at = NOW()
              WHERE id = $1`,
-            [record.id, managerId],
+            [record.id, expenseId, managerId],
         );
 
         await client.query(
@@ -1184,7 +1210,6 @@ module.exports = {
     getVehicleGroupByName,
     createVehicleGroup,
     updateVehicleGroup,
-    countVehiclesByGroupId,
     deleteVehicleGroup,
     listVehicles,
     getVehicleById,
