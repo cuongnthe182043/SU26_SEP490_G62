@@ -83,16 +83,11 @@ const normalizeVehicleGroupPayload = (payload = {}) => {
     const pricePerKm = parseNullableNumber(payload.price_per_km, 'price_per_km', { min: 0 });
     if (pricePerKm === null) throw createError('price_per_km is required', 400);
 
-    const depreciationPerKm = payload.depreciation_per_km === undefined
-        ? 0
-        : parseNullableNumber(payload.depreciation_per_km, 'depreciation_per_km', { min: 0 });
-
     return {
         name,
         description: payload.description?.trim?.() || null,
         max_load_weight_kg: parseNullableNumber(payload.max_load_weight_kg, 'max_load_weight_kg', { min: 0 }),
         price_per_km: pricePerKm,
-        depreciation_per_km: depreciationPerKm,
         upgrade_allowed: Boolean(payload.upgrade_allowed),
     };
 };
@@ -212,16 +207,11 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     const existingVehicleGroup = await vehicleManagementRepository.getVehicleGroupById(id);
     if (!existingVehicleGroup) throw createError('Vehicle group not found', 404);
 
-    const vehicleCount = await vehicleManagementRepository.countVehiclesByGroupId(id);
-    if (vehicleCount > 0) {
-        throw createError('Vehicle group cannot be deleted because it is assigned to vehicles', 409);
-    }
-
     try {
         await vehicleManagementRepository.deleteVehicleGroup(id);
     } catch (err) {
         if (err.code === '23503') {
-            throw createError('Vehicle group cannot be deleted because it is referenced by other records', 409);
+            throw createError('Vehicle group cannot be hidden because it is referenced by other records', 409);
         }
         throw err;
     }
@@ -407,12 +397,33 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
     ensureVehicleStatus(vehicle, ['maintenance'], 'Verify maintenance');
 
-    await vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus({
-        vehicleId: vehicle.id,
-        maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
-        managerId: parsePositiveInteger(managerId, 'manager_id'),
-        note: normalizeString(payload.verification_note) || normalizeString(payload.note) || 'Maintenance verified',
-    });
+    if (!vehicle.active_maintenance_id) {
+        throw createError('No active maintenance record found for this vehicle', 404);
+    }
+
+    if (vehicle.active_maintenance_status !== 'pending_verification') {
+        throw createError('Maintenance is not ready for verification yet. Driver must upload bill images and mark it ready first.', 409);
+    }
+
+    try {
+        await vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus({
+            vehicleId: vehicle.id,
+            maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
+            managerId: parsePositiveInteger(managerId, 'manager_id'),
+            note: normalizeString(payload.verification_note) || normalizeString(payload.note) || 'Maintenance verified',
+        });
+    } catch (err) {
+        if (err.code === 'PENDING_MAINTENANCE_NOT_FOUND') {
+            throw createError('Maintenance is not ready for verification yet. Refresh the page and ensure the driver has marked it ready.', 409);
+        }
+        if (err.code === 'MAINTENANCE_BILL_REQUIRED') {
+            throw createError('Maintenance bill evidence is required before verification', 400);
+        }
+        if (err.code === 'MAINTENANCE_COST_REQUIRED') {
+            throw createError('Maintenance cost must be greater than 0 before verification', 400);
+        }
+        throw err;
+    }
 
     return getVehicleDetail(vehicle.id);
 };

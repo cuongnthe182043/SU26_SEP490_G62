@@ -45,7 +45,7 @@ WITH account_data AS (
 )
 INSERT INTO profiles (id, full_name, phone, role_id) 
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Manager', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
     ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator')),
     ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant')),
     ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver')),
@@ -96,16 +96,16 @@ WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654324');
 --------------------------------------------------------------------------------
 -- 6. VEHICLE GROUPS DEFINITIONS
 --------------------------------------------------------------------------------
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km) 
-SELECT 'Small Van (1-2 tấn)', 2000, 10000, 500
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km) 
+SELECT 'Small Van (1-2 tấn)', 2000, 10000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
-SELECT 'Medium Truck (2-5 tấn)', 5000, 15000, 800
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
+SELECT 'Medium Truck (2-5 tấn)', 5000, 15000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
-SELECT 'Large Truck (5-10 tấn)', 10000, 25000, 1200
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
+SELECT 'Large Truck (5-10 tấn)', 10000, 25000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)');
 
 --------------------------------------------------------------------------------

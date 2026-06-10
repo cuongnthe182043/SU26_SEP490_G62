@@ -4,6 +4,7 @@ import {
   Descriptions,
   Dropdown,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
@@ -32,6 +33,7 @@ import {
   createVehicle,
   fetchVehicleDetail,
   fetchDriverOptions,
+  fetchVehicleGroups,
   fetchVehicles,
   markVehicleBroken,
   retireVehicle,
@@ -40,6 +42,7 @@ import {
   updateVehicle,
   verifyVehicleMaintenance,
 } from "./vehicleManagementApi";
+import VehicleGroupList from "./VehicleGroupList";
 
 const { Text, Title } = Typography;
 
@@ -66,6 +69,11 @@ const formatDateTime = (value) => {
 
 const MAINTENANCE_ACTIONS = new Set(["send_to_maintenance", "complete_maintenance"]);
 const INCIDENT_ACTIONS = new Set(["mark_broken", "restore_vehicle"]);
+
+const normalizeBillPics = (value) => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => typeof item === "string" && item.trim());
+};
 
 const buildActionMenuItems = (record, handlers) => {
   const items = [
@@ -152,8 +160,9 @@ const buildHistoryTimelineItems = (items) =>
     ),
   }));
 
-export default function VehicleList({ vehicleGroups }) {
+export default function VehicleList() {
   const [vehicles, setVehicles] = useState([]);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -204,6 +213,15 @@ export default function VehicleList({ vehicleGroups }) {
     disabled: !driver.is_maintenance_eligible,
   }));
 
+  const loadVehicleGroups = async () => {
+    try {
+      const data = await fetchVehicleGroups();
+      setVehicleGroups(data.vehicleGroups || []);
+    } catch (err) {
+      message.error(err.message);
+    }
+  };
+
   const loadVehicles = async ({
     page = pagination.current,
     limit = pagination.pageSize,
@@ -235,6 +253,7 @@ export default function VehicleList({ vehicleGroups }) {
   };
 
   useEffect(() => {
+    loadVehicleGroups();
     loadVehicles({ page: 1 });
   }, []);
 
@@ -331,8 +350,13 @@ export default function VehicleList({ vehicleGroups }) {
   };
 
   const handleVerifyMaintenance = async (vehicle) => {
-    verifyMaintenanceForm.resetFields();
-    setVerifyMaintenanceTarget(vehicle);
+    try {
+      verifyMaintenanceForm.resetFields();
+      const data = await fetchVehicleDetail(vehicle.id);
+      setVerifyMaintenanceTarget(data.vehicle);
+    } catch (err) {
+      message.error(err.message);
+    }
   };
 
   const submitVerifyMaintenance = async () => {
@@ -480,55 +504,75 @@ export default function VehicleList({ vehicleGroups }) {
 
   const maintenanceHistory = (detailVehicle?.status_history || []).filter((item) => MAINTENANCE_ACTIONS.has(item.action_type));
   const incidentHistory = (detailVehicle?.status_history || []).filter((item) => INCIDENT_ACTIONS.has(item.action_type));
+  const currentEditingGroupMissing = editingVehicle?.vehicle_group_id
+    && !vehicleGroups.some((group) => Number(group.id) === Number(editingVehicle.vehicle_group_id));
+  const selectableVehicleGroups = currentEditingGroupMissing
+    ? [
+        ...vehicleGroups,
+        {
+          id: editingVehicle.vehicle_group_id,
+          name: editingVehicle.vehicle_group_name || `Group #${editingVehicle.vehicle_group_id}`,
+          status: editingVehicle.vehicle_group_status || "hidden",
+        },
+      ]
+    : vehicleGroups;
 
   return (
-    <div style={{ padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            Vehicles
-          </Title>
-          <Text type="secondary">{pagination.total} vehicles</Text>
-        </div>
-        <Button type="primary" icon={<CarOutlined />} onClick={handleOpenCreate}>
-          Add Vehicle
-        </Button>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 12, marginBottom: 16 }}>
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="Search by plate number"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          onPressEnter={handleFilterSubmit}
-        />
-        <Select options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
-        <Select
-          options={[{ label: "All Groups", value: "" }, ...vehicleGroups.map((group) => ({ label: group.name, value: group.id }))]}
-          value={groupFilter}
-          onChange={setGroupFilter}
-        />
-        <Button type="primary" onClick={handleFilterSubmit}>
-          Apply
-        </Button>
-      </div>
-
-      <Table
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={vehicles}
-        pagination={pagination}
-        onChange={handleTableChange}
-        scroll={{ x: "max-content" }}
+    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <VehicleGroupList
+        embedded
+        vehicleGroups={vehicleGroups}
+        onVehicleGroupsChange={setVehicleGroups}
       />
+
+      <div style={{ padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+          <div>
+            <Title level={3} style={{ margin: 0 }}>
+              Vehicles
+            </Title>
+            <Text type="secondary">{pagination.total} vehicles</Text>
+          </div>
+          <Button type="primary" icon={<CarOutlined />} onClick={handleOpenCreate}>
+            Add Vehicle
+          </Button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 12, marginBottom: 16 }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Search by plate number"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onPressEnter={handleFilterSubmit}
+          />
+          <Select options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+          <Select
+            options={[{ label: "All Groups", value: "" }, ...vehicleGroups.map((group) => ({ label: group.name, value: group.id }))]}
+            value={groupFilter}
+            onChange={setGroupFilter}
+          />
+          <Button type="primary" onClick={handleFilterSubmit}>
+            Apply
+          </Button>
+        </div>
+
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={vehicles}
+          pagination={pagination}
+          onChange={handleTableChange}
+          scroll={{ x: "max-content" }}
+        />
+      </div>
 
       <VehicleModal
         open={modalOpen}
         editingVehicle={editingVehicle}
-        vehicleGroups={vehicleGroups}
+        vehicleGroups={selectableVehicleGroups}
         onClose={() => {
           setModalOpen(false);
           setEditingVehicle(null);
@@ -653,8 +697,29 @@ export default function VehicleList({ vehicleGroups }) {
         }}
         onOk={submitVerifyMaintenance}
         okText="Verify"
+        okButtonProps={{ disabled: verifyMaintenanceTarget?.active_maintenance_status !== "pending_verification" }}
       >
         <Form form={verifyMaintenanceForm} layout="vertical">
+          <Form.Item label="Bill Images">
+            {normalizeBillPics(verifyMaintenanceTarget?.active_maintenance_bill_pics).length > 0 ? (
+              <Image.PreviewGroup>
+                <Space wrap size="middle">
+                  {normalizeBillPics(verifyMaintenanceTarget?.active_maintenance_bill_pics).map((url, index) => (
+                    <Image
+                      key={`${url}-${index}`}
+                      src={url}
+                      alt={`Maintenance bill ${index + 1}`}
+                      width={120}
+                      height={120}
+                      style={{ objectFit: "cover", borderRadius: 8 }}
+                    />
+                  ))}
+                </Space>
+              </Image.PreviewGroup>
+            ) : (
+              <Text type="secondary">No bill images uploaded yet.</Text>
+            )}
+          </Form.Item>
           <Form.Item label="Verification Note" name="verification_note" rules={[{ required: true, message: "Verification note is required" }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -722,6 +787,6 @@ export default function VehicleList({ vehicleGroups }) {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </Space>
   );
 }

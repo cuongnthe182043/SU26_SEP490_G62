@@ -12,8 +12,8 @@ import {
 
 const { Text, Title } = Typography;
 
-export default function VehicleGroupList() {
-  const [vehicleGroups, setVehicleGroups] = useState([]);
+export default function VehicleGroupList({ embedded = false, vehicleGroups: controlledVehicleGroups = null, onVehicleGroupsChange = null }) {
+  const [vehicleGroups, setVehicleGroups] = useState(controlledVehicleGroups || []);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -25,7 +25,11 @@ export default function VehicleGroupList() {
     try {
       setLoading(true);
       const data = await fetchVehicleGroups();
-      setVehicleGroups(data.vehicleGroups || []);
+      const nextGroups = data.vehicleGroups || [];
+      setVehicleGroups(nextGroups);
+      if (onVehicleGroupsChange) {
+        onVehicleGroupsChange(nextGroups);
+      }
     } catch (err) {
       message.error(err.message);
     } finally {
@@ -34,8 +38,14 @@ export default function VehicleGroupList() {
   };
 
   useEffect(() => {
+    if (controlledVehicleGroups) {
+      setVehicleGroups(controlledVehicleGroups);
+      setLoading(false);
+      return;
+    }
+
     loadVehicleGroups();
-  }, []);
+  }, [controlledVehicleGroups]);
 
   const filteredGroups = vehicleGroups.filter((group) => {
     const query = search.trim().toLowerCase();
@@ -60,10 +70,16 @@ export default function VehicleGroupList() {
   const handleSubmit = async (values) => {
     try {
       if (editingGroup) {
-        await updateVehicleGroup(editingGroup.id, values);
+        await updateVehicleGroup(editingGroup.id, {
+          ...values,
+          upgrade_allowed: editingGroup.upgrade_allowed,
+        });
         message.success("Vehicle group updated");
       } else {
-        await createVehicleGroup(values);
+        await createVehicleGroup({
+          ...values,
+          upgrade_allowed: false,
+        });
         message.success("Vehicle group created");
       }
 
@@ -89,15 +105,14 @@ export default function VehicleGroupList() {
 
   const handleDelete = (group) => {
     Modal.confirm({
-      title: `Delete vehicle group ${group.name}?`,
-      content: "This only works when no vehicle is using the group.",
-      okText: "Delete",
-      okType: "danger",
+      title: `Hide vehicle group ${group.name}?`,
+      content: "This will hide the group from active lists and new vehicle assignments.",
+      okText: "Hide",
       cancelText: "Cancel",
       onOk: async () => {
         try {
           await deleteVehicleGroup(group.id);
-          message.success("Vehicle group deleted");
+          message.success("Vehicle group hidden");
           await loadVehicleGroups();
         } catch (err) {
           message.error(err.message);
@@ -146,12 +161,6 @@ export default function VehicleGroupList() {
       ),
     },
     {
-      title: "Upgrade",
-      dataIndex: "upgrade_allowed",
-      key: "upgrade_allowed",
-      render: (value) => <Tag color={value ? "gold" : "default"}>{value ? "Allowed" : "No"}</Tag>,
-    },
-    {
       title: "Actions",
       key: "actions",
       width: 80,
@@ -172,7 +181,7 @@ export default function VehicleGroupList() {
           {
             key: "delete",
             icon: <DeleteOutlined />,
-            label: "Delete",
+            label: "Hide",
             danger: true,
             onClick: () => handleDelete(record),
           },
@@ -240,10 +249,6 @@ export default function VehicleGroupList() {
             <Descriptions.Item label="Price Per Km">
               {Number(detailGroup.price_per_km).toLocaleString()}
             </Descriptions.Item>
-            <Descriptions.Item label="Depreciation Per Km">
-              {Number(detailGroup.depreciation_per_km).toLocaleString()}
-            </Descriptions.Item>
-            <Descriptions.Item label="Upgrade Allowed">{detailGroup.upgrade_allowed ? "Yes" : "No"}</Descriptions.Item>
             <Descriptions.Item label="Vehicle Summary">
               {detailGroup.vehicle_count} total, {detailGroup.active_vehicle_count} active,{" "}
               {detailGroup.maintenance_vehicle_count} maintenance, {detailGroup.broken_vehicle_count} broken,{" "}
