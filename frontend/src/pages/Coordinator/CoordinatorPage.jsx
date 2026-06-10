@@ -75,6 +75,11 @@ function extractDriverName(notes) {
   return match?.[1]?.trim() || "";
 }
 
+function extractDistance(notes) {
+  const match = String(notes ?? "").match(/Qu(?:ã|a)ng đường:\s*([^|]+)/i);
+  return match?.[1]?.trim() || "";
+}
+
 function buildTripFromOrder(order) {
   const pickupAddress = order.pickup_address ||  "";
   const deliveryAddress = order.delivery_address ||  "";
