@@ -626,7 +626,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
     });
 };
 
-const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone) => {
+const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray) => {
     const {
         customer_name,
         customer_phone,
