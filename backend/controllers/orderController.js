@@ -1,9 +1,9 @@
 const orderService = require('../services/orderService');
 
-const listOrders = async (_req, res) => {
+const listOrders = async (req, res) => {
     try {
-        const orders = await orderService.listOrders();
-        res.json({ orders });
+        const result = await orderService.listOrders(req.query);
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -53,4 +53,18 @@ const updateOrder = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders, importOrders, updateOrder };
+const cancelOrder = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const cancelledOrder = await orderService.cancelOrder(orderId, req.body?.reason);
+        if (!cancelledOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
+
+        res.json({ message: 'Hủy đơn hàng thành công', order: cancelledOrder });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = { createOrder, listOrders, importOrders, updateOrder, cancelOrder };

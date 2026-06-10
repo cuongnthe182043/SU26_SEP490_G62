@@ -55,15 +55,6 @@ FROM profiles p JOIN accounts a ON a.id = p.id
 WHERE a.email = 'driver2@example.com'
 ON CONFLICT (profile_id) DO NOTHING;
 
-UPDATE vehicles SET assigned_driver_id = (
-    SELECT p.id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com'
-) WHERE plate_number = '51-E33333' AND assigned_driver_id IS NULL;
-
-UPDATE drivers SET vehicle_id = (SELECT id FROM vehicles WHERE plate_number = '51-E33333')
-WHERE profile_id = (
-    SELECT p.id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com'
-) AND vehicle_id IS NULL;
-
 -- ─── SCENARIO 1: X2C — Shipment có 2 runs, đang AVAILABLE trong pool ─────────
 -- Driver nào cũng nhận được (nhóm Small Van)
 

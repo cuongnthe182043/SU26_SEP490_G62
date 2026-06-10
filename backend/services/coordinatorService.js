@@ -15,6 +15,7 @@ const COLUMN_ALIASES = {
   plate: ['bks', 'biển số', 'bien so', 'plate'],
   driver: ['lái xe', 'lai xe', 'driver'],
   customer: ['khách hàng', 'khach hang', 'customer'],
+  customerPhone: ['sđt', 'sdt', 'số điện thoại', 'so dien thoai', 'phone', 'customer phone'],
   route: ['hành trình', 'hanh trinh', 'route'],
   distance: ['quãng đường', 'quang duong', 'distance'],
   fare: ['cước xe', 'cuoc xe', 'fare'],
@@ -33,6 +34,7 @@ const normalizeKey = (value) =>
     .trim()
     .toLowerCase()
     .normalize('NFD')
+    .replace(/đ/g, 'd')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[^\w\s/.-]/g, '');
@@ -92,6 +94,7 @@ const parseSpreadsheet = (buffer) => {
       plate: extractValue(row, headerMap, COLUMN_ALIASES.plate),
       driver: extractValue(row, headerMap, COLUMN_ALIASES.driver),
       customer: extractValue(row, headerMap, COLUMN_ALIASES.customer),
+      customerPhone: extractValue(row, headerMap, COLUMN_ALIASES.customerPhone),
       route: extractRouteValue(row, headerMap),
       distance: extractValue(row, headerMap, COLUMN_ALIASES.distance),
       fare: extractValue(row, headerMap, COLUMN_ALIASES.fare),
@@ -111,7 +114,10 @@ const safeTrim = (value) => String(value ?? '').trim();
 const normalizeText = (value) => safeTrim(value)
   .toLowerCase()
   .normalize('NFD')
+  .replace(/đ/g, 'd')
   .replace(/[\u0300-\u036f]/g, '');
+
+const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
 
 const isLeaveNote = (value) => normalizeText(value) === 'nghi';
 
@@ -185,6 +191,8 @@ const parseRoute = (routeStr) => {
   };
 };
 
+const listVehicleGroups = async () => orderRepository.listCoordinatorVehicleGroups();
+
 const importExcel = async (userId, fileBuffer) => {
   if (!fileBuffer) throw new Error('Thiếu file Excel');
   const rows = parseSpreadsheet(fileBuffer);
@@ -207,9 +215,10 @@ const importExcel = async (userId, fileBuffer) => {
       const plate = safeTrim(row.plate);
       const driverName = safeTrim(row.driver);
       const customerName = safeTrim(row.customer);
+      const customerPhone = normalizePhone(row.customerPhone);
       const route = safeTrim(row.route);
-      const distance = safeTrim(row.distance);
-      const fare = normalizeNumber(row.fare);
+      const distanceValue = normalizeNumber(row.distance);
+      let fare = 0;
       const note = safeTrim(row.note);
 
       if (isLeaveNote(note)) {
@@ -219,52 +228,54 @@ const importExcel = async (userId, fileBuffer) => {
       if (!date) {
         throw new Error('Ngày tháng năm là bắt buộc trong file Excel');
       }
+      if (distanceValue === null || distanceValue <= 0) {
+        throw new Error('Quãng đường là bắt buộc trong file Excel để tính cước');
+      }
 
       const { pickupAddress, deliveryAddress } = parseRoute(route);
 
       let customer = null;
-      if (customerName) {
-        const existingCust = await dbClient.query(
-          `SELECT id FROM customers WHERE full_name = $1 LIMIT 1`,
-          [customerName]
+      if (customerPhone) {
+        customer = await orderRepository.findOrCreateCustomer(
+          dbClient,
+          customerName,
+          customerPhone,
+          normalizePhone,
+          safeTrim,
         );
-        if (existingCust.rows[0]) {
-          customer = existingCust.rows[0];
-        } else {
-          const randomPhone = '0' + Math.floor(100000000 + Math.random() * 900000000);
-          const newCust = await dbClient.query(
-            `INSERT INTO customers (customer_type, full_name, contact_person, phone)
-             VALUES ('individual', $1, $1, $2)
-             RETURNING id`,
-            [customerName, randomPhone]
-          );
-          customer = newCust.rows[0];
-        }
+      } else if (customerName) {
+        const existingCust = await dbClient.query(
+          `SELECT id, full_name, phone
+           FROM customers
+           WHERE LOWER(full_name) = LOWER($1)
+           LIMIT 1`,
+          [customerName],
+        );
+        customer = existingCust.rows[0] ?? null;
       }
 
-      const driver = await orderRepository.findOrCreateDriverWithVehicle(dbClient, {
-        driverName,
-        plateNumber: plate,
-        vehicleGroupId: defaultVehicleGroupId,
-      });
-      if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
-        throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${driver.vehicle_status})`);
+      const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate) : null;
+      if (plate && !vehicle) {
+        throw new Error(`BKS ${plate} không tồn tại trong hệ thống`);
+      }
+      if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+        throw new Error(`Xe ${plate} hiện không sẵn sàng cho vận hành (trạng thái: ${vehicle.vehicle_status})`);
       }
 
-      const finalDriverId = driver?.id ?? null;
-      const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
-      const finalVehicleGroupId = driver?.vehicle_group_id ?? defaultVehicleGroupId;
+      const finalDriverId = null;
+      const finalVehicleId = vehicle?.id ?? null;
+      const finalVehicleGroupId = vehicle?.vehicle_group_id ?? defaultVehicleGroupId;
+      const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+      if (distanceValue !== null && vehicleGroup) {
+        fare = distanceValue * Number(vehicleGroup.price_per_km || 0);
+      }
 
-      // Completed status bypasses uq_driver_one_active_trip constraint and allows driver/vehicle assignment
-      const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.COMPLETED : SHIPMENT_STATUS.AVAILABLE;
+      const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
         plate ? `BKS: ${plate}` : '',
         driverName ? `Lái xe: ${driverName}` : '',
-        route ? `Hành trình: ${route}` : '',
-        distance ? `Quãng đường: ${distance}` : '',
-        fare !== null ? `Cước xe: ${fare}` : '',
-        note ? `${note}` : '',
+        note,
       ].filter(Boolean).join(' | ');
 
       const result = await orderRepository.importOrderWithShipment({
@@ -277,10 +288,10 @@ const importExcel = async (userId, fileBuffer) => {
           pickup_address: pickupAddress,
           delivery_address: deliveryAddress,
           estimated_price: fare || 0,
-          status: shipmentStatus,
           payment_type: 'cash',
+          customer_name: customerName,
+          customer_phone: customerPhone,
           notes,
-          created_at: date,
         },
         shipmentData: {
           vehicle_group_id: finalVehicleGroupId,
@@ -291,10 +302,12 @@ const importExcel = async (userId, fileBuffer) => {
           cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
           cargo_weight_kg: null,
           estimated_price: fare || 0,
+          estimated_distance_km: distanceValue,
+          delivery_at: date,
+          plate_number: vehicle?.plate_number || plate,
           status: shipmentStatus,
           payment_type: 'cash',
           notes,
-          created_at: date,
         },
       });
 
@@ -313,4 +326,4 @@ const importExcel = async (userId, fileBuffer) => {
   }
 };
 
-module.exports = { importExcel };
+module.exports = { importExcel, listVehicleGroups };

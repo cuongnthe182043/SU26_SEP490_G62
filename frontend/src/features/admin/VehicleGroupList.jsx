@@ -1,11 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Button, Descriptions, Dropdown, Input, Modal,
-  Space, Table, Tag, Typography, message,
-} from "antd";
-import { Eye, MoreVertical, Pencil, Plus, Search, Trash2 } from "lucide-react";
-
-const SW = 1.75;
+import { Button, Descriptions, Dropdown, Input, Modal, Space, Table, Tag, Typography, message } from "antd";
+import { DeleteOutlined, EditOutlined, EllipsisOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import VehicleGroupModal from "./VehicleGroupModal";
 import PageContainer, { CardSection } from "../../components/common/PageContainer";
 import {
@@ -18,8 +13,8 @@ import {
 
 const { Text, Title } = Typography;
 
-export default function VehicleGroupList() {
-  const [vehicleGroups, setVehicleGroups] = useState([]);
+export default function VehicleGroupList({ embedded = false, vehicleGroups: controlledVehicleGroups = null, onVehicleGroupsChange = null }) {
+  const [vehicleGroups, setVehicleGroups] = useState(controlledVehicleGroups || []);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,7 +26,11 @@ export default function VehicleGroupList() {
     try {
       setLoading(true);
       const data = await fetchVehicleGroups();
-      setVehicleGroups(data.vehicleGroups || []);
+      const nextGroups = data.vehicleGroups || [];
+      setVehicleGroups(nextGroups);
+      if (onVehicleGroupsChange) {
+        onVehicleGroupsChange(nextGroups);
+      }
     } catch (err) {
       message.error(err.message);
     } finally {
@@ -40,8 +39,14 @@ export default function VehicleGroupList() {
   };
 
   useEffect(() => {
+    if (controlledVehicleGroups) {
+      setVehicleGroups(controlledVehicleGroups);
+      setLoading(false);
+      return;
+    }
+
     loadVehicleGroups();
-  }, []);
+  }, [controlledVehicleGroups]);
 
   const filteredGroups = vehicleGroups.filter((group) => {
     const query = search.trim().toLowerCase();
@@ -66,11 +71,17 @@ export default function VehicleGroupList() {
   const handleSubmit = async (values) => {
     try {
       if (editingGroup) {
-        await updateVehicleGroup(editingGroup.id, values);
-        message.success("Cập nhật nhóm xe thành công");
+        await updateVehicleGroup(editingGroup.id, {
+          ...values,
+          upgrade_allowed: editingGroup.upgrade_allowed,
+        });
+        message.success("Vehicle group updated");
       } else {
-        await createVehicleGroup(values);
-        message.success("Tạo nhóm xe thành công");
+        await createVehicleGroup({
+          ...values,
+          upgrade_allowed: false,
+        });
+        message.success("Vehicle group created");
       }
       setModalOpen(false);
       setEditingGroup(null);
@@ -94,15 +105,14 @@ export default function VehicleGroupList() {
 
   const handleDelete = (group) => {
     Modal.confirm({
-      title: `Xóa nhóm xe "${group.name}"?`,
-      content: "Chỉ xóa được khi không có xe nào đang sử dụng nhóm này.",
-      okText: "Xóa",
-      okType: "danger",
-      cancelText: "Hủy",
+      title: `Hide vehicle group ${group.name}?`,
+      content: "This will hide the group from active lists and new vehicle assignments.",
+      okText: "Hide",
+      cancelText: "Cancel",
       onOk: async () => {
         try {
           await deleteVehicleGroup(group.id);
-          message.success("Xóa nhóm xe thành công");
+          message.success("Vehicle group hidden");
           await loadVehicleGroups();
         } catch (err) {
           message.error(err.message);
@@ -165,30 +175,38 @@ export default function VehicleGroupList() {
       ),
     },
     {
-      title: "Thao tác",
+      title: "Actions",
       key: "actions",
-      align: "center",
-      render: (_, record) => (
-        <Space size={4}>
-          <Button
-            type="text"
-            icon={<Eye size={14} strokeWidth={SW} />}
-            onClick={() => handleOpenDetail(record)}
-          >
-            Xem
-          </Button>
-          <Button
-            type="text"
-            icon={<Pencil size={14} strokeWidth={SW} />}
-            onClick={() => handleOpenEdit(record)}
-          >
-            Sửa
-          </Button>
-          <Dropdown menu={buildMoreMenu(record)} trigger={["click"]} placement="bottomRight">
-            <Button type="text" icon={<MoreVertical size={16} strokeWidth={SW} />} />
+      width: 80,
+      render: (_, record) => {
+        const items = [
+          {
+            key: "details",
+            icon: <EyeOutlined />,
+            label: "Details",
+            onClick: () => handleOpenDetail(record),
+          },
+          {
+            key: "edit",
+            icon: <EditOutlined />,
+            label: "Edit",
+            onClick: () => handleOpenEdit(record),
+          },
+          {
+            key: "delete",
+            icon: <DeleteOutlined />,
+            label: "Hide",
+            danger: true,
+            onClick: () => handleDelete(record),
+          },
+        ];
+
+        return (
+          <Dropdown menu={{ items }} trigger={["click"]}>
+            <Button icon={<EllipsisOutlined />} aria-label={`Actions for vehicle group ${record.name}`} />
           </Dropdown>
-        </Space>
-      ),
+        );
+      },
     },
   ];
 
@@ -260,13 +278,10 @@ export default function VehicleGroupList() {
             <Descriptions.Item label="Giá / km">
               {Number(detailGroup.price_per_km).toLocaleString()} đ
             </Descriptions.Item>
-            <Descriptions.Item label="Khấu hao / km">
-              {Number(detailGroup.depreciation_per_km).toLocaleString()} đ
-            </Descriptions.Item>
-            <Descriptions.Item label="Tổng quan xe">
-              {detailGroup.vehicle_count} tổng &bull; {detailGroup.active_vehicle_count} hoạt động &bull;{" "}
-              {detailGroup.maintenance_vehicle_count} bảo dưỡng &bull; {detailGroup.broken_vehicle_count} hỏng &bull;{" "}
-              {detailGroup.retired_vehicle_count} nghỉ
+            <Descriptions.Item label="Vehicle Summary">
+              {detailGroup.vehicle_count} total, {detailGroup.active_vehicle_count} active,{" "}
+              {detailGroup.maintenance_vehicle_count} maintenance, {detailGroup.broken_vehicle_count} broken,{" "}
+              {detailGroup.retired_vehicle_count} retired
             </Descriptions.Item>
           </Descriptions>
         )}

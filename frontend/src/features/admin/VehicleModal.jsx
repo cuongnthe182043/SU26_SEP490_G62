@@ -81,8 +81,9 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
           <Alert
             type="info"
             showIcon
-            message="Trạng thái xe được quản lý qua nút thao tác trên bảng danh sách."
-            style={{ marginBottom: 20, borderRadius: 8 }}
+            message="Vehicle lifecycle status is managed by action buttons."
+            description="Use Send to Maintenance, Verify Maintenance, Mark Broken, Restore, or Retire from the vehicle list."
+            style={{ marginBottom: 16 }}
           />
         )}
 

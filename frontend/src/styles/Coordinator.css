@@ -146,7 +146,8 @@
 }
 
 .coordinator-shell .filter-field input {
-  min-height: 46px;
+  height: 45.6px;
+  min-height: 45.6px;
   border: 1px solid rgba(20, 30, 70, 0.14);
   border-radius: 14px;
   padding: 10px 12px;
@@ -307,7 +308,8 @@
   gap: 18px;
 }
 
-.coordinator-shell .table-edit-btn {
+.coordinator-shell .table-edit-btn,
+.coordinator-shell .table-cancel-btn {
   width: 36px;
   height: 36px;
   border: 1px solid rgba(20, 30, 70, 0.16);
@@ -316,6 +318,16 @@
   cursor: pointer;
   color: #18227f;
   font-size: 16px;
+}
+
+.coordinator-shell .table-cancel-btn {
+  border-color: rgba(185, 28, 28, 0.24);
+  color: #b91c1c;
+}
+
+.coordinator-shell .table-cancel-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .loading-screen {
   min-height: 100vh;
@@ -387,6 +399,11 @@
 
 .coordinator-shell .form-row-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coordinator-shell .form-row-1 {
+  grid-template-columns: 1fr;
+  max-width: 260px;
 }
 
 .coordinator-shell .form-row-address {
@@ -461,6 +478,17 @@
   color: #d14343;
   font-size: 12px;
   line-height: 1.35;
+}
+
+
+.coordinator-shell .readonly-fare {
+  min-height: 46px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #f6f7fb;
+  color: #18227f;
+  font-weight: 700;
 }
 
 .coordinator-shell .field-error-box {
