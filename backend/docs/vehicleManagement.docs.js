@@ -34,7 +34,6 @@
  *               max_load_weight_kg: { type: number, nullable: true, example: 1250 }
  *               price_per_km: { type: number, example: 18000 }
  *               depreciation_per_km: { type: number, example: 1200 }
- *               upgrade_allowed: { type: boolean, example: true }
  *     responses:
  *       201:
  *         description: Vehicle group created
@@ -81,7 +80,6 @@
  *               max_load_weight_kg: { type: number, nullable: true }
  *               price_per_km: { type: number }
  *               depreciation_per_km: { type: number }
- *               upgrade_allowed: { type: boolean }
  *     responses:
  *       200:
  *         description: Vehicle group updated

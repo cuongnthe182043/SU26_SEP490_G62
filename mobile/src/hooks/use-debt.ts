@@ -1,4 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { appEvents } from '@/lib/app-events';
 import { debtService } from '@/services/debt-service';
 import type { DriverDebt, DebtSummary, DebtPayment, SubmitRepaymentPayload } from '@/services/debt-service';
 
@@ -18,7 +20,7 @@ export function useDebt() {
     });
 
     const load = useCallback(async () => {
-        setState((s) => ({ ...s, isLoading: true, error: null }));
+        setState((s) => ({ ...s, isLoading: s.debts.length === 0, error: null }));
         try {
             const [{ debts }, summary] = await Promise.all([
                 debtService.getMyDebts(),
@@ -33,6 +35,12 @@ export function useDebt() {
             }));
         }
     }, []);
+
+    // Reload mỗi khi màn hình được focus
+    useFocusEffect(useCallback(() => { load(); }, [load]));
+
+    // Reload tức thì khi backend push debt.updated qua WebSocket
+    useEffect(() => appEvents.on('debt.updated', () => load(false)), [load]);
 
     return { ...state, reload: load };
 }

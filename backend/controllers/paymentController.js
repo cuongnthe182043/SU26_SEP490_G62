@@ -57,4 +57,33 @@ const getPaymentSummary = async (req, res) => {
     }
 };
 
-module.exports = { recordCashPayment, getShipmentPayments, getPaymentSummary };
+// PATCH /api/trips/:id/payments/:paymentId — sửa số tiền và/hoặc thay ảnh biên lai
+const updatePayment = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        const paymentId  = Number(req.params.paymentId);
+        if (!shipmentId || !paymentId) return res.status(400).json({ error: 'ID không hợp lệ' });
+
+        const newReceiptUrl =
+            req.files?.receipt?.[0]?.path ??
+            req.files?.image?.[0]?.path   ??
+            req.files?.photo?.[0]?.path   ??
+            req.file?.path ??
+            null;
+
+        const { amount } = req.body;
+        if (!amount) return res.status(400).json({ error: 'Số tiền là bắt buộc' });
+
+        const result = await paymentService.updateCashPayment(
+            req.user.userId, shipmentId, paymentId, { newAmount: amount, newReceiptUrl },
+        );
+        res.json({ message: 'Cập nhật ghi nhận thành công', ...result });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('không tồn tại') ? 404
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = { recordCashPayment, getShipmentPayments, getPaymentSummary, updatePayment };

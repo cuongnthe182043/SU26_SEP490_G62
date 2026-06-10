@@ -46,7 +46,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status)
 SELECT '51-E33333',
        (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
-       'Kia', 'K200', 2000, 2023, 'available'
+       'Kia', 'K200', 2000, 2023, 'active'
 WHERE NOT EXISTS (SELECT 1 FROM vehicles WHERE plate_number = '51-E33333');
 
 INSERT INTO drivers (profile_id, license_number, license_expiry_date, hire_date, revenue_share_percent)

@@ -1,13 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Input, Space, Tag, message, Modal, Typography } from 'antd';
-import { SearchOutlined, PlusOutlined, EditOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import { Lock, Pencil, Plus, Search, Unlock } from 'lucide-react';
 import UserModal from './UserModal';
-import '../../styles/admin/UserModal.css';
-import '../../styles/admin/Toast.css';
-import '../../styles/admin/Admin.css';
+import PageContainer, { CardSection } from '../../components/common/PageContainer';
 
 const { Title, Text } = Typography;
 const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
+
+const ROLE_LABELS = {
+  manager: 'Quản trị viên',
+  coordinator: 'Điều phối viên',
+  accountant: 'Kế toán',
+  driver: 'Tài xế',
+};
+const getRoleLabel = (role) => ROLE_LABELS[role] || (role || '').toUpperCase();
 
 export default function UserList() {
   const [allUsers, setAllUsers] = useState([]);
@@ -45,7 +51,8 @@ export default function UserList() {
       (u.full_name || '').toLowerCase().includes(q) ||
       (u.email || '').toLowerCase().includes(q) ||
       (u.phone || '').toLowerCase().includes(q) ||
-      (u.role || '').toLowerCase().includes(q)
+      (u.role || '').toLowerCase().includes(q) ||
+      getRoleLabel(u.role).toLowerCase().includes(q)
     );
   });
 
@@ -132,7 +139,7 @@ export default function UserList() {
       dataIndex: 'role',
       key: 'role',
       sorter: (a, b) => (a.role || '').localeCompare(b.role || ''),
-      render: (role) => <Tag color={getRoleColor(role)}>{(role || '').toUpperCase()}</Tag>,
+      render: (role) => <Tag color={getRoleColor(role)}>{getRoleLabel(role)}</Tag>,
     },
     {
       title: 'Trạng Thái',
@@ -150,18 +157,18 @@ export default function UserList() {
       key: 'action',
       render: (_, user) => (
         <Space size="middle">
-          <Button 
-            type="text" 
-            icon={<EditOutlined />} 
+          <Button
+            type="text"
+            icon={<Pencil size={14} strokeWidth={1.75} />}
             onClick={() => handleOpenEdit(user)}
             disabled={user.role === 'manager'}
           >
             Sửa
           </Button>
-          <Button 
-            danger={user.is_active} 
+          <Button
+            danger={user.is_active}
             type="text"
-            icon={user.is_active ? <LockOutlined /> : <UnlockOutlined />}
+            icon={user.is_active ? <Lock size={14} strokeWidth={1.75} /> : <Unlock size={14} strokeWidth={1.75} />}
             onClick={() => handleToggleStatus(user)}
             disabled={user.role === 'manager'}
           >
@@ -173,40 +180,39 @@ export default function UserList() {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#fff', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Title level={3} style={{ margin: 0 }}>Danh sách tài khoản</Title>
-          <Text type="secondary" style={{ margin: 0 }}>Tổng: {filtered.length} / {allUsers.length} người dùng</Text>
+    <PageContainer>
+      <CardSection>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>Quản lý người dùng</Title>
+            <Text type="secondary">Tổng: {filtered.length} / {allUsers.length} người dùng</Text>
+          </div>
+          <Button type="primary" icon={<Plus size={15} strokeWidth={1.75} />} onClick={handleOpenAdd}>
+            Thêm người dùng
+          </Button>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="middle" onClick={handleOpenAdd}>
-          Thêm người dùng
-        </Button>
-      </div>
-
-      <div style={{ marginBottom: '16px' }}>
-        <Input 
-          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..." 
-          prefix={<SearchOutlined />} 
+        <Input
+          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
+          prefix={<Search size={15} strokeWidth={1.75} />}
           value={search}
           onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
-          size="large"
           allowClear
         />
-      </div>
+      </CardSection>
 
-      <Table 
-        columns={columns} 
-        dataSource={filtered} 
-        rowKey="id" 
+      <Table
+        columns={columns}
+        dataSource={filtered}
+        rowKey="id"
         loading={loading}
-        pagination={{ 
+        pagination={{
           current: currentPage,
           pageSize: pageSize,
           defaultPageSize: 10,
-          showSizeChanger: true, 
+          showSizeChanger: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} mục`,
-          onChange: (page, size) => { setCurrentPage(page); setPageSize(size); }
+          onChange: (page, size) => { setCurrentPage(page); setPageSize(size); },
+          style: { padding: '12px 24px' },
         }}
         scroll={{ x: 'max-content' }}
       />
@@ -217,6 +223,6 @@ export default function UserList() {
         onSave={handleSaveUser}
         editingUser={editingUser}
       />
-    </div>
+    </PageContainer>
   );
 }
