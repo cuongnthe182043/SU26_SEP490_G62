@@ -387,6 +387,7 @@ const updateOrder = async (orderId, payload) => {
         for (const trip of trips) {
             const { plate, vehicle_group_id, distance } = trip;
             const normalizedDistance = normalizeNumber(distance);
+            
             if (normalizedDistance === null || normalizedDistance <= 0) {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
@@ -416,6 +417,7 @@ const updateOrder = async (orderId, payload) => {
                 plate_number: vehicle?.plate_number,
             });
         }
+    
     } finally {
         dbClient.release();
     }
@@ -429,8 +431,8 @@ const updateOrder = async (orderId, payload) => {
         delivery_address,
         notes,
         delivery_at: delivery_at || date,
-        shipmentsDataArray
-    }, normalizeNumber, safeTrim, normalizePhone);
+        
+    }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
 };
 
 const cancelOrder = async (orderId, reason) => {
