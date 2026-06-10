@@ -35,6 +35,19 @@ const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").tr
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
+const formatDateForInput = (dateStr) => {
+  if (!dateStr) return "";
+  const parts = String(dateStr).split('/');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  const date = new Date(dateStr);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toISOString().slice(0, 10);
+  }
+  return "";
+};
+
 const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
 const STATUS_TABS = {
   all: null,
@@ -83,14 +96,14 @@ function extractDistance(notes) {
 function buildTripFromOrder(order) {
   const pickupAddress = order.pickup_address ||  "";
   const deliveryAddress = order.delivery_address ||  "";
-  const deliveryAt = order.delivery_at || order.created_at;
+  const deliveryAt = order.delivery_at;
   const date = (deliveryAt ? new Date(deliveryAt).toLocaleDateString('vi-VN') : "");
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: order.delivery_at || order.created_at,
+    dateInput: order.delivery_at ? String(order.delivery_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
     checkIn:  "",
     plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",

@@ -130,7 +130,7 @@ const listOrders = async ({
     const rowsResult = await pool.query(
         `${selectOrderProjection}
          ${whereClause}
-         ORDER BY COALESCE(os.delivery_at, o.created_at) DESC, o.id DESC
+         ORDER BY o.created_at DESC, o.id DESC
          LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
         rowsParams,
     );
@@ -212,6 +212,7 @@ const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => 
             v.id,
             v.plate_number,
             v.vehicle_group_id,
+            v.assigned_driver_id,
             vg.name AS vehicle_group_name,
             vg.price_per_km,
             v.status AS vehicle_status
@@ -559,10 +560,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         }
         const calculatedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
         const deliveryAt = safeTrim(delivery_at || date) || null;
-        const orderNotes = [
-            vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '',
-            notes !== undefined ? safeTrim(notes) : '',
-        ].filter(Boolean).join(' | ');
+        const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
         const orderResult = await client.query(
             `UPDATE orders
@@ -615,7 +613,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     normalizeNumber(cargo_weight_kg),
                     calculatedPrice,
                     orderNotes,
-                    null,
+                    vehicle?.assigned_driver_id ?? null,
                     vehicle?.id ?? null,
                     finalVehicleGroupId,
                     normalizedDistance,

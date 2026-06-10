@@ -169,12 +169,11 @@ const createOrder = async (userId, payload) => {
 
         normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
 
-        const finalDriverId = null;
+        const finalDriverId = vehicle?.assigned_driver_id ?? null;
         const finalVehicleId = vehicle?.id ?? null;
         const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
-        const plateNote = vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '';
-        const orderNotes = [plateNote, safeTrim(notes)].filter(Boolean).join(' | ');
+        const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,
@@ -206,7 +205,11 @@ const createOrder = async (userId, payload) => {
                 payment_type: payload.payment_type,
                 notes: orderNotes,
             },
-            assignmentData: null,
+            assignmentData: finalDriverId && finalVehicleId ? {
+                driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
+                assigned_by: userId,
+            } : null,
         });
 
         await dbClient.query('COMMIT');
@@ -289,19 +292,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             estimatedPrice = distanceValue * Number(vehicleGroup?.price_per_km || 0);
             const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
-            const notes = [
-                `Ngày: ${date}`,
-                `Chấm công: ${checkIn}`,
-                `BKS: ${plate}`,
-                `Lái xe: ${driverName}`,
-                customerName ? `Khách hàng: ${customerName}` : '',
-                customerPhone ? `SĐT: ${customerPhone}` : '',
-                route ? `Hành trình: ${route}` : `Hành trình: ${pickupAddress} - ${deliveryAddress}`,
-                `Quãng đường: ${distanceValue}`,
-                `Cước xe: ${estimatedPrice}`,
-                row['Doanh thu'] ? `Doanh thu: ${safeTrim(row['Doanh thu'])}` : '',
-                note,
-            ].filter(Boolean).join(' | ');
+            const notes = note !== undefined ? safeTrim(note) : '';
 
             const result = await orderRepository.importOrderWithShipment({
                 client: dbClient,
