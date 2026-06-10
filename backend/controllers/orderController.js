@@ -1,9 +1,9 @@
 const orderService = require('../services/orderService');
 
-const listOrders = async (_req, res) => {
+const listOrders = async (req, res) => {
     try {
-        const orders = await orderService.listOrders();
-        res.json({ orders });
+        const result = await orderService.listOrders(req.query);
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
