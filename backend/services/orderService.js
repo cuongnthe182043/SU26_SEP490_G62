@@ -89,8 +89,8 @@ const findOrCreateCustomer = async (client, customerName, customerPhone) => {
     return orderRepository.findOrCreateCustomer(client, customerName, customerPhone, normalizePhone, safeTrim);
 };
 
-const listOrders = async () => {
-    return orderRepository.listOrders();
+const listOrders = async (query = {}) => {
+    return orderRepository.listOrders(query);
 };
 
 const createOrder = async (userId, payload) => {
@@ -98,6 +98,7 @@ const createOrder = async (userId, payload) => {
         date,
         plate,
         driver_id,
+        vehicle_id,
         customer_name,
         customer_phone,
         cargo_name,
@@ -106,6 +107,7 @@ const createOrder = async (userId, payload) => {
         pickup_address,
         delivery_address,
         estimated_price,
+        distance,
         notes,
     } = payload;
 
@@ -113,7 +115,11 @@ const createOrder = async (userId, payload) => {
         throw new Error('Thiếu điểm nhận hoặc điểm đến');
     }
 
-    const finalEstimatedPrice = (estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price;
+    const normalizedDistance = normalizeNumber(distance);
+    const hasDistancePricing = normalizedDistance !== null && vehicle_group_id;
+    const finalEstimatedPrice = hasDistancePricing
+        ? 0
+        : ((estimated_price === undefined || estimated_price === null || estimated_price === '') ? 0 : estimated_price);
 
     const normalizedDate = normalizeDateInput(date);
     if (normalizedDate && isBeforeToday(normalizedDate)) {
@@ -122,9 +128,7 @@ const createOrder = async (userId, payload) => {
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
     
-    const normalizedPrice = normalizeNumber(finalEstimatedPrice);
-    
-    const normalizedDriverId = driver_id ? Number(driver_id) : null;
+    let normalizedPrice = normalizeNumber(finalEstimatedPrice);
     
     let dbClient = null;
 
@@ -135,53 +139,43 @@ const createOrder = async (userId, payload) => {
         
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
 
-        const driver = normalizedDriverId ? await orderRepository.getDriverById(dbClient, normalizedDriverId) : await orderRepository.getDriverByPlate(dbClient, plate);
-
-        if (driver_id && !driver) {
-            throw new Error('Tài xế không tồn tại');
+        if (!plate) {
+            throw new Error('BKS là bắt buộc khi tạo đơn');
         }
 
-        if (plate && !driver) {
-            throw new Error('BKS không tồn tại hoặc chưa được gán cho tài xế');
-        }
-
-        if (driver?.vehicle_id && driver?.vehicle_status !== 'active') {
-            throw new Error(`Xe gắn với tài xế hiện không sẵn sàng cho điều phối (trạng thái: ${driver.vehicle_status})`);
-        }
-
-        if (plate && driver && driver.plate_number && driver.plate_number !== safeTrim(plate)) {
-            throw new Error('BKS không khớp với tài xế đã chọn');
-        }
-
-        if (normalizedDriverId && plate && driver?.plate_number && driver.plate_number !== safeTrim(plate)) {
-            throw new Error('Chọn BKS hoặc tài xế chưa khớp');
-        }
-
-        const finalDriverId = driver?.id ?? null;
-        const finalVehicleId = driver?.vehicle_status === 'active' ? driver?.vehicle_id ?? null : null;
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
-        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : driver?.vehicle_group_id ?? defaultVehicleGroupId;
+        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
 
         if (!finalVehicleGroupId) {
             throw new Error('Chưa có nhóm xe trong hệ thống');
         }
 
-        if (finalDriverId) {
-            const activeTrip = await dbClient.query(
-                `SELECT id FROM order_shipments 
-                 WHERE owner_driver_id = $1 
-                   AND status IN ('claimed','picking','loaded','transit','arrived','returning')
-                 LIMIT 1`,
-                [finalDriverId]
-            );
-            if (activeTrip.rows[0]) {
-                throw new Error('Tài xế đang có chuyến đi khác chưa hoàn thành');
-            }
+        const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+        if (!vehicleGroup) {
+            throw new Error('Nhóm xe không tồn tại');
         }
 
-        const shipmentStatus = finalDriverId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE;
+        const vehicle = await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId);
 
-        const orderNotes = safeTrim(notes);
+        if (plate && !vehicle) {
+            throw new Error('BKS không tồn tại trong nhóm xe đã chọn');
+        }
+
+        if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+            throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
+        }
+
+        if (hasDistancePricing) {
+            normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+        }
+
+        const finalDriverId = null;
+        const finalVehicleId = vehicle?.id ?? null;
+        const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
+
+        const distanceNote = normalizedDistance !== null ? `Quãng đường: ${normalizedDistance}` : '';
+        const plateNote = vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '';
+        const orderNotes = [distanceNote, plateNote, safeTrim(notes)].filter(Boolean).join(' | ');
 
         const result = await orderRepository.createOrderWithShipment({
             client: dbClient,
@@ -210,11 +204,7 @@ const createOrder = async (userId, payload) => {
                 payment_type: payload.payment_type,
                 notes: orderNotes,
             },
-            assignmentData: finalDriverId && finalVehicleId ? {
-                driver_id: finalDriverId,
-                vehicle_id: finalVehicleId,
-                assigned_by: userId,
-            } : null,
+            assignmentData: null,
         });
 
         await dbClient.query('COMMIT');
@@ -363,7 +353,9 @@ const updateOrder = async (orderId, payload) => {
         date,
         plate,
         driver_id,
+        vehicle_id,
         vehicle_group_id,
+        distance,
     } = payload;
 
     return orderRepository.updateOrder(orderId, {
@@ -378,7 +370,9 @@ const updateOrder = async (orderId, payload) => {
         date,
         plate,
         driver_id,
+        vehicle_id,
         vehicle_group_id,
+        distance,
     }, normalizeNumber, safeTrim, normalizePhone);
 };
 
