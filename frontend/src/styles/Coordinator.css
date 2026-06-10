@@ -146,7 +146,8 @@
 }
 
 .coordinator-shell .filter-field input {
-  min-height: 46px;
+  height: 45.6px;
+  min-height: 45.6px;
   border: 1px solid rgba(20, 30, 70, 0.14);
   border-radius: 14px;
   padding: 10px 12px;
@@ -398,6 +399,11 @@
 
 .coordinator-shell .form-row-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coordinator-shell .form-row-1 {
+  grid-template-columns: 1fr;
+  max-width: 260px;
 }
 
 .coordinator-shell .form-row-address {

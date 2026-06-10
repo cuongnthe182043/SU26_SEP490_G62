@@ -111,13 +111,17 @@ const createOrder = async (userId, payload) => {
         notes,
     } = payload;
 
-    if (!pickup_address || !delivery_address) {
-        throw new Error('Thiếu điểm nhận hoặc điểm đến');
+    let { trips } = payload;
+    if (!trips || !Array.isArray(trips) || trips.length === 0) {
+        trips = [{
+            plate: payload.plate,
+            vehicle_group_id: payload.vehicle_group_id,
+            distance: payload.distance
+        }];
     }
 
-    const normalizedDistance = normalizeNumber(distance);
-    if (normalizedDistance === null || normalizedDistance <= 0) {
-        throw new Error('Quãng đường là bắt buộc để tính cước');
+    if (!pickup_address || !delivery_address) {
+        throw new Error('Thiếu điểm nhận hoặc điểm đến');
     }
 
     const normalizedDate = normalizeDateInput(delivery_at || date);
@@ -130,8 +134,6 @@ const createOrder = async (userId, payload) => {
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
     
-    let normalizedPrice = 0;
-    
     let dbClient = null;
 
     try {
@@ -140,56 +142,51 @@ const createOrder = async (userId, payload) => {
         await dbClient.query('BEGIN');
         
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
-
-        if (!plate) {
-            throw new Error('BKS là bắt buộc khi tạo đơn');
-        }
-
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
-        const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
 
-        if (!finalVehicleGroupId) {
-            throw new Error('Chưa có nhóm xe trong hệ thống');
-        }
+        const shipmentsDataArray = [];
 
-        const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
-        if (!vehicleGroup) {
-            throw new Error('Nhóm xe không tồn tại');
-        }
+        for (const trip of trips) {
+            const { plate, vehicle_group_id, distance } = trip;
+            const normalizedDistance = normalizeNumber(distance);
+            if (normalizedDistance === null || normalizedDistance <= 0) {
+                throw new Error('Quãng đường là bắt buộc để tính cước');
+            }
 
-        const vehicle = await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId);
+            if (!plate) {
+                throw new Error('BKS là bắt buộc khi tạo đơn');
+            }
 
-        if (plate && !vehicle) {
-            throw new Error('BKS không tồn tại trong nhóm xe đã chọn');
-        }
+            const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
 
-        if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
-            throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
-        }
+            if (!finalVehicleGroupId) {
+                throw new Error('Chưa có nhóm xe trong hệ thống');
+            }
 
-        normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+            const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+            if (!vehicleGroup) {
+                throw new Error('Nhóm xe không tồn tại');
+            }
 
-        const finalDriverId = vehicle?.assigned_driver_id ?? null;
-        const finalVehicleId = vehicle?.id ?? null;
-        const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
+            const vehicle = await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId);
 
-        const orderNotes = notes !== undefined ? safeTrim(notes) : '';
+            if (plate && !vehicle) {
+                throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
+            }
 
-        const result = await orderRepository.createOrderWithShipment({
-            client: dbClient,
-            userId,
-            orderData: {
-                customer_id: customer?.id ?? null,
-                cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
-                cargo_weight_kg: normalizedWeight,
-                pickup_address: safeTrim(pickup_address),
-                delivery_address: safeTrim(delivery_address),
-                estimated_price: normalizedPrice,
-                status: shipmentStatus,
-                payment_type: payload.payment_type,
-                notes: orderNotes,
-            },
-            shipmentData: {
+            if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+                throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
+            }
+
+            const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+
+            const finalDriverId = vehicle?.assigned_driver_id ?? null;
+            const finalVehicleId = vehicle?.id ?? null;
+            const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
+
+            const orderNotes = notes !== undefined ? safeTrim(notes) : '';
+
+            shipmentsDataArray.push({
                 vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
@@ -204,12 +201,27 @@ const createOrder = async (userId, payload) => {
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
                 notes: orderNotes,
+                assignmentData: finalDriverId && finalVehicleId ? {
+                    driver_id: finalDriverId,
+                    vehicle_id: finalVehicleId,
+                    assigned_by: userId,
+                } : null,
+            });
+        }
+
+        const result = await orderRepository.createOrderWithMultipleShipments({
+            client: dbClient,
+            userId,
+            orderData: {
+                customer_id: customer?.id ?? null,
+                cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
+                cargo_weight_kg: normalizedWeight,
+                pickup_address: safeTrim(pickup_address),
+                delivery_address: safeTrim(delivery_address),
+                payment_type: payload.payment_type,
+                notes: notes !== undefined ? safeTrim(notes) : '',
             },
-            assignmentData: finalDriverId && finalVehicleId ? {
-                driver_id: finalDriverId,
-                vehicle_id: finalVehicleId,
-                assigned_by: userId,
-            } : null,
+            shipmentsDataArray
         });
 
         await dbClient.query('COMMIT');
@@ -357,6 +369,57 @@ const updateOrder = async (orderId, payload) => {
         distance,
     } = payload;
 
+    let { trips } = payload;
+    if (!trips || !Array.isArray(trips) || trips.length === 0) {
+        trips = [{
+            plate: payload.plate,
+            vehicle_group_id: payload.vehicle_group_id,
+            distance: payload.distance
+        }];
+    }
+
+    const shipmentsDataArray = [];
+    const dbClient = await pool.connect();
+    
+    try {
+        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+
+        for (const trip of trips) {
+            const { plate, vehicle_group_id, distance } = trip;
+            const normalizedDistance = normalizeNumber(distance);
+            if (normalizedDistance === null || normalizedDistance <= 0) {
+                throw new Error('Quãng đường là bắt buộc để tính cước');
+            }
+
+            const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
+            const vehicleGroup = finalVehicleGroupId ? await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId) : null;
+            if (!vehicleGroup) {
+                throw new Error('Nhóm xe không tồn tại');
+            }
+
+            const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
+            if (plate && !vehicle) {
+                throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
+            }
+            if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+                throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
+            }
+
+            const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+
+            shipmentsDataArray.push({
+                vehicle_group_id: finalVehicleGroupId,
+                owner_driver_id: vehicle?.assigned_driver_id ?? null,
+                vehicle_id: vehicle?.id ?? null,
+                estimated_price: normalizedPrice,
+                estimated_distance_km: normalizedDistance,
+                plate_number: vehicle?.plate_number,
+            });
+        }
+    } finally {
+        dbClient.release();
+    }
+
     return orderRepository.updateOrder(orderId, {
         customer_name,
         customer_phone,
@@ -364,16 +427,9 @@ const updateOrder = async (orderId, payload) => {
         cargo_weight_kg,
         pickup_address,
         delivery_address,
-        estimated_price,
         notes,
-        date,
-        delivery_at,
-        plate,
-        driver_id,
-        vehicle_id,
-        vehicle_group_id,
-        distance,
         delivery_at: delivery_at || date,
+        shipmentsDataArray
     }, normalizeNumber, safeTrim, normalizePhone);
 };
 
