@@ -19,7 +19,10 @@ INSERT INTO accounts (email, password_hash, role_id, is_active) VALUES
 ('admin@example.com', crypt('admin123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'), TRUE),
 ('ntck005@gmail.com', crypt('coord123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
 ('accountant@example.com', crypt('acct123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'), TRUE),
-('driver1@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE)
+('driver1@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE),
+('driver2@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE),
+('driver3@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE),
+('driver4@example.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'), TRUE)
 ON CONFLICT (email) DO UPDATE
 SET password_hash = EXCLUDED.password_hash,
     role_id = EXCLUDED.role_id,
@@ -30,24 +33,45 @@ SET password_hash = EXCLUDED.password_hash,
 --------------------------------------------------------------------------------
 WITH account_data AS (
     SELECT id, email FROM accounts 
-    WHERE email IN ('admin@example.com', 'ntck005@gmail.com', 'accountant@example.com', 'driver1@example.com')
+    WHERE email IN (
+        'admin@example.com',
+        'ntck005@gmail.com',
+        'accountant@example.com',
+        'driver1@example.com',
+        'driver2@example.com',
+        'driver3@example.com',
+        'driver4@example.com'
+    )
 )
 INSERT INTO profiles (id, full_name, phone, role_id) 
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Admin User', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'), 'Manager', '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
     ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'), 'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator')),
     ((SELECT id FROM account_data WHERE email = 'accountant@example.com'), 'Tran Accountant', '0901234562', (SELECT id FROM roles WHERE name = 'accountant')),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver'))
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'), 'Le Driver', '0901234563', (SELECT id FROM roles WHERE name = 'driver')),
+    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'), 'Pham Driver 2', '0901234564', (SELECT id FROM roles WHERE name = 'driver')),
+    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'), 'Do Driver 3', '0901234565', (SELECT id FROM roles WHERE name = 'driver')),
+    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'), 'Vo Driver 4', '0901234566', (SELECT id FROM roles WHERE name = 'driver'))
 ON CONFLICT (id) DO NOTHING;
 
 --------------------------------------------------------------------------------
 -- 4. DRIVER LOGISTICS SPECIFICS
 --------------------------------------------------------------------------------
+WITH driver_seed AS (
+    SELECT *
+    FROM (
+        VALUES
+            ('driver1@example.com', 'DL123456', DATE '2027-12-31', DATE '2023-01-01', 15.00::NUMERIC),
+            ('driver2@example.com', 'DL223456', DATE '2028-06-30', DATE '2023-07-15', 15.00::NUMERIC),
+            ('driver3@example.com', 'DL323456', DATE '2028-11-15', DATE '2024-02-20', 15.00::NUMERIC),
+            ('driver4@example.com', 'DL423456', DATE '2029-04-10', DATE '2022-09-05', 16.50::NUMERIC)
+    ) AS seeded(email, license_number, license_expiry_date, hire_date, revenue_share_percent)
+)
 INSERT INTO drivers (profile_id, license_number, license_expiry_date, hire_date, revenue_share_percent)
-SELECT p.id, 'DL123456', '2027-12-31', '2023-01-01', 15
-FROM profiles p
-JOIN accounts a ON a.id = p.id
-WHERE p.role_id = (SELECT id FROM roles WHERE name = 'driver') AND a.email = 'driver1@example.com'
+SELECT p.id, ds.license_number, ds.license_expiry_date, ds.hire_date, ds.revenue_share_percent
+FROM driver_seed ds
+JOIN accounts a ON a.email = ds.email
+JOIN profiles p ON p.id = a.id
 ON CONFLICT (profile_id) DO NOTHING;
 
 --------------------------------------------------------------------------------
@@ -72,16 +96,16 @@ WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654324');
 --------------------------------------------------------------------------------
 -- 6. VEHICLE GROUPS DEFINITIONS
 --------------------------------------------------------------------------------
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km) 
-SELECT 'Small Van (1-2 tấn)', 2000, 10000, 500
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km) 
+SELECT 'Small Van (1-2 tấn)', 2000, 10000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
-SELECT 'Medium Truck (2-5 tấn)', 5000, 15000, 800
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
+SELECT 'Medium Truck (2-5 tấn)', 5000, 15000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)');
 
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km, depreciation_per_km)
-SELECT 'Large Truck (5-10 tấn)', 10000, 25000, 1200
+INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
+SELECT 'Large Truck (5-10 tấn)', 10000, 25000
 WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)');
 
 --------------------------------------------------------------------------------
@@ -91,25 +115,48 @@ INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacit
 ('51-A12345', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Toyota', 'Hiace', 2000, 2021, 'active'),
 ('51-B67890', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Hino', 'FC', 5000, 2020, 'active'),
 ('51-C11111', (SELECT id FROM vehicle_groups WHERE price_per_km = 25000), 'Hyundai', 'HD120S', 10000, 2019, 'maintenance'),
-('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford', 'Transit', 2000, 2022, 'active')
+('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford', 'Transit', 2000, 2022, 'active'),
+('51-E33333', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Kia', 'K200', 1800, 2023, 'active'),
+('51-F44444', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Isuzu', 'QKR', 3500, 2021, 'active')
 ON CONFLICT (plate_number) DO NOTHING;
 
 --------------------------------------------------------------------------------
 -- 8. ASSET ASSIGNMENT
 --------------------------------------------------------------------------------
+WITH driver_vehicle_seed AS (
+    SELECT *
+    FROM (
+        VALUES
+            ('driver1@example.com', '51-A12345'),
+            ('driver2@example.com', '51-D22222'),
+            ('driver4@example.com', '51-F44444')
+    ) AS seeded(email, plate_number)
+)
 UPDATE vehicles v
 SET assigned_driver_id = p.id
-FROM profiles p
-WHERE p.role_id = (SELECT id FROM roles WHERE name = 'driver') AND v.plate_number = '51-A12345'
-AND v.assigned_driver_id IS NULL;
+FROM driver_vehicle_seed dvs
+JOIN accounts a ON a.email = dvs.email
+JOIN profiles p ON p.id = a.id
+WHERE v.plate_number = dvs.plate_number
+  AND v.assigned_driver_id IS DISTINCT FROM p.id;
 
+WITH driver_vehicle_seed AS (
+    SELECT *
+    FROM (
+        VALUES
+            ('driver1@example.com', '51-A12345'),
+            ('driver2@example.com', '51-D22222'),
+            ('driver4@example.com', '51-F44444')
+    ) AS seeded(email, plate_number)
+)
 UPDATE drivers d
 SET vehicle_id = v.id
-FROM vehicles v, profiles p
-WHERE p.role_id = (SELECT id FROM roles WHERE name = 'driver')
-AND p.id = d.profile_id
-AND v.plate_number = '51-A12345'
-AND d.vehicle_id IS NULL;
+FROM driver_vehicle_seed dvs
+JOIN accounts a ON a.email = dvs.email
+JOIN profiles p ON p.id = a.id
+JOIN vehicles v ON v.plate_number = dvs.plate_number
+WHERE d.profile_id = p.id
+  AND d.vehicle_id IS DISTINCT FROM v.id;
 
 --------------------------------------------------------------------------------
 -- 9. PARTNERS / SUB-CONTRACTORS
@@ -290,13 +337,16 @@ INSERT INTO maintenance_records (
     description,
     cost,
     maintenance_date,
+    performed_by,
     status,
     started_at,
     created_at,
     updated_at
 )
-SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15', 'open', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days'
+SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15', p.id, 'open', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days'
 FROM vehicles v
+JOIN accounts a ON a.email = 'driver3@example.com'
+JOIN profiles p ON p.id = a.id
 WHERE v.plate_number = '51-C11111'
 AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id AND mr.maintenance_date = '2026-05-15');
 

@@ -91,6 +91,14 @@ export async function completeVehicleMaintenance(id, payload = {}) {
   });
 }
 
+export async function verifyVehicleMaintenance(id, payload = {}) {
+  return apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, {
+    method: "POST",
+    body: payload,
+    token: getToken(),
+  });
+}
+
 export async function markVehicleBroken(id, payload) {
   return apiRequest(`/api/admin/vehicles/${id}/mark-broken`, {
     method: "POST",
