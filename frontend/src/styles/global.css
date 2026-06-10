@@ -1,0 +1,55 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Geist', 'Google Sans', 'Open Sans', system-ui, -apple-system, sans-serif;
+  background-color: #F8F9FF;
+  color: #0B1C30;
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D3E4FE; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #BFCBF7; }
+
+/* ── Sidebar light override — prevent any dark bleed ── */
+.g62-sidebar {
+  background-color: #F8F9FF !important;
+}
+.g62-sidebar * {
+  color-scheme: light;
+}
+
+/* AntD Menu item smooth transition */
+.ant-menu-light .ant-menu-item {
+  transition: background 0.18s ease, color 0.18s ease !important;
+}
+.ant-menu-light .ant-menu-item .anticon {
+  transition: color 0.18s ease !important;
+}
+.ant-menu-inline .ant-menu-item {
+  width: 100% !important;
+  margin-inline: 0 !important;
+  border-radius: 8px !important;
+}
+
+/* Table striped feel */
+.ant-table-thead > tr > th {
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600 !important;
+}
+
+/* Pill badge style for Tags */
+.ant-tag {
+  border-radius: 20px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  padding: 2px 10px !important;
+}

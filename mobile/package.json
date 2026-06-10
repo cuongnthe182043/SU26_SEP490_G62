@@ -55,12 +55,12 @@
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^14.0.0",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.14",
     "@types/node": "^25.9.1",
     "@types/react": "~19.1.0",
     "expo-module-scripts": "^1.0.0",
     "jest": "^29.7.0",
-    "jest-expo": "^56.0.4",
+    "jest-expo": "~54.0.17",
     "jest-html-reporters": "^3.1.7",
     "react-test-renderer": "^19.1.0",
     "typescript": "~5.9.2"
