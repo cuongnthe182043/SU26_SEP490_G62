@@ -220,6 +220,16 @@ export type PaymentSummary = {
     remaining: number | null;
 };
 
+export type ShipmentPayment = {
+    id: number;
+    shipment_id: number;
+    payment_type: string;
+    amount: string;
+    notes: string | null;
+    collected_at: string;
+    receipt_urls: string[];
+};
+
 export type ExpenseType =
     | 'fuel'
     | 'toll'

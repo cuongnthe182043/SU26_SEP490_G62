@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Button, Descriptions, Input, Modal, Space, Table, Tag, Typography, message } from "antd";
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  Button, Descriptions, Dropdown, Input, Modal,
+  Space, Table, Tag, Typography, message,
+} from "antd";
+import { Eye, MoreVertical, Pencil, Plus, Search, Trash2 } from "lucide-react";
+
+const SW = 1.75;
 import VehicleGroupModal from "./VehicleGroupModal";
+import PageContainer, { CardSection } from "../../components/common/PageContainer";
 import {
   createVehicleGroup,
   deleteVehicleGroup,
@@ -61,12 +67,11 @@ export default function VehicleGroupList() {
     try {
       if (editingGroup) {
         await updateVehicleGroup(editingGroup.id, values);
-        message.success("Vehicle group updated");
+        message.success("Cập nhật nhóm xe thành công");
       } else {
         await createVehicleGroup(values);
-        message.success("Vehicle group created");
+        message.success("Tạo nhóm xe thành công");
       }
-
       setModalOpen(false);
       setEditingGroup(null);
       await loadVehicleGroups();
@@ -89,15 +94,15 @@ export default function VehicleGroupList() {
 
   const handleDelete = (group) => {
     Modal.confirm({
-      title: `Delete vehicle group ${group.name}?`,
-      content: "This only works when no vehicle is using the group.",
-      okText: "Delete",
+      title: `Xóa nhóm xe "${group.name}"?`,
+      content: "Chỉ xóa được khi không có xe nào đang sử dụng nhóm này.",
+      okText: "Xóa",
       okType: "danger",
-      cancelText: "Cancel",
+      cancelText: "Hủy",
       onOk: async () => {
         try {
           await deleteVehicleGroup(group.id);
-          message.success("Vehicle group deleted");
+          message.success("Xóa nhóm xe thành công");
           await loadVehicleGroups();
         } catch (err) {
           message.error(err.message);
@@ -106,135 +111,166 @@ export default function VehicleGroupList() {
     });
   };
 
+  const buildMoreMenu = (record) => ({
+    items: [
+      {
+        key: 'delete',
+        icon: <Trash2 size={14} strokeWidth={SW} />,
+        label: 'Xóa nhóm xe',
+        danger: true,
+        onClick: () => handleDelete(record),
+      },
+    ],
+  });
+
   const columns = [
     {
-      title: "Name",
+      title: "Tên nhóm",
       dataIndex: "name",
       key: "name",
       render: (value) => <Text strong>{value}</Text>,
     },
     {
-      title: "Description",
+      title: "Mô tả",
       dataIndex: "description",
       key: "description",
-      render: (value) => value || <Text type="secondary">No description</Text>,
+      render: (value) => value || <Text type="secondary">Chưa có mô tả</Text>,
     },
     {
-      title: "Capacity",
+      title: "Tải trọng tối đa",
       dataIndex: "max_load_weight_kg",
       key: "max_load_weight_kg",
-      render: (value) => (value ? `${value} kg` : <Text type="secondary">Not set</Text>),
+      render: (value) =>
+        value ? `${Number(value).toLocaleString()} kg` : <Text type="secondary">Chưa thiết lập</Text>,
     },
     {
-      title: "Rate",
+      title: "Giá / km",
       dataIndex: "price_per_km",
       key: "price_per_km",
-      render: (value) => `${Number(value).toLocaleString()} / km`,
+      render: (value) => `${Number(value).toLocaleString()} đ/km`,
     },
     {
-      title: "Vehicles",
-      dataIndex: "vehicle_count",
+      title: "Số lượng xe",
       key: "vehicle_count",
       render: (_, record) => (
-        <Space wrap>
-          <Tag color="blue">{record.vehicle_count} total</Tag>
-          <Tag color="green">{record.active_vehicle_count} active</Tag>
-          <Tag color="orange">{record.maintenance_vehicle_count} maintenance</Tag>
-          <Tag color="red">{record.broken_vehicle_count} broken</Tag>
-          <Tag>{record.retired_vehicle_count} retired</Tag>
+        <Space size={4} wrap>
+          <Tag color="blue">{record.vehicle_count} tổng</Tag>
+          <Tag color="green">{record.active_vehicle_count} hoạt động</Tag>
+          <Tag color="orange">{record.maintenance_vehicle_count} bảo dưỡng</Tag>
+          <Tag color="red">{record.broken_vehicle_count} hỏng</Tag>
+          {record.retired_vehicle_count > 0 && (
+            <Tag>{record.retired_vehicle_count} nghỉ</Tag>
+          )}
         </Space>
       ),
     },
     {
-      title: "Upgrade",
-      dataIndex: "upgrade_allowed",
-      key: "upgrade_allowed",
-      render: (value) => <Tag color={value ? "gold" : "default"}>{value ? "Allowed" : "No"}</Tag>,
-    },
-    {
-      title: "Actions",
+      title: "Thao tác",
       key: "actions",
+      align: "center",
       render: (_, record) => (
-        <Space>
-          <Button icon={<EyeOutlined />} onClick={() => handleOpenDetail(record)}>
-            Details
+        <Space size={4}>
+          <Button
+            type="text"
+            icon={<Eye size={14} strokeWidth={SW} />}
+            onClick={() => handleOpenDetail(record)}
+          >
+            Xem
           </Button>
-          <Button icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>
-            Edit
+          <Button
+            type="text"
+            icon={<Pencil size={14} strokeWidth={SW} />}
+            onClick={() => handleOpenEdit(record)}
+          >
+            Sửa
           </Button>
-          <Button danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-            Delete
-          </Button>
+          <Dropdown menu={buildMoreMenu(record)} trigger={["click"]} placement="bottomRight">
+            <Button type="text" icon={<MoreVertical size={16} strokeWidth={SW} />} />
+          </Dropdown>
         </Space>
       ),
     },
   ];
 
   return (
-    <div style={{ padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            Vehicle Groups
-          </Title>
-          <Text type="secondary">{filteredGroups.length} groups</Text>
+    <PageContainer>
+      <CardSection>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>Danh sách nhóm xe</Title>
+            <Text type="secondary">{filteredGroups.length} nhóm xe</Text>
+          </div>
+          <Button type="primary" icon={<Plus size={15} strokeWidth={SW} />} onClick={handleOpenCreate}>
+            Thêm nhóm xe
+          </Button>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>
-          Add Vehicle Group
-        </Button>
-      </div>
+        <Input
+          allowClear
+          prefix={<Search size={15} strokeWidth={SW} />}
+          placeholder="Tìm kiếm theo ID, tên, mô tả..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </CardSection>
 
-      <Input
-        allowClear
-        size="large"
-        prefix={<SearchOutlined />}
-        placeholder="Search by id, name, description"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        style={{ marginBottom: 16 }}
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={filteredGroups}
+        pagination={{
+          pageSize: 10,
+          showSizeChanger: true,
+          showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} nhóm`,
+          style: { padding: '12px 24px' },
+        }}
+        scroll={{ x: 'max-content' }}
       />
-
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={filteredGroups} pagination={{ pageSize: 10 }} />
 
       <VehicleGroupModal
         open={modalOpen}
         editingGroup={editingGroup}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingGroup(null);
-        }}
+        onClose={() => { setModalOpen(false); setEditingGroup(null); }}
         onSubmit={handleSubmit}
       />
 
       <Modal
         open={Boolean(detailGroup)}
-        title={detailGroup ? `Vehicle Group: ${detailGroup.name}` : "Vehicle Group Details"}
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Eye size={18} strokeWidth={SW} />
+            {detailGroup ? `Chi tiết nhóm xe: ${detailGroup.name}` : "Chi tiết nhóm xe"}
+          </span>
+        }
         onCancel={() => setDetailGroup(null)}
         footer={null}
         confirmLoading={detailLoading}
       >
-        {detailGroup ? (
+        {detailGroup && (
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="ID">{detailGroup.id}</Descriptions.Item>
-            <Descriptions.Item label="Description">{detailGroup.description || "No description"}</Descriptions.Item>
-            <Descriptions.Item label="Max Load Weight">
-              {detailGroup.max_load_weight_kg ? `${detailGroup.max_load_weight_kg} kg` : "Not set"}
+            <Descriptions.Item label="Mô tả">
+              {detailGroup.description || "Chưa có mô tả"}
             </Descriptions.Item>
-            <Descriptions.Item label="Price Per Km">
-              {Number(detailGroup.price_per_km).toLocaleString()}
+            <Descriptions.Item label="Tải trọng tối đa">
+              {detailGroup.max_load_weight_kg
+                ? `${Number(detailGroup.max_load_weight_kg).toLocaleString()} kg`
+                : "Chưa thiết lập"}
             </Descriptions.Item>
-            <Descriptions.Item label="Depreciation Per Km">
-              {Number(detailGroup.depreciation_per_km).toLocaleString()}
+            <Descriptions.Item label="Giá / km">
+              {Number(detailGroup.price_per_km).toLocaleString()} đ
             </Descriptions.Item>
-            <Descriptions.Item label="Upgrade Allowed">{detailGroup.upgrade_allowed ? "Yes" : "No"}</Descriptions.Item>
-            <Descriptions.Item label="Vehicle Summary">
-              {detailGroup.vehicle_count} total, {detailGroup.active_vehicle_count} active,{" "}
-              {detailGroup.maintenance_vehicle_count} maintenance, {detailGroup.broken_vehicle_count} broken,{" "}
-              {detailGroup.retired_vehicle_count} retired
+            <Descriptions.Item label="Khấu hao / km">
+              {Number(detailGroup.depreciation_per_km).toLocaleString()} đ
+            </Descriptions.Item>
+            <Descriptions.Item label="Tổng quan xe">
+              {detailGroup.vehicle_count} tổng &bull; {detailGroup.active_vehicle_count} hoạt động &bull;{" "}
+              {detailGroup.maintenance_vehicle_count} bảo dưỡng &bull; {detailGroup.broken_vehicle_count} hỏng &bull;{" "}
+              {detailGroup.retired_vehicle_count} nghỉ
             </Descriptions.Item>
           </Descriptions>
-        ) : null}
+        )}
       </Modal>
-    </div>
+    </PageContainer>
   );
 }

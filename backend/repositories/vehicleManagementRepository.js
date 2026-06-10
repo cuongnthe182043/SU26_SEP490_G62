@@ -8,7 +8,6 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
         vg.max_load_weight_kg,
         vg.price_per_km,
         vg.depreciation_per_km,
-        vg.upgrade_allowed,
         vg.created_at,
         COUNT(v.id)::int AS vehicle_count,
         COUNT(*) FILTER (WHERE v.status = 'active')::int AS active_vehicle_count,
@@ -27,7 +26,6 @@ const VEHICLE_DETAIL_SELECT = `
         vg.name AS vehicle_group_name,
         vg.price_per_km,
         vg.depreciation_per_km,
-        vg.upgrade_allowed,
         v.brand,
         v.model,
         v.load_capacity_kg,
@@ -125,7 +123,6 @@ const createVehicleGroup = async ({
     max_load_weight_kg,
     price_per_km,
     depreciation_per_km,
-    upgrade_allowed,
 }) => {
     const result = await pool.query(
         `INSERT INTO vehicle_groups (
@@ -133,10 +130,9 @@ const createVehicleGroup = async ({
             description,
             max_load_weight_kg,
             price_per_km,
-            depreciation_per_km,
-            upgrade_allowed
+            depreciation_per_km
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id`,
         [
             name,
@@ -144,7 +140,6 @@ const createVehicleGroup = async ({
             max_load_weight_kg,
             price_per_km,
             depreciation_per_km,
-            upgrade_allowed,
         ],
     );
     return result.rows[0]?.id ?? null;
@@ -158,7 +153,6 @@ const updateVehicleGroup = async (
         max_load_weight_kg,
         price_per_km,
         depreciation_per_km,
-        upgrade_allowed,
     },
 ) => {
     const result = await pool.query(
@@ -168,8 +162,7 @@ const updateVehicleGroup = async (
             description = $3,
             max_load_weight_kg = $4,
             price_per_km = $5,
-            depreciation_per_km = $6,
-            upgrade_allowed = $7
+            depreciation_per_km = $6
          WHERE id = $1
          RETURNING id`,
         [
@@ -179,7 +172,6 @@ const updateVehicleGroup = async (
             max_load_weight_kg,
             price_per_km,
             depreciation_per_km,
-            upgrade_allowed,
         ],
     );
     return result.rows[0] ?? null;

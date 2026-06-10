@@ -88,6 +88,18 @@ router.post(
 router.get('/:id/payments',        driverOnly, paymentController.getShipmentPayments);
 router.get('/:id/payment-summary', driverOnly, paymentController.getPaymentSummary);
 
+// Sửa ghi nhận tiền mặt (TH2) — amount + thay ảnh nếu có
+router.patch(
+    '/:id/payments/:paymentId',
+    driverOnly,
+    handleUpload(uploadPaymentReceipt.fields([
+        { name: 'receipt', maxCount: 1 },
+        { name: 'image',   maxCount: 1 },
+        { name: 'photo',   maxCount: 1 },
+    ])),
+    paymentController.updatePayment,
+);
+
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
 router.patch('/:id/stops/:stopId/arrive',   driverOnly, tripController.arriveAtStop);

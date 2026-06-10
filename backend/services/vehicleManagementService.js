@@ -72,7 +72,6 @@ const normalizeVehicleGroupPayload = (payload = {}) => {
         max_load_weight_kg: parseNullableNumber(payload.max_load_weight_kg, 'max_load_weight_kg', { min: 0 }),
         price_per_km: pricePerKm,
         depreciation_per_km: depreciationPerKm,
-        upgrade_allowed: Boolean(payload.upgrade_allowed),
     };
 };
 

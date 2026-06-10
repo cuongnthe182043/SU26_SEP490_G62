@@ -80,4 +80,22 @@ const getShipmentPaymentSummary = async (shipmentId, driverId) => {
     return paymentRepository.getShipmentFinancialSummary(shipmentId);
 };
 
-module.exports = { recordDriverCashPayment, getShipmentPayments, getShipmentPaymentSummary };
+// Sửa ghi nhận tiền mặt — driver chỉ sửa được payment do chính mình tạo
+const updateCashPayment = async (driverId, shipmentId, paymentId, { newAmount, newReceiptUrl }) => {
+    const payment = await paymentRepository.getPaymentById(paymentId);
+    if (!payment) throw new Error('Bản ghi thanh toán không tồn tại');
+    if (Number(payment.shipment_id) !== Number(shipmentId)) throw new Error('Thanh toán không thuộc chuyến này');
+    if (Number(payment.collected_by) !== Number(driverId)) throw new Error('Bạn không có quyền sửa ghi nhận này');
+
+    const amt = Number(newAmount);
+    if (!amt || amt <= 0) throw new Error('Số tiền phải lớn hơn 0');
+
+    await paymentRepository.updateShipmentPayment(paymentId, amt);
+    if (newReceiptUrl) {
+        await paymentRepository.replacePaymentReceipts(paymentId, newReceiptUrl);
+    }
+
+    return { payment: await paymentRepository.getPaymentById(paymentId) };
+};
+
+module.exports = { recordDriverCashPayment, getShipmentPayments, getShipmentPaymentSummary, updateCashPayment };

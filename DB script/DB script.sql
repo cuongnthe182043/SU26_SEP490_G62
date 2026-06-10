@@ -47,7 +47,6 @@ CREATE TABLE vehicle_groups (
     max_load_weight_kg  NUMERIC(10,2),
     price_per_km        NUMERIC(12,2) NOT NULL,
     depreciation_per_km NUMERIC(10,2) NOT NULL DEFAULT 0,
-    upgrade_allowed     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

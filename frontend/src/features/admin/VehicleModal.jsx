@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Form, Input, InputNumber, Modal, Select, message } from "antd";
+import { Alert, Form, Input, InputNumber, Modal, Select, Typography, message } from "antd";
+import { Calendar, CarFront, Check, Factory, Hash, Layers, User, Weight, X } from "lucide-react";
 import { fetchDriverOptions } from "./vehicleManagementApi";
+
+const { Text } = Typography;
+const SW = 1.75;
 
 export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, vehicleGroups }) {
   const [form] = Form.useForm();
@@ -9,7 +13,6 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
 
   useEffect(() => {
     if (!open) return;
-
     const loadDrivers = async () => {
       try {
         setLoadingDrivers(true);
@@ -21,28 +24,25 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
         setLoadingDrivers(false);
       }
     };
-
     loadDrivers();
   }, [editingVehicle?.id, open]);
 
   useEffect(() => {
     if (!open) return;
-
     if (editingVehicle) {
       form.setFieldsValue({
-        plate_number: editingVehicle.plate_number,
-        vehicle_group_id: editingVehicle.vehicle_group_id,
-        brand: editingVehicle.brand || "",
-        model: editingVehicle.model || "",
-        load_capacity_kg: editingVehicle.load_capacity_kg ? Number(editingVehicle.load_capacity_kg) : null,
-        manufacture_year: editingVehicle.manufacture_year || null,
-        purchase_date: editingVehicle.purchase_date || null,
+        plate_number:       editingVehicle.plate_number,
+        vehicle_group_id:   editingVehicle.vehicle_group_id,
+        brand:              editingVehicle.brand              || "",
+        model:              editingVehicle.model              || "",
+        load_capacity_kg:   editingVehicle.load_capacity_kg   ? Number(editingVehicle.load_capacity_kg) : null,
+        manufacture_year:   editingVehicle.manufacture_year   || null,
+        purchase_date:      editingVehicle.purchase_date      || null,
         assigned_driver_id: editingVehicle.assigned_driver_id || null,
       });
-      return;
+    } else {
+      form.resetFields();
     }
-
-    form.resetFields();
   }, [editingVehicle, form, open]);
 
   const handleOk = async () => {
@@ -53,93 +53,121 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
   return (
     <Modal
       open={open}
-      title={editingVehicle ? "Update Vehicle" : "Create Vehicle"}
+      title={
+        <div style={{ paddingBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600, color: '#0B1C30' }}>
+            <CarFront size={18} strokeWidth={SW} />
+            {editingVehicle ? 'Chỉnh sửa xe' : 'Thêm xe mới'}
+          </div>
+          <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+            {editingVehicle
+              ? `Cập nhật thông tin xe ${editingVehicle.plate_number}`
+              : 'Thêm xe vào đội xe của hệ thống'}
+          </Text>
+        </div>
+      }
       onCancel={onClose}
       onOk={handleOk}
-      okText="Save"
-      cancelText="Cancel"
+      okText={editingVehicle ? 'Lưu thay đổi' : 'Thêm xe'}
+      cancelText="Hủy"
+      okButtonProps={{ icon: <Check size={15} strokeWidth={SW} />, style: { borderRadius: 8 } }}
+      cancelButtonProps={{ icon: <X size={15} strokeWidth={SW} />, style: { borderRadius: 8 } }}
+      width={680}
       destroyOnClose
-      width={720}
+      styles={{ body: { paddingTop: 20 } }}
     >
-      <Form form={form} layout="vertical">
-        {editingVehicle ? (
+      <Form form={form} layout="vertical" requiredMark={false}>
+        {editingVehicle && (
           <Alert
             type="info"
             showIcon
-            message="Vehicle lifecycle status is managed by action buttons."
-            description="Use Send to Maintenance, Complete Maintenance, Mark Broken, Restore, or Retire from the vehicle list."
-            style={{ marginBottom: 16 }}
+            message="Trạng thái xe được quản lý qua nút thao tác trên bảng danh sách."
+            style={{ marginBottom: 20, borderRadius: 8 }}
           />
-        ) : null}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
           <Form.Item
-            label="Plate Number"
+            label="Biển số xe"
             name="plate_number"
-            rules={[{ required: true, message: "Plate number is required" }]}
+            rules={[{ required: true, message: "Vui lòng nhập biển số xe" }]}
           >
-            <Input placeholder="51H-12345" />
+            <Input prefix={<Hash size={15} strokeWidth={SW} />} placeholder="VD: 51H-12345" style={{ borderRadius: 8 }} />
           </Form.Item>
 
           <Form.Item
-            label="Vehicle Group"
+            label="Nhóm xe"
             name="vehicle_group_id"
-            rules={[{ required: true, message: "Vehicle group is required" }]}
+            rules={[{ required: true, message: "Vui lòng chọn nhóm xe" }]}
           >
             <Select
-              options={vehicleGroups.map((group) => ({ label: `${group.name} (#${group.id})`, value: group.id }))}
-              placeholder="Select vehicle group"
+              prefix={<Layers size={15} strokeWidth={SW} />}
+              placeholder="Chọn nhóm xe"
+              style={{ borderRadius: 8 }}
+              options={vehicleGroups.map(g => ({ label: `${g.name} (#${g.id})`, value: g.id }))}
             />
           </Form.Item>
 
-          <Form.Item label="Brand" name="brand">
-            <Input placeholder="Hyundai" />
+          <Form.Item label="Hãng xe" name="brand">
+            <Input prefix={<Factory size={15} strokeWidth={SW} />} placeholder="VD: Hyundai" style={{ borderRadius: 8 }} />
           </Form.Item>
 
-          <Form.Item label="Model" name="model">
-            <Input placeholder="Porter" />
+          <Form.Item label="Dòng xe" name="model">
+            <Input prefix={<CarFront size={15} strokeWidth={SW} />} placeholder="VD: Porter" style={{ borderRadius: 8 }} />
           </Form.Item>
 
           <Form.Item
-            label="Load Capacity (kg)"
+            label="Tải trọng (kg)"
             name="load_capacity_kg"
-            rules={[{ type: "number", min: 0.01, message: "Load capacity must be positive" }]}
+            rules={[{ type: "number", min: 0.01, message: "Tải trọng phải lớn hơn 0" }]}
           >
-            <InputNumber style={{ width: "100%" }} min={0.01} precision={2} />
+            <InputNumber
+              prefix={<Weight size={15} strokeWidth={SW} />}
+              style={{ width: "100%", borderRadius: 8 }}
+              min={0.01}
+              precision={2}
+              placeholder="VD: 1250"
+              formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            />
           </Form.Item>
 
           <Form.Item
-            label="Manufacture Year"
+            label="Năm sản xuất"
             name="manufacture_year"
-            rules={[
-              {
-                validator: (_, value) => {
-                  if (!value) return Promise.resolve();
-                  const currentYear = new Date().getFullYear();
-                  if (value > currentYear) {
-                    return Promise.reject(new Error("Manufacture year cannot be in the future"));
-                  }
-                  return Promise.resolve();
-                },
+            rules={[{
+              validator: (_, value) => {
+                if (!value) return Promise.resolve();
+                if (value > new Date().getFullYear())
+                  return Promise.reject(new Error("Năm không thể lớn hơn năm hiện tại"));
+                return Promise.resolve();
               },
-            ]}
+            }]}
           >
-            <InputNumber style={{ width: "100%" }} min={1900} precision={0} />
+            <InputNumber
+              prefix={<Factory size={15} strokeWidth={SW} />}
+              style={{ width: "100%", borderRadius: 8 }}
+              min={1900}
+              precision={0}
+              placeholder="VD: 2020"
+            />
           </Form.Item>
 
-          <Form.Item label="Purchase Date" name="purchase_date">
-            <Input type="date" />
+          <Form.Item label="Ngày mua" name="purchase_date">
+            <Input type="date" prefix={<Calendar size={15} strokeWidth={SW} />} style={{ borderRadius: 8 }} />
           </Form.Item>
         </div>
 
-        <Form.Item label="Assigned Driver" name="assigned_driver_id">
+        <Form.Item label="Tài xế phụ trách" name="assigned_driver_id">
           <Select
             allowClear
             loading={loadingDrivers}
-            placeholder="Select driver"
-            options={driverOptions.map((driver) => ({
-              label: `${driver.full_name} - ${driver.email}${driver.current_vehicle_plate ? ` (${driver.current_vehicle_plate})` : ""}${driver.is_assignable ? "" : " - unavailable"}`,
-              value: driver.id,
-              disabled: !driver.is_assignable,
+            prefix={<User size={15} strokeWidth={SW} />}
+            placeholder="Chọn tài xế (tuỳ chọn)"
+            style={{ borderRadius: 8 }}
+            options={driverOptions.map(d => ({
+              label: `${d.full_name} — ${d.email}${d.current_vehicle_plate ? ` (${d.current_vehicle_plate})` : ''}`,
+              value: d.id,
+              disabled: !d.is_assignable,
             }))}
           />
         </Form.Item>

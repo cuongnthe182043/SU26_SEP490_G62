@@ -359,8 +359,8 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
                  owner_driver_id = NULL,
                  vehicle_id      = NULL,
                  claimed_at      = NULL,
-                 notes           = CASE WHEN $1 IS NOT NULL
-                                       THEN COALESCE(notes || E'\n', '') || '[Released] ' || $1
+                 notes           = CASE WHEN $1::text IS NOT NULL
+                                       THEN COALESCE(notes || E'\n', '') || '[Released] ' || $1::text
                                        ELSE notes
                                    END,
                  updated_at      = NOW()
