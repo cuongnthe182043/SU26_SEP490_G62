@@ -20,6 +20,8 @@ const selectOrderProjection = `
         os.completed_at,
         os.vehicle_group_id,
         os.owner_driver_id,
+        os.estimated_distance_km,
+        os.delivery_at,
         pickup.address AS pickup_address,
         delivery.address AS delivery_address,
         c.full_name AS customer_name,
@@ -92,12 +94,12 @@ const listOrders = async ({
 
     if (dateFrom) {
         params.push(dateFrom);
-        conditions.push(`o.created_at::date >= $${params.length}::date`);
+        conditions.push(`os.delivery_at::date >= $${params.length}::date`);
     }
 
     if (dateTo) {
         params.push(dateTo);
-        conditions.push(`o.created_at::date <= $${params.length}::date`);
+        conditions.push(`os.delivery_at::date <= $${params.length}::date`);
     }
 
     if (customer) {
@@ -128,7 +130,7 @@ const listOrders = async ({
     const rowsResult = await pool.query(
         `${selectOrderProjection}
          ${whereClause}
-         ORDER BY o.created_at DESC, o.id DESC
+         ORDER BY COALESCE(os.delivery_at, o.created_at) DESC, o.id DESC
          LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
         rowsParams,
     );
@@ -432,8 +434,8 @@ const createOrderWithShipment = async ({
     const order = orderResult.rows[0];
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, status, notes, created_at)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()))
          RETURNING *`,
         [
             order.id,
@@ -443,6 +445,8 @@ const createOrderWithShipment = async ({
             shipmentData.cargo_name || order.cargo_name,
             shipmentData.cargo_weight_kg,
             shipmentData.estimated_price,
+            shipmentData.estimated_distance_km,
+            shipmentData.delivery_at || null,
             shipmentData.status,
             shipmentData.notes,
             shipmentData.created_at || null,
@@ -480,6 +484,9 @@ const createOrderWithShipment = async ({
             pickup_address: shipmentData.pickup_address,
             delivery_address: shipmentData.delivery_address,
             status: shipmentData.status,
+            estimated_distance_km: shipmentData.estimated_distance_km,
+            delivery_at: shipmentData.delivery_at,
+            plate_number: shipmentData.plate_number,
             driver_name: null,
         },
         shipment: shipmentResult.rows[0],
@@ -497,6 +504,9 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
             vehicle_group_id: shipmentData.vehicle_group_id,
             owner_driver_id: shipmentData.owner_driver_id || null,
             vehicle_id: shipmentData.vehicle_id || null,
+            estimated_distance_km: shipmentData.estimated_distance_km ?? null,
+            delivery_at: shipmentData.delivery_at || null,
+            plate_number: shipmentData.plate_number || null,
             status: shipmentData.status || 'available',
             created_at: shipmentData.created_at || null,
         },
@@ -518,6 +528,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         vehicle_id,
         vehicle_group_id,
         distance,
+        delivery_at,
+        date,
     } = payload;
 
     const client = await pool.connect();
@@ -539,11 +551,15 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         }
 
         const normalizedDistance = normalizeNumber(distance);
-        const calculatedPrice = normalizedDistance !== null && vehicleGroup
-            ? normalizedDistance * Number(vehicleGroup.price_per_km || 0)
-            : normalizeNumber(estimated_price);
+        if (normalizedDistance === null || normalizedDistance <= 0) {
+            throw new Error('Quãng đường là bắt buộc để tính cước');
+        }
+        if (!vehicleGroup) {
+            throw new Error('Nhóm xe là bắt buộc để tính cước');
+        }
+        const calculatedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+        const deliveryAt = safeTrim(delivery_at || date) || null;
         const orderNotes = [
-            normalizedDistance !== null ? `Quãng đường: ${normalizedDistance}` : '',
             vehicle?.plate_number ? `BKS: ${vehicle.plate_number}` : '',
             notes !== undefined ? safeTrim(notes) : '',
         ].filter(Boolean).join(' | ');
@@ -589,6 +605,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                      owner_driver_id = $6,
                      vehicle_id = COALESCE($7, vehicle_id),
                      vehicle_group_id = COALESCE($8, vehicle_group_id),
+                     estimated_distance_km = COALESCE($9, estimated_distance_km),
+                     delivery_at = COALESCE($10, delivery_at),
                      updated_at = NOW()
                  WHERE id = $1`,
                 [
@@ -600,6 +618,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     null,
                     vehicle?.id ?? null,
                     finalVehicleGroupId,
+                    normalizedDistance,
+                    deliveryAt,
                 ],
             );
 

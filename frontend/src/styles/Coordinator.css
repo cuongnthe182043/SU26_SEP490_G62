@@ -474,6 +474,17 @@
   line-height: 1.35;
 }
 
+
+.coordinator-shell .readonly-fare {
+  min-height: 46px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #f6f7fb;
+  color: #18227f;
+  font-weight: 700;
+}
+
 .coordinator-shell .field-error-box {
   padding: 12px 14px;
   border-radius: 14px;

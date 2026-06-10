@@ -217,9 +217,8 @@ const importExcel = async (userId, fileBuffer) => {
       const customerName = safeTrim(row.customer);
       const customerPhone = normalizePhone(row.customerPhone);
       const route = safeTrim(row.route);
-      const distance = safeTrim(row.distance);
       const distanceValue = normalizeNumber(row.distance);
-      let fare = normalizeNumber(row.fare);
+      let fare = 0;
       const note = safeTrim(row.note);
 
       if (isLeaveNote(note)) {
@@ -228,6 +227,9 @@ const importExcel = async (userId, fileBuffer) => {
 
       if (!date) {
         throw new Error('Ngày tháng năm là bắt buộc trong file Excel');
+      }
+      if (distanceValue === null || distanceValue <= 0) {
+        throw new Error('Quãng đường là bắt buộc trong file Excel để tính cước');
       }
 
       const { pickupAddress, deliveryAddress } = parseRoute(route);
@@ -271,7 +273,6 @@ const importExcel = async (userId, fileBuffer) => {
       const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 
       const notes = [
-        distanceValue !== null ? `Quãng đường: ${distanceValue}` : '',
         plate ? `BKS: ${plate}` : '',
         driverName ? `Lái xe: ${driverName}` : '',
         note,
@@ -291,7 +292,6 @@ const importExcel = async (userId, fileBuffer) => {
           customer_name: customerName,
           customer_phone: customerPhone,
           notes,
-          created_at: date,
         },
         shipmentData: {
           vehicle_group_id: finalVehicleGroupId,
@@ -302,10 +302,12 @@ const importExcel = async (userId, fileBuffer) => {
           cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
           cargo_weight_kg: null,
           estimated_price: fare || 0,
+          estimated_distance_km: distanceValue,
+          delivery_at: date,
+          plate_number: vehicle?.plate_number || plate,
           status: shipmentStatus,
           payment_type: 'cash',
           notes,
-          created_at: date,
         },
       });
 
