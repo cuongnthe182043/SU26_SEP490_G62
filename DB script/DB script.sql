@@ -114,7 +114,7 @@ CREATE TABLE orders (
     customer_id     INT REFERENCES customers(id),
     created_by      INT NOT NULL REFERENCES profiles(id),
     updated_by      INT REFERENCES profiles(id),
-
+    partner_name TEXT,
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
     payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','client_credit')),

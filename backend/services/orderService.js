@@ -110,6 +110,9 @@ const createOrder = async (userId, payload) => {
         delivery_address,
         distance,
         notes,
+        is_partner,
+        partner_name,
+        partner_fee,
     } = payload;
 
     let { trips } = payload;
@@ -214,6 +217,8 @@ const createOrder = async (userId, payload) => {
                 cargo_weight_kg: normalizedWeight,
                 payment_type: payload.payment_type,
                 notes: notes !== undefined ? safeTrim(notes) : '',
+                partner_name: is_partner ? safeTrim(partner_name) : null,
+                total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
             },
             shipmentsDataArray
         });
@@ -361,6 +366,9 @@ const updateOrder = async (orderId, payload) => {
         vehicle_id,
         vehicle_group_id,
         distance,
+        is_partner,
+        partner_name,
+        partner_fee,
     } = payload;
 
     let { trips } = payload;
@@ -427,7 +435,8 @@ const updateOrder = async (orderId, payload) => {
         delivery_address,
         notes,
         arrived_at: arrived_at || date,
-        
+        partner_name: is_partner ? safeTrim(partner_name) : null,
+        total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
 };
 

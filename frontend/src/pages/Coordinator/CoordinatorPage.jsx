@@ -13,6 +13,9 @@ const emptyForm = () => ({
   cargo_name: "",
   cargo_weight_kg: "",
   note: "",
+  is_partner: false,
+  partner_name: "",
+  partner_fee: "",
   trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
 });
 
@@ -121,6 +124,9 @@ function buildTripFromOrder(order) {
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
+    is_partner: !!order.partner_name,
+    partner_name: order.partner_name || "",
+    partner_fee: order.total_actual_price || "",
     trips,
   };
 }
@@ -510,6 +516,9 @@ export default function CoordinatorPage({ user, onLogout }) {
         delivery_address: form.trips[0]?.delivery_address || "",
         arrived_at: form.date,
         notes: form.note,
+        is_partner: form.is_partner,
+        partner_name: form.is_partner ? form.partner_name : null,
+        partner_fee: form.is_partner ? form.partner_fee : null,
         trips: form.trips,
       };
 
@@ -752,6 +761,43 @@ export default function CoordinatorPage({ user, onLogout }) {
                     )}
                   </label>
                 </div>
+
+                <div className="sheet-caption full" style={{ marginTop: 12 }}>Tùy chọn đối tác</div>
+                <div className="form-row full" style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#2a3144', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={form.is_partner}
+                      onChange={(e) => updateField("is_partner", e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    Tạo cho đối tác
+                  </label>
+                </div>
+
+                {form.is_partner && (
+                  <div className="form-row form-row-2">
+                    <label>
+                      <span>Bên liên kết (Tên đối tác)</span>
+                      <input
+                        value={form.partner_name}
+                        onChange={(event) => updateField("partner_name", event.target.value)}
+                        placeholder="Nhập tên bên liên kết"
+                      />
+                    </label>
+                    <label>
+                      <span>Cước phí đối tác</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.partner_fee}
+                        onChange={(event) => updateField("partner_fee", event.target.value)}
+                        placeholder="Ví dụ: 500000"
+                      />
+                    </label>
+                  </div>
+                )}
 
                 <div className="sheet-caption full" style={{ marginTop: 12 }}>Chuyến xe</div>
 
