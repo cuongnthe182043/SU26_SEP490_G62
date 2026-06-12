@@ -90,6 +90,16 @@ function buildTripFromOrder(order) {
   const arrivedAt = order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
+  const trips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+    vehicle_group_id: order.vehicle_group_id || "",
+    plate: order.plate_number || "",
+    distance: order.estimated_distance_km || "",
+    pickup_address: pickupAddress,
+    delivery_address: deliveryAddress
+  }];
+
+  const totalDistance = trips.reduce((sum, t) => sum + (Number(t.distance) || 0), 0);
+
   return {
     id: `#${order.id}`,
     orderId: order.id,
@@ -107,15 +117,11 @@ function buildTripFromOrder(order) {
     pickupAddress,
     deliveryAddress,
     route: (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance: order.estimated_distance_km || "",
+    distance: totalDistance || order.estimated_distance_km || "",
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
-    trips: Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
-      vehicle_group_id: order.vehicle_group_id || "",
-      plate: order.plate_number || "",
-      distance: order.estimated_distance_km || ""
-    }],
+    trips,
   };
 }
 
