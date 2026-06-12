@@ -559,21 +559,21 @@ const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
     }
 
     switch (`${vehicle.status}->${nextStatus}`) {
-    case 'active->maintenance':
-    case 'broken->maintenance':
-        return sendVehicleToMaintenance(vehicle.id, managerId, payload);
-    case 'maintenance->active':
-        return verifyMaintenance(vehicle.id, managerId, payload);
-    case 'active->broken':
-        return markVehicleAsBroken(vehicle.id, managerId, payload);
-    case 'broken->active':
-        return restoreVehicle(vehicle.id, managerId, payload);
-    case 'active->retired':
-    case 'maintenance->retired':
-    case 'broken->retired':
-        return retireVehicle(vehicle.id, managerId, payload);
-    default:
-        throw createError(`Invalid status transition from ${vehicle.status} to ${nextStatus}`, 409);
+        case 'active->maintenance':
+        case 'broken->maintenance':
+            return sendVehicleToMaintenance(vehicle.id, managerId, payload);
+        case 'maintenance->active':
+            return verifyMaintenance(vehicle.id, managerId, payload);
+        case 'active->broken':
+            return markVehicleAsBroken(vehicle.id, managerId, payload);
+        case 'broken->active':
+            return restoreVehicle(vehicle.id, managerId, payload);
+        case 'active->retired':
+        case 'maintenance->retired':
+        case 'broken->retired':
+            return retireVehicle(vehicle.id, managerId, payload);
+        default:
+            throw createError(`Invalid status transition from ${vehicle.status} to ${nextStatus}`, 409);
     }
 };
 
@@ -648,7 +648,7 @@ const listAssignableDrivers = async (vehicleId = null) => {
         has_active_shipment: driverHasActiveShipments(driver),
         has_unverified_maintenance: driverHasUnverifiedMaintenance(driver),
         is_selected_vehicle_driver: vehicle ? Number(vehicle.assigned_driver_id) === Number(driver.id) : false,
-        is_maintenance_eligible: !driverHasActiveShipments(driver),
+        is_maintenance_eligible: !driverHasActiveShipments(driver) && !driverHasUnverifiedMaintenance(driver),
     }));
 };
 
