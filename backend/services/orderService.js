@@ -3,10 +3,11 @@ const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
+
 const normalizeNumber = (value) => {
     if (value === undefined || value === null || value === '') return null;
     const numericValue = Number(String(value).replace(/,/g, '').trim());
-    if (Number.isNaN(numericValue)) throw new Error('Khối lượng không hợp lệ');
+    if (Number.isNaN(numericValue)) throw new Error('Nhập số không hợp lệ');
     return numericValue;
 };
 
@@ -96,7 +97,7 @@ const listOrders = async (query = {}) => {
 const createOrder = async (userId, payload) => {
     const {
         date,
-        delivery_at,
+        arrived_at,
         plate,
         driver_id,
         vehicle_id,
@@ -112,19 +113,12 @@ const createOrder = async (userId, payload) => {
     } = payload;
 
     let { trips } = payload;
-    if (!trips || !Array.isArray(trips) || trips.length === 0) {
-        trips = [{
-            plate: payload.plate,
-            vehicle_group_id: payload.vehicle_group_id,
-            distance: payload.distance
-        }];
-    }
 
     if (!pickup_address || !delivery_address) {
         throw new Error('Thiếu điểm nhận hoặc điểm đến');
     }
 
-    const normalizedDate = normalizeDateInput(delivery_at || date);
+    const normalizedDate = normalizeDateInput(arrived_at || date);
     if (!normalizedDate) {
         throw new Error('Ngày giao hàng là bắt buộc');
     }
@@ -194,7 +188,7 @@ const createOrder = async (userId, payload) => {
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
                 estimated_distance_km: normalizedDistance,
-                delivery_at: normalizedDate,
+                arrived_at: normalizedDate,
                 plate_number: vehicle.plate_number,
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
@@ -323,7 +317,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
                     estimated_distance_km: distanceValue,
-                    delivery_at: date,
+                    arrived_at: date,
                     plate_number: plate,
                     notes,
                     vehicle_group_id: finalVehicleGroupId,
@@ -359,7 +353,7 @@ const updateOrder = async (orderId, payload) => {
         estimated_price,
         notes,
         date,
-        delivery_at,
+        arrived_at,
         plate,
         driver_id,
         vehicle_id,
@@ -428,7 +422,7 @@ const updateOrder = async (orderId, payload) => {
         pickup_address,
         delivery_address,
         notes,
-        delivery_at: delivery_at || date,
+        arrived_at: arrived_at || date,
         
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
 };
