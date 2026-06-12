@@ -23,7 +23,7 @@ const selectOrderProjection = `
         os.vehicle_group_id,
         os.owner_driver_id,
         os.estimated_distance_km,
-        os.delivery_at,
+        os.arrived_at,
         pickup.address AS pickup_address,
         delivery.address AS delivery_address,
         c.full_name AS customer_name,
@@ -623,7 +623,7 @@ const createOrderWithMultipleShipments = async ({
             delivery_address: shipmentsDataArray[0]?.delivery_address,
             status: shipmentsDataArray[0]?.status,
             estimated_distance_km: shipmentsDataArray[0]?.estimated_distance_km,
-            delivery_at: shipmentsDataArray[0]?.delivery_at,
+            arrived_at: shipmentsDataArray[0]?.arrived_at,
             plate_number: shipmentsDataArray[0]?.plate_number,
             driver_name: null,
         },
@@ -644,7 +644,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
             owner_driver_id: shipmentData.owner_driver_id || null,
             vehicle_id: shipmentData.vehicle_id || null,
             estimated_distance_km: shipmentData.estimated_distance_km ?? null,
-            delivery_at: shipmentData.delivery_at || null,
+            arrived_at: shipmentData.arrived_at || null,
             plate_number: shipmentData.plate_number || null,
             status: shipmentData.status || 'available',
             created_at: shipmentData.created_at || null,
@@ -668,7 +668,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         vehicle_id,
         vehicle_group_id,
         distance,
-        delivery_at,
+        arrived_at,
         date,
         partner_name,
         total_actual_price,
@@ -682,7 +682,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
             ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
             : null;
         const totalEstimatedPrice = shipmentsDataArray ? shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0) : null;
-        const deliveryAt = safeTrim(delivery_at || date) || null;
+        const arrivedAt = safeTrim(arrived_at || date) || null;
         const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
         const orderResult = await client.query(
@@ -733,7 +733,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                              vehicle_id = COALESCE($4, vehicle_id),
                              estimated_price = COALESCE($5, estimated_price),
                              estimated_distance_km = COALESCE($6, estimated_distance_km),
-                             delivery_at = COALESCE($7, delivery_at),
+                             arrived_at = COALESCE($7, arrived_at),
                              actual_price = COALESCE($8, actual_price),
                              updated_at = NOW()
                          WHERE id = $1`,
@@ -744,7 +744,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.vehicle_id,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            deliveryAt,
+                            arrivedAt,
                             total_actual_price !== undefined ? total_actual_price : 0,
                         ],
                     );
@@ -764,7 +764,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 } else if (!existing && shipmentData) {
                     const shipmentResult = await client.query(
                         `INSERT INTO order_shipments
-                            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
+                            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'available', $11, NOW())
                          RETURNING id`,
                         [
@@ -777,7 +777,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             orderResult.rows[0].cargo_weight_kg,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            deliveryAt,
+                            arrivedAt,
                             orderNotes,
                         ],
                     );
