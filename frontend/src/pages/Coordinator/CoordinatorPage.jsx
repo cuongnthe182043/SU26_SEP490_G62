@@ -4,22 +4,22 @@ import "../../styles/Coordinator.css";
 import { message as toast } from "antd";
 
 //Đặt yêu cầu cho empty form 
-const emptyForm = {
-  date: "",
+const getTodayStr = () => new Date().toISOString().slice(0, 10);
+
+const emptyForm = () => ({
+  date: getTodayStr(),
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
   note: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "" , pickup_address: "", delivery_address: "",}]
-};
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+});
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  {key: "customer_phone", label: "SĐT"},
+  { key: "customer_phone", label: "SĐT" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
-  { key: "pickup_address", label: "Điểm lấy hàng" },
-  { key: "delivery_address", label: "Điểm giao hàng" },
 ];
 
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
@@ -301,6 +301,8 @@ export default function CoordinatorPage({ user, onLogout }) {
       form.trips.forEach((trip, index) => {
         if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
         if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.pickup_address || "").trim()) errors[`trip_${index}_pickup_address`] = `Điểm lấy hàng chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.delivery_address || "").trim()) errors[`trip_${index}_delivery_address`] = `Điểm giao hàng chuyến ${index + 1} là bắt buộc`;
         const dist = normalizeNumericText(trip.distance);
         if (!dist) {
           errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
@@ -344,8 +346,8 @@ export default function CoordinatorPage({ user, onLogout }) {
     setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
       ...current,//Tạo object mới có thông tin từ form 
       //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" , pickup_address: "", delivery_address: ""}]
-    })); 
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+    }));
   };
 
   const removeTrip = (index) => {
@@ -409,7 +411,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const openCreateModal = () => {
     setEditingTrip(null);
-    setForm(emptyForm);
+    setForm(emptyForm());
     setFormErrors({});
     setCreateOpen(true);
   };
@@ -427,12 +429,16 @@ export default function CoordinatorPage({ user, onLogout }) {
       cargo_name: trip.cargoName || "",
       cargo_weight_kg: trip.cargoWeightKg || "",
       distance: trip.distance || "",
-      pickup_address: trip.pickupAddress || routeAddresses.pickup,
-      delivery_address: trip.deliveryAddress || routeAddresses.delivery,
-      trips: trip.trips?.length > 0 ? trip.trips : [{
+      trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
+        ...t,
+        pickup_address: t.pickup_address || trip.pickupAddress || routeAddresses.pickup || "",
+        delivery_address: t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || "",
+      })) : [{
         vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
         plate: trip.plate || "",
-        distance: trip.distance || ""
+        distance: trip.distance || "",
+        pickup_address: trip.pickupAddress || routeAddresses.pickup || "",
+        delivery_address: trip.deliveryAddress || routeAddresses.delivery || "",
       }],
       note: trip.notes || "",
     });
@@ -443,7 +449,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const closeOrderModal = () => {
     setCreateOpen(false);
     setEditingTrip(null);
-    setForm(emptyForm);
+    setForm(emptyForm());
     setFormErrors({});
   };
 
@@ -494,8 +500,8 @@ export default function CoordinatorPage({ user, onLogout }) {
         customer_phone: form.customer_phone,
         cargo_name: form.cargo_name,
         cargo_weight_kg: form.cargo_weight_kg,
-        pickup_address: form.pickup_address,
-        delivery_address: form.delivery_address,
+        pickup_address: form.trips[0]?.pickup_address || "",
+        delivery_address: form.trips[0]?.delivery_address || "",
         arrived_at: form.date,
         notes: form.note,
         trips: form.trips,
@@ -514,7 +520,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setEditingTrip(null);
       setMessage(data.message || (editingTrip ? "Order updated successfully." : "Order created successfully."));
       setMessageType("success");
-      setForm(emptyForm);
+      setForm(emptyForm());
       setFormErrors({});
     } catch (err) {
       setMessage(err.message || "Unable to create order.");
@@ -609,7 +615,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 type="date"
                 value={dateFromFilter}
                 onChange={(event) => setDateFromFilter(event.target.value)}
-                
+
               />
             </label>
             <label className="filter-field">
@@ -678,7 +684,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               <form className="create-form" onSubmit={handleCreateOrder}>
                 <div className="sheet-caption full">Thông tin đơn hàng</div>
 
-                <div className="form-row form-row-1">
+                <div className="form-row form-row-3">
                   <label>
                     <span>Ngày giao hàng</span>
                     <input
@@ -690,9 +696,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
                   </label>
-                </div>
-
-                <div className="form-row form-row-3">
                   <label>
                     <span>SĐT</span>
                     <input
@@ -704,6 +707,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_phone}</div>
                     )}
                   </label>
+
                   <label>
                     <span>Khách hàng</span>
                     <input
@@ -715,6 +719,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_name}</div>
                     )}
                   </label>
+                </div>
+
+                <div className="form-row form-row-2">
                   <label>
                     <span>Hàng hóa</span>
                     <input
@@ -723,9 +730,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       placeholder="Không bắt buộc"
                     />
                   </label>
-                </div>
 
-                <div className="form-row form-row-2">
                   <label>
                     <span>Khối lượng (kg)</span>
                     <input
@@ -738,31 +743,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.cargo_weight_kg && (
                       <div className="field-error">{formErrors.cargo_weight_kg}</div>
-                    )}
-                  </label>
-                  <label>
-                    <span>Điểm lấy hàng</span>
-                    <input
-                      value={form.pickup_address}
-                      onChange={(event) => updateField("pickup_address", event.target.value)}
-                      className={formErrors.pickup_address ? "input-error" : ""}
-                    />
-                    {formErrors.pickup_address && (
-                      <div className="field-error">{formErrors.pickup_address}</div>
-                    )}
-                  </label>
-                </div>
-
-                <div className="form-row form-row-1" style={{ maxWidth: '100%' }}>
-                  <label>
-                    <span>Điểm giao hàng</span>
-                    <input
-                      value={form.delivery_address}
-                      onChange={(event) => updateField("delivery_address", event.target.value)}
-                      className={formErrors.delivery_address ? "input-error" : ""}
-                    />
-                    {formErrors.delivery_address && (
-                      <div className="field-error">{formErrors.delivery_address}</div>
                     )}
                   </label>
                 </div>
@@ -809,7 +789,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <option key={group.id} value={group.id}>{group.name}</option>
                           ))}
                         </select>
-
                         {formErrors[`trip_${index}_vehicle_group_id`] && (
                           <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
                         )}
@@ -848,6 +827,36 @@ export default function CoordinatorPage({ user, onLogout }) {
                         />
                         {formErrors[`trip_${index}_distance`] && (
                           <div className="field-error">{formErrors[`trip_${index}_distance`]}</div>
+                        )}
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                        <span>Điểm lấy hàng</span>
+                        <input
+                          value={trip.pickup_address || ""}
+                          onChange={(e) => updateTripField(index, 'pickup_address', e.target.value)}
+                          placeholder="Địa chỉ lấy hàng"
+                          className={formErrors[`trip_${index}_pickup_address`] ? 'input-error' : ''}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        {formErrors[`trip_${index}_pickup_address`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
+                        )}
+                      </label>
+
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                        <span>Điểm giao hàng</span>
+                        <input
+                          value={trip.delivery_address || ""}
+                          onChange={(e) => updateTripField(index, 'delivery_address', e.target.value)}
+                          placeholder="Địa chỉ giao hàng"
+                          className={formErrors[`trip_${index}_delivery_address`] ? 'input-error' : ''}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        {formErrors[`trip_${index}_delivery_address`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
                         )}
                       </label>
                     </div>
