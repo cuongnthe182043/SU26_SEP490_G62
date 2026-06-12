@@ -130,14 +130,14 @@ const createOrder = async (userId, payload) => {
     }
 
     const normalizedWeight = normalizeNumber(cargo_weight_kg);
-    
+
     let dbClient = null;
 
     try {
         dbClient = await pool.connect();
 
         await dbClient.query('BEGIN');
-        
+
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
 
@@ -179,7 +179,10 @@ const createOrder = async (userId, payload) => {
 
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
-            const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
+            const shipmentStatus =
+                finalDriverId && finalVehicleId
+                    ? SHIPMENT_STATUS.CLAIMED
+                    : SHIPMENT_STATUS.AVAILABLE;
 
             const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
@@ -382,14 +385,14 @@ const updateOrder = async (orderId, payload) => {
 
     const shipmentsDataArray = [];
     const dbClient = await pool.connect();
-    
+
     try {
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
 
         for (const trip of trips) {
             const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
             const normalizedDistance = normalizeNumber(distance);
-            
+
             if (normalizedDistance === null || normalizedDistance <= 0) {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
@@ -421,7 +424,7 @@ const updateOrder = async (orderId, payload) => {
                 delivery_address: safeTrim(trip_delivery || delivery_address),
             });
         }
-    
+
     } finally {
         dbClient.release();
     }

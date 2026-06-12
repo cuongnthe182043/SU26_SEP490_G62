@@ -631,7 +631,7 @@ const createOrderWithMultipleShipments = async ({
     };
 };
 
-//Phương thức tạo order dựa trên dữ liệu được 
+//Phương thức tạo order dựa trên dữ liệu được import 
 const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
     return createOrderWithShipment({
         client,
