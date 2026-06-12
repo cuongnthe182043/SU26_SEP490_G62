@@ -459,8 +459,6 @@ const getOrderShipments = async (orderId) => {
         ORDER BY os.shipment_index ASC`,
         [orderId]
     );
-
-    const shipments = [];
     for (const row of shipmentResult.rows) {
         const stopsResult = await pool.query(
             `SELECT stop_type, address, contact_name, contact_phone
@@ -532,8 +530,81 @@ const getOrderShipments = async (orderId) => {
     return shipments;
 };
 
+const updateOrder = async (orderId, orderData) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Update customers table
+        if (orderData.customer_phone) {
+            const customerResult = await client.query(
+                `SELECT id FROM customers WHERE phone = $1 LIMIT 1`,
+                [orderData.customer_phone]
+            );
+            if (customerResult.rows.length > 0) {
+                await client.query(
+                    `UPDATE customers SET
+                        full_name = COALESCE($1, full_name),
+                        company_name = COALESCE($2, company_name),
+                        updated_at = NOW()
+                     WHERE id = $3`,
+                    [
+                        orderData.customer_name || null,
+                        orderData.customer_company || null,
+                        customerResult.rows[0].id,
+                    ]
+                );
+            }
+        }
+
+        // Update orders table
+        const orderNotes = [
+            orderData.order_date ? `Ngày đơn: ${orderData.order_date}` : null,
+            orderData.notes,
+        ].filter(Boolean).join(' | ') || null;
+
+        const orderResult = await client.query(
+            `UPDATE orders SET
+                cargo_name = COALESCE($1, cargo_name),
+                notes = $2,
+                updated_at = NOW()
+             WHERE id = $3
+             RETURNING *`,
+            [orderData.customer_name || null, orderNotes, orderId]
+        );
+
+        await client.query('COMMIT');
+
+        // Fetch updated data
+        const result = await pool.query(
+            `SELECT
+                o.id, o.cargo_name, o.payment_type,
+                o.total_estimated_price, o.derived_status, o.notes,
+                o.created_at,
+                c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,
+                COUNT(DISTINCT os.id) AS shipment_count,
+                SUM(os.estimated_price) AS total_shipment_price,
+                (SELECT SUM(e.amount) FROM expenses e WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = o.id)) AS total_expenses
+             FROM orders o
+             LEFT JOIN customers c ON c.id = o.customer_id
+             LEFT JOIN order_shipments os ON os.order_id = o.id
+             WHERE o.id = $1
+             GROUP BY o.id, c.full_name, c.company_name, c.phone`,
+            [orderId]
+        );
+
+        return result.rows[0];
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getAllOrders,
     getOrderShipments,
     createOrderWithShipments,
+    updateOrder,
 };

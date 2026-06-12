@@ -38,6 +38,10 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
     return accountantPaymentRepository.confirmDriverPayment(shipmentId, driverPaymentState, amount, paymentMethod, confirmedBy);
 };
 
+const updateOrder = async (orderId, orderData) => {
+    return accountantOrderRepository.updateOrder(orderId, orderData);
+};
+
 const getVehicleDriverLookup = async () => {
     return accountantLookupRepository.getVehicleDriverLookup();
 };
@@ -51,4 +55,5 @@ module.exports = {
     recordPayment,
     confirmDriverPayment,
     getVehicleDriverLookup,
+    updateOrder,
 };
