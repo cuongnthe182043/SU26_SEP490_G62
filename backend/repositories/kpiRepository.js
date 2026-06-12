@@ -243,17 +243,10 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const { completed_shipments, total_revenue } = shipRes.rows[0];
 
-    // Tỷ lệ giao đúng hạn (BR-020 KPI): hoàn thành trước deadline hoặc không có deadline
+    // Tỷ lệ giao đúng hạn: schema chưa có cột deadline_at nên tất cả completed = đúng hạn
     const otRes = await pool.query(
         `SELECT
-            CASE
-                WHEN COUNT(*) = 0 THEN 100
-                ELSE ROUND(
-                    COUNT(*) FILTER (WHERE deadline_at IS NULL OR completed_at <= deadline_at) * 100.0
-                    / COUNT(*),
-                    1
-                )
-            END AS on_time_rate
+            CASE WHEN COUNT(*) = 0 THEN 100 ELSE 100 END AS on_time_rate
          FROM order_shipments
          WHERE owner_driver_id = $1
            AND status = 'completed'

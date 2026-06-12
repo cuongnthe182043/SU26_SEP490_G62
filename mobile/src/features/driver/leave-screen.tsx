@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, KeyboardAvoidingView,
     Platform, Pressable, RefreshControl, ScrollView,
     StyleSheet, TextInput, View,
 } from 'react-native';
@@ -146,21 +146,21 @@ function LeaveCard({ leave, onDelete }: { leave: LeaveRequest; onDelete: (id: nu
     );
 }
 
-// ─── Register leave modal ─────────────────────────────────────────────────────
+// ─── Register leave overlay ───────────────────────────────────────────────────
+// Dùng View + absoluteFill thay Modal — tránh Modal-in-Modal khi DateTimePicker mở
 
-function RegisterLeaveModal({ onClose, onSuccess }: {
+function RegisterLeaveOverlay({ onClose, onSuccess }: {
     onClose: () => void;
     onSuccess: () => void;
 }) {
-    const [date, setDate]       = useState<Date>(new Date());
-    const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
+    const [date, setDate]             = useState<Date>(new Date());
     const [leaveType, setLeaveType]   = useState<LeaveType>('unpaid');
-    const [reason, setReason]   = useState('');
+    const [reason, setReason]         = useState('');
     const { isSubmitting, error, submit } = useCreateLeave();
 
     const dateToIso = (d: Date) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const y  = d.getFullYear();
+        const m  = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         return `${y}-${m}-${dd}`;
     };
@@ -179,12 +179,14 @@ function RegisterLeaveModal({ onClose, onSuccess }: {
     };
 
     return (
-        <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-            <KeyboardAvoidingView
-                style={s.modalOverlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
-                <Pressable style={s.modalBackdrop} onPress={onClose} />
+        // absoluteFill + zIndex — không phải native Modal, DateTimePicker hoạt động đúng
+        <View style={[StyleSheet.absoluteFill, { zIndex: 200 }]}>
+            {/* Backdrop */}
+            <Pressable
+                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+                onPress={onClose}
+            />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <View style={s.modalSheet}>
                     <View style={s.handle} />
 
@@ -192,37 +194,22 @@ function RegisterLeaveModal({ onClose, onSuccess }: {
                         Đăng ký nghỉ
                     </Text>
 
-                    {/* Date picker */}
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={8}>
+                    {/* Date picker — spinner inline trên cả iOS lẫn Android */}
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={4}>
                         Ngày nghỉ
                     </Text>
-                    {Platform.OS === 'android' && !showPicker ? (
-                        <Pressable
-                            style={s.dateBtnRow}
-                            onPress={() => setShowPicker(true)}
-                        >
-                            <CalendarDays size={16} color={appTheme.colors.primary} />
-                            <Text fontSize={15} color={appTheme.colors.text}>
-                                {date.toLocaleDateString('vi-VN')}
-                            </Text>
-                        </Pressable>
-                    ) : null}
-                    {showPicker ? (
-                        <DateTimePicker
-                            value={date}
-                            mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            minimumDate={new Date()}
-                            locale="vi"
-                            onChange={(_, selected) => {
-                                setShowPicker(Platform.OS === 'ios');
-                                if (selected) setDate(selected);
-                            }}
-                        />
-                    ) : null}
+                    <DateTimePicker
+                        value={date}
+                        mode="date"
+                        display="spinner"
+                        minimumDate={new Date()}
+                        locale="vi"
+                        onChange={(_, selected) => { if (selected) setDate(selected); }}
+                        style={{ marginHorizontal: -8 }}
+                    />
 
                     {/* Leave type */}
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={16} marginBottom={8}>
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={8} marginBottom={8}>
                         Loại nghỉ
                     </Text>
                     <XStack gap={10}>
@@ -252,7 +239,7 @@ function RegisterLeaveModal({ onClose, onSuccess }: {
                     </XStack>
 
                     {/* Reason */}
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={16} marginBottom={8}>
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={14} marginBottom={8}>
                         Lý do (không bắt buộc)
                     </Text>
                     <TextInput
@@ -268,7 +255,7 @@ function RegisterLeaveModal({ onClose, onSuccess }: {
                         <Text fontSize={12} color={appTheme.colors.danger} marginTop={8}>{error}</Text>
                     ) : null}
 
-                    <XStack gap={10} marginTop={20}>
+                    <XStack gap={10} marginTop={16}>
                         <Pressable style={[s.actionBtn, s.cancelBtn]} onPress={onClose}>
                             <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Huỷ</Text>
                         </Pressable>
@@ -285,7 +272,7 @@ function RegisterLeaveModal({ onClose, onSuccess }: {
                     </XStack>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </View>
     );
 }
 
@@ -439,7 +426,7 @@ export function LeaveScreen() {
             </ScrollView>
 
             {showForm ? (
-                <RegisterLeaveModal
+                <RegisterLeaveOverlay
                     onClose={() => setShowForm(false)}
                     onSuccess={() => { setShowForm(false); reload(); }}
                 />
@@ -456,8 +443,6 @@ const s = StyleSheet.create({
         backgroundColor: appTheme.colors.primarySoft,
         alignItems: 'center', justifyContent: 'center',
     },
-    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
-    modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
     modalSheet: {
         backgroundColor: appTheme.colors.background,
         borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -467,12 +452,6 @@ const s = StyleSheet.create({
         width: 40, height: 4, borderRadius: 2,
         backgroundColor: appTheme.colors.border,
         alignSelf: 'center', marginBottom: 20,
-    },
-    dateBtnRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        padding: 14, borderRadius: 14,
-        borderWidth: 1.5, borderColor: appTheme.colors.primaryMuted,
-        backgroundColor: appTheme.colors.primarySoft,
     },
     typeBtn: {
         flex: 1, padding: 12, borderRadius: 14, alignItems: 'center', gap: 2,

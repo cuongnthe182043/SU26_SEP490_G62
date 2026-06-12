@@ -69,4 +69,49 @@ const cancelRepayment = async (req, res) => {
     }
 };
 
-module.exports = { getMyDebts, getMyDebtSummary, getDebtPayments, submitRepayment, cancelRepayment };
+// PATCH /api/debts/repayments/:paymentId/confirm  (accountant/manager)
+const confirmRepayment = async (req, res) => {
+    try {
+        const paymentId = Number(req.params.paymentId);
+        if (!paymentId) return res.status(400).json({ error: 'Payment ID không hợp lệ' });
+        const result = await debtService.confirmRepayment(paymentId, req.user.userId);
+        res.json({ message: 'Đã xác nhận thanh toán', ...result });
+    } catch (err) {
+        const code = err.message.includes('không tìm') || err.message.includes('Không tìm') ? 404
+            : err.message.includes('đã được xử lý') ? 409
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// PATCH /api/debts/repayments/:paymentId/reject  (accountant/manager)
+const rejectRepayment = async (req, res) => {
+    try {
+        const paymentId = Number(req.params.paymentId);
+        if (!paymentId) return res.status(400).json({ error: 'Payment ID không hợp lệ' });
+        const { reason } = req.body;
+        await debtService.rejectRepayment(paymentId, req.user.userId, reason);
+        res.json({ message: 'Đã từ chối yêu cầu nộp tiền' });
+    } catch (err) {
+        const code = err.message.includes('Không tìm') ? 404
+            : err.message.includes('đã được xử lý') ? 409
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// GET /api/debts/repayments/pending  (accountant/manager — xem tất cả yêu cầu pending)
+const getPendingRepayments = async (req, res) => {
+    try {
+        const data = await debtService.getPendingRepayments();
+        res.json({ repayments: data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+module.exports = {
+    getMyDebts, getMyDebtSummary, getDebtPayments,
+    submitRepayment, cancelRepayment,
+    confirmRepayment, rejectRepayment, getPendingRepayments,
+};
