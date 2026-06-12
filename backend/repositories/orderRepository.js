@@ -66,11 +66,17 @@ const selectOrderProjection = `
             json_build_object(
                 'vehicle_group_id', s_all.vehicle_group_id,
                 'plate', v_all.plate_number,
-                'distance', s_all.estimated_distance_km
+                'distance', s_all.estimated_distance_km,
+                'pickup_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'pickup' LIMIT 1),
+                'delivery_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'delivery' LIMIT 1),
+                'fare', s_all.estimated_price,
+                'status', s_all.status,
+                'driverName', d_all.full_name
             ) ORDER BY s_all.shipment_index ASC
         ) AS trips
         FROM order_shipments s_all
         LEFT JOIN vehicles v_all ON v_all.id = s_all.vehicle_id
+        LEFT JOIN profiles d_all ON d_all.id = s_all.owner_driver_id
         WHERE s_all.order_id = o.id
     ) all_shipments ON TRUE
 `;
@@ -631,7 +637,7 @@ const createOrderWithMultipleShipments = async ({
     };
 };
 
-//Phương thức tạo order dựa trên dữ liệu được 
+//Phương thức tạo order dựa trên dữ liệu được import 
 const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
     return createOrderWithShipment({
         client,
