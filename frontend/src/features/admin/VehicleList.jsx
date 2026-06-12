@@ -75,6 +75,11 @@ const normalizeBillPics = (value) => {
   return value.filter((item) => typeof item === "string" && item.trim());
 };
 
+const canAssignDriverToVehicle = (record) => record.status === "active";
+
+const canUnassignDriverFromVehicle = (record) =>
+  Boolean(record.assigned_driver_id) && ["active", "maintenance", "broken"].includes(record.status);
+
 const buildActionMenuItems = (record, handlers) => {
   const items = [
     {
@@ -93,7 +98,9 @@ const buildActionMenuItems = (record, handlers) => {
       key: "assign",
       icon: <UserSwitchOutlined />,
       label: record.assigned_driver_id ? "Unassign Driver" : "Assign Driver",
-      disabled: record.status !== "active",
+      disabled: record.assigned_driver_id
+        ? !canUnassignDriverFromVehicle(record)
+        : !canAssignDriverToVehicle(record),
       onClick: () => handlers.handleDriverToggle(record),
     },
   ];
@@ -208,7 +215,7 @@ export default function VehicleList() {
   };
 
   const maintenanceDriverSelectOptions = maintenanceDriverOptions.map((driver) => ({
-    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}`,
+    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}${driver.has_unverified_maintenance ? " - pending maintenance verification" : ""}`,
     value: driver.id,
     disabled: !driver.is_maintenance_eligible,
   }));
@@ -671,9 +678,6 @@ export default function VehicleList() {
           </Form.Item>
           <Form.Item label="Maintenance Date" name="maintenance_date" rules={[{ required: true, message: "Maintenance date is required" }]}>
             <Input type="date" />
-          </Form.Item>
-          <Form.Item label="Cost" name="cost">
-            <InputNumber style={{ width: "100%" }} min={0} precision={2} />
           </Form.Item>
           <Form.Item
             label="Performed By"

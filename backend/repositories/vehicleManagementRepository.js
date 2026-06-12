@@ -304,7 +304,8 @@ const getDriverById = async (driverId, db = pool) => {
             p.full_name,
             a.email,
             d.license_number,
-            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count,
+            COALESCE(unverified_maintenance.unverified_maintenance_count, 0)::int AS unverified_maintenance_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
@@ -314,6 +315,12 @@ const getDriverById = async (driverId, db = pool) => {
              WHERE os.owner_driver_id = d.profile_id
                AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
          ) active_shipments ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS unverified_maintenance_count
+             FROM maintenance_records mr
+             WHERE mr.performed_by = d.profile_id
+               AND mr.status IN ('open', 'pending_verification')
+         ) unverified_maintenance ON TRUE
          WHERE d.profile_id = $1`,
         [driverId],
     );
@@ -330,7 +337,8 @@ const listDriverOptions = async () => {
             d.vehicle_id AS current_vehicle_id,
             v.plate_number AS current_vehicle_plate,
             v.status AS current_vehicle_status,
-            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count
+            COALESCE(active_shipments.active_shipment_count, 0)::int AS active_shipment_count,
+            COALESCE(unverified_maintenance.unverified_maintenance_count, 0)::int AS unverified_maintenance_count
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id
@@ -341,6 +349,12 @@ const listDriverOptions = async () => {
              WHERE os.owner_driver_id = d.profile_id
                AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
          ) active_shipments ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS unverified_maintenance_count
+             FROM maintenance_records mr
+             WHERE mr.performed_by = d.profile_id
+               AND mr.status IN ('open', 'pending_verification')
+         ) unverified_maintenance ON TRUE
          ORDER BY p.full_name ASC, d.profile_id ASC`,
     );
     return result.rows;
@@ -702,6 +716,7 @@ const completeMaintenanceRecordAndSetStatus = async ({
     driverId,
     billPics = [],
     performedBy = null,
+    cost = null,
 }) => {
     const client = await pool.connect();
     try {
@@ -752,9 +767,10 @@ const completeMaintenanceRecordAndSetStatus = async ({
                  bill_pics = $2::jsonb,
                  completed_by = $3,
                  performed_by = COALESCE($4, performed_by),
+                 cost = COALESCE($5, cost),
                  updated_at = NOW()
              WHERE id = $1`,
-            [record.id, JSON.stringify(billPics), driverId, performedBy],
+            [record.id, JSON.stringify(billPics), driverId, performedBy, cost],
         );
 
         await client.query(
