@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Form, Input, InputNumber, Modal, Switch } from "antd";
+import { Form, Input, InputNumber, Modal } from "antd";
 
 export default function VehicleGroupModal({ open, onClose, onSubmit, editingGroup }) {
   const [form] = Form.useForm();
@@ -13,17 +13,11 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
         description: editingGroup.description || "",
         max_load_weight_kg: editingGroup.max_load_weight_kg ? Number(editingGroup.max_load_weight_kg) : null,
         price_per_km: Number(editingGroup.price_per_km),
-        depreciation_per_km: Number(editingGroup.depreciation_per_km || 0),
-        upgrade_allowed: Boolean(editingGroup.upgrade_allowed),
       });
       return;
     }
 
     form.resetFields();
-    form.setFieldsValue({
-      depreciation_per_km: 0,
-      upgrade_allowed: false,
-    });
   }, [editingGroup, form, open]);
 
   const handleOk = async () => {
@@ -68,18 +62,6 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
           rules={[{ required: true, message: "Price per km is required" }]}
         >
           <InputNumber style={{ width: "100%" }} min={0} precision={2} />
-        </Form.Item>
-
-        <Form.Item
-          label="Depreciation Per Km"
-          name="depreciation_per_km"
-          rules={[{ required: true, message: "Depreciation per km is required" }]}
-        >
-          <InputNumber style={{ width: "100%" }} min={0} precision={2} />
-        </Form.Item>
-
-        <Form.Item label="Upgrade Allowed" name="upgrade_allowed" valuePropName="checked">
-          <Switch />
         </Form.Item>
       </Form>
     </Modal>

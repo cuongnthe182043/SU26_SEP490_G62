@@ -87,4 +87,6 @@ export const apiClient = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   postForm: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: 'POST', body: formData }),
+  patchForm: <T>(path: string, formData: FormData) =>
+    request<T>(path, { method: 'PATCH', body: formData }),
 };

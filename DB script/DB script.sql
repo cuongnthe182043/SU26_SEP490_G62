@@ -46,7 +46,8 @@ CREATE TABLE vehicle_groups (
     description         TEXT,
     max_load_weight_kg  NUMERIC(10,2),
     price_per_km        NUMERIC(12,2) NOT NULL,
-    depreciation_per_km NUMERIC(10,2) NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'active'
+                            CHECK (status IN ('active','hidden')),
     upgrade_allowed     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -60,7 +61,7 @@ CREATE TABLE vehicles (
     load_capacity_kg    NUMERIC(10,2),
     manufacture_year    SMALLINT,
     purchase_date       DATE,
-    assigned_driver_id  INT REFERENCES profiles(id),   -- 1-1, enforced via drivers.vehicle_id UNIQUE
+    assigned_driver_id  INT REFERENCES profiles(id) UNIQUE,   -- 1-1, enforced via drivers.vehicle_id UNIQUE
     status              TEXT NOT NULL DEFAULT 'active'
                             CHECK (status IN ('active','retired','maintenance','broken')),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -318,14 +319,16 @@ CREATE TABLE maintenance_records (
     cost                NUMERIC(12,2),
     maintenance_date    DATE NOT NULL,
     next_due_date       DATE,
-    performed_by        TEXT,
+    performed_by        INT NOT NULL REFERENCES drivers(profile_id),
     status              TEXT NOT NULL DEFAULT 'open'
-                            CHECK (status IN ('open','completed')),
+                            CHECK (status IN ('open','pending_verification','completed')),
     started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at        TIMESTAMPTZ,
-    completion_note     TEXT,
+    bill_pics           JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_by          INT REFERENCES profiles(id),
     completed_by        INT REFERENCES profiles(id),
+    verified_by         INT REFERENCES profiles(id),
+    verified_at         TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -775,6 +778,7 @@ CREATE INDEX idx_logs_created_at          ON activity_logs(created_at DESC);
 
 CREATE INDEX idx_maintenance_vehicle_id   ON maintenance_records(vehicle_id);
 CREATE INDEX idx_maintenance_vehicle_open ON maintenance_records(vehicle_id, status);
+CREATE INDEX idx_maintenance_performed_by ON maintenance_records(performed_by);
 CREATE INDEX idx_vehicle_status_hist_vh   ON vehicle_status_history(vehicle_id, created_at DESC);
 
 CREATE VIEW v_leaderboard AS

@@ -72,4 +72,14 @@ export const tripService = {
     // Trạng thái tài chính chuyến — trip_value, cash_collected, remaining...
     getPaymentSummary: (tripId: number) =>
         apiClient.get<import('@/types/trip').PaymentSummary>(`/api/trips/${tripId}/payment-summary`),
+
+    // Danh sách ghi nhận tiền mặt của chuyến
+    getShipmentPayments: (tripId: number) =>
+        apiClient.get<{ payments: import('@/types/trip').ShipmentPayment[] }>(`/api/trips/${tripId}/payments`),
+
+    // Sửa ghi nhận tiền mặt (amount + thay ảnh nếu có)
+    updatePayment: (tripId: number, paymentId: number, formData: FormData) =>
+        apiClient.patchForm<{ message: string; payment: import('@/types/trip').ShipmentPayment }>(
+            `/api/trips/${tripId}/payments/${paymentId}`, formData,
+        ),
 };

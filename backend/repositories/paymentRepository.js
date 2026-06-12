@@ -90,4 +90,38 @@ const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }
     );
 };
 
-module.exports = { recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary, createDriverDebt };
+const getPaymentById = async (paymentId) => {
+    const result = await pool.query(
+        `SELECT sp.id, sp.shipment_id, sp.payment_type, sp.amount::text, sp.collected_by,
+                sp.notes, sp.collected_at,
+                COALESCE(json_agg(pr.file_url ORDER BY pr.uploaded_at) FILTER (WHERE pr.id IS NOT NULL), '[]'::json) AS receipt_urls
+         FROM shipment_payments sp
+         LEFT JOIN payment_receipts pr ON pr.payment_id = sp.id
+         WHERE sp.id = $1
+         GROUP BY sp.id`,
+        [paymentId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const updateShipmentPayment = async (paymentId, newAmount) => {
+    const result = await pool.query(
+        `UPDATE shipment_payments SET amount = $1 WHERE id = $2 RETURNING *`,
+        [newAmount, paymentId],
+    );
+    return result.rows[0];
+};
+
+const replacePaymentReceipts = async (paymentId, newFileUrl) => {
+    await pool.query(`DELETE FROM payment_receipts WHERE payment_id = $1`, [paymentId]);
+    const result = await pool.query(
+        `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2) RETURNING *`,
+        [paymentId, newFileUrl],
+    );
+    return result.rows[0];
+};
+
+module.exports = {
+    recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary,
+    createDriverDebt, getPaymentById, updateShipmentPayment, replacePaymentReceipts,
+};

@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { API_BASE_URL } from '@/constants/api';
 import { ERROR_MESSAGES } from '@/constants/error-messages';
+import { appEvents } from '@/lib/app-events';
 import { ApiError } from '@/lib/api-error';
 import { notificationService } from '@/services/notification-service';
 import { tokenStorage } from '@/services/token-storage';
@@ -178,6 +179,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         socket.onmessage = (event) => {
             try {
                 const payload = JSON.parse(String(event.data)) as NotificationEvent;
+                // Phát toàn bộ WS event ra app-events để các hook khác subscribe
+                appEvents.emit(payload.type, payload);
                 if (payload.type === 'notification.created') {
                     handleIncomingNotification(payload.notification);
                 }
