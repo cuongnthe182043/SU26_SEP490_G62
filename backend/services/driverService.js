@@ -9,6 +9,14 @@ const createError = (message, statusCode) => {
     return error;
 };
 
+const parsePositiveAmount = (value, fieldName) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw createError(`${fieldName} must be greater than 0`, 400);
+    }
+    return parsed;
+};
+
 const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const listMaintenanceForDriver = async (driverId) => {
@@ -71,6 +79,7 @@ const completeMaintenance = async (driverId, vehicleId) => {
     if (billPics.length === 0) {
         throw createError('At least one maintenance bill image is required before completion', 400);
     }
+    const cost = parsePositiveAmount(payload.cost, 'cost');
 
     await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
         vehicleId: parsedVehicleId,
@@ -78,6 +87,7 @@ const completeMaintenance = async (driverId, vehicleId) => {
         driverId,
         billPics,
         performedBy: driverId,
+        cost,
     });
 
     // Notify manager role via WS for real-time dashboard update
