@@ -710,6 +710,133 @@ const createMaintenanceRecordAndSetStatus = async ({
     }
 };
 
+const moveBrokenVehicleToMaintenance = async ({
+    vehicleId,
+    managerId,
+    maintenanceType,
+    description,
+    maintenanceDate,
+    nextDueDate = null,
+    performedBy = null,
+    note = null,
+    failureResolutionNote = null,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const openMaintenance = await hasOpenMaintenanceRecord(vehicleId, client);
+        if (openMaintenance) {
+            const err = new Error('Vehicle already has an active maintenance record');
+            err.code = 'OPEN_MAINTENANCE_EXISTS';
+            throw err;
+        }
+
+        const failureResult = await client.query(
+            `SELECT id
+             FROM incidents
+             WHERE vehicle_id = $1
+               AND shipment_id IS NULL
+               AND incident_type = 'vehicle_breakdown'
+               AND status IN ('open', 'investigating')
+             ORDER BY occurred_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const failure = failureResult.rows[0];
+        if (!failure) {
+            const err = new Error('Active breakdown incident not found');
+            err.code = 'OPEN_FAILURE_NOT_FOUND';
+            throw err;
+        }
+
+        await client.query(
+            `UPDATE incidents
+             SET status = 'resolved',
+                 resolution_note = $2,
+                 resolved_by = $3,
+                 resolved_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [failure.id, failureResolutionNote, managerId],
+        );
+
+        const maintenanceResult = await client.query(
+            `INSERT INTO maintenance_records (
+                vehicle_id,
+                maintenance_type,
+                description,
+                cost,
+                maintenance_date,
+                next_due_date,
+                performed_by,
+                status,
+                started_at,
+                created_by,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, NULL, $4, $5, $6, 'open', NOW(), $7, NOW(), NOW())
+            RETURNING id`,
+            [
+                vehicleId,
+                maintenanceType,
+                description,
+                maintenanceDate,
+                nextDueDate,
+                performedBy,
+                managerId,
+            ],
+        );
+        const maintenanceId = maintenanceResult.rows[0].id;
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'maintenance',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id,
+                action_type,
+                from_status,
+                to_status,
+                reference_type,
+                reference_id,
+                note,
+                created_by
+            )
+            VALUES ($1, 'send_to_maintenance', $2, 'maintenance', 'maintenance_record', $3, $4, $5)`,
+            [vehicleId, vehicle.status, maintenanceId, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId, previousStatus: vehicle.status, resolvedFailureId: failure.id };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const completeMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
@@ -1239,6 +1366,7 @@ module.exports = {
     updateVehicle,
     updateVehicleStatus,
     createMaintenanceRecordAndSetStatus,
+    moveBrokenVehicleToMaintenance,
     completeMaintenanceRecordAndSetStatus,
     verifyMaintenanceRecordAndSetStatus,
     createFailureRecordAndSetStatus,

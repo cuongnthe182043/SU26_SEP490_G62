@@ -369,7 +369,7 @@ const updateVehicle = async (vehicleId, payload) => {
 
 const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
-    ensureVehicleStatus(vehicle, ['active'], 'Send vehicle to maintenance');
+    ensureVehicleStatus(vehicle, ['active', 'broken'], 'Send vehicle to maintenance');
 
     const maintenanceType = String(payload.maintenance_type || '').trim();
     if (!MAINTENANCE_TYPES.includes(maintenanceType)) {
@@ -387,17 +387,39 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         resolvePreferredValue(payload.performed_by, vehicle.assigned_driver_id),
         { vehicle, required: true },
     );
+    const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
+    const note = normalizeString(payload.note) || description;
 
-    await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
-        vehicleId: vehicle.id,
-        managerId: parsePositiveInteger(managerId, 'manager_id'),
-        maintenanceType,
-        description,
-        maintenanceDate,
-        nextDueDate,
-        performedBy,
-        note: normalizeString(payload.note) || description,
-    });
+    if (vehicle.status === 'broken') {
+        if (!vehicle.active_failure_id) {
+            throw createError('Cannot send broken vehicle to maintenance without an open breakdown incident', 409);
+        }
+
+        await vehicleManagementRepository.moveBrokenVehicleToMaintenance({
+            vehicleId: vehicle.id,
+            managerId: parsedManagerId,
+            maintenanceType,
+            description,
+            maintenanceDate,
+            nextDueDate,
+            performedBy,
+            note,
+            failureResolutionNote: normalizeString(payload.failure_resolution_note)
+                || normalizeString(payload.resolution_note)
+                || `Breakdown moved to maintenance: ${description}`,
+        });
+    } else {
+        await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
+            vehicleId: vehicle.id,
+            managerId: parsedManagerId,
+            maintenanceType,
+            description,
+            maintenanceDate,
+            nextDueDate,
+            performedBy,
+            note,
+        });
+    }
 
     return getVehicleDetail(vehicle.id);
 };
@@ -538,6 +560,7 @@ const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
 
     switch (`${vehicle.status}->${nextStatus}`) {
     case 'active->maintenance':
+    case 'broken->maintenance':
         return sendVehicleToMaintenance(vehicle.id, managerId, payload);
     case 'maintenance->active':
         return verifyMaintenance(vehicle.id, managerId, payload);

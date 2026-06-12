@@ -158,4 +158,59 @@ describe('Vehicle Management Service', () => {
         assert.strictEqual(drivers[0].is_assignable, false);
         assert.strictEqual(drivers[0].has_unverified_maintenance, true);
     });
+
+    it('should allow sending a broken vehicle to maintenance when breakdown is still open', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 18,
+            plate_number: '51A-00018',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            active_failure_id: 44,
+            status: 'broken',
+        }));
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            vehicle_id: 18,
+            active_shipment_count: 0,
+            unverified_maintenance_count: 0,
+        }));
+        mock.method(vehicleManagementRepository, 'moveBrokenVehicleToMaintenance', async () => ({}));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+
+        await vehicleManagementService.sendVehicleToMaintenance(18, 3, {
+            maintenance_type: 'repair',
+            description: 'Repair after breakdown',
+            maintenance_date: '2026-06-12',
+            performed_by: 7,
+        });
+
+        assert.strictEqual(vehicleManagementRepository.moveBrokenVehicleToMaintenance.mock.calls.length, 1);
+    });
+
+    it('should reject sending a broken vehicle to maintenance when no open breakdown incident exists', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 19,
+            plate_number: '51A-00019',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            active_failure_id: null,
+            status: 'broken',
+        }));
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            vehicle_id: 19,
+            active_shipment_count: 0,
+            unverified_maintenance_count: 0,
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.sendVehicleToMaintenance(19, 3, {
+                maintenance_type: 'repair',
+                description: 'Repair after breakdown',
+                maintenance_date: '2026-06-12',
+                performed_by: 7,
+            }),
+            (err) => err.statusCode === 409 && err.message === 'Cannot send broken vehicle to maintenance without an open breakdown incident',
+        );
+    });
 });

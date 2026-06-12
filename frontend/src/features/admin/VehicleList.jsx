@@ -94,16 +94,25 @@ const buildActionMenuItems = (record, handlers) => {
       label: "Edit",
       onClick: () => handlers.handleOpenEdit(record),
     },
-    {
+  ];
+
+  if (record.assigned_driver_id) {
+    items.push({
+      key: "unassign",
+      icon: <UserSwitchOutlined />,
+      label: "Unassign Driver",
+      disabled: !canUnassignDriverFromVehicle(record),
+      onClick: () => handlers.handleDriverToggle(record),
+    });
+  } else {
+    items.push({
       key: "assign",
       icon: <UserSwitchOutlined />,
-      label: record.assigned_driver_id ? "Unassign Driver" : "Assign Driver",
-      disabled: record.assigned_driver_id
-        ? !canUnassignDriverFromVehicle(record)
-        : !canAssignDriverToVehicle(record),
+      label: "Assign Driver",
+      disabled: !canAssignDriverToVehicle(record),
       onClick: () => handlers.handleDriverToggle(record),
-    },
-  ];
+    });
+  }
 
   if (record.status === "active") {
     items.push(
@@ -139,12 +148,20 @@ const buildActionMenuItems = (record, handlers) => {
   }
 
   if (record.status === "broken") {
-    items.push({
-      key: "restore",
-      icon: <ToolOutlined />,
-      label: "Restore",
-      onClick: () => handlers.handleRestore(record),
-    });
+    items.push(
+      {
+        key: "maintenance",
+        icon: <ToolOutlined />,
+        label: "Send to Maintenance",
+        onClick: () => handlers.handleSendToMaintenance(record),
+      },
+      {
+        key: "restore",
+        icon: <ToolOutlined />,
+        label: "Restore",
+        onClick: () => handlers.handleRestore(record),
+      }
+    );
   }
 
   return items;
