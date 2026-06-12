@@ -151,6 +151,16 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [expandedRows, setExpandedRows] = useState(new Set());
+
+  const toggleRow = (orderId) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -1003,47 +1013,82 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </tr>
                 ) : (
                   filteredTrips.map((trip) => (
-                    <tr key={trip.id} className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
-                      <td>
-                        <span className="trip-id">
-                          #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
-                        </span>
-                      </td>
-                      <td>{trip.date || "-"}</td>
-                      <td>{trip.plate || "-"}</td>
-                      <td>{trip.driverName || "Unassigned"}</td>
-                      <td>{trip.customerName || "-"}</td>
-                      <td className="table-route-cell">{trip.route || "-"}</td>
-                      <td>{trip.distance || "-"}</td>
-                      <td>
-                        {typeof trip.fare === "number"
-                          ? trip.fare.toLocaleString("vi-VN") + " đ"
-                          : trip.fare || "-"}
-                      </td>
-                      <td className="table-address-cell">{trip.notes}</td>
-                      <td>
-                        <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
-                          {trip.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
-                            ✎
-                          </button>
-                          <button
-                            className="table-cancel-btn"
-                            type="button"
-                            aria-label="Cancel order"
-                            title="Hủy đơn"
-                            disabled={!canCancelTrip(trip)}
-                            onClick={() => handleCancelOrder(trip)}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={trip.id}>
+                      <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
+                        <td>
+                          {trip.trips && trip.trips.length > 1 && (
+                            <button
+                              onClick={() => toggleRow(trip.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: 8, color: '#18227f', fontWeight: 'bold' }}
+                            >
+                              {expandedRows.has(trip.id) ? '▼' : '▶'}
+                            </button>
+                          )}
+                          <span className="trip-id">
+                            #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
+                          </span>
+                        </td>
+                        <td>{trip.date || "-"}</td>
+                        <td>{trip.plate || "-"}</td>
+                        <td>{trip.driverName || "Unassigned"}</td>
+                        <td>{trip.customerName || "-"}</td>
+                        <td className="table-route-cell">{trip.route || "-"}</td>
+                        <td>{trip.distance || "-"}</td>
+                        <td>
+                          {typeof trip.fare === "number"
+                            ? trip.fare.toLocaleString("vi-VN") + " đ"
+                            : trip.fare || "-"}
+                        </td>
+                        <td className="table-address-cell">{trip.notes}</td>
+                        <td>
+                          <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
+                            {trip.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="table-actions">
+                            <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
+                              ✎
+                            </button>
+                            <button
+                              className="table-cancel-btn"
+                              type="button"
+                              aria-label="Cancel order"
+                              title="Hủy đơn"
+                              disabled={!canCancelTrip(trip)}
+                              onClick={() => handleCancelOrder(trip)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedRows.has(trip.id) && trip.trips && trip.trips.length > 1 && trip.trips.map((subTrip, idx) => (
+                        <tr key={`${trip.id}-sub-${idx}`} style={{ backgroundColor: '#f9faff' }}>
+                          <td style={{ paddingLeft: 40, color: '#6b7280', fontSize: 13 }}>↳ Chuyến {idx + 1}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>-</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.plate || "-"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.driverName || "Chưa gán"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{trip.customerName }</td>
+                          <td className="table-route-cell" style={{ color: '#6b7280', fontSize: 13 }}>
+                            {subTrip.pickup_address && subTrip.delivery_address ? `${subTrip.pickup_address} - ${subTrip.delivery_address}` : "-"}
+                          </td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.distance || "-"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>
+                            {typeof subTrip.fare === "number"
+                              ? subTrip.fare.toLocaleString("vi-VN") + " đ"
+                              : subTrip.fare || "-"}
+                          </td>
+                          <td className="table-address-cell" style={{ color: '#6b7280', fontSize: 13 }}>-</td>
+                          <td>
+                            <span className={`trip-status status-${(subTrip.status || trip.status || "").toLowerCase()}`}>
+                              {subTrip.status || trip.status}
+                            </span>
+                          </td>
+                          <td></td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
