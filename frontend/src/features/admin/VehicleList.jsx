@@ -232,7 +232,7 @@ export default function VehicleList() {
   };
 
   const maintenanceDriverSelectOptions = maintenanceDriverOptions.map((driver) => ({
-    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}${driver.has_unverified_maintenance ? " - pending maintenance verification" : ""}`,
+    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}${driver.has_unverified_maintenance ? " - during other maintenance" : ""}`,
     value: driver.id,
     disabled: !driver.is_maintenance_eligible,
   }));
@@ -532,13 +532,13 @@ export default function VehicleList() {
     && !vehicleGroups.some((group) => Number(group.id) === Number(editingVehicle.vehicle_group_id));
   const selectableVehicleGroups = currentEditingGroupMissing
     ? [
-        ...vehicleGroups,
-        {
-          id: editingVehicle.vehicle_group_id,
-          name: editingVehicle.vehicle_group_name || `Group #${editingVehicle.vehicle_group_id}`,
-          status: editingVehicle.vehicle_group_status || "hidden",
-        },
-      ]
+      ...vehicleGroups,
+      {
+        id: editingVehicle.vehicle_group_id,
+        name: editingVehicle.vehicle_group_name || `Group #${editingVehicle.vehicle_group_id}`,
+        status: editingVehicle.vehicle_group_status || "hidden",
+      },
+    ]
     : vehicleGroups;
 
   return (
