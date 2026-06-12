@@ -516,6 +516,7 @@ const createOrderWithMultipleShipments = async ({
 }) => {
     const totalEstimatedPrice = shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0);
 
+    //Insert into order 
     const orderResult = await client.query(
         `INSERT INTO orders
             (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
@@ -533,12 +534,14 @@ const createOrderWithMultipleShipments = async ({
         ],
     );
 
+    //Get exactly order to insert into order_shipment 
     const order = orderResult.rows[0];
     const createdShipments = [];
 
     for (let i = 0; i < shipmentsDataArray.length; i++) {
-        const shipmentData = shipmentsDataArray[i];
-        const shipmentResult = await client.query(
+        const shipmentData = shipmentsDataArray[i];//Có hàng tại vị trí i
+
+        const shipmentResult = await client.query(// ghi 1 lần và lấy bảng ordershipment 
             `INSERT INTO order_shipments
                 (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))
@@ -560,8 +563,7 @@ const createOrderWithMultipleShipments = async ({
             ],
         );
 
-        const shipment = shipmentResult.rows[0];
-        createdShipments.push(shipment);
+        const shipment = shipmentResult.rows[0]; //hàng 1 của order_shipment 
 
         await insertStops(
             client,
