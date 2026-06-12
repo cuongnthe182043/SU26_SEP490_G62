@@ -536,8 +536,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at, partner_name, total_actual_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), $9, $10)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -548,6 +548,8 @@ const createOrderWithMultipleShipments = async ({
             totalEstimatedPrice,
             orderData.notes,
             orderData.created_at || null,
+            orderData.partner_name || null,
+            orderData.total_actual_price || 0,
         ],
     );
 
@@ -561,8 +563,8 @@ const createOrderWithMultipleShipments = async ({
 
         const shipmentResult = await client.query(// ghi 1 lần và lấy bản ghi ordershipment vừa tạo 
             `INSERT INTO order_shipments
-                (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))
+                (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, actual_price)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()), $14)
              RETURNING *`,
             [
                 order.id,
@@ -578,6 +580,7 @@ const createOrderWithMultipleShipments = async ({
                 shipmentData.status,
                 shipmentData.notes,
                 shipmentData.created_at || null,
+                orderData.total_actual_price || 0,
             ],
         );
 
@@ -667,6 +670,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         distance,
         delivery_at,
         date,
+        partner_name,
+        total_actual_price,
     } = payload;
 
     const client = await pool.connect();
@@ -687,6 +692,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                  total_estimated_price = COALESCE($4, total_estimated_price),
                  notes = $5,
+                 partner_name = COALESCE($7, partner_name),
+                 total_actual_price = COALESCE($8, total_actual_price),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -697,6 +704,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 totalEstimatedPrice !== null ? totalEstimatedPrice : undefined,
                 orderNotes,
                 customer?.id ?? null,
+                partner_name !== undefined ? partner_name : null,
+                total_actual_price !== undefined ? total_actual_price : 0,
             ],
         );
 
@@ -725,6 +734,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                              estimated_price = COALESCE($5, estimated_price),
                              estimated_distance_km = COALESCE($6, estimated_distance_km),
                              delivery_at = COALESCE($7, delivery_at),
+                             actual_price = COALESCE($8, actual_price),
                              updated_at = NOW()
                          WHERE id = $1`,
                         [
@@ -735,6 +745,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
                             deliveryAt,
+                            total_actual_price !== undefined ? total_actual_price : 0,
                         ],
                     );
 
