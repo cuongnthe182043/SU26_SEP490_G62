@@ -145,7 +145,7 @@ CREATE TABLE order_shipments (
     vehicle_id          INT REFERENCES vehicles(id),
     estimated_price     NUMERIC(12,2),
     estimated_distance_km NUMERIC(10,2),
-    delivery_at         TIMESTAMPTZ,
+    actual_distance_km NUMERIC(10,2),
     actual_price        NUMERIC(12,2),
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),

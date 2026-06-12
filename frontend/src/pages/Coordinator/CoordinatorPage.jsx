@@ -3,16 +3,15 @@ import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
 import { message as toast } from "antd";
 
+//Đặt yêu cầu cho empty form 
 const emptyForm = {
   date: "",
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
-  pickup_address: "",
-  delivery_address: "",
   note: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "" }]
+  trips: [{ vehicle_group_id: "", plate: "", distance: "" , pickup_address: "", delivery_address: "",}]
 };
 
 const requiredFields = [
@@ -88,14 +87,14 @@ function extractDistance(notes) {
 function buildTripFromOrder(order) {
   const pickupAddress = order.pickup_address || "";
   const deliveryAddress = order.delivery_address || "";
-  const deliveryAt = order.delivery_at;
-  const date = (deliveryAt ? new Date(deliveryAt).toLocaleDateString('vi-VN') : "");
+  const arrivedAt = order.arrived_at;
+  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: order.delivery_at ? String(order.delivery_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
+    dateInput: order.arrived_at ? String(order.arrived_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
     checkIn: "",
     plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",
@@ -342,10 +341,11 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   const addTrip = () => {
-    setForm((current) => ({
-      ...current,
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" }]
-    }));
+    setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
+      ...current,//Tạo object mới có thông tin từ form 
+      //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" , pickup_address: "", delivery_address: ""}]
+    })); 
   };
 
   const removeTrip = (index) => {
@@ -496,7 +496,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         cargo_weight_kg: form.cargo_weight_kg,
         pickup_address: form.pickup_address,
         delivery_address: form.delivery_address,
-        delivery_at: form.date,
+        arrived_at: form.date,
         notes: form.note,
         trips: form.trips,
       };
@@ -791,6 +791,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                         </button>
                       )}
                     </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                       <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>Nhóm xe</span>
@@ -808,10 +809,12 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <option key={group.id} value={group.id}>{group.name}</option>
                           ))}
                         </select>
+
                         {formErrors[`trip_${index}_vehicle_group_id`] && (
                           <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
                         )}
                       </label>
+
                       <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>BKS</span>
                         <select
@@ -830,6 +833,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           <div className="field-error">{formErrors[`trip_${index}_plate`]}</div>
                         )}
                       </label>
+
                       <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>Quãng đường (km)</span>
                         <input
