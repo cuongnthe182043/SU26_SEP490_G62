@@ -179,6 +179,26 @@ const confirmDriverPayment = async (req, res) => {
     }
 };
 
+const updateOrder = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (Number.isNaN(orderId)) {
+            return res.status(400).json({ error: "Invalid order id" });
+        }
+        const { customer_name, customer_phone, customer_company, notes } = req.body;
+        const updatedOrder = await accountantOrderService.updateOrder(orderId, {
+            customer_name,
+            customer_phone,
+            customer_company,
+            notes,
+        });
+        res.json({ message: "Order updated successfully", order: updatedOrder });
+    } catch (err) {
+        console.error("Error updating accountant order:", err);
+        res.status(500).json({ error: err.message || "Failed to update order" });
+    }
+};
+
 module.exports = {
     getOrders,
     getShipments,
@@ -188,4 +208,5 @@ module.exports = {
     getPayments,
     createPayment,
     confirmDriverPayment,
+    updateOrder,
 };
