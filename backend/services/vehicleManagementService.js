@@ -116,6 +116,10 @@ const ensureVehicleNotRetired = (vehicle, actionName) => {
     }
 };
 
+const driverHasUnverifiedMaintenance = (driver) => Number(driver?.unverified_maintenance_count || 0) > 0;
+
+const driverHasActiveShipments = (driver) => Number(driver?.active_shipment_count || 0) > 0;
+
 const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existingVehicle = null } = {}) => {
     const plateNumber = String(payload.plate_number || '').trim();
     if (!plateNumber) throw createError('plate_number is required', 400);
@@ -146,10 +150,19 @@ const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existin
     }
 
     const assignedDriverId = parsePositiveInteger(payload.assigned_driver_id, 'assigned_driver_id', { required: false });
+    const isCurrentVehicleDriver = existingVehicle?.assigned_driver_id !== null
+        && existingVehicle?.assigned_driver_id !== undefined
+        && Number(existingVehicle.assigned_driver_id) === assignedDriverId;
 
     if (assignedDriverId !== null) {
         const driver = await vehicleManagementRepository.getDriverById(assignedDriverId);
         if (!driver) throw createError('Assigned driver does not exist', 400);
+        if (driverHasActiveShipments(driver) && !isCurrentVehicleDriver) {
+            throw createError('Assigned driver must not have active shipments', 409);
+        }
+        if (driverHasUnverifiedMaintenance(driver) && !isCurrentVehicleDriver) {
+            throw createError('Assigned driver has an unverified maintenance record and cannot be assigned yet', 409);
+        }
 
         if (driver.vehicle_id && Number(driver.vehicle_id) !== Number(vehicleId)) {
             throw createError('Assigned driver is already assigned to another vehicle', 409);
@@ -262,12 +275,29 @@ const getVehicleDetail = async (vehicleId) => {
     };
 };
 
-const validateAssignableDriver = async (assignedDriverId, vehicleId = null) => {
+const validateAssignableDriver = async (
+    assignedDriverId,
+    {
+        vehicleId = null,
+        allowCurrentVehicleDriver = false,
+        currentAssignedDriverId = null,
+    } = {},
+) => {
     const parsedDriverId = parsePositiveInteger(assignedDriverId, 'assigned_driver_id', { required: false });
     if (parsedDriverId === null) return null;
 
     const driver = await vehicleManagementRepository.getDriverById(parsedDriverId);
     if (!driver) throw createError('Assigned driver does not exist', 400);
+    const isCurrentVehicleDriver = allowCurrentVehicleDriver
+        && currentAssignedDriverId !== null
+        && currentAssignedDriverId !== undefined
+        && Number(currentAssignedDriverId) === parsedDriverId;
+    if (driverHasActiveShipments(driver) && !isCurrentVehicleDriver) {
+        throw createError('Assigned driver must not have active shipments', 409);
+    }
+    if (driverHasUnverifiedMaintenance(driver) && !isCurrentVehicleDriver) {
+        throw createError('Assigned driver has an unverified maintenance record and cannot be assigned yet', 409);
+    }
     if (driver.vehicle_id && Number(driver.vehicle_id) !== Number(vehicleId)) {
         throw createError('Assigned driver is already assigned to another vehicle', 409);
     }
@@ -282,19 +312,10 @@ const validateMaintenanceDriver = async (performedBy, { vehicle = null, currentP
     const driver = await vehicleManagementRepository.getDriverById(parsedDriverId);
     if (!driver) throw createError('performed_by driver does not exist', 400);
 
-    const isAssignedVehicleDriver = vehicle?.assigned_driver_id !== null
-        && vehicle?.assigned_driver_id !== undefined
-        && Number(vehicle.assigned_driver_id) === parsedDriverId;
-    const isCurrentPerformedDriver = currentPerformedById !== null
-        && currentPerformedById !== undefined
-        && Number(currentPerformedById) === parsedDriverId;
-    const hasActiveShipments = Number(driver.active_shipment_count || 0) > 0;
+    const hasActiveShipments = driverHasActiveShipments(driver);
 
-    if (hasActiveShipments && !isAssignedVehicleDriver && !isCurrentPerformedDriver) {
-        throw createError(
-            'performed_by must be the assigned vehicle driver or a driver without active shipments',
-            409,
-        );
+    if (hasActiveShipments) {
+        throw createError('performed_by driver must not have active shipments', 409);
     }
 
     return parsedDriverId;
@@ -331,6 +352,17 @@ const updateVehicle = async (vehicleId, payload) => {
         existingVehicle,
     });
 
+    const driverAssignmentChanged = Number(existingVehicle.assigned_driver_id || 0) !== Number(normalizedPayload.assigned_driver_id || 0);
+    if (driverAssignmentChanged) {
+        if (normalizedPayload.assigned_driver_id === null) {
+            if (!['active', 'maintenance', 'broken'].includes(existingVehicle.status)) {
+                throw createError(`Cannot unassign a driver when vehicle status is ${existingVehicle.status}`, 409);
+            }
+        } else if (existingVehicle.status !== 'active') {
+            throw createError(`Cannot assign a driver when vehicle status is ${existingVehicle.status}`, 409);
+        }
+    }
+
     await vehicleManagementRepository.updateVehicle(id, normalizedPayload);
     return getVehicleDetail(id);
 };
@@ -351,7 +383,6 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
 
     const maintenanceDate = parseNullableDate(payload.maintenance_date, 'maintenance_date') || new Date().toISOString().slice(0, 10);
     const nextDueDate = parseNullableDate(payload.next_due_date, 'next_due_date');
-    const cost = parseNullableNumber(payload.cost, 'cost', { min: 0 });
     const performedBy = await validateMaintenanceDriver(
         resolvePreferredValue(payload.performed_by, vehicle.assigned_driver_id),
         { vehicle, required: true },
@@ -365,7 +396,6 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         maintenanceDate,
         nextDueDate,
         performedBy,
-        cost,
         note: normalizeString(payload.note) || description,
     });
 
@@ -528,11 +558,30 @@ const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
     const id = parsePositiveInteger(vehicleId, 'vehicle_id');
     const existingVehicle = await vehicleManagementRepository.getVehicleById(id);
     if (!existingVehicle) throw createError('Vehicle not found', 404);
-    if (existingVehicle.status !== 'active') {
+
+    const assignedDriverId = payload.assigned_driver_id === undefined ? undefined : payload.assigned_driver_id;
+    const parsedAssignedDriverId = parsePositiveInteger(assignedDriverId, 'assigned_driver_id', { required: false });
+    const isUnassignAction = parsedAssignedDriverId === null;
+
+    if (assignedDriverId === undefined) {
+        throw createError('assigned_driver_id is required', 400);
+    }
+
+    if (isUnassignAction) {
+        if (!['active', 'maintenance', 'broken'].includes(existingVehicle.status)) {
+            throw createError(`Cannot unassign a driver when vehicle status is ${existingVehicle.status}`, 409);
+        }
+    } else if (existingVehicle.status !== 'active') {
         throw createError(`Cannot assign a driver when vehicle status is ${existingVehicle.status}`, 409);
     }
 
-    const assignedDriverId = await validateAssignableDriver(payload.assigned_driver_id, id);
+    const nextAssignedDriverId = isUnassignAction
+        ? null
+        : await validateAssignableDriver(parsedAssignedDriverId, {
+            vehicleId: id,
+            allowCurrentVehicleDriver: true,
+            currentAssignedDriverId: existingVehicle.assigned_driver_id,
+        });
 
     await vehicleManagementRepository.updateVehicle(id, {
         plate_number: existingVehicle.plate_number,
@@ -542,7 +591,7 @@ const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
         load_capacity_kg: existingVehicle.load_capacity_kg,
         manufacture_year: existingVehicle.manufacture_year,
         purchase_date: existingVehicle.purchase_date,
-        assigned_driver_id: assignedDriverId,
+        assigned_driver_id: nextAssignedDriverId,
     });
 
     return getVehicleDetail(id);
@@ -565,12 +614,18 @@ const listAssignableDrivers = async (vehicleId = null) => {
     const drivers = await vehicleManagementRepository.listDriverOptions();
     return drivers.map((driver) => ({
         ...driver,
-        is_assignable: !driver.current_vehicle_id || Number(driver.current_vehicle_id) === Number(currentVehicleId),
-        has_active_shipment: Number(driver.active_shipment_count || 0) > 0,
+        is_assignable: (
+            (vehicle && Number(vehicle.assigned_driver_id) === Number(driver.id))
+            || (
+                (!driver.current_vehicle_id || Number(driver.current_vehicle_id) === Number(currentVehicleId))
+                && !driverHasActiveShipments(driver)
+                && !driverHasUnverifiedMaintenance(driver)
+            )
+        ),
+        has_active_shipment: driverHasActiveShipments(driver),
+        has_unverified_maintenance: driverHasUnverifiedMaintenance(driver),
         is_selected_vehicle_driver: vehicle ? Number(vehicle.assigned_driver_id) === Number(driver.id) : false,
-        is_maintenance_eligible: vehicle
-            ? Number(vehicle.assigned_driver_id) === Number(driver.id) || Number(driver.active_shipment_count || 0) === 0
-            : Number(driver.active_shipment_count || 0) === 0,
+        is_maintenance_eligible: !driverHasActiveShipments(driver),
     }));
 };
 

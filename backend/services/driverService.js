@@ -7,6 +7,14 @@ const createError = (message, statusCode) => {
     return error;
 };
 
+const parsePositiveAmount = (value, fieldName) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw createError(`${fieldName} must be greater than 0`, 400);
+    }
+    return parsed;
+};
+
 const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
@@ -30,7 +38,7 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
 };
 
-const completeMaintenance = async (driverId, vehicleId) => {
+const completeMaintenance = async (driverId, vehicleId, payload = {}) => {
     const parsedVehicleId = Number(vehicleId);
     if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
         throw createError('vehicle_id must be a positive integer', 400);
@@ -45,6 +53,7 @@ const completeMaintenance = async (driverId, vehicleId) => {
     if (billPics.length === 0) {
         throw createError('At least one maintenance bill image is required before completion', 400);
     }
+    const cost = parsePositiveAmount(payload.cost, 'cost');
 
     await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
         vehicleId: parsedVehicleId,
@@ -52,6 +61,7 @@ const completeMaintenance = async (driverId, vehicleId) => {
         driverId,
         billPics,
         performedBy: driverId,
+        cost,
     });
 
     return { maintenanceRecordId: record.id };
