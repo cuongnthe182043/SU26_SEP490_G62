@@ -303,7 +303,7 @@ const importExcel = async (userId, fileBuffer) => {
           cargo_weight_kg: null,
           estimated_price: fare || 0,
           estimated_distance_km: distanceValue,
-          delivery_at: date,
+          arrived_at: date,
           plate_number: vehicle?.plate_number || plate,
           status: shipmentStatus,
           payment_type: 'cash',
