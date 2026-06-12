@@ -595,8 +595,7 @@ const createOrderWithMultipleShipments = async ({
                     assignmentData.driver_id,
                     assignmentData.vehicle_id,
                     assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                    assignmentData.assigned_by ?? null,
-                    assignmentData
+                    assignmentData.assigned_by ?? null
                 ],
             );
         }
@@ -605,8 +604,8 @@ const createOrderWithMultipleShipments = async ({
         await insertStops(//Chèn vào bảng trip stop 
             client,
             shipment.id,
-            assignmentData.pickup_address,
-            assignmentData.delivery_address,
+            shipmentData.pickup_address,
+            shipmentData.delivery_address,
             orderData.customer_name,
             orderData.customer_phone,
             shipmentData.notes
@@ -739,16 +738,16 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                         ],
                     );
 
-                    if (safeTrim(pickup_address)) {
+                    if (safeTrim(shipmentData.pickup_address)) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
-                            [existing.id, safeTrim(pickup_address)],
+                            [existing.id, safeTrim(shipmentData.pickup_address)],
                         );
                     }
-                    if (safeTrim(delivery_address)) {
+                    if (safeTrim(shipmentData.delivery_address)) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
-                            [existing.id, safeTrim(delivery_address)],
+                            [existing.id, safeTrim(shipmentData.delivery_address)],
                         );
                     }
                 } else if (!existing && shipmentData) {
@@ -775,8 +774,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     await insertStops(
                         client,
                         newShipmentId,
-                        safeTrim(pickup_address),
-                        safeTrim(delivery_address),
+                        safeTrim(shipmentData.pickup_address),
+                        safeTrim(shipmentData.delivery_address),
                         customer_name,
                         customer_phone,
                         orderNotes

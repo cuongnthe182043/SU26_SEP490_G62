@@ -141,7 +141,7 @@ const createOrder = async (userId, payload) => {
         const shipmentsDataArray = [];
 
         for (const trip of trips) {
-            const { plate, vehicle_group_id, distance } = trip;
+            const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
             const normalizedDistance = normalizeNumber(distance);
             if (normalizedDistance === null || normalizedDistance <= 0) {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
@@ -193,12 +193,14 @@ const createOrder = async (userId, payload) => {
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
                 notes: orderNotes,
+                pickup_address: safeTrim(trip_pickup || pickup_address),
+                delivery_address: safeTrim(trip_delivery || delivery_address),
                 assignmentData: finalDriverId && finalVehicleId ? {
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
                     assigned_by: userId,
-                    pickup_address: safeTrim(pickup_address),
-                    delivery_address: safeTrim(delivery_address),
+                    pickup_address: safeTrim(trip_pickup || pickup_address),
+                    delivery_address: safeTrim(trip_delivery || delivery_address),
                 } : null,
             });
         }
@@ -377,7 +379,7 @@ const updateOrder = async (orderId, payload) => {
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
 
         for (const trip of trips) {
-            const { plate, vehicle_group_id, distance } = trip;
+            const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
             const normalizedDistance = normalizeNumber(distance);
             
             if (normalizedDistance === null || normalizedDistance <= 0) {
@@ -407,6 +409,8 @@ const updateOrder = async (orderId, payload) => {
                 estimated_price: normalizedPrice,
                 estimated_distance_km: normalizedDistance,
                 plate_number: vehicle?.plate_number,
+                pickup_address: safeTrim(trip_pickup || pickup_address),
+                delivery_address: safeTrim(trip_delivery || delivery_address),
             });
         }
     
