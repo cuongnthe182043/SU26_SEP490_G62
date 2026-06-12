@@ -32,6 +32,7 @@ import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
 import { tripService }          from '@/services/trip-service';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
 import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import type { ActiveTrip, Expense, ShipmentPayment, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
@@ -300,7 +301,7 @@ function PaymentModal({
     onSuccess: () => void;
 }) {
     const { showToast } = useToast();
-    const [amount, setAmount] = useState('');
+    const { displayValue: amount, rawValue: parsed, onChangeText: onAmountBase } = useMoneyInput();
     const [notes,  setNotes]  = useState('');
 
     const { isLoading: paymentLoading, error: paymentError, recordPayment, clearError: clearPayment } = useRecordPayment(() => {
@@ -312,14 +313,11 @@ function PaymentModal({
         onSuccess();
     });
 
-    const isLoading  = paymentLoading || unpaidLoading;
-    const apiError   = paymentError ?? unpaidError;
-    const parsed     = Number(amount.replace(/\D/g, ''));
+    const isLoading = paymentLoading || unpaidLoading;
+    const apiError  = paymentError ?? unpaidError;
 
-    // Hiển thị số tiền có dấu chấm phân cách nghìn
     const handleAmountChange = (text: string) => {
-        const digits = text.replace(/\D/g, '');
-        setAmount(digits ? Number(digits).toLocaleString('vi-VN') : '');
+        onAmountBase(text);
         if (apiError) { clearPayment(); clearUnpaid(); }
     };
 
@@ -486,11 +484,8 @@ function EditPaymentModal({
     onSuccess: () => void;
 }) {
     const { showToast } = useToast();
-    const [amount, setAmount] = useState(
-        Number(payment.amount).toLocaleString('vi-VN'),
-    );
+    const { displayValue: amount, rawValue: parsed, onChangeText: onAmountBase } = useMoneyInput(Number(payment.amount));
     const [notes, setNotes] = useState(payment.notes ?? '');
-    const parsed = Number(amount.replace(/\D/g, ''));
 
     const { isLoading, error, updatePayment, clearError } = useUpdatePayment(() => {
         showToast({ type: 'success', message: 'Đã cập nhật ghi nhận tiền mặt' });
@@ -498,8 +493,7 @@ function EditPaymentModal({
     });
 
     const handleAmountChange = (text: string) => {
-        const digits = text.replace(/\D/g, '');
-        setAmount(digits ? Number(digits).toLocaleString('vi-VN') : '');
+        onAmountBase(text);
         if (error) clearError();
     };
 

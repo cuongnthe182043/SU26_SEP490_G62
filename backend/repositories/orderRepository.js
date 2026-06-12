@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
 const { ASSIGNMENT_TYPE } = require('../constants/tripConstants');
 
+
+//Query to list order specific detail
 const selectOrderProjection = `
     SELECT
         o.id,
@@ -21,7 +23,7 @@ const selectOrderProjection = `
         os.vehicle_group_id,
         os.owner_driver_id,
         os.estimated_distance_km,
-        os.delivery_at,
+        os.arrived_at,
         pickup.address AS pickup_address,
         delivery.address AS delivery_address,
         c.full_name AS customer_name,
@@ -64,22 +66,29 @@ const selectOrderProjection = `
             json_build_object(
                 'vehicle_group_id', s_all.vehicle_group_id,
                 'plate', v_all.plate_number,
-                'distance', s_all.estimated_distance_km
+                'distance', s_all.estimated_distance_km,
+                'pickup_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'pickup' LIMIT 1),
+                'delivery_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'delivery' LIMIT 1),
+                'fare', s_all.estimated_price,
+                'status', s_all.status,
+                'driverName', d_all.full_name
             ) ORDER BY s_all.shipment_index ASC
         ) AS trips
         FROM order_shipments s_all
         LEFT JOIN vehicles v_all ON v_all.id = s_all.vehicle_id
+        LEFT JOIN profiles d_all ON d_all.id = s_all.owner_driver_id
         WHERE s_all.order_id = o.id
     ) all_shipments ON TRUE
 `;
 
-
+//Chỉ lấy số nguyên dương 
 const parsePositiveInt = (value, fallback, max = 100) => {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
     return Math.min(parsed, max);
 };
 
+//List orders
 const listOrders = async ({
     page = 1,
     limit = 10,
@@ -89,9 +98,12 @@ const listOrders = async ({
     dateTo = '',
     customer = '',
 } = {}) => {
-    const normalizedPage = parsePositiveInt(page, 1, 1000000);
-    const normalizedLimit = parsePositiveInt(limit, 10, 100);
-    const offset = (normalizedPage - 1) * normalizedLimit;
+
+    const normalizedPage = parsePositiveInt(page, 1, 1000000);//số trang
+
+    const normalizedLimit = parsePositiveInt(limit, 10, 100);//số bản ghi 1 trang
+
+    const offset = (normalizedPage - 1) * normalizedLimit; //Dựa vào limit và page 
     const conditions = [];
     const params = [];
 
@@ -108,12 +120,12 @@ const listOrders = async ({
 
     if (dateFrom) {
         params.push(dateFrom);
-        conditions.push(`os.delivery_at::date >= $${params.length}::date`);
+        conditions.push(`os.arrived_at::date >= $${params.length}::date`);
     }
 
     if (dateTo) {
         params.push(dateTo);
-        conditions.push(`os.delivery_at::date <= $${params.length}::date`);
+        conditions.push(`os.arrived_at::date <= $${params.length}::date`);
     }
 
     if (customer) {
@@ -161,7 +173,7 @@ const listOrders = async ({
     };
 };
 
-
+//Lấy tài xế theo Id
 const getDriverById = async (client, driverId) => {
     if (!driverId) return null;
     const result = await client.query(
@@ -183,7 +195,7 @@ const getDriverById = async (client, driverId) => {
     return result.rows[0] ?? null;
 };
 
-//If vehicle group id is not selected, to set default but fe set auto when choose driver
+//Lấy Id nhóm xe
 const getDefaultVehicleGroupId = async (client) => {
     const result = await client.query(
         `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
@@ -191,7 +203,7 @@ const getDefaultVehicleGroupId = async (client) => {
     return result.rows[0]?.id ?? null;
 };
 
-//Get driver Infor if have plate 
+//Lấy thông tin lái xe theo BKS
 const getDriverByPlate = async (client, plateNumber) => {
     if (!plateNumber) return null;
     const result = await client.query(
@@ -212,7 +224,7 @@ const getDriverByPlate = async (client, plateNumber) => {
     );
     return result.rows[0] ?? null;
 };
-
+//Lấy xe theo BKS
 const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => {
     if (!plateNumber) return null;
     const params = [String(plateNumber).trim().toUpperCase()];
@@ -239,6 +251,7 @@ const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => 
     return result.rows[0] ?? null;
 };
 
+//Lấy loại xe 
 const getVehicleGroupById = async (client, vehicleGroupId) => {
     if (!vehicleGroupId) return null;
     const result = await client.query(
@@ -251,12 +264,14 @@ const getVehicleGroupById = async (client, vehicleGroupId) => {
     return result.rows[0] ?? null;
 };
 
+//Chọn loại xe rồi hiển thị các phương tiện 
 const listCoordinatorVehicleGroups = async () => {
     const result = await pool.query(
         `SELECT
             vg.id,
             vg.name,
             vg.price_per_km,
+
             COALESCE(
                 JSON_AGG(
                     JSON_BUILD_OBJECT(
@@ -267,6 +282,7 @@ const listCoordinatorVehicleGroups = async () => {
                 ) FILTER (WHERE v.id IS NOT NULL),
                 '[]'::json
             ) AS vehicles
+
          FROM vehicle_groups vg
          LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id AND v.status = 'active'
          GROUP BY vg.id
@@ -274,7 +290,8 @@ const listCoordinatorVehicleGroups = async () => {
     );
     return result.rows;
 };
-//Find driver by name
+
+//Tìm tài xế theo tên
 const findDriverByName = async (client, driverName) => {
     if (!driverName) return null;
     const result = await client.query(
@@ -297,6 +314,7 @@ const findDriverByName = async (client, driverName) => {
     return result.rows[0] ?? null;
 };
 
+//Tạo tài xế dựa trên import 
 const createImportedDriverAccount = async (client, driverName) => {
     const roleResult = await client.query(
         `SELECT id FROM roles WHERE name = 'driver' LIMIT 1`,
@@ -336,6 +354,7 @@ const createImportedDriverAccount = async (client, driverName) => {
     return accountId;
 };
 
+//Tìm hoặc tạo tài xế
 const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, vehicleGroupId }) => {
     const name = String(driverName || '').trim();
     const plate = String(plateNumber || '').trim().toUpperCase();
@@ -384,6 +403,7 @@ const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, 
     return getDriverById(client, driverId);
 };
 
+//Nếu sdt tồn tại trả về custormer, nếu ko tồn tại, tạo thêm customer 
 const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
     const normalizedPhone = normalizePhone(customerPhone);
     const normalizedName = safeTrim(customerName);
@@ -411,7 +431,7 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
     return createdCustomer.rows[0];
 };
 
-
+// phương thức thêm điểm đi và điểm dừng
 const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
     await client.query(
         `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
@@ -422,6 +442,7 @@ const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, c
     );
 };
 
+//Phương thức tạo order với 1 chuyến(cũ)
 const createOrderWithShipment = async ({
     client,
     userId,
@@ -429,6 +450,7 @@ const createOrderWithShipment = async ({
     shipmentData,
     assignmentData,
 }) => {
+    //Ghi vào order 
     const orderResult = await client.query(
         `INSERT INTO orders
             (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
@@ -446,10 +468,10 @@ const createOrderWithShipment = async ({
         ],
     );
 
-    const order = orderResult.rows[0];
+    const order = orderResult.rows[0]; 
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
+            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at)
          VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()))
          RETURNING *`,
         [
@@ -461,7 +483,7 @@ const createOrderWithShipment = async ({
             shipmentData.cargo_weight_kg,
             shipmentData.estimated_price,
             shipmentData.estimated_distance_km,
-            shipmentData.delivery_at || null,
+            shipmentData.arrived_at || null,
             shipmentData.status,
             shipmentData.notes,
             shipmentData.created_at || null,
@@ -500,7 +522,7 @@ const createOrderWithShipment = async ({
             delivery_address: shipmentData.delivery_address,
             status: shipmentData.status,
             estimated_distance_km: shipmentData.estimated_distance_km,
-            delivery_at: shipmentData.delivery_at,
+            arrived_at: shipmentData.arrived_at,
             plate_number: shipmentData.plate_number,
             driver_name: null,
         },
@@ -508,6 +530,7 @@ const createOrderWithShipment = async ({
     };
 };
 
+//Phương thức tạo order với 1 hoặc nhiều chuyến
 const createOrderWithMultipleShipments = async ({
     client,
     userId,
@@ -516,10 +539,11 @@ const createOrderWithMultipleShipments = async ({
 }) => {
     const totalEstimatedPrice = shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0);
 
+    //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, created_at, partner_name, total_actual_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), $9, $10)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -530,18 +554,23 @@ const createOrderWithMultipleShipments = async ({
             totalEstimatedPrice,
             orderData.notes,
             orderData.created_at || null,
+            orderData.partner_name || null,
+            orderData.total_actual_price || 0,
         ],
     );
 
-    const order = orderResult.rows[0];
+    
+    const order = orderResult.rows[0]; //Lấy order 
+
     const createdShipments = [];
 
-    for (let i = 0; i < shipmentsDataArray.length; i++) {
-        const shipmentData = shipmentsDataArray[i];
-        const shipmentResult = await client.query(
+    for (let i = 0; i < shipmentsDataArray.length; i++) {//Lặp qua mỗi object trong mảng shipmentsDataArray
+        const shipmentData = shipmentsDataArray[i];//Lấy object 
+
+        const shipmentResult = await client.query(// ghi 1 lần và lấy bản ghi ordershipment vừa tạo 
             `INSERT INTO order_shipments
-                (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))
+                (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, actual_price)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()), $14)
              RETURNING *`,
             [
                 order.id,
@@ -553,29 +582,20 @@ const createOrderWithMultipleShipments = async ({
                 shipmentData.cargo_weight_kg,
                 shipmentData.estimated_price,
                 shipmentData.estimated_distance_km,
-                shipmentData.delivery_at || null,
+                shipmentData.arrived_at || null,
                 shipmentData.status,
                 shipmentData.notes,
                 shipmentData.created_at || null,
+                orderData.total_actual_price || 0,
             ],
         );
 
-        const shipment = shipmentResult.rows[0];
-        createdShipments.push(shipment);
+        const shipment = shipmentResult.rows[0]; //hàng 1 của order_shipment 
 
-        await insertStops(
-            client,
-            shipment.id,
-            shipmentData.pickup_address,
-            shipmentData.delivery_address,
-            orderData.customer_name,
-            orderData.customer_phone,
-            shipmentData.notes
-        );
+        const assignmentData = shipmentData.assignmentData; //Lấy giá trị assignment Data trong object shipment Data
 
-        const assignmentData = shipmentData.assignmentData;
-        if (assignmentData?.driver_id && assignmentData?.vehicle_id) {
-            await client.query(
+        if (assignmentData?.driver_id && assignmentData?.vehicle_id) { //Kiểm tra null
+            await client.query(//Chèm vào shipment_assignment 
                 `INSERT INTO shipment_assignments
                     (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
                  VALUES ($1, $2, $3, $4, $5, NOW())`,
@@ -584,10 +604,21 @@ const createOrderWithMultipleShipments = async ({
                     assignmentData.driver_id,
                     assignmentData.vehicle_id,
                     assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                    assignmentData.assigned_by ?? null,
+                    assignmentData.assigned_by ?? null
                 ],
             );
         }
+
+        
+        await insertStops(//Chèn vào bảng trip stop 
+            client,
+            shipment.id,
+            shipmentData.pickup_address,
+            shipmentData.delivery_address,
+            orderData.customer_name,
+            orderData.customer_phone,
+            shipmentData.notes
+        );
     }
 
     return {
@@ -598,7 +629,7 @@ const createOrderWithMultipleShipments = async ({
             delivery_address: shipmentsDataArray[0]?.delivery_address,
             status: shipmentsDataArray[0]?.status,
             estimated_distance_km: shipmentsDataArray[0]?.estimated_distance_km,
-            delivery_at: shipmentsDataArray[0]?.delivery_at,
+            arrived_at: shipmentsDataArray[0]?.arrived_at,
             plate_number: shipmentsDataArray[0]?.plate_number,
             driver_name: null,
         },
@@ -606,6 +637,7 @@ const createOrderWithMultipleShipments = async ({
     };
 };
 
+//Phương thức tạo order dựa trên dữ liệu được import 
 const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
     return createOrderWithShipment({
         client,
@@ -618,7 +650,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
             owner_driver_id: shipmentData.owner_driver_id || null,
             vehicle_id: shipmentData.vehicle_id || null,
             estimated_distance_km: shipmentData.estimated_distance_km ?? null,
-            delivery_at: shipmentData.delivery_at || null,
+            arrived_at: shipmentData.arrived_at || null,
             plate_number: shipmentData.plate_number || null,
             status: shipmentData.status || 'available',
             created_at: shipmentData.created_at || null,
@@ -626,7 +658,8 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
     });
 };
 
-const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone) => {
+//Phương thức cập nhât order
+const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray) => {
     const {
         customer_name,
         customer_phone,
@@ -641,8 +674,10 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         vehicle_id,
         vehicle_group_id,
         distance,
-        delivery_at,
+        arrived_at,
         date,
+        partner_name,
+        total_actual_price,
     } = payload;
 
     const client = await pool.connect();
@@ -653,7 +688,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
             ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
             : null;
         const totalEstimatedPrice = shipmentsDataArray ? shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0) : null;
-        const deliveryAt = safeTrim(delivery_at || date) || null;
+        const arrivedAt = safeTrim(arrived_at || date) || null;
         const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
         const orderResult = await client.query(
@@ -663,6 +698,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  cargo_weight_kg = COALESCE($3, cargo_weight_kg),
                  total_estimated_price = COALESCE($4, total_estimated_price),
                  notes = $5,
+                 partner_name = COALESCE($7, partner_name),
+                 total_actual_price = COALESCE($8, total_actual_price),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -673,6 +710,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 totalEstimatedPrice !== null ? totalEstimatedPrice : undefined,
                 orderNotes,
                 customer?.id ?? null,
+                partner_name !== undefined ? partner_name : null,
+                total_actual_price !== undefined ? total_actual_price : 0,
             ],
         );
 
@@ -700,7 +739,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                              vehicle_id = COALESCE($4, vehicle_id),
                              estimated_price = COALESCE($5, estimated_price),
                              estimated_distance_km = COALESCE($6, estimated_distance_km),
-                             delivery_at = COALESCE($7, delivery_at),
+                             arrived_at = COALESCE($7, arrived_at),
+                             actual_price = COALESCE($8, actual_price),
                              updated_at = NOW()
                          WHERE id = $1`,
                         [
@@ -710,26 +750,27 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.vehicle_id,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            deliveryAt,
+                            arrivedAt,
+                            total_actual_price !== undefined ? total_actual_price : 0,
                         ],
                     );
 
-                    if (safeTrim(pickup_address)) {
+                    if (safeTrim(shipmentData.pickup_address)) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
-                            [existing.id, safeTrim(pickup_address)],
+                            [existing.id, safeTrim(shipmentData.pickup_address)],
                         );
                     }
-                    if (safeTrim(delivery_address)) {
+                    if (safeTrim(shipmentData.delivery_address)) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
-                            [existing.id, safeTrim(delivery_address)],
+                            [existing.id, safeTrim(shipmentData.delivery_address)],
                         );
                     }
                 } else if (!existing && shipmentData) {
                     const shipmentResult = await client.query(
                         `INSERT INTO order_shipments
-                            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, delivery_at, status, notes, created_at)
+                            (order_id, shipment_index, vehicle_group_id, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'available', $11, NOW())
                          RETURNING id`,
                         [
@@ -742,7 +783,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             orderResult.rows[0].cargo_weight_kg,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            deliveryAt,
+                            arrivedAt,
                             orderNotes,
                         ],
                     );
@@ -750,8 +791,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     await insertStops(
                         client,
                         newShipmentId,
-                        safeTrim(pickup_address),
-                        safeTrim(delivery_address),
+                        safeTrim(shipmentData.pickup_address),
+                        safeTrim(shipmentData.delivery_address),
                         customer_name,
                         customer_phone,
                         orderNotes
@@ -778,6 +819,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
     }
 };
 
+//Phương thức hủy order 
 const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
     const client = await pool.connect();
     try {
@@ -826,6 +868,7 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
     }
 };
 
+//Gửi phương thức ra ngoài 
 module.exports = {
     listOrders,
     getDriverById,
