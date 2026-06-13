@@ -391,13 +391,14 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
     );
     const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
     const note = normalizeString(payload.note) || description;
+    let maintenanceResult;
 
     if (vehicle.status === 'broken') {
         if (!vehicle.active_failure_id) {
             throw createError('Cannot send broken vehicle to maintenance without an open breakdown incident', 409);
         }
 
-        await vehicleManagementRepository.moveBrokenVehicleToMaintenance({
+        maintenanceResult = await vehicleManagementRepository.moveBrokenVehicleToMaintenance({
             vehicleId: vehicle.id,
             managerId: parsedManagerId,
             maintenanceType,
@@ -411,7 +412,7 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
                 || `Breakdown moved to maintenance: ${description}`,
         });
     } else {
-        await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
+        maintenanceResult = await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
             vehicleId: vehicle.id,
             managerId: parsedManagerId,
             maintenanceType,
@@ -422,17 +423,6 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
             note,
         });
     }
-    const maintenanceResult = await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
-        vehicleId: vehicle.id,
-        managerId: parsePositiveInteger(managerId, 'manager_id'),
-        maintenanceType,
-        description,
-        maintenanceDate,
-        nextDueDate,
-        performedBy,
-        cost,
-        note: normalizeString(payload.note) || description,
-    });
 
     // Notify driver via WS + persistent notification
     if (performedBy) {
