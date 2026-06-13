@@ -6,7 +6,6 @@ import {
   ChevronRight,
   DollarSign,
   FileText,
-  Layers,
   LayoutDashboard,
   Settings,
   Truck,
@@ -28,7 +27,6 @@ const MENU_CONFIG = {
   manager: [
     { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },
     { key: 'users', Icon: Users, label: 'Người dùng' },
-    { key: 'vehicle-groups', Icon: Layers, label: 'Nhóm xe' },
     { key: 'vehicles', Icon: Car, label: 'Quản lý xe' },
     { type: 'divider' },
     { key: 'settings', Icon: Settings, label: 'Cài đặt', disabled: true },
@@ -118,7 +116,8 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
       style={{
         width: collapsed ? 68 : 260,
         minWidth: collapsed ? 68 : 260,
-        height: '100vh',
+        minHeight: '100vh',
+        alignSelf: 'stretch',
         backgroundColor: BG,
         display: 'flex',
         flexDirection: 'column',

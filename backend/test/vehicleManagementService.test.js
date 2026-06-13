@@ -3,6 +3,8 @@ const assert = require('node:assert');
 
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
 const vehicleManagementService = require('../services/vehicleManagementService');
+const notificationService = require('../services/notificationService');
+const notificationGateway = require('../services/notificationGateway');
 
 describe('Vehicle Management Service', () => {
     afterEach(() => {
@@ -211,6 +213,322 @@ describe('Vehicle Management Service', () => {
                 performed_by: 7,
             }),
             (err) => err.statusCode === 409 && err.message === 'Cannot send broken vehicle to maintenance without an open breakdown incident',
+        );
+    });
+
+    it('should create an active vehicle with normalized payload and initial active status only', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupReferenceById', async () => ({ id: 2, name: 'Truck' }));
+        mock.method(vehicleManagementRepository, 'getVehicleByPlateNumber', async () => null);
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            vehicle_id: null,
+            active_shipment_count: 0,
+            unverified_maintenance_count: 0,
+        }));
+        mock.method(vehicleManagementRepository, 'createVehicle', async () => 22);
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 22,
+            plate_number: '51A-22222',
+            vehicle_group_id: 2,
+            brand: 'Hino',
+            model: '300',
+            load_capacity_kg: 3500,
+            manufacture_year: 2022,
+            purchase_date: '2022-01-01',
+            assigned_driver_id: 7,
+            status: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+
+        const vehicle = await vehicleManagementService.createVehicle({
+            plate_number: ' 51A-22222 ',
+            vehicle_group_id: '2',
+            brand: ' Hino ',
+            model: ' 300 ',
+            load_capacity_kg: '3500',
+            manufacture_year: '2022',
+            purchase_date: '2022-01-01',
+            assigned_driver_id: '7',
+        });
+
+        assert.strictEqual(vehicle.id, 22);
+        assert.strictEqual(vehicleManagementRepository.createVehicle.mock.calls.length, 1);
+        assert.deepStrictEqual(
+            vehicleManagementRepository.createVehicle.mock.calls[0].arguments[0],
+            {
+                plate_number: '51A-22222',
+                vehicle_group_id: 2,
+                brand: 'Hino',
+                model: '300',
+                load_capacity_kg: 3500,
+                manufacture_year: 2022,
+                purchase_date: '2022-01-01',
+                assigned_driver_id: 7,
+                status: 'active',
+            },
+        );
+    });
+
+    it('should reject creating a vehicle with a non-active initial status', async () => {
+        await assert.rejects(
+            () => vehicleManagementService.createVehicle({
+                plate_number: '51A-33333',
+                vehicle_group_id: 2,
+                status: 'maintenance',
+            }),
+            (err) => err.statusCode === 400 && err.message === 'Vehicle creation only supports initial status ACTIVE. Use manager actions for later lifecycle changes.',
+        );
+    });
+
+    it('should reject updating vehicle status directly', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 25,
+            plate_number: '51A-00025',
+            vehicle_group_id: 2,
+            brand: 'Isuzu',
+            model: 'NQR',
+            load_capacity_kg: 2000,
+            manufacture_year: 2020,
+            purchase_date: '2020-01-01',
+            assigned_driver_id: 7,
+            status: 'active',
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.updateVehicle(25, {
+                plate_number: '51A-00025',
+                vehicle_group_id: 2,
+                status: 'broken',
+            }),
+            (err) => err.statusCode === 400 && err.message === 'Vehicle status cannot be edited directly. Use lifecycle actions instead.',
+        );
+    });
+
+    it('should reject updating an active vehicle with a future manufacture year', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 26,
+            plate_number: '51A-00026',
+            vehicle_group_id: 2,
+            brand: 'Isuzu',
+            model: 'NQR',
+            load_capacity_kg: 2000,
+            manufacture_year: 2020,
+            purchase_date: '2020-01-01',
+            assigned_driver_id: 7,
+            status: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'getVehicleGroupReferenceById', async () => ({ id: 2, name: 'Truck' }));
+        mock.method(vehicleManagementRepository, 'getVehicleByPlateNumber', async () => null);
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            vehicle_id: 26,
+            active_shipment_count: 0,
+            unverified_maintenance_count: 0,
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.updateVehicle(26, {
+                plate_number: '51A-00026',
+                vehicle_group_id: 2,
+                assigned_driver_id: 7,
+                manufacture_year: new Date().getFullYear() + 1,
+            }),
+            (err) => err.statusCode === 400 && err.message === 'Manufacture year cannot be in the future',
+        );
+    });
+
+    it('should notify the assigned maintenance driver when sending an active vehicle to maintenance', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 27,
+            plate_number: '51A-00027',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            vehicle_id: 27,
+            active_shipment_count: 0,
+            unverified_maintenance_count: 0,
+        }));
+        mock.method(vehicleManagementRepository, 'createMaintenanceRecordAndSetStatus', async () => ({
+            maintenanceId: 91,
+            previousStatus: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(notificationService, 'createForUser', async () => ({}));
+        mock.method(notificationGateway, 'broadcastToUser', () => {});
+
+        await vehicleManagementService.sendVehicleToMaintenance(27, 3, {
+            maintenance_type: 'repair',
+            description: 'Replace brakes',
+            maintenance_date: '2026-06-13',
+            performed_by: 7,
+        });
+
+        assert.strictEqual(vehicleManagementRepository.createMaintenanceRecordAndSetStatus.mock.calls.length, 1);
+        assert.strictEqual(notificationService.createForUser.mock.calls.length, 1);
+        assert.strictEqual(notificationService.createForUser.mock.calls[0].arguments[0], 7);
+        assert.strictEqual(notificationGateway.broadcastToUser.mock.calls.length, 1);
+        assert.deepStrictEqual(notificationGateway.broadcastToUser.mock.calls[0].arguments, [
+            7,
+            {
+                type: 'maintenance.assigned',
+                vehicleId: 27,
+                maintenanceRecordId: 91,
+            },
+        ]);
+    });
+
+    it('should verify maintenance with the provided verification note', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 28,
+            plate_number: '51A-00028',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+            active_maintenance_id: 41,
+            active_maintenance_status: 'pending_verification',
+        }));
+        mock.method(vehicleManagementRepository, 'verifyMaintenanceRecordAndSetStatus', async () => ({
+            maintenanceId: 41,
+            previousStatus: 'maintenance',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+
+        await vehicleManagementService.verifyMaintenance(28, 3, {
+            maintenance_record_id: 41,
+            verification_note: 'All checks passed',
+        });
+
+        assert.strictEqual(vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus.mock.calls.length, 1);
+        assert.deepStrictEqual(
+            vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus.mock.calls[0].arguments[0],
+            {
+                vehicleId: 28,
+                maintenanceRecordId: 41,
+                managerId: 3,
+                note: 'All checks passed',
+            },
+        );
+    });
+
+    it('should reject verifying maintenance when no active maintenance record exists', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 29,
+            plate_number: '51A-00029',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+            active_maintenance_id: null,
+            active_maintenance_status: null,
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.verifyMaintenance(29, 3, {}),
+            (err) => err.statusCode === 404 && err.message === 'No active maintenance record found for this vehicle',
+        );
+    });
+
+    it('should map repository bill-required verification errors to a 400 response', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 30,
+            plate_number: '51A-00030',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+            active_maintenance_id: 42,
+            active_maintenance_status: 'pending_verification',
+        }));
+        mock.method(vehicleManagementRepository, 'verifyMaintenanceRecordAndSetStatus', async () => {
+            const error = new Error('bill required');
+            error.code = 'MAINTENANCE_BILL_REQUIRED';
+            throw error;
+        });
+
+        await assert.rejects(
+            () => vehicleManagementService.verifyMaintenance(30, 3, {}),
+            (err) => err.statusCode === 400 && err.message === 'Maintenance bill evidence is required before verification',
+        );
+    });
+
+    it('should route active to broken transitions through markVehicleAsBroken', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 31,
+            plate_number: '51A-00031',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'createFailureRecordAndSetStatus', async () => ({
+            failureId: 55,
+            previousStatus: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+
+        await vehicleManagementService.changeVehicleStatus(31, 3, {
+            status: 'broken',
+            failure_type: 'engine',
+            description: 'Engine overheated',
+            severity_level: 'high',
+        });
+
+        assert.strictEqual(vehicleManagementRepository.createFailureRecordAndSetStatus.mock.calls.length, 1);
+        assert.deepStrictEqual(
+            vehicleManagementRepository.createFailureRecordAndSetStatus.mock.calls[0].arguments[0],
+            {
+                vehicleId: 31,
+                managerId: 3,
+                failureType: 'engine',
+                description: 'Engine overheated',
+                severityLevel: 'high',
+                occurredAt: null,
+                note: 'Engine overheated',
+            },
+        );
+    });
+
+    it('should reject invalid status transitions', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 32,
+            plate_number: '51A-00032',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.changeVehicleStatus(32, 3, { status: 'broken' }),
+            (err) => err.statusCode === 409 && err.message === 'Invalid status transition from maintenance to broken',
+        );
+    });
+
+    it('should retire an active vehicle through changeVehicleStatus', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async (id) => ({
+            id,
+            plate_number: '51A-00033',
+            vehicle_group_id: 2,
+            assigned_driver_id: id === 33 ? 7 : null,
+            status: id === 33 ? 'active' : 'retired',
+        }));
+        mock.method(vehicleManagementRepository, 'retireVehicle', async () => ({
+            previousStatus: 'active',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+
+        await vehicleManagementService.changeVehicleStatus(33, 3, {
+            status: 'retired',
+            note: 'End of service life',
+        });
+
+        assert.strictEqual(vehicleManagementRepository.retireVehicle.mock.calls.length, 1);
+        assert.deepStrictEqual(
+            vehicleManagementRepository.retireVehicle.mock.calls[0].arguments[0],
+            {
+                vehicleId: 33,
+                managerId: 3,
+                note: 'End of service life',
+            },
         );
     });
 });
