@@ -95,6 +95,21 @@ const claimTrip = async (shipmentId, driverId) => {
         if (err.message === 'ACTIVE_TRIP') {
             throw new Error('Bạn đang có chuyến đang hoạt động, không thể nhận thêm chuyến mới');
         }
+        if (err.message === 'ACTIVE_VEHICLE_TRIP') {
+            throw new Error('Xe dang co chuyen dang hoat dong, khong the nhan them chuyen moi');
+        }
+        if (err.message === 'VEHICLE_UNAVAILABLE') {
+            throw new Error('Xe hien khong san sang cho van hanh');
+        }
+        if (err.message === 'VEHICLE_MAINTENANCE') {
+            throw new Error('Xe dang trong bao tri, khong the nhan chuyen');
+        }
+        if (err.message === 'DRIVER_VEHICLE_MISMATCH') {
+            throw new Error('Tai xe chua duoc gan hop le voi xe nay');
+        }
+        if (err.message === 'DRIVER_MAINTENANCE') {
+            throw new Error('Tai xe dang phu trach bao tri xe khac');
+        }
         if (err.message === 'SAME_ORDER') {
             throw new Error('SAME_ORDER:Bạn đã có một chuyến trong đơn hàng này rồi');
         }
