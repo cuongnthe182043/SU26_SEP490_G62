@@ -94,6 +94,14 @@ const listOrders = async (query = {}) => {
     return orderRepository.listOrders(query);
 };
 
+const ensureUniqueActiveAssignment = (seen, key, label) => {
+    if (!key) return;
+    if (seen.has(String(key))) {
+        throw new Error(`${label} da duoc gan cho mot chuyen khac trong cung yeu cau`);
+    }
+    seen.add(String(key));
+};
+
 const createOrder = async (userId, payload) => {
     const {
         date,
@@ -142,6 +150,8 @@ const createOrder = async (userId, payload) => {
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
 
         const shipmentsDataArray = [];
+        const usedVehicleIds = new Set();
+        const usedDriverIds = new Set();
 
         for (const trip of trips) {
             const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
@@ -179,6 +189,17 @@ const createOrder = async (userId, payload) => {
 
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
+            if (!finalDriverId || !finalVehicleId) {
+                throw new Error(`Xe ${vehicle.plate_number} chua co tai xe duoc gan`);
+            }
+
+            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
+                vehicleId: finalVehicleId,
+                driverId: finalDriverId,
+            });
+            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
+            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
+
             const shipmentStatus =
                 finalDriverId && finalVehicleId
                     ? SHIPMENT_STATUS.CLAIMED
@@ -388,8 +409,19 @@ const updateOrder = async (orderId, payload) => {
 
     try {
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const existingShipmentsRes = await dbClient.query(
+            `SELECT id
+             FROM order_shipments
+             WHERE order_id = $1
+             ORDER BY shipment_index ASC`,
+            [orderId],
+        );
+        const existingShipments = existingShipmentsRes.rows;
+        const usedVehicleIds = new Set();
+        const usedDriverIds = new Set();
 
-        for (const trip of trips) {
+        for (let index = 0; index < trips.length; index++) {
+            const trip = trips[index];
             const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
             const normalizedDistance = normalizeNumber(distance);
 
@@ -412,16 +444,35 @@ const updateOrder = async (orderId, payload) => {
             }
 
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+            const finalDriverId = vehicle?.assigned_driver_id ?? null;
+            const finalVehicleId = vehicle?.id ?? null;
+            if (!finalDriverId || !finalVehicleId) {
+                throw new Error(`Xe ${vehicle?.plate_number || plate} chua co tai xe duoc gan`);
+            }
+
+            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
+                vehicleId: finalVehicleId,
+                driverId: finalDriverId,
+                excludeShipmentId: existingShipments[index]?.id ?? null,
+            });
+            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
+            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
 
             shipmentsDataArray.push({
                 vehicle_group_id: finalVehicleGroupId,
-                owner_driver_id: vehicle?.assigned_driver_id ?? null,
-                vehicle_id: vehicle?.id ?? null,
+                owner_driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
                 estimated_price: normalizedPrice,
                 estimated_distance_km: normalizedDistance,
                 plate_number: vehicle?.plate_number,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
+                status: SHIPMENT_STATUS.CLAIMED,
+                assignmentData: {
+                    driver_id: finalDriverId,
+                    vehicle_id: finalVehicleId,
+                    assigned_by: payload.updated_by ?? null,
+                },
             });
         }
 
