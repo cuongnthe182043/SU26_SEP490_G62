@@ -147,6 +147,68 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     try {
         await client.query('BEGIN');
 
+        const vehicleCheck = await client.query(
+            `SELECT
+                v.id,
+                v.plate_number,
+                v.status,
+                v.assigned_driver_id,
+                d.vehicle_id AS driver_vehicle_id
+             FROM vehicles v
+             JOIN drivers d ON d.profile_id = $2
+             WHERE v.id = $1
+             LIMIT 1`,
+            [vehicleId, driverId],
+        );
+        const vehicle = vehicleCheck.rows[0];
+        if (!vehicle || Number(vehicle.assigned_driver_id) !== Number(driverId) || Number(vehicle.driver_vehicle_id) !== Number(vehicleId)) {
+            await client.query('ROLLBACK');
+            throw new Error('DRIVER_VEHICLE_MISMATCH');
+        }
+        if (vehicle.status !== 'active') {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_UNAVAILABLE');
+        }
+
+        const vehicleMaintenanceCheck = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [vehicleId],
+        );
+        if (vehicleMaintenanceCheck.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_MAINTENANCE');
+        }
+
+        const driverMaintenanceCheck = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE performed_by = $1
+               AND vehicle_id <> $2
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [driverId, vehicleId],
+        );
+        if (driverMaintenanceCheck.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('DRIVER_MAINTENANCE');
+        }
+
+        const activeVehicleCheck = await client.query(
+            `SELECT id FROM order_shipments
+             WHERE vehicle_id = $1
+               AND status = ANY($2::text[])
+             LIMIT 1`,
+            [vehicleId, ACTIVE_STATUSES],
+        );
+        if (activeVehicleCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw new Error('ACTIVE_VEHICLE_TRIP');
+        }
+
         const activeCheck = await client.query(
             `SELECT id FROM order_shipments
              WHERE owner_driver_id = $1

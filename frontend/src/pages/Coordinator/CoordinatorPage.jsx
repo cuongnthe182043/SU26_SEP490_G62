@@ -88,31 +88,56 @@ function extractDistance(notes) {
 }
 
 function buildTripFromOrder(order) {
-  const pickupAddress = order.pickup_address || "";
-  const deliveryAddress = order.delivery_address || "";
-  const arrivedAt = order.arrived_at;
-  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
-
-  const trips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+  const sourceTrips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [];
+  const trips = sourceTrips.length > 0 ? sourceTrips.map((trip, index) => ({
+    shipment_id: trip.shipment_id || "",
+    shipment_index: trip.shipment_index || index + 1,
+    vehicle_group_id: trip.vehicle_group_id || "",
+    owner_driver_id: trip.owner_driver_id || "",
+    vehicle_id: trip.vehicle_id || "",
+    plate: trip.plate || "",
+    distance: trip.distance ?? "",
+    arrived_at: trip.arrived_at || "",
+    pickup_address: trip.pickup_address || "",
+    delivery_address: trip.delivery_address || "",
+    fare: trip.fare ?? "",
+    status: trip.status || "",
+    driverName: trip.driverName || "",
+  })) : [{
+    shipment_id: order.shipment_id || "",
+    shipment_index: 1,
     vehicle_group_id: order.vehicle_group_id || "",
+    owner_driver_id: order.owner_driver_id || "",
+    vehicle_id: order.vehicle_id || "",
     plate: order.plate_number || "",
     distance: order.estimated_distance_km || "",
-    pickup_address: pickupAddress,
-    delivery_address: deliveryAddress
+    arrived_at: order.arrived_at || "",
+    pickup_address: order.pickup_address || "",
+    delivery_address: order.delivery_address || "",
+    fare: order.estimated_price || order.total_estimated_price || "",
+    status: order.status || "",
+    driverName: order.driver_name || "",
   }];
 
+  const firstTrip = trips[0] || {};
+  const pickupAddress = firstTrip.pickup_address || order.pickup_address || "";
+  const deliveryAddress = firstTrip.delivery_address || order.delivery_address || "";
+  const arrivedAt = firstTrip.arrived_at || order.arrived_at;
+  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
+
   const totalDistance = trips.reduce((sum, t) => sum + (Number(t.distance) || 0), 0);
+  const totalFare = trips.reduce((sum, t) => sum + (Number(t.fare) || 0), 0);
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: order.arrived_at ? String(order.arrived_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
+    dateInput: arrivedAt ? String(arrivedAt).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
     checkIn: "",
-    plate: order.plate_number || "",
-    driverId: order.owner_driver_id || "",
-    vehicleGroupId: order.vehicle_group_id || "",
-    driverName: order.driver_name || "",
+    plate: firstTrip.plate || order.plate_number || "",
+    driverId: firstTrip.owner_driver_id || order.owner_driver_id || "",
+    vehicleGroupId: firstTrip.vehicle_group_id || order.vehicle_group_id || "",
+    driverName: firstTrip.driverName || order.driver_name || "",
     customerName: order.customer_name || "",
     customerPhone: order.customer_phone || "",
     cargoName: order.cargo_name || "",
@@ -121,8 +146,8 @@ function buildTripFromOrder(order) {
     deliveryAddress,
     route: (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
     distance: totalDistance || order.estimated_distance_km || "",
-    fare: order.estimated_price || order.total_estimated_price || 0,
-    status: order.status,
+    fare: totalFare || order.estimated_price || order.total_estimated_price || 0,
+    status: firstTrip.status || order.status,
     notes: order.notes,
     is_partner: !!order.partner_name,
     partner_name: order.partner_name || "",
@@ -866,8 +891,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                           style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         >
                           <option value="">{trip.vehicle_group_id ? 'Chọn BKS' : 'Chọn nhóm xe trước'}</option>
+                          {trip.plate && !getAvailablePlates(trip.vehicle_group_id).some((v) => v.plate_number === trip.plate) && (
+                            <option value={trip.plate}>{trip.plate}</option>
+                          )}
                           {getAvailablePlates(trip.vehicle_group_id).map((v) => (
-                            <option key={v.id} value={v.plate_number}>{v.plate_number}</option>
+                            <option key={v.id} value={v.plate_number}>
+                              {v.assigned_driver_name ? `${v.plate_number} - ${v.assigned_driver_name}` : v.plate_number}
+                            </option>
                           ))}
                         </select>
                         {formErrors[`trip_${index}_plate`] && (
