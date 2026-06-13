@@ -290,7 +290,7 @@ export function DriverHomeScreen() {
 
                 {/* Incident summary — BR spec §5 */}
                 {open_incident_count > 0 ? (
-                    <Pressable onPress={() => router.push('/incidents')} style={{ borderRadius: appTheme.radius.lg }}>
+                    <Pressable onPress={() => router.push('/incident-history')} style={{ borderRadius: appTheme.radius.lg }}>
                         <XStack
                             padding={16} borderRadius={appTheme.radius.lg}
                             backgroundColor="#FFF7ED"
