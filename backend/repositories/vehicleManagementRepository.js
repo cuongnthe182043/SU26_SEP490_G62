@@ -20,7 +20,7 @@ const VEHICLE_GROUP_DETAIL_SELECT = `
 `;
 
 const ACTIVE_SHIPMENT_STATUS_CONDITION = `
-    os.status IN ('claimed', 'picking', 'loaded', 'transit', 'arrived', 'returning')
+    os.status IN ('claimed', 'picking', 'transit', 'arrived', 'returning')
 `;
 
 const VEHICLE_DETAIL_SELECT = `

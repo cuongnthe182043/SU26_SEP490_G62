@@ -149,7 +149,7 @@
 | Field | PDF | DB Thực tế |
 |-------|-----|-------------|
 | `pickup_address`, `delivery_address` | Có | ❌ Không có |
-| `actual_delivery_time` | Có | ❌ → tách thành nhiều timestamp: `picking_at`, `loaded_at`, `transit_at`, `arrived_at`, `completed_at`, `failed_at` |
+| `actual_delivery_time` | Có | ❌ → tách thành nhiều timestamp: `picking_at`, `transit_at`, `arrived_at`, `completed_at`, `failed_at` |
 | `customer_confirmed` | Có | ❌ Không có |
 | `vehicle_group_id` | Không | ✅ Có |
 | `owner_driver_id` | Không | ✅ Có |

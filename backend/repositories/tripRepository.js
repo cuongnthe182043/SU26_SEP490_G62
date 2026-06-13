@@ -24,6 +24,7 @@ const getDriverVehicleGroupId = async (driverId) => {
 const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = null } = {}) => {
     const offset = (page - 1) * limit;
 
+    // vehicle_group_id đã bị xoá khỏi order_shipments — lookup qua orders
     const rowsWhere  = vehicleGroupId
         ? `WHERE os.status = 'available' AND os.owner_driver_id IS NULL AND vg.id = $3`
         : `WHERE os.status = 'available' AND os.owner_driver_id IS NULL`;
@@ -57,7 +58,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
                 vg.max_load_weight_kg
              FROM order_shipments os
              JOIN orders o          ON o.id = os.order_id
-             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
              ${rowsWhere}
              ORDER BY os.created_at ASC
              LIMIT $1 OFFSET $2`,
@@ -66,7 +67,8 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
         pool.query(
             `SELECT COUNT(*)::int AS total
              FROM order_shipments os
-             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+             JOIN orders o ON o.id = os.order_id
+             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
              ${countWhere}`,
             countParams,
         ),
@@ -93,7 +95,6 @@ const getActiveTrip = async (driverId) => {
             os.version,
             os.claimed_at,
             os.picking_at,
-            os.loaded_at,
             os.transit_at,
             os.arrived_at,
             os.completed_at,
@@ -376,8 +377,8 @@ const updateTripStatus = async (tripId, newStatus, cancelReason = null) => {
                AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'pickup')`,
             [tripId],
         );
-    } else if (newStatus === 'loaded') {
-        // Driver đã lấy hàng xong → mark tất cả pickup stops là completed
+    } else if (newStatus === 'transit') {
+        // Driver bắt đầu vận chuyển → mark tất cả pickup stops là completed
         await pool.query(
             `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
              WHERE shipment_id = $1 AND stop_type = 'pickup' AND completed_at IS NULL`,
@@ -589,7 +590,7 @@ const getAvailableShipmentDetail = async (shipmentId) => {
              WHERE os2.order_id = os.order_id) AS total_order_legs
          FROM order_shipments os
          JOIN orders o          ON o.id = os.order_id
-         JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+         JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
          WHERE os.id = $1
            AND os.status = 'available'
            AND os.owner_driver_id IS NULL`,
@@ -627,7 +628,8 @@ const getAvailableOrderDetail = async (orderId) => {
             os.notes,
             vg.name AS vehicle_group_name
          FROM order_shipments os
-         JOIN vehicle_groups vg ON os.vehicle_group_id = vg.id
+         JOIN orders o2         ON o2.id = os.order_id
+         JOIN vehicle_groups vg ON vg.id = o2.vehicle_group_id
          WHERE os.order_id = $1
            AND os.status = 'available'
            AND os.owner_driver_id IS NULL
@@ -664,7 +666,6 @@ const getOrderWithShipments = async (orderId, driverId) => {
             os.cancel_reason,
             os.claimed_at,
             os.picking_at,
-            os.loaded_at,
             os.transit_at,
             os.arrived_at,
             os.completed_at,
