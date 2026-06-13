@@ -16,7 +16,9 @@ const selectOrderProjection = `
         o.partner_name,
         o.total_actual_price,
         o.derived_status,
+        o.derived_status AS order_status,
         os.status,
+        os.status AS first_shipment_status,
         o.notes,
         o.created_at,
         o.updated_at,
@@ -26,6 +28,7 @@ const selectOrderProjection = `
         os.owner_driver_id,
         os.estimated_distance_km,
         os.arrived_at,
+        os.trip_code,
         pickup.address AS pickup_address,
         delivery.address AS delivery_address,
         c.full_name AS customer_name,
@@ -69,6 +72,7 @@ const selectOrderProjection = `
                 'vehicle_group_id', s_all.vehicle_group_id,
                 'shipment_id', s_all.id,
                 'shipment_index', s_all.shipment_index,
+                'trip_code', s_all.trip_code,
                 'owner_driver_id', s_all.owner_driver_id,
                 'vehicle_id', s_all.vehicle_id,
                 'plate', v_all.plate_number,
@@ -121,18 +125,33 @@ const listOrders = async ({
             .filter(Boolean);
         if (statuses.length) {
             params.push(statuses);
-            conditions.push(`LOWER(os.status) = ANY($${params.length})`);
+            conditions.push(`EXISTS (
+                SELECT 1
+                FROM order_shipments os_status
+                WHERE os_status.order_id = o.id
+                  AND LOWER(os_status.status) = ANY($${params.length})
+            )`);
         }
     }
 
     if (dateFrom) {
         params.push(dateFrom);
-        conditions.push(`os.arrived_at::date >= $${params.length}::date`);
+        conditions.push(`EXISTS (
+            SELECT 1
+            FROM order_shipments os_date_from
+            WHERE os_date_from.order_id = o.id
+              AND os_date_from.arrived_at::date >= $${params.length}::date
+        )`);
     }
 
     if (dateTo) {
         params.push(dateTo);
-        conditions.push(`os.arrived_at::date <= $${params.length}::date`);
+        conditions.push(`EXISTS (
+            SELECT 1
+            FROM order_shipments os_date_to
+            WHERE os_date_to.order_id = o.id
+              AND os_date_to.arrived_at::date <= $${params.length}::date
+        )`);
     }
 
     if (customer) {
@@ -150,6 +169,21 @@ const listOrders = async ({
             OR LOWER(COALESCE(d.full_name, '')) LIKE $${params.length}
             OR LOWER(COALESCE(v.plate_number, '')) LIKE $${params.length}
             OR LOWER(COALESCE(os.status, '')) LIKE $${params.length}
+            OR EXISTS (
+                SELECT 1
+                FROM order_shipments os_search
+                LEFT JOIN vehicles v_search ON v_search.id = os_search.vehicle_id
+                LEFT JOIN profiles d_search ON d_search.id = os_search.owner_driver_id
+                LEFT JOIN trip_stops ts_search ON ts_search.shipment_id = os_search.id
+                WHERE os_search.order_id = o.id
+                  AND (
+                    LOWER(COALESCE(os_search.status, '')) LIKE $${params.length}
+                    OR LOWER(COALESCE(os_search.trip_code, '')) LIKE $${params.length}
+                    OR LOWER(COALESCE(v_search.plate_number, '')) LIKE $${params.length}
+                    OR LOWER(COALESCE(d_search.full_name, '')) LIKE $${params.length}
+                    OR LOWER(COALESCE(ts_search.address, '')) LIKE $${params.length}
+                  )
+            )
         )`);
     }
 
