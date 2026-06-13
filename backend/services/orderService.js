@@ -152,6 +152,7 @@ const createOrder = async (userId, payload) => {
         const shipmentsDataArray = [];
         const usedVehicleIds = new Set();
         const usedDriverIds = new Set();
+        let orderVehicleGroupId = null;
 
         for (const trip of trips) {
             const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
@@ -165,6 +166,7 @@ const createOrder = async (userId, payload) => {
             }
 
             const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
+            if (!orderVehicleGroupId) orderVehicleGroupId = finalVehicleGroupId;
 
             if (!finalVehicleGroupId) {
                 throw new Error('Chưa có nhóm xe trong hệ thống');
@@ -208,7 +210,6 @@ const createOrder = async (userId, payload) => {
             const orderNotes = notes !== undefined ? safeTrim(notes) : '';
 
             shipmentsDataArray.push({
-                vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
@@ -240,6 +241,7 @@ const createOrder = async (userId, payload) => {
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 payment_type: payload.payment_type,
+                vehicle_group_id: orderVehicleGroupId,
                 notes: notes !== undefined ? safeTrim(notes) : '',
                 partner_name: is_partner ? safeTrim(partner_name) : null,
                 total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
@@ -339,6 +341,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     pickup_address: pickupAddress,
                     delivery_address: deliveryAddress,
                     estimated_price: estimatedPrice,
+                    vehicle_group_id: finalVehicleGroupId,
                     notes,
                     status: shipmentStatus,
                 },
@@ -351,7 +354,6 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     arrived_at: date,
                     plate_number: plate,
                     notes,
-                    vehicle_group_id: finalVehicleGroupId,
                     owner_driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
                     status: shipmentStatus,
@@ -459,7 +461,6 @@ const updateOrder = async (orderId, payload) => {
             ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
 
             shipmentsDataArray.push({
-                vehicle_group_id: finalVehicleGroupId,
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
                 estimated_price: normalizedPrice,
