@@ -28,9 +28,11 @@ export function PhotoCaptureCard({ label, sublabel, uri, required, onCapture, on
                 <YStack flex={1} paddingHorizontal={12} paddingVertical={10} gap={3}>
                     <XStack alignItems="center" gap={6}>
                         <View style={s.doneDot} />
-                        <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>{label}</Text>
+                        <Text flex={1} fontSize={13} fontWeight="900" color={appTheme.colors.text} numberOfLines={2}>
+                            {label}
+                        </Text>
                     </XStack>
-                    <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={1}>{sublabel}</Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={2}>{sublabel}</Text>
                     <Pressable onPress={onCapture} hitSlop={6} style={s.retakeRow}>
                         <Camera size={12} color={appTheme.colors.primary} />
                         <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">Chụp lại</Text>
@@ -52,7 +54,7 @@ export function PhotoCaptureCard({ label, sublabel, uri, required, onCapture, on
                 borderColor={appTheme.colors.border}
                 backgroundColor={appTheme.colors.surfaceSoft}
                 padding={14}
-                alignItems="center"
+                alignItems="flex-start"
                 gap={12}
             >
                 <XStack
@@ -62,9 +64,9 @@ export function PhotoCaptureCard({ label, sublabel, uri, required, onCapture, on
                 >
                     <Camera size={22} color={appTheme.colors.primary} />
                 </XStack>
-                <YStack flex={1} gap={2}>
-                    <XStack alignItems="center" gap={6}>
-                        <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>{label}</Text>
+                <YStack flex={1} gap={8}>
+                    <XStack alignItems="center" gap={6} flexWrap="wrap">
+                        <Text flexShrink={1} fontSize={13} fontWeight="900" color={appTheme.colors.text}>{label}</Text>
                         {required ? (
                             <View style={s.requiredBadge}>
                                 <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
@@ -72,18 +74,31 @@ export function PhotoCaptureCard({ label, sublabel, uri, required, onCapture, on
                         ) : null}
                     </XStack>
                     <Text fontSize={11} color={appTheme.colors.textMuted}>{sublabel}</Text>
+                    <Pressable onPress={onCapture} hitSlop={6} style={s.captureBtn}>
+                        <Camera size={12} color={appTheme.colors.primary} />
+                        <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary}>Chụp</Text>
+                    </Pressable>
                 </YStack>
-                <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>Chụp</Text>
             </XStack>
         </Pressable>
     );
 }
 
 const s = StyleSheet.create({
-    thumb:    { width: 80, height: 80 },
-    doneDot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: appTheme.colors.success },
+    thumb: { width: 80, height: 80 },
+    doneDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: appTheme.colors.success },
     retakeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
     deleteBtn: { paddingHorizontal: 14, paddingVertical: 12 },
+    captureBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: appTheme.colors.primarySoft,
+    },
     requiredBadge: {
         paddingHorizontal: 6, paddingVertical: 2,
         borderRadius: 6, backgroundColor: '#fee2e2',

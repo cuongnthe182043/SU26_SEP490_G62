@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 import { Text, XStack } from 'tamagui';
+
 import { appTheme } from '@/theme/app-theme';
 
 type Tone = 'primary' | 'secondary' | 'danger';
@@ -42,7 +43,7 @@ export function LifecycleActionButton({ label, onPress, isLoading, disabled, ton
         <Pressable
             onPress={isDisabled ? undefined : onPress}
             style={({ pressed }) => ({
-                height: 52,
+                minHeight: 52,
                 borderRadius: appTheme.radius.md,
                 backgroundColor: isDisabled
                     ? appTheme.colors.border
@@ -53,15 +54,21 @@ export function LifecycleActionButton({ label, onPress, isLoading, disabled, ton
                 borderColor: isDisabled ? appTheme.colors.border : colors.border,
                 alignItems: 'center',
                 justifyContent: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
                 opacity: isDisabled ? 0.7 : 1,
             })}
         >
-            <XStack alignItems="center" gap={8}>
+            <XStack alignItems="center" justifyContent="center" gap={8} width="100%">
                 {icon}
                 <Text
+                    flex={1}
+                    flexShrink={1}
                     fontSize={14}
                     fontWeight="900"
                     color={isDisabled ? appTheme.colors.textMuted : colors.text}
+                    textAlign="center"
+                    numberOfLines={2}
                 >
                     {isLoading ? 'Đang xử lý...' : label}
                 </Text>

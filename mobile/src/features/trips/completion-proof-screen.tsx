@@ -10,21 +10,17 @@ import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
 import { useCompletionProof } from '@/hooks/use-completion-proof';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Slot = 'proof' | 'receipt';
 
 const SLOT_LABEL: Record<Slot, string> = {
-    proof:   'Xác nhận',
+    proof: 'Xác nhận',
     receipt: 'Biên lai',
 };
 
 const SLOT_GUIDE: Record<Slot, string> = {
-    proof:   'Chụp ảnh xác nhận giao hàng (người nhận / hàng tại điểm giao)',
+    proof: 'Chụp ảnh xác nhận giao hàng (người nhận / hàng tại điểm giao)',
     receipt: 'Chụp ảnh biên lai / hóa đơn có chữ ký của khách',
 };
-
-// ─── Thumbnail slot ───────────────────────────────────────────────────────────
 
 function ThumbSlot({
     label,
@@ -44,11 +40,9 @@ function ThumbSlot({
             {uri ? (
                 <>
                     <Image source={{ uri }} style={styles.slotImg} resizeMode="cover" />
-                    {/* Delete button */}
                     <Pressable onPress={onDelete} hitSlop={4} style={styles.slotDelete}>
                         <X size={10} color="#fff" />
                     </Pressable>
-                    {/* Done badge */}
                     <View style={styles.slotDone}>
                         <CheckCircle size={12} color="#fff" />
                     </View>
@@ -56,7 +50,9 @@ function ThumbSlot({
             ) : (
                 <YStack flex={1} alignItems="center" justifyContent="center" gap={2}>
                     <Camera size={18} color={active ? appTheme.colors.primary : 'rgba(255,255,255,0.45)'} />
-                    <Text fontSize={9} fontWeight="700"
+                    <Text
+                        fontSize={9}
+                        fontWeight="700"
                         color={active ? appTheme.colors.primary : 'rgba(255,255,255,0.45)'}
                         numberOfLines={1}
                     >
@@ -64,7 +60,6 @@ function ThumbSlot({
                     </Text>
                 </YStack>
             )}
-            {/* Active ring label below */}
             {active ? (
                 <View style={styles.slotActiveLabel}>
                     <Text fontSize={8} fontWeight="900" color={appTheme.colors.primary}>
@@ -76,14 +71,11 @@ function ThumbSlot({
     );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
-
 export function CompletionProofScreen() {
-    const { tripId, isFinal: isFinalParam } = useLocalSearchParams<{ tripId: string; isFinal: string }>();
+    const { tripId } = useLocalSearchParams<{ tripId: string }>();
     const tripIdNum = Number(tripId);
-    const isFinal   = isFinalParam === '1';
 
-    const [proofUri,   setProofUri]   = useState<string | null>(null);
+    const [proofUri, setProofUri] = useState<string | null>(null);
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [activeSlot, setActiveSlot] = useState<Slot>('proof');
 
@@ -94,13 +86,12 @@ export function CompletionProofScreen() {
         router.back();
     });
 
-    // Luôn hiện cả 2 slots: xác nhận giao + biên lai (bắt buộc cho mọi completion)
     const slots: Slot[] = ['proof', 'receipt'];
     const currentUri = activeSlot === 'proof' ? proofUri : receiptUri;
 
     const resolveActiveSlot = useCallback((newProof: string | null, newReceipt: string | null) => {
-        if (!newProof)    { setActiveSlot('proof');   return; }
-        if (!newReceipt)  { setActiveSlot('receipt'); return; }
+        if (!newProof) { setActiveSlot('proof'); return; }
+        if (!newReceipt) { setActiveSlot('receipt'); return; }
     }, []);
 
     const takePicture = useCallback(async () => {
@@ -137,8 +128,6 @@ export function CompletionProofScreen() {
 
     const allDone = !!proofUri && !!receiptUri;
 
-    // ── Permission screens ───────────────────────────────────────────────────
-
     if (!permission) {
         return (
             <YStack flex={1} backgroundColor="#000" alignItems="center" justifyContent="center">
@@ -164,16 +153,11 @@ export function CompletionProofScreen() {
         );
     }
 
-    // ── Camera layout ────────────────────────────────────────────────────────
-
     return (
         <View style={styles.container}>
             <StatusBar style="light" />
-
-            {/* Camera — always live, never unmounts */}
             <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
 
-            {/* Corner frame guides — visible when active slot is empty */}
             {!currentUri ? (
                 <View style={styles.frameContainer} pointerEvents="none">
                     <View style={[styles.corner, styles.cornerTL]} />
@@ -183,7 +167,6 @@ export function CompletionProofScreen() {
                 </View>
             ) : null}
 
-            {/* Top bar */}
             <View style={styles.topBar}>
                 <XStack paddingHorizontal={20} paddingTop={56} paddingBottom={14} alignItems="center" gap={12}>
                     <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconBtn}>
@@ -198,23 +181,20 @@ export function CompletionProofScreen() {
                 </XStack>
             </View>
 
-            {/* Bottom panel — overlaid on camera */}
             <View style={styles.bottomPanel}>
-                {/* Thumbnail strip */}
-                <XStack paddingHorizontal={20} gap={10} alignItems="flex-end">
-                    {slots.map((slot) => (
-                        <ThumbSlot
-                            key={slot}
-                            label={SLOT_LABEL[slot]}
-                            uri={slot === 'proof' ? proofUri : receiptUri}
-                            active={activeSlot === slot}
-                            onPress={() => setActiveSlot(slot)}
-                            onDelete={() => handleDelete(slot)}
-                        />
-                    ))}
-
-                    {/* Right side: confirm button (grows to fill) */}
-                    <View style={{ flex: 1 }} />
+                <YStack paddingHorizontal={20} gap={12}>
+                    <XStack gap={10} alignItems="flex-end" flexWrap="wrap">
+                        {slots.map((slot) => (
+                            <ThumbSlot
+                                key={slot}
+                                label={SLOT_LABEL[slot]}
+                                uri={slot === 'proof' ? proofUri : receiptUri}
+                                active={activeSlot === slot}
+                                onPress={() => setActiveSlot(slot)}
+                                onDelete={() => handleDelete(slot)}
+                            />
+                        ))}
+                    </XStack>
                     {allDone ? (
                         <Pressable
                             onPress={handleConfirm}
@@ -227,16 +207,14 @@ export function CompletionProofScreen() {
                             </Text>
                         </Pressable>
                     ) : null}
-                </XStack>
+                </YStack>
 
-                {/* Error */}
                 {error ? (
                     <View style={styles.errorBar}>
                         <Text fontSize={12} color="#fff">{error}</Text>
                     </View>
                 ) : null}
 
-                {/* Guide + Shutter */}
                 <YStack alignItems="center" gap={12} paddingBottom={44} paddingTop={16}>
                     <Text style={styles.guideText}>
                         {currentUri
@@ -259,47 +237,39 @@ export function CompletionProofScreen() {
     );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const C  = 28;
+const C = 28;
 const CT = 3;
 const SLOT_SIZE = 72;
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
-
-    // Frame guides
-    frameContainer: {
-        position: 'absolute', top: '22%', left: '10%', right: '10%', bottom: '28%',
-    },
-    corner:    { position: 'absolute', width: C, height: C, borderColor: 'rgba(255,255,255,0.9)' },
-    cornerTL:  { top: 0, left: 0, borderTopWidth: CT, borderLeftWidth: CT, borderTopLeftRadius: 4 },
-    cornerTR:  { top: 0, right: 0, borderTopWidth: CT, borderRightWidth: CT, borderTopRightRadius: 4 },
-    cornerBL:  { bottom: 0, left: 0, borderBottomWidth: CT, borderLeftWidth: CT, borderBottomLeftRadius: 4 },
-    cornerBR:  { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 4 },
-
-    // Top bar
-    topBar: {
-        position: 'absolute', top: 0, left: 0, right: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-    },
+    frameContainer: { position: 'absolute', top: '22%', left: '10%', right: '10%', bottom: '28%' },
+    corner: { position: 'absolute', width: C, height: C, borderColor: 'rgba(255,255,255,0.9)' },
+    cornerTL: { top: 0, left: 0, borderTopWidth: CT, borderLeftWidth: CT, borderTopLeftRadius: 4 },
+    cornerTR: { top: 0, right: 0, borderTopWidth: CT, borderRightWidth: CT, borderTopRightRadius: 4 },
+    cornerBL: { bottom: 0, left: 0, borderBottomWidth: CT, borderLeftWidth: CT, borderBottomLeftRadius: 4 },
+    cornerBR: { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 4 },
+    topBar: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
     iconBtn: {
-        width: 40, height: 40, borderRadius: 14,
+        width: 40,
+        height: 40,
+        borderRadius: 14,
         backgroundColor: 'rgba(255,255,255,0.18)',
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-
-    // Bottom panel
     bottomPanel: {
-        position: 'absolute', bottom: 0, left: 0, right: 0,
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
         backgroundColor: 'rgba(0,0,0,0.6)',
         paddingTop: 14,
         gap: 0,
     },
-
-    // Thumbnail slots
     slot: {
-        width: SLOT_SIZE, height: SLOT_SIZE,
+        width: SLOT_SIZE,
+        height: SLOT_SIZE,
         borderRadius: 12,
         borderWidth: 2,
         borderColor: 'rgba(255,255,255,0.3)',
@@ -310,46 +280,55 @@ const styles = StyleSheet.create({
         borderColor: appTheme.colors.primary,
         borderWidth: 2.5,
     },
-    slotImg: {
-        width: '100%', height: '100%',
-        borderRadius: 10,
-    },
+    slotImg: { width: '100%', height: '100%', borderRadius: 10 },
     slotDelete: {
-        position: 'absolute', top: -6, right: -6,
-        width: 20, height: 20, borderRadius: 10,
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         backgroundColor: appTheme.colors.danger,
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'center',
         zIndex: 10,
     },
     slotDone: {
-        position: 'absolute', bottom: 4, right: 4,
-        width: 18, height: 18, borderRadius: 9,
+        position: 'absolute',
+        bottom: 4,
+        right: 4,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
         backgroundColor: appTheme.colors.success,
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     slotActiveLabel: {
-        position: 'absolute', bottom: -16, left: 0, right: 0,
+        position: 'absolute',
+        bottom: -16,
+        left: 0,
+        right: 0,
         alignItems: 'center',
     },
-
-    // Confirm button (beside thumbnails)
     confirmBtn: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         backgroundColor: appTheme.colors.primary,
-        paddingHorizontal: 14, paddingVertical: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
         borderRadius: appTheme.radius.md,
-        alignSelf: 'flex-end',
-        marginBottom: 4,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
     },
-
-    // Error
     errorBar: {
-        marginHorizontal: 20, marginTop: 10,
-        padding: 10, borderRadius: 10,
+        marginHorizontal: 20,
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 10,
         backgroundColor: appTheme.colors.danger,
     },
-
-    // Shutter area
     guideText: {
         fontSize: 12,
         color: 'rgba(255,255,255,0.8)',
@@ -358,16 +337,26 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     shutterBtn: {
-        width: 76, height: 76, borderRadius: 38,
+        width: 76,
+        height: 76,
+        borderRadius: 38,
         backgroundColor: '#fff',
-        alignItems: 'center', justifyContent: 'center',
-        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
     },
     shutterInner: {
-        width: 62, height: 62, borderRadius: 31,
+        width: 62,
+        height: 62,
+        borderRadius: 31,
         backgroundColor: '#fff',
-        alignItems: 'center', justifyContent: 'center',
-        borderWidth: 2, borderColor: appTheme.colors.primaryMuted,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: appTheme.colors.primaryMuted,
     },
     stepHint: {
         fontSize: 11,
