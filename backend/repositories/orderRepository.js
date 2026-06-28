@@ -11,6 +11,7 @@ const selectOrderProjection = `
         o.cargo_name,
         o.cargo_weight_kg,
         o.payment_type,
+        o.prepaid_amount,
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
@@ -78,6 +79,8 @@ const selectOrderProjection = `
                 'arrived_at', s_all.arrived_at,
                 'pickup_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'pickup' LIMIT 1),
                 'delivery_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'delivery' LIMIT 1),
+                'pickup_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'pickup'),
+                'delivery_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'delivery'),
                 'fare', s_all.estimated_price,
                 'status', s_all.status,
                 'driverName', d_all.full_name
@@ -471,14 +474,37 @@ const findOrCreateCustomer = async (client, customerName, customerPhone) => {
 };
 
 // phương thức thêm điểm đi và điểm dừng
-const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
-    await client.query(
-        `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
-         VALUES
-            ($1, 1, 'pickup', $2, $4, $5, $6),
-            ($1, 2, 'delivery', $3, $4, $5, $6)`,
-        [shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null, notes || null],
-    );
+const normalizeStopList = (stops) => {
+    const source = Array.isArray(stops) ? stops : (stops ? [stops] : []);
+    return source.map((stop) => String(stop ?? '').trim()).filter(Boolean);
+};
+
+const insertStops = async (client, shipmentId, pickupStops, deliveryStops, contactName, contactPhone, notes) => {
+    const pickups = normalizeStopList(pickupStops);
+    const deliveries = normalizeStopList(deliveryStops);
+
+    if (pickups.length === 0 || deliveries.length === 0) {
+        throw new Error('Thiếu điểm lấy hàng hoặc điểm giao hàng');
+    }
+
+    let stopIndex = 1;
+    for (const address of pickups) {
+        await client.query(
+            `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
+             VALUES ($1, $2, 'pickup', $3, $4, $5, $6)`,
+            [shipmentId, stopIndex, address, contactName || null, contactPhone || null, notes || null],
+        );
+        stopIndex += 1;
+    }
+
+    for (const address of deliveries) {
+        await client.query(
+            `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
+             VALUES ($1, $2, 'delivery', $3, $4, $5, $6)`,
+            [shipmentId, stopIndex, address, contactName || null, contactPhone || null, notes || null],
+        );
+        stopIndex += 1;
+    }
 };
 
 //Phương thức tạo order với 1 chuyến(cũ)
@@ -492,8 +518,8 @@ const createOrderWithShipment = async ({
     //Ghi vào order
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
@@ -504,6 +530,7 @@ const createOrderWithShipment = async ({
             orderData.vehicle_group_id || null,
             orderData.estimated_price || 0,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
         ],
     );
@@ -532,8 +559,8 @@ const createOrderWithShipment = async ({
     await insertStops(
         client,
         shipmentResult.rows[0].id,
-        shipmentData.pickup_address,
-        shipmentData.delivery_address,
+        shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+        shipmentData.delivery_addresses ?? shipmentData.delivery_address,
         orderData.customer_name,
         orderData.customer_phone,
     );
@@ -581,8 +608,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at, partner_name, total_actual_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at, partner_name, total_actual_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -593,6 +620,7 @@ const createOrderWithMultipleShipments = async ({
             orderData.vehicle_group_id || null,
             totalEstimatedPrice,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
             orderData.partner_name || null,
             orderData.total_actual_price || 0,
@@ -652,8 +680,8 @@ const createOrderWithMultipleShipments = async ({
         await insertStops(//Chèn vào bảng trip stop 
             client,
             shipment.id,
-            shipmentData.pickup_address,
-            shipmentData.delivery_address,
+            shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+            shipmentData.delivery_addresses ?? shipmentData.delivery_address,
             orderData.customer_name,
             orderData.customer_phone,
             shipmentData.notes
@@ -679,11 +707,27 @@ const createOrderWithMultipleShipments = async ({
 
 
 //Phương thức cập nhât order
-const updateOrder = async ({
-    orderId, 
-    orderData,
-    shipmentsDataArray}) => {
-
+const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray) => {
+    const {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+        plate,
+        driver_id,
+        vehicle_id,
+        vehicle_group_id,
+        distance,
+        arrived_at,
+        date,
+        partner_name,
+        total_actual_price,
+        prepaid_amount,
+    } = payload;
 
     const client = await pool.connect();
     try {
@@ -701,6 +745,7 @@ const updateOrder = async ({
                  notes = $5,
                  partner_name = COALESCE($7, partner_name),
                  total_actual_price = COALESCE($8, total_actual_price),
+                 prepaid_amount = COALESCE($9, prepaid_amount),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -709,10 +754,11 @@ const updateOrder = async ({
                orderData.cargo_name,
                 orderData.cargo_weight_kg,
                 totalEstimatedPrice !== null ? totalEstimatedPrice : undefined,
-                orderData.notes,
-                orderData.customer_id !== undefined ? orderData.customer_id : null,
-                orderData.partner_name !== undefined ? orderData.partner_name : null,
-                orderData.total_actual_price !== undefined ? orderData.total_actual_price : 0,
+                orderNotes,
+                customer?.id ?? null,
+                partner_name !== undefined ? partner_name : null,
+                total_actual_price !== undefined ? total_actual_price : 0,
+                prepaid_amount,
             ],
         );
 
@@ -794,16 +840,21 @@ const updateOrder = async ({
                         );
                     }
 
-                    if (shipmentData.pickup_address) {
-                        await client.query(
-                            `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
-                            [existing.id, shipmentData.pickup_address],
-                        );
-                    }
-                    if (shipmentData.delivery_address) {
-                        await client.query(
-                            `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
-                            [existing.id, shipmentData.delivery_address],
+                    if (
+                        shipmentData.pickup_addresses
+                        || shipmentData.pickup_address
+                        || shipmentData.delivery_addresses
+                        || shipmentData.delivery_address
+                    ) {
+                        await client.query(`DELETE FROM trip_stops WHERE shipment_id = $1`, [existing.id]);
+                        await insertStops(
+                            client,
+                            existing.id,
+                            shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+                            shipmentData.delivery_addresses ?? shipmentData.delivery_address,
+                            customer_name,
+                            customer_phone,
+                            orderNotes
                         );
                     }
                 } else if (!existing && shipmentData) {
@@ -844,11 +895,11 @@ const updateOrder = async ({
                     await insertStops(
                         client,
                         newShipmentId,
-                        shipmentData.pickup_address,
-                        shipmentData.delivery_address,
-                        orderData.customer_name,
-                        orderData.customer_phone,
-                        orderData.notes
+                        shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+                        shipmentData.delivery_addresses ?? shipmentData.delivery_address,
+                        customer_name,
+                        customer_phone,
+                        orderNotes
                     );
                 } else if (existing && !shipmentData) {
                     if (existing.status !== 'available') {
