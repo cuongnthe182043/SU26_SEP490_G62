@@ -1,6 +1,7 @@
 const profileRepository = require('../repositories/profileRepository');
 const bcrypt = require('bcryptjs');
 const emailService = require('./emailService');
+const notificationGateway = require('./notificationGateway');
 const {
     normalizePositiveInteger,
     normalizeRole,
@@ -9,6 +10,7 @@ const {
     normalizeGender,
     normalizeDob,
     normalizeOptionalText,
+    normalizeNationalId,
     assertBoolean,
     isProtectedUserRole,
 } = require('../utils/userValidation');
@@ -46,6 +48,39 @@ const normalizeHometown = (city) => normalizeOptionalText(city, {
     errorFactory: createAdminError,
 });
 
+const normalizeAddress = (address) => normalizeOptionalText(address, {
+    fieldLabel: 'Dia chi',
+    errorFactory: createAdminError,
+});
+
+const normalizeCountry = (country) => normalizeOptionalText(country, {
+    fieldLabel: 'Quoc gia',
+    errorFactory: createAdminError,
+}) || 'VN';
+
+const normalizeUserNationalId = (nationalId) => normalizeNationalId(nationalId, {
+    errorFactory: createAdminError,
+});
+
+const normalizeUserTaxCode = (taxCode) => normalizeOptionalText(taxCode, {
+    fieldLabel: 'Ma so thue',
+    errorFactory: createAdminError,
+});
+
+const normalizeEmergencyContactName = (value) => normalizeOptionalText(value, {
+    fieldLabel: 'Nguoi lien he khan cap',
+    errorFactory: createAdminError,
+});
+
+const normalizeEmergencyContactPhone = (value) => normalizePhone(value, {
+    errorFactory: createAdminError,
+});
+
+const normalizeUserNotes = (value) => normalizeOptionalText(value, {
+    fieldLabel: 'Ghi chu',
+    errorFactory: createAdminError,
+});
+
 const ensureRoleExists = async (role) => {
     const roleId = await profileRepository.getRoleIdByName(role);
     if (!roleId) {
@@ -72,7 +107,7 @@ const getAllUsers = async () => {
     return profileRepository.getAllUsers();
 };
 
-const createUser = async (email, full_name, phone, role, gender, dob, city) => {
+const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
     const password = '123123';
     if (!email || !role) {
         throw new AdminError('Thieu thong tin bat buoc (email, role).', 400);
@@ -83,6 +118,13 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
     const normalizedGender = normalizeUserGender(gender);
     const normalizedDob = normalizeUserDob(dob);
     const normalizedCity = normalizeHometown(city);
+    const normalizedAddress = normalizeAddress(address);
+    const normalizedCountry = normalizeCountry(country);
+    const normalizedNationalId = normalizeUserNationalId(national_id);
+    const normalizedTaxCode = normalizeUserTaxCode(tax_code);
+    const normalizedEmergencyContactName = normalizeEmergencyContactName(emergency_contact_name);
+    const normalizedEmergencyContactPhone = normalizeEmergencyContactPhone(emergency_contact_phone);
+    const normalizedNotes = normalizeUserNotes(notes);
     const normalizedRole = normalizeManagerRole(role);
     const roleId = await ensureRoleExists(normalizedRole);
 
@@ -104,8 +146,20 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
             normalizedDob,
             normalizedGender,
             normalizedCity,
+            normalizedAddress,
+            normalizedCountry,
+            normalizedNationalId,
+            normalizedTaxCode,
+            normalizedEmergencyContactName,
+            normalizedEmergencyContactPhone,
+            normalizedNotes,
         );
         emailService.sendWelcomeEmail(email, password, normalizedFullName, normalizedRole);
+        notificationGateway.broadcastToRole('manager', {
+            type: 'manager.users.changed',
+            action: 'created',
+            userId: newId,
+        });
         return newId;
     } catch (err) {
         if (err.code === '23505') {
@@ -115,7 +169,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
     }
 };
 
-const updateUser = async (userId, full_name, phone, role, gender, dob, city) => {
+const updateUser = async (userId, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
     const normalizedUserId = normalizeUserId(userId);
     const normalizedRole = normalizeManagerRole(role);
     const normalizedFullName = normalizeFullName(full_name);
@@ -123,6 +177,13 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city) => 
     const normalizedGender = normalizeUserGender(gender);
     const normalizedDob = normalizeUserDob(dob);
     const normalizedCity = normalizeHometown(city);
+    const normalizedAddress = normalizeAddress(address);
+    const normalizedCountry = normalizeCountry(country);
+    const normalizedNationalId = normalizeUserNationalId(national_id);
+    const normalizedTaxCode = normalizeUserTaxCode(tax_code);
+    const normalizedEmergencyContactName = normalizeEmergencyContactName(emergency_contact_name);
+    const normalizedEmergencyContactPhone = normalizeEmergencyContactPhone(emergency_contact_phone);
+    const normalizedNotes = normalizeUserNotes(notes);
 
     const existingUser = await ensureUserExists(normalizedUserId);
     ensureUserCanBeManaged(existingUser, 'cap nhat');
@@ -138,9 +199,21 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city) => 
                 gender: normalizedGender,
                 dob: normalizedDob,
                 city: normalizedCity,
+                address: normalizedAddress,
+                country: normalizedCountry,
+                national_id: normalizedNationalId,
+                tax_code: normalizedTaxCode,
+                emergency_contact_name: normalizedEmergencyContactName,
+                emergency_contact_phone: normalizedEmergencyContactPhone,
+                notes: normalizedNotes,
             },
             roleId,
         );
+        notificationGateway.broadcastToRole('manager', {
+            type: 'manager.users.changed',
+            action: 'updated',
+            userId: normalizedUserId,
+        });
     } catch (err) {
         if (err.code === '23505') {
             throw new AdminError('So dien thoai da ton tai.', 409);
@@ -173,6 +246,12 @@ const toggleUserStatus = async (userId, is_active, currentUserId) => {
     }
 
     const updatedUser = await profileRepository.adminToggleUserStatus(normalizedUserId, normalizedStatus);
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.users.changed',
+        action: 'status_changed',
+        userId: normalizedUserId,
+        is_active: normalizedStatus,
+    });
     return {
         ...updatedUser,
         changed: true,

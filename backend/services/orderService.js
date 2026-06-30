@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
+const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 
@@ -9,6 +10,13 @@ const normalizeNumber = (value) => {
     const numericValue = Number(String(value).replace(/,/g, '').trim());
     if (Number.isNaN(numericValue)) throw new Error('Nhập số không hợp lệ');
     return numericValue;
+};
+
+const normalizeNonNegativeAmount = (value, fieldLabel) => {
+    const amount = normalizeNumber(value);
+    if (amount === null) return 0;
+    if (amount < 0) throw new Error(`${fieldLabel} không được âm`);
+    return amount;
 };
 
 const safeTrim = (value) => String(value ?? '').trim();
@@ -102,6 +110,14 @@ const ensureUniqueActiveAssignment = (seen, key, label) => {
     seen.add(String(key));
 };
 
+const broadcastCoordinatorOrderChange = (action, order) => {
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.orders.changed',
+        action,
+        orderId: order?.id ?? null,
+    });
+};
+
 const createOrder = async (userId, payload) => {
     const {
         date,
@@ -121,6 +137,7 @@ const createOrder = async (userId, payload) => {
         is_partner,
         partner_name,
         partner_fee,
+        prepaid_amount,
     } = payload;
 
     let { trips } = payload;
@@ -223,6 +240,8 @@ const createOrder = async (userId, payload) => {
                 notes: orderNotes,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
+                pickup_addresses: (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip_pickup || pickup_address]).filter(Boolean),
+                delivery_addresses: (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip_delivery || delivery_address]).filter(Boolean),
                 assignmentData: finalDriverId && finalVehicleId ? {
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
@@ -245,11 +264,13 @@ const createOrder = async (userId, payload) => {
                 notes: notes !== undefined ? safeTrim(notes) : '',
                 partner_name: is_partner ? safeTrim(partner_name) : null,
                 total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
+                prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
             },
             shipmentsDataArray
         });
 
         await dbClient.query('COMMIT');
+        broadcastCoordinatorOrderChange('created', result.order);
         return result;
     } catch (err) {
         if (dbClient) {
@@ -340,6 +361,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     cargo_weight_kg: cargoWeight,
                     pickup_address: pickupAddress,
                     delivery_address: deliveryAddress,
+                    pickup_addresses: [pickupAddress],
+                    delivery_addresses: [deliveryAddress],
                     estimated_price: estimatedPrice,
                     vehicle_group_id: finalVehicleGroupId,
                     notes,
@@ -348,6 +371,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 shipmentData: {
                     pickup_address: pickupAddress,
                     delivery_address: deliveryAddress,
+                    pickup_addresses: [pickupAddress],
+                    delivery_addresses: [deliveryAddress],
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
                     estimated_distance_km: distanceValue,
@@ -395,6 +420,7 @@ const updateOrder = async (orderId, payload) => {
         is_partner,
         partner_name,
         partner_fee,
+        prepaid_amount,
     } = payload;
 
     let { trips } = payload;
@@ -468,6 +494,8 @@ const updateOrder = async (orderId, payload) => {
                 plate_number: vehicle?.plate_number,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
+                pickup_addresses: (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip_pickup || pickup_address]).filter(Boolean),
+                delivery_addresses: (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip_delivery || delivery_address]).filter(Boolean),
                 status: SHIPMENT_STATUS.CLAIMED,
                 assignmentData: {
                     driver_id: finalDriverId,
@@ -481,7 +509,7 @@ const updateOrder = async (orderId, payload) => {
         dbClient.release();
     }
 
-    return orderRepository.updateOrder(orderId, {
+    const updatedOrder = await orderRepository.updateOrder(orderId, {
         customer_name,
         customer_phone,
         cargo_name,
@@ -492,11 +520,16 @@ const updateOrder = async (orderId, payload) => {
         arrived_at: arrived_at || date,
         partner_name: is_partner ? safeTrim(partner_name) : null,
         total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
+        prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
+    broadcastCoordinatorOrderChange('updated', updatedOrder);
+    return updatedOrder;
 };
 
 const cancelOrder = async (orderId, reason) => {
-    return orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+    const cancelledOrder = await orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+    broadcastCoordinatorOrderChange('cancelled', cancelledOrder);
+    return cancelledOrder;
 };
 
 module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder };
