@@ -1,5 +1,5 @@
 const debtRepository = require('../repositories/debtRepository');
-const { broadcastToUser } = require('./notificationGateway');
+const notificationGateway = require('./notificationGateway');
 
 const VALID_METHODS = ['cash', 'bank_transfer'];
 
@@ -29,13 +29,13 @@ const cancelRepayment = async (driverId, paymentId) => {
 
 const confirmRepayment = async (paymentId, confirmedBy) => {
     const result = await debtRepository.confirmRepayment(paymentId, confirmedBy);
-    broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
+    notificationGateway.broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
     return result;
 };
 
 const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     const pay = await debtRepository.rejectRepayment(paymentId, rejectedBy, reason);
-    if (pay?.driverId) broadcastToUser(pay.driverId, { type: 'debt.updated', debtId: pay.debtId });
+    if (pay?.driverId) notificationGateway.broadcastToUser(pay.driverId, { type: 'debt.updated', debtId: pay.debtId });
     return pay;
 };
 
@@ -53,11 +53,11 @@ const getPendingRepayments = async () => {
             dp.created_at,
             d.total_amount::text,
             d.driver_id,
-            u.full_name  AS driver_name,
+            p.full_name  AS driver_name,
             o.cargo_name
          FROM debt_payments dp
          JOIN debts d ON d.id = dp.debt_id
-         JOIN users u ON u.id = d.driver_id
+         JOIN profiles p ON p.id = d.driver_id
          LEFT JOIN order_shipments os ON os.id = d.shipment_id
          LEFT JOIN orders o ON o.id = d.order_id
          WHERE dp.status = 'pending' AND d.debt_type = 'driver'
