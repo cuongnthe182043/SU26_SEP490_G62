@@ -53,6 +53,7 @@ const VEHICLE_DETAIL_SELECT = `
         lm.performed_by AS active_maintenance_performed_by,
         mp.full_name AS active_maintenance_performed_by_name,
         lm.status AS active_maintenance_status,
+        lm.cost AS active_maintenance_cost,
         li.id AS active_failure_id,
         li.incident_type AS active_failure_type,
         li.description AS active_failure_description,
@@ -71,7 +72,8 @@ const VEHICLE_DETAIL_SELECT = `
             mr.bill_pics,
             mr.completed_at,
             mr.status,
-            mr.performed_by
+            mr.performed_by,
+            mr.cost
         FROM maintenance_records mr
         WHERE mr.vehicle_id = v.id
           AND mr.status IN ('open', 'pending_verification')
