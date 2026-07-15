@@ -278,6 +278,22 @@ describe('Vehicle Management Service Integration Tests (L2)', () => {
         assert.strictEqual(dbRecord.rows[0].status, 'completed');
     });
 
+    it('L2-VM-11b [Lifecycle]: scanMaintenanceBill - returns empty results when no bill has been uploaded yet', async () => {
+        const group = await vehicleManagementService.createVehicleGroup({ name: 'Group K2', price_per_km: 10000 });
+        const vehicle = await vehicleManagementService.createVehicle({
+            plate_number: '29K-222.22', vehicle_group_id: group.id
+        });
+
+        const maintenanceVehicle = await vehicleManagementService.changeVehicleStatus(vehicle.id, 1, {
+            status: 'maintenance', maintenance_type: 'repair', description: 'Fixing', performed_by: 2
+        });
+
+        const scan = await vehicleManagementService.scanMaintenanceBill(vehicle.id);
+
+        assert.strictEqual(scan.maintenanceRecordId, maintenanceVehicle.active_maintenance_id);
+        assert.deepStrictEqual(scan.results, []);
+    });
+
     it('L2-VM-12 [Lifecycle]: restoreVehicle - broken -> active', async () => {
         const group = await vehicleManagementService.createVehicleGroup({ name: 'Group L', price_per_km: 10000 });
         const vehicle = await vehicleManagementService.createVehicle({
