@@ -31,6 +31,16 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  exportOrdersReport: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.debt_status) params.set("debt_status", filters.debt_status);
+    if (filters.customer) params.set("customer", filters.customer);
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    return apiRequest(`${BASE}/orders/export?${params}`);
+  },
+
   getCustomerDebt: (orderId) =>
     apiRequest(`${BASE}/orders/${orderId}/customer-debt`),
 

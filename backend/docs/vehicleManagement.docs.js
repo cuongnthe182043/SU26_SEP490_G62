@@ -5,6 +5,10 @@
  *     description: Quản lý nhóm xe (Manager)
  *   - name: Vehicles
  *     description: Quản lý xe và vòng đời xe (Manager)
+ *   - name: Holidays
+ *     description: Quản lý ngày lễ dùng cho tính công/lương (Manager)
+ *   - name: Maintenance Requests
+ *     description: Duyệt/từ chối yêu cầu bảo dưỡng do driver gửi (Manager — mục 3)
  */
 
 /**
@@ -376,4 +380,216 @@
  *         description: Phân công thành công
  *       422:
  *         description: Driver đã được phân công xe khác
+ */
+
+/**
+ * @swagger
+ * /api/admin/vehicles/{id}/assignment-history:
+ *   get:
+ *     tags: [Vehicles]
+ *     summary: Lịch sử phân công driver của một xe
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Mảng lịch sử phân công / hủy phân công (mới nhất trước)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:                    { type: integer }
+ *                       vehicle_id:            { type: integer }
+ *                       action:                { type: string, example: assign }
+ *                       note:                  { type: string, nullable: true }
+ *                       created_at:            { type: string, format: date-time }
+ *                       driver_id:             { type: integer, nullable: true }
+ *                       driver_name:           { type: string, nullable: true }
+ *                       previous_driver_id:    { type: integer, nullable: true }
+ *                       previous_driver_name:  { type: string, nullable: true }
+ *                       created_by:            { type: integer }
+ *                       created_by_name:       { type: string }
+ *       404:
+ *         description: Không tìm thấy xe
+ */
+
+/**
+ * @swagger
+ * /api/admin/holidays:
+ *   get:
+ *     tags: [Holidays]
+ *     summary: Danh sách ngày lễ
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *         description: Lọc theo năm (tuỳ chọn)
+ *     responses:
+ *       200:
+ *         description: Mảng ngày lễ
+ *   post:
+ *     tags: [Holidays]
+ *     summary: Thêm ngày lễ mới
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [holiday_date, name]
+ *             properties:
+ *               holiday_date:
+ *                 type: string
+ *                 format: date
+ *                 example: 2026-09-02
+ *               name:
+ *                 type: string
+ *                 example: Quốc khánh
+ *     responses:
+ *       201:
+ *         description: Đã lưu ngày lễ
+ *       400:
+ *         description: Thiếu ngày lễ / tên hoặc dữ liệu không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /api/admin/holidays/{date}:
+ *   delete:
+ *     tags: [Holidays]
+ *     summary: Xóa ngày lễ
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Đã xóa ngày lễ
+ *       404:
+ *         description: Không tìm thấy ngày lễ
+ */
+
+/**
+ * @swagger
+ * /api/admin/maintenance-requests:
+ *   get:
+ *     tags: [Maintenance Requests]
+ *     summary: Danh sách yêu cầu bảo dưỡng đang chờ duyệt (status = requested)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Mảng yêu cầu bảo dưỡng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 requests:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:                { type: integer }
+ *                       vehicle_id:        { type: integer }
+ *                       plate_number:      { type: string }
+ *                       brand:             { type: string }
+ *                       model:             { type: string }
+ *                       maintenance_type:  { type: string, enum: [scheduled, repair, inspection, emergency] }
+ *                       request_reason:    { type: string }
+ *                       maintenance_date:  { type: string, format: date, nullable: true }
+ *                       status:            { type: string, example: requested }
+ *                       created_at:        { type: string, format: date-time }
+ *                       requested_by:      { type: integer }
+ *                       requested_by_name: { type: string }
+ */
+
+/**
+ * @swagger
+ * /api/admin/maintenance-requests/{id}/approve:
+ *   post:
+ *     tags: [Maintenance Requests]
+ *     summary: Duyệt yêu cầu bảo dưỡng của driver
+ *     description: |
+ *       Chuyển yêu cầu từ status = requested sang open, xe chuyển sang trạng thái
+ *       MAINTENANCE (mục 3 — Maintenance / mục 19). Driver thực hiện nhận notification.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 description: Ghi chú duyệt (mặc định "Duyệt yêu cầu bảo dưỡng của tài xế")
+ *     responses:
+ *       200:
+ *         description: Đã duyệt yêu cầu bảo dưỡng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: Đã duyệt yêu cầu bảo dưỡng }
+ *                 vehicle: { type: object }
+ *       404:
+ *         description: Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý
+ */
+
+/**
+ * @swagger
+ * /api/admin/maintenance-requests/{id}/reject:
+ *   post:
+ *     tags: [Maintenance Requests]
+ *     summary: Từ chối yêu cầu bảo dưỡng của driver
+ *     description: Bắt buộc phải nhập lý do từ chối. Driver nhận notification kèm lý do.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Lý do từ chối (bắt buộc)
+ *     responses:
+ *       200:
+ *         description: Đã từ chối yêu cầu bảo dưỡng
+ *       400:
+ *         description: Thiếu lý do từ chối
+ *       404:
+ *         description: Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý
  */
