@@ -28,7 +28,6 @@ const attendanceRoutes       = require('./attendanceRoutes');
 
 // Register route modules
 router.use('/auth', authRoutes);
-router.use('/orders', orderRoutes);
 router.use('/accountant', accountantRoutes);
 router.use('/api/trips', tripRoutes);
 router.use('/api/profile', profileRoutes);
