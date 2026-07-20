@@ -145,6 +145,111 @@
 
 /**
  * @swagger
+ * /api/debts/repayments/pending:
+ *   get:
+ *     tags: [Debt]
+ *     summary: Danh sách yêu cầu nộp tiền đang chờ xác nhận (Accountant / Manager)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 repayments:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/DebtPayment'
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/{paymentId}/confirm:
+ *   patch:
+ *     tags: [Debt]
+ *     summary: Xác nhận khoản driver đã nộp (Accountant / Manager)
+ *     description: Chuyển debt_payments.status sang confirmed — số tiền được cộng vào paid_amount của khoản nợ.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã xác nhận thanh toán
+ *       404:
+ *         description: Không tìm thấy khoản nộp
+ *       409:
+ *         description: Khoản nộp đã được xử lý trước đó
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/{paymentId}/reject:
+ *   patch:
+ *     tags: [Debt]
+ *     summary: Từ chối khoản driver đã nộp (Accountant / Manager)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đã từ chối yêu cầu nộp tiền
+ *       404:
+ *         description: Không tìm thấy khoản nộp
+ *       409:
+ *         description: Khoản nộp đã được xử lý trước đó
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/{paymentId}/void:
+ *   patch:
+ *     tags: [Debt]
+ *     summary: Hủy xác nhận một khoản nộp đã confirmed (Accountant / Manager)
+ *     description: Công nợ hồi phục lại số tiền đã trừ, đồng thời ghi 1 bút toán đảo (financial_transactions) cho khoản đã ghi sổ trước đó.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đã hủy xác nhận khoản thanh toán — công nợ hồi phục, bút toán đảo đã ghi sổ
+ *       404:
+ *         description: Không tìm thấy khoản nộp
+ *       409:
+ *         description: Chỉ hủy được khoản đã confirmed, hoặc đã được xử lý (void) trước đó
+ */
+
+/**
+ * @swagger
  * components:
  *   schemas:
  *     DriverDebt:

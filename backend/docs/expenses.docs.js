@@ -100,4 +100,21 @@
  *         description: Không phải expense của driver này
  *       422:
  *         description: Expense đã được duyệt, không thể sửa
+ *   delete:
+ *     tags: [Expenses]
+ *     summary: Xoá chi phí phát sinh (chỉ khi chưa được duyệt)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã xoá chi phí
+ *       400:
+ *         description: ID chi phí không hợp lệ
+ *       403:
+ *         description: Expense đã được duyệt / bị từ chối, không thể xoá
  */

@@ -18,6 +18,10 @@ const getOrders = async (filters, page, limit) => {
     return accountantOrderRepository.getAllOrders(filters, page, limit);
 };
 
+const exportOrdersReport = async (filters) => {
+    return accountantOrderRepository.exportOrdersReport(filters);
+};
+
 const getOrderShipments = async (orderId) => {
     return accountantOrderRepository.getOrderShipments(orderId);
 };
@@ -76,4 +80,5 @@ module.exports = {
     confirmDriverPayment,
     getVehicleDriverLookup,
     updateOrder,
+    exportOrdersReport,
 };
