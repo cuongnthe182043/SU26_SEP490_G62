@@ -818,6 +818,128 @@ const getOrderShipments = async (orderId) => {
     }));
 };
 
+// Xuất báo cáo — mọi chuyến (shipment) của các đơn khớp bộ lọc hiện tại của màn Quản lý
+// doanh thu (tái dùng đúng logic lọc của getAllOrders), kèm chi tiết chi phí + trạng thái
+// thanh toán thực tế. Dùng cho FE dựng file Excel theo layout giống template import.
+const exportOrdersReport = async (filters = {}) => {
+    const { orders } = await getAllOrders(filters, null, null);
+    if (orders.length === 0) return [];
+
+    const orderIds = orders.map((o) => o.id);
+
+    const { rows } = await pool.query(
+        `WITH
+        exp_agg AS (
+            SELECT
+                e.shipment_id,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'fuel'    THEN e.amount END), 0) AS fuel,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'toll'    THEN e.amount END), 0) AS toll,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'parking' THEN e.amount END), 0) AS parking,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'repair'  THEN e.amount END), 0) AS repair
+            FROM expenses e
+            WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+              AND e.status != 'rejected'
+            GROUP BY e.shipment_id
+        ),
+        stop_agg AS (
+            SELECT
+                ts.shipment_id,
+                STRING_AGG(ts.address, ' | ' ORDER BY ts.stop_index) FILTER (WHERE ts.stop_type = 'pickup')    AS pickups,
+                STRING_AGG(ts.address, ' | ' ORDER BY ts.stop_index) FILTER (WHERE ts.stop_type = 'delivery')  AS deliveries
+            FROM trip_stops ts
+            WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+            GROUP BY ts.shipment_id
+        ),
+        debt_agg AS (
+            SELECT
+                d.shipment_id,
+                d.total_amount,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS driver_paid
+            FROM debts d
+            LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+            WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+              AND d.debt_type = 'driver'
+            GROUP BY d.id, d.shipment_id, d.total_amount
+        ),
+        receipt_agg AS (
+            SELECT DISTINCT ON (orr.requesting_shipment_id)
+                orr.requesting_shipment_id AS shipment_id,
+                sr.payment_type            AS receipt_payment_type
+            FROM order_receipt_requests orr
+            JOIN shipment_receipts sr ON sr.order_receipt_request_id = orr.id
+            WHERE orr.requesting_shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+            ORDER BY orr.requesting_shipment_id, sr.id DESC
+        )
+        SELECT
+            os.id, os.order_id, os.shipment_index,
+            COALESCE(os.completed_at, os.created_at) AS run_date,
+            v.plate_number AS vehicle_plate,
+            p.full_name    AS driver_name,
+            COALESCE(cu.full_name, cu.company_name) AS customer_name,
+            cu.phone        AS customer_phone,
+            sa.pickups, sa.deliveries,
+            os.estimated_distance_km AS distance_km,
+            os.cargo_name,
+            COALESCE(os.actual_price, os.estimated_price, 0) AS cargo_fee,
+            COALESCE(ea.toll, 0) AS toll, COALESCE(ea.parking, 0) AS parking,
+            COALESCE(ea.fuel, 0) AS fuel, COALESCE(ea.repair, 0) AS repair,
+            ra.receipt_payment_type,
+            da.total_amount AS driver_debt_total,
+            da.driver_paid  AS driver_debt_paid,
+            os.notes
+        FROM order_shipments os
+        JOIN orders o ON o.id = os.order_id
+        LEFT JOIN customers cu ON cu.id = o.customer_id
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+        LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+        LEFT JOIN profiles p ON p.id = sc.owner_driver_id
+        LEFT JOIN exp_agg     ea ON ea.shipment_id = os.id
+        LEFT JOIN stop_agg    sa ON sa.shipment_id = os.id
+        LEFT JOIN debt_agg    da ON da.shipment_id = os.id
+        LEFT JOIN receipt_agg ra ON ra.shipment_id = os.id
+        WHERE os.order_id = ANY($1::int[])
+        ORDER BY os.order_id ASC, os.shipment_index ASC`,
+        [orderIds],
+    );
+
+    return rows.map((row) => {
+        const driverTotal = Number(row.driver_debt_total || 0);
+        const driverPaid  = Number(row.driver_debt_paid || 0);
+        const driverRemaining = Math.max(driverTotal - driverPaid, 0);
+
+        // Suy ra nhãn "Thanh toán" từ trạng thái thực tế (phiếu thu + công nợ tài xế),
+        // dùng cùng 4 nhãn với dropdown của template import để nhất quán 2 chiều.
+        let paymentLabel = 'Chưa chốt phiếu thu';
+        if (row.receipt_payment_type === 'bank_transfer') paymentLabel = 'CK công ty';
+        else if (row.receipt_payment_type === 'client_credit') paymentLabel = 'Khách nợ';
+        else if (row.receipt_payment_type === 'cash_collected') {
+            paymentLabel = driverRemaining <= 0.01 ? 'Tiền mặt - tài đã nộp' : 'Tiền mặt - tài đang giữ';
+        }
+
+        return {
+            order_id: row.order_id,
+            shipment_id: row.id,
+            run_date: row.run_date,
+            vehicle_plate: row.vehicle_plate,
+            driver_name: row.driver_name,
+            customer_name: row.customer_name,
+            customer_phone: row.customer_phone,
+            pickup: row.pickups || '',
+            delivery: row.deliveries || '',
+            distance_km: row.distance_km ? Number(row.distance_km) : null,
+            cargo_name: row.cargo_name,
+            cargo_fee: Number(row.cargo_fee) || 0,
+            toll: Number(row.toll) || 0,
+            parking: Number(row.parking) || 0,
+            fuel: Number(row.fuel) || 0,
+            repair: Number(row.repair) || 0,
+            payment_label: paymentLabel,
+            driver_holding: paymentLabel === 'Tiền mặt - tài đang giữ' ? driverRemaining : null,
+            notes: row.notes,
+        };
+    });
+};
+
 const updateOrder = async (orderId, orderData) => {
     const client = await pool.connect();
     try {
@@ -884,5 +1006,6 @@ module.exports = {
     getOrderShipments,
     createOrderWithShipments,
     updateOrder,
+    exportOrdersReport,
 };
 

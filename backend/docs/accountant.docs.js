@@ -484,3 +484,533 @@
  *       422:
  *         description: Yêu cầu chưa được manager approve
  */
+
+/**
+ * @swagger
+ * /accountant/vehicle-groups:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Danh sách nhóm xe (dùng cho dropdown sửa nhóm KPI cố định của tài xế ở màn Bảng lương)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Mảng vehicle groups
+ */
+
+/**
+ * @swagger
+ * /accountant/orders/export:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Xuất báo cáo chi tiết từng chuyến khớp bộ lọc màn Quản lý doanh thu
+ *     description: Dùng cùng bộ filter với GET /accountant/orders, kèm chi phí + trạng thái thanh toán từng chuyến.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: debt_status
+ *         schema: { type: string }
+ *       - in: query
+ *         name: customer
+ *         schema: { type: string }
+ *       - in: query
+ *         name: dateFrom
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: dateTo
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Mảng rows báo cáo (không phân trang)
+ */
+
+/**
+ * @swagger
+ * /accountant/orders/import:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Import hàng loạt đơn hàng từ template Excel
+ *     description: |
+ *       Body: { orders: [payload giống POST /accountant/orders, kèm row_index để báo lỗi theo dòng] }.
+ *       Tối đa 1000 dòng/lần. Khách lẻ được phép bỏ trống tên/SĐT (khác luồng tạo tay),
+ *       trừ chuyến payment_type = client_credit bắt buộc có SĐT để theo dõi công nợ.
+ *       Từng dòng lỗi không chặn các dòng còn lại — trả về danh sách imported + errors.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [orders]
+ *             properties:
+ *               orders:
+ *                 type: array
+ *                 maxItems: 1000
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       201:
+ *         description: Import thành công (có thể kèm một số dòng lỗi)
+ *       400:
+ *         description: Tất cả các dòng đều lỗi, hoặc payload không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /accountant/orders/{id}/customer-debt:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Tổng quan công nợ khách hàng của một đơn hàng
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Tổng số tiền, đã thu, còn nợ của đơn hàng (đối tượng customer)
+ */
+
+/**
+ * @swagger
+ * /accountant/debts/{id}/transfer-to-driver:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Chuyển công nợ khách hàng sang công nợ tài xế
+ *     description: |
+ *       Tái phân loại khoản phải thu — KHÔNG phải một giao dịch tiền thật (không có tiền mặt/
+ *       chuyển khoản nào di chuyển). Chuyển TOÀN BỘ số dư còn lại (remaining) của 1 công nợ
+ *       khách hàng (debt_type = customer) sang một công nợ tài xế mới (debt_type = driver):
+ *       - Đóng công nợ khách bằng 1 debt_payments (payment_method = 'offset', status = confirmed)
+ *       - Mở công nợ tài xế mới cùng số tiền còn lại
+ *       - Ghi 1 bút toán financial_transactions duy nhất: Nợ 1388 / Có 131 (event_type = debt_transferred)
+ *       Chỉ áp dụng cho debt_type = customer và còn số dư > 0.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: debt_id (công nợ khách hàng cần chuyển)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [driverId]
+ *             properties:
+ *               driverId:
+ *                 type: integer
+ *                 description: profile_id của tài xế nhận công nợ mới
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đã chuyển công nợ — trả về closedDebtId, newDebtId, amount
+ *       400:
+ *         description: Tài xế không tồn tại, hoặc công nợ không phải loại customer
+ *       404:
+ *         description: Không tìm thấy công nợ
+ *       409:
+ *         description: Công nợ đã tất toán, không còn số dư để chuyển
+ */
+
+/**
+ * @swagger
+ * /accountant/debts/payment/history:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Lịch sử thanh toán công nợ toàn cục (mọi khách hàng + tài xế)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: person_type
+ *         schema: { type: string, enum: [customer, driver] }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, confirmed, rejected, voided] }
+ *       - in: query
+ *         name: method
+ *         schema: { type: string, enum: [cash, bank_transfer, offset] }
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Danh sách lịch sử thanh toán công nợ phân trang
+ */
+
+/**
+ * @swagger
+ * /accountant/receipts/bank-transfer:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Danh sách phiếu thu đang chờ xác nhận chuyển khoản (payment_type = bank_transfer)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Danh sách phiếu thu chờ kế toán xác nhận đã nhận tiền chuyển khoản
+ */
+
+/**
+ * @swagger
+ * /accountant/receipts/{receiptId}/confirm-bank-transfer:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Xác nhận đã nhận tiền chuyển khoản của một phiếu thu (TH1 — mục 15)
+ *     description: Kế toán xác nhận tiền đã về tài khoản công ty → ghi financial_transactions (event_type = bank_receipt).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: receiptId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes:
+ *                 type: string
+ *               actual_amount:
+ *                 type: number
+ *                 description: Số tiền thực nhận (nếu khác amount trên phiếu thu)
+ *     responses:
+ *       200:
+ *         description: Đã xác nhận nhận tiền chuyển khoản thành công
+ *       400:
+ *         description: Phiếu thu không hợp lệ hoặc không phải chuyển khoản
+ *       404:
+ *         description: Không tìm thấy phiếu thu
+ *       409:
+ *         description: Phiếu thu đã được xác nhận trước đó
+ */
+
+/**
+ * @swagger
+ * /accountant/expenses:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Danh sách chi phí driver khai báo (đối chiếu kế toán)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string }
+ *       - in: query
+ *         name: expense_type
+ *         schema: { type: string, enum: [toll, parking, etc, fuel, repair] }
+ *       - in: query
+ *         name: reimbursement_status
+ *         schema: { type: string }
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Danh sách chi phí phân trang kèm thống kê tổng hợp (stats)
+ */
+
+/**
+ * @swagger
+ * /accountant/vouchers:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Danh sách phiếu chi thủ công (Accountant tạo → Manager duyệt → Accountant xác nhận chi)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, approved, rejected, paid] }
+ *       - in: query
+ *         name: voucher_type
+ *         schema: { type: string, enum: [office, rent, utilities, equipment, entertainment, other] }
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Danh sách phiếu chi phân trang kèm thống kê tổng hợp (stats)
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Tạo phiếu chi thủ công — chờ Manager duyệt
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [voucher_type, amount, payee, reason]
+ *             properties:
+ *               voucher_type:
+ *                 type: string
+ *                 enum: [office, rent, utilities, equipment, entertainment, other]
+ *               amount:
+ *                 type: number
+ *               payee:
+ *                 type: string
+ *                 description: Người/đơn vị nhận chi
+ *               reason:
+ *                 type: string
+ *                 description: Lý do chi
+ *               payment_method:
+ *                 type: string
+ *                 enum: [cash, bank_transfer]
+ *                 default: cash
+ *               proof:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh chứng từ (tuỳ chọn)
+ *     responses:
+ *       201:
+ *         description: Đã tạo phiếu chi, chờ Manager duyệt
+ */
+
+/**
+ * @swagger
+ * /accountant/vouchers/{id}/pay:
+ *   patch:
+ *     tags: [Accountant]
+ *     summary: Xác nhận đã chi tiền cho phiếu chi đã được Manager duyệt
+ *     description: Chuyển phiếu chi sang status = paid và ghi sổ tài chính (financial_transactions).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã xác nhận chi tiền và ghi sổ tài chính
+ *       404:
+ *         description: Không tìm thấy phiếu chi
+ */
+
+/**
+ * @swagger
+ * /accountant/spending-summary:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Tổng hợp chi (expenses + vouchers) theo tháng
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Tổng hợp chi phí công ty theo kỳ
+ */
+
+/**
+ * @swagger
+ * /accountant/ledger:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Nhật ký tài chính (append-only ledger — financial_transactions)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: event_type
+ *         schema:
+ *           type: string
+ *           enum: [shipment_revenue, prepaid_received, prepaid_refunded, cash_receipt, bank_receipt, driver_debt_created, driver_debt_paid, customer_debt_created, customer_payment, pass_through_cost, expense_recorded, payroll_paid, bonus_paid, advance_disbursed, advance_recovered]
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: exported
+ *         schema: { type: string, description: "true/false — lọc theo đã xuất hay chưa" }
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Danh sách bút toán phân trang kèm eventTypes (nhãn hiển thị)
+ *       400:
+ *         description: event_type không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /accountant/ledger/stats:
+ *   get:
+ *     tags: [Accountant]
+ *     summary: Thống kê nhật ký tài chính theo loại sự kiện
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Thống kê tổng hợp theo event_type
+ */
+
+/**
+ * @swagger
+ * /accountant/ledger/export:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Xuất kỳ kế toán ra CSV (chốt các bút toán chưa export trong kỳ)
+ *     description: |
+ *       Đánh dấu các bản ghi financial_transactions chưa export trong khoảng [from, to] là đã
+ *       xuất (exported_at + export_batch_id), trả về file CSV có BOM UTF-8 (để Excel/MISA đọc
+ *       đúng tiếng Việt). Response KHÔNG phải JSON — Content-Type: text/csv; charset=utf-8,
+ *       kèm header X-Export-Batch-Id.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [from, to]
+ *             properties:
+ *               from:
+ *                 type: string
+ *                 format: date
+ *               to:
+ *                 type: string
+ *                 format: date
+ *     responses:
+ *       200:
+ *         description: File CSV (text/csv; charset=utf-8, có BOM) chứa các bút toán vừa chốt kỳ
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Thiếu from/to hoặc from > to
+ *       404:
+ *         description: Không có bút toán nào chưa xuất trong kỳ này
+ */
+
+/**
+ * @swagger
+ * /accountant/ledger/{id}/reverse:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: Tạo bút toán đảo cho một bút toán đã ghi sổ
+ *     description: Ghi 1 dòng ngược chiều cùng số tiền (không sửa/xoá dòng gốc) — dùng khi cần huỷ/điều chỉnh một bút toán đã export hoặc ghi sai.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: id bút toán gốc (financial_transactions.id)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đã tạo bút toán đảo — trả về reversalId, originalId
+ *       400:
+ *         description: Thiếu lý do đảo bút toán
+ *       404:
+ *         description: Không tìm thấy bút toán gốc
+ *       409:
+ *         description: Bút toán đã được đảo trước đó
+ */
