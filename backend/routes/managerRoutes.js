@@ -36,6 +36,7 @@ router.patch('/debt-repayments/:paymentId/reject', managerController.rejectDebtR
 
 router.get('/payrolls',              managerController.getPayrolls);
 router.patch('/payrolls/:id/review', managerController.reviewPayroll);
+router.patch('/payrolls/:id/revert', managerController.revertPayroll);
 
 router.get('/receipt-requests', managerController.getReceiptRequests);
 

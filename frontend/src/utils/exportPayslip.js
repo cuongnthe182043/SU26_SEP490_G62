@@ -49,6 +49,7 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
     ["Thưởng & Phúc lợi", num(row.overtime_bonus)],
   ];
   if (num(row.other_bonus) > 0) incomeRows.push(["Thưởng khác", num(row.other_bonus)]);
+  if (num(row.manual_bonus) > 0) incomeRows.push(["Điều chỉnh (+)", num(row.manual_bonus)]);
 
   // Điều chỉnh & khấu trừ (dấu để hiển thị, không tự tính lại tổng)
   const adjustRows = [
@@ -59,6 +60,7 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
     ["Trừ công nợ", num(row.driver_debt_deduction), "minus"],
   ];
   if (num(row.other_deduction) > 0) adjustRows.push(["Khấu trừ khác", num(row.other_deduction), "minus"]);
+  if (num(row.manual_deduction) > 0) adjustRows.push(["Điều chỉnh (−)", num(row.manual_deduction), "minus"]);
 
   const infoPairs = [
     ["Tài xế", esc(row.driver_name || "—")],
