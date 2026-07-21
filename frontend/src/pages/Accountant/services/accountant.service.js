@@ -109,6 +109,9 @@ export const accountantService = {
   getReportOverview: (months = 6, granularity = "month") =>
     apiRequest(`${BASE}/reports/overview?months=${months}&granularity=${granularity}`),
 
+  // Thông tin công ty (header phiếu lương) — mọi vai trò đã đăng nhập đều đọc được
+  getCompanyInfo: () => apiRequest("/api/company/info"),
+
   getPayrolls: (params) =>
     apiRequest(`${BASE}/payroll?${new URLSearchParams(params)}`),
 

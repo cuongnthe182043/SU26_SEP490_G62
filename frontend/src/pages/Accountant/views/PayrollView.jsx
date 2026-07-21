@@ -7,12 +7,14 @@ import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
   RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
+  RiFileDownloadLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
 import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
+import { exportPayslipToPDF } from "../utils/exportPayslip";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -61,7 +63,7 @@ function StatCard({ label, value, icon: Icon, bg, text, border }) {
   );
 }
 
-function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
+function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPdf }) {
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
 
@@ -125,8 +127,8 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
             {chip.label}
           </Chip>
         </td>
-        <td className="py-3.5 pr-4 w-36" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-1.5">
+        <td className="py-3.5 pr-4 w-44" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5 items-center">
             {row.status === "reviewed" && (
               <Button
                 size="sm" color="primary" variant="flat"
@@ -147,6 +149,14 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
                 Đã trả
               </Button>
             )}
+            <Button
+              size="sm" variant="flat" isIconOnly
+              className="h-7 w-7 min-w-7 text-gray-500"
+              title="Xuất phiếu lương PDF"
+              onPress={() => onExportPdf(row)}
+            >
+              <RiFileDownloadLine size={14} />
+            </Button>
           </div>
         </td>
       </tr>
@@ -170,6 +180,15 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
                   </span>
                 </div>
               ))}
+            </div>
+            <div className="flex justify-end mt-3">
+              <Button
+                size="sm" color="secondary" variant="flat"
+                startContent={<RiFileDownloadLine size={15} />}
+                onPress={() => onExportPdf(row)}
+              >
+                Xuất phiếu lương PDF
+              </Button>
             </div>
           </td>
         </tr>
@@ -303,12 +322,20 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [confirming, setConfirming] = useState(null);
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [editingDriver, setEditingDriver] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
 
   useEffect(() => {
     accountantService.getVehicleGroupsForKpi()
       .then((data) => setVehicleGroups(data.vehicleGroups || []))
       .catch(() => {});
+    accountantService.getCompanyInfo()
+      .then((data) => setCompanyInfo(data?.info || null))
+      .catch(() => {});
   }, []);
+
+  const handleExportPdf = (row) => {
+    exportPayslipToPDF(row, { month: period.month, year: period.year, companyInfo });
+  };
   const [generating, setGenerating] = useState(false);
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
@@ -567,7 +594,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       { label: "Lương gộp" },
                       { label: "Thực nhận" },
                       { label: "Trạng thái" },
-                      { label: "", cls: "w-36" },
+                      { label: "", cls: "w-44" },
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
@@ -588,6 +615,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       onPay={handlePay}
                       confirming={confirming}
                       onEditGroup={setEditingDriver}
+                      onExportPdf={handleExportPdf}
                     />
                   ))}
                 </tbody>
