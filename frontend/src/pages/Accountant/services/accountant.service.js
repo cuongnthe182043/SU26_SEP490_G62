@@ -31,6 +31,10 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  // Tìm khách cũ theo SĐT (đã chuẩn hoá phía backend) — trả { customer: {...} | null }
+  findCustomerByPhone: (phone) =>
+    apiRequest(`${BASE}/orders/customer-by-phone?phone=${encodeURIComponent(phone)}`),
+
   exportOrdersReport: (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);

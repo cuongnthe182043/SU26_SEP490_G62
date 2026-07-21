@@ -69,6 +69,10 @@ const getVehicleDriverLookup = async () => {
     return accountantLookupRepository.getVehicleDriverLookup();
 };
 
+const findCustomerByPhone = async (phone) => {
+    return accountantOrderRepository.findCustomerByPhone(phone);
+};
+
 module.exports = {
     getOrders,
     getOrderShipments,
@@ -81,4 +85,5 @@ module.exports = {
     getVehicleDriverLookup,
     updateOrder,
     exportOrdersReport,
+    findCustomerByPhone,
 };

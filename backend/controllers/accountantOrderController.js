@@ -54,6 +54,18 @@ const getVehicleDriverLookup = async (_req, res) => {
     }
 };
 
+// Gợi ý "khách cũ" khi gõ SĐT ở màn Nhập đơn ngoài — trả null nếu chưa có khách nào khớp.
+const findCustomerByPhone = async (req, res) => {
+    try {
+        const phone = req.query.phone?.trim();
+        if (!phone) return res.json({ customer: null });
+        const customer = await accountantOrderService.findCustomerByPhone(phone);
+        res.json({ customer: customer || null });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 // Validate 1 payload đơn ngoài (dùng chung cho tạo tay + import Excel)
 const validateOrderBody = (body, { requirePhone = true } = {}) => {
     const {
@@ -353,4 +365,5 @@ module.exports = {
     confirmDriverPayment,
     updateOrder,
     exportOrdersReport,
+    findCustomerByPhone,
 };

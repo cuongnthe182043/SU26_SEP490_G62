@@ -2,6 +2,7 @@
 const { insertAssignmentHistory } = require('./tripRepository');
 const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { normalizeVietnamPhone, normalizedPhoneSql } = require('../utils/phone');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -38,14 +39,16 @@ const buildOrderPaymentType = (shipments = []) => {
 
 const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
     // customers.phone NOT NULL — khách lẻ không SĐT dùng phone rỗng (gom chung 1 hồ sơ)
-    const cleanPhone = trimToNull(phone) || '';
+    // SĐT được chuẩn hoá (bỏ dấu cách/gạch, +84→0...) để khớp khách cũ dù gõ khác định dạng.
+    const cleanPhone = normalizeVietnamPhone(phone);
     const cleanName = trimToNull(name);
     const cleanCompanyName = trimToNull(companyName);
 
+    // So khớp cả hồ sơ cũ đang lưu ở định dạng chưa chuẩn — chuẩn hoá luôn cột phone trong SQL.
     const lookup = await client.query(
         `SELECT id, full_name, company_name
          FROM customers
-         WHERE phone = $1
+         WHERE ${normalizedPhoneSql('phone')} = $1
          ORDER BY id ASC LIMIT 1`,
         [cleanPhone]
     );
@@ -58,6 +61,24 @@ const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
         [cleanName, cleanCompanyName, cleanPhone]
     );
     return insert.rows[0].id;
+};
+
+// Tìm khách hàng theo SĐT (chuẩn hoá) cho màn Nhập đơn ngoài — gợi ý "khách cũ".
+// Trả kèm số đơn đã có để hiển thị "Khách cũ — N đơn".
+const findCustomerByPhone = async (phone) => {
+    const normalized = normalizeVietnamPhone(phone);
+    if (!normalized) return null;
+
+    const { rows } = await pool.query(
+        `SELECT c.id, c.full_name, c.company_name, c.phone,
+                (SELECT COUNT(*)::int FROM orders o WHERE o.customer_id = c.id) AS order_count
+         FROM customers c
+         WHERE ${normalizedPhoneSql('c.phone')} = $1
+         ORDER BY c.id ASC
+         LIMIT 1`,
+        [normalized]
+    );
+    return rows[0] || null;
 };
 
 const findVehicleById = async (client, id) => {
@@ -1014,5 +1035,6 @@ module.exports = {
     createOrderWithShipments,
     updateOrder,
     exportOrdersReport,
+    findCustomerByPhone,
 };
 
