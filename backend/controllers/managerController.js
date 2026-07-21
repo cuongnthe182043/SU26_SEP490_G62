@@ -157,6 +157,22 @@ const getPartnerDebtDetails = async (req, res) => {
     }
 };
 
+const recordPartnerPayment = async (req, res) => {
+    try {
+        const partnerId = parseId(req.params.id, 'Partner ID');
+        const { amount, payment_method, notes } = req.body || {};
+        const result = await managerService.recordPartnerPayment(
+            partnerId,
+            { amount, paymentMethod: payment_method, notes },
+            req.user.userId,
+        );
+        res.json({ message: 'Đã ghi nhận đối tác thanh toán.', ...result });
+    } catch (err) {
+        if (!err.status) err.status = err.message?.includes('không tồn tại') ? 404 : 400;
+        sendError(res, err);
+    }
+};
+
 const PAYROLL_STATUSES = ['pending', 'reviewed', 'approved', 'paid'];
 
 const getPayrolls = async (req, res) => {
@@ -302,6 +318,7 @@ module.exports = {
     createPartner,
     updatePartner,
     getPartnerDebtDetails,
+    recordPartnerPayment,
     getPayrolls,
     reviewPayroll,
     revertPayroll,

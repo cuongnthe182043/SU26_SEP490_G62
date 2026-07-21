@@ -9,6 +9,9 @@ export const coordinatorService = {
   // ─── Orders / Trips ───────────────────────────────────────────────────────
   getOrders: (params) => apiRequest(`/api/orders?${new URLSearchParams(params)}`),
   createOrder: (data) => apiRequest("/api/orders", { method: "POST", body: data }),
+  // Gợi ý khách cũ theo phần đầu SĐT (chuẩn hoá + prefix) — trả { customers: [...] }
+  findCustomerByPhone: (phone, signal) =>
+    apiRequest(`/api/orders/customer-by-phone?phone=${encodeURIComponent(phone)}`, { signal }),
   updateOrder: (orderId, data) => apiRequest(`/api/orders/${orderId}`, { method: "PATCH", body: data }),
   cancelOrder: (orderId, reason) => apiRequest(`/api/orders/${orderId}`, { method: "DELETE", body: { reason } }),
   importOrders: (file) => {

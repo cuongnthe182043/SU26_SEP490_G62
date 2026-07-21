@@ -54,5 +54,6 @@ router.get('/partners', managerController.getPartners);
 router.post('/partners', managerController.createPartner);
 router.put('/partners/:id', managerController.updatePartner);
 router.get('/partners/:id/debts', managerController.getPartnerDebtDetails);
+router.post('/partners/:id/payments', managerController.recordPartnerPayment);
 
 module.exports = router;

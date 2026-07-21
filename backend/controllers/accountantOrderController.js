@@ -54,13 +54,22 @@ const getVehicleDriverLookup = async (_req, res) => {
     }
 };
 
-// Gợi ý "khách cũ" khi gõ SĐT ở màn Nhập đơn ngoài — trả null nếu chưa có khách nào khớp.
+const getPartners = async (_req, res) => {
+    try {
+        const partners = await accountantOrderService.listPartners();
+        res.json({ partners });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) ở màn Nhập đơn ngoài.
 const findCustomerByPhone = async (req, res) => {
     try {
         const phone = req.query.phone?.trim();
-        if (!phone) return res.json({ customer: null });
-        const customer = await accountantOrderService.findCustomerByPhone(phone);
-        res.json({ customer: customer || null });
+        if (!phone) return res.json({ customers: [] });
+        const customers = await accountantOrderService.searchCustomersByPhone(phone);
+        res.json({ customers });
     } catch (err) {
         sendError(res, err);
     }
@@ -71,6 +80,7 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
     const {
         customer_name, customer_phone, customer_company,
         customer_id, order_date, notes, prepaid_amount,
+        partner_id, partner_name,
         shipments,
     } = body;
 
@@ -162,6 +172,8 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
         completed_at:     body.completed_at || null,
         notes:            notes?.trim() || null,
         prepaid_amount:   Number(prepaid_amount ?? 0),
+        partner_id:       partner_id ? Number(partner_id) : null,
+        partner_name:     partner_name?.trim() || null,
         shipments,
     };
 };
@@ -366,4 +378,5 @@ module.exports = {
     updateOrder,
     exportOrdersReport,
     findCustomerByPhone,
+    getPartners,
 };

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Button, Input, Divider,
+  Button, Input, Divider, Select, SelectItem,
 } from "@heroui/react";
 import { RiAddLine, RiFileAddLine } from "react-icons/ri";
 import { CustomerSection } from "./CustomerSection";
@@ -69,49 +69,19 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [drivers, setDrivers] = useState([]);
-  const [matchedCustomer, setMatchedCustomer] = useState(null);
+  const [partners, setPartners] = useState([]);
+  const [isPartner, setIsPartner] = useState(false);
+  const [partnerId, setPartnerId] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
     accountantService.getLookup()
       .then((data) => setDrivers(data.drivers || []))
       .catch(() => {});
+    accountantService.getPartners()
+      .then((data) => setPartners(data.partners || []))
+      .catch(() => {});
   }, [isOpen]);
-
-  // Gõ SĐT → tìm khách cũ (debounce). Nếu khớp và ô tên/công ty đang trống thì tự điền.
-  useEffect(() => {
-    const digits = customer.phone.replace(/\D/g, "");
-    if (!isOpen || digits.length < 9) { setMatchedCustomer(null); return undefined; }
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const { customer: found } = await accountantService.findCustomerByPhone(customer.phone.trim());
-        if (cancelled) return;
-        setMatchedCustomer(found);
-        if (found) {
-          setCustomer((c) => ({
-            ...c,
-            name: c.name.trim() ? c.name : (found.full_name || ""),
-            company: c.company.trim() ? c.company : (found.company_name || ""),
-          }));
-        }
-      } catch {
-        if (!cancelled) setMatchedCustomer(null);
-      }
-    }, 400);
-
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [customer.phone, isOpen]);
-
-  const applyMatchedCustomer = useCallback(() => {
-    if (!matchedCustomer) return;
-    setCustomer((c) => ({
-      ...c,
-      name: matchedCustomer.full_name || c.name,
-      company: matchedCustomer.company_name || c.company,
-    }));
-  }, [matchedCustomer]);
 
   const resetForm = useCallback(() => {
     setCustomer({ name: "", phone: "", company: "" });
@@ -120,7 +90,8 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
     setShipments([EMPTY_SHIPMENT()]);
     setErrors({});
     setApiError(null);
-    setMatchedCustomer(null);
+    setIsPartner(false);
+    setPartnerId("");
   }, []);
 
   const handleClose = () => {
@@ -143,10 +114,13 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
 
   const handleSubmit = async () => {
     const validationErrors = validate(customer, shipments);
+    if (isPartner && !partnerId) validationErrors.partner = "Vui lòng chọn đối tác.";
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
+
+    const selectedPartner = partners.find((p) => String(p.id) === String(partnerId));
 
     setSubmitting(true);
     setApiError(null);
@@ -155,6 +129,8 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
         customer_name: customer.name.trim(),
         customer_phone: customer.phone.trim(),
         customer_company: customer.company.trim() || undefined,
+        partner_id: isPartner ? Number(partnerId) : undefined,
+        partner_name: isPartner ? (selectedPartner?.company_name || undefined) : undefined,
         order_date: orderDate || undefined,
         notes: notes.trim() || undefined,
         shipments: shipments.map((s) => ({
@@ -214,9 +190,38 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
             company={customer.company}
             onCompanyChange={(v) => setCustomer((c) => ({ ...c, company: v }))}
             errors={errors}
-            matched={matchedCustomer}
-            onApplyMatched={applyMatchedCustomer}
           />
+
+          <div className="flex flex-col gap-2">
+            <Button
+              size="sm"
+              className="w-fit"
+              color={isPartner ? "primary" : "default"}
+              variant={isPartner ? "solid" : "flat"}
+              onPress={() => { setIsPartner((v) => !v); if (isPartner) setPartnerId(""); }}
+            >
+              Đơn từ đối tác liên kết
+            </Button>
+            <p className="text-xs text-gray-400">
+              Đơn đối tác: đối tác thuê công ty chở, đối tác là bên trả cước / chịu công nợ (khách chỉ là điểm giao).
+            </p>
+            {isPartner && (
+              <Select
+                label="Đối tác"
+                placeholder="Chọn đối tác"
+                selectedKeys={partnerId ? [String(partnerId)] : []}
+                onSelectionChange={(keys) => setPartnerId([...keys][0] ?? "")}
+                isInvalid={!!errors.partner}
+                errorMessage={errors.partner}
+              >
+                {partners.map((p) => (
+                  <SelectItem key={String(p.id)} textValue={p.company_name}>
+                    {p.contact_person ? `${p.company_name} - ${p.contact_person}` : p.company_name}
+                  </SelectItem>
+                ))}
+              </Select>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input

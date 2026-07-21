@@ -64,4 +64,16 @@ const importOrders = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders, updateOrder, cancelOrder, importOrders };
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) ở form tạo đơn.
+const customerByPhone = async (req, res) => {
+    try {
+        const phone = req.query.phone?.trim();
+        if (!phone) return res.json({ customers: [] });
+        const customers = await orderService.searchCustomersByPhone(phone);
+        res.json({ customers });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+module.exports = { createOrder, listOrders, updateOrder, cancelOrder, importOrders, customerByPhone };

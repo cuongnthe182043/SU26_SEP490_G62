@@ -17,6 +17,17 @@ const normalizeVietnamPhone = (raw) => {
     return digits;
 };
 
+// Chuẩn hoá phần ĐẦU SĐT (gõ nửa chừng) để so khớp prefix với SĐT đã chuẩn hoá:
+// bỏ ký tự không phải số, và quy +84/84 ở đầu về 0 ngay cả khi chưa đủ số.
+//   "098"        -> "098"
+//   "+84 90"     -> "090"
+//   "8498"       -> "098"
+const normalizeVietnamPhonePrefix = (raw) => {
+    let digits = String(raw ?? '').replace(/\D/g, '');
+    if (digits.length >= 3 && digits.startsWith('84')) digits = `0${digits.slice(2)}`;
+    return digits;
+};
+
 // Biểu thức SQL chuẩn hoá cột `phone` đã lưu theo ĐÚNG quy tắc như normalizeVietnamPhone,
 // để so khớp cả những hồ sơ cũ đang lưu ở định dạng chưa chuẩn (không cần migrate dữ liệu).
 // Dùng: `WHERE ${normalizedPhoneSql('c.phone')} = $1` với $1 = normalizeVietnamPhone(input).
@@ -29,4 +40,4 @@ const normalizedPhoneSql = (col) => {
     END)`;
 };
 
-module.exports = { normalizeVietnamPhone, normalizedPhoneSql };
+module.exports = { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql };
