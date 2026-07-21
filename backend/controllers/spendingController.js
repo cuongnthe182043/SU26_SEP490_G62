@@ -100,6 +100,17 @@ const rejectVoucher = async (req, res) => {
     }
 };
 
+// Quyền huỷ thuộc Kế toán — route chỉ đăng ký bên accountantRoutes, không có ở managerRoutes.
+const cancelVoucher = async (req, res) => {
+    try {
+        const id = parseId(req.params.id, 'Voucher ID');
+        const voucher = await spendingService.cancelVoucher(id, req.user.userId, req.body?.reason);
+        res.json({ message: 'Đã huỷ phiếu chi', voucher });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const payVoucher = async (req, res) => {
     try {
         const id = parseId(req.params.id, 'Voucher ID');
@@ -130,6 +141,7 @@ module.exports = {
     createVoucher,
     approveVoucher,
     rejectVoucher,
+    cancelVoucher,
     payVoucher,
     getSpendingSummary,
 };
