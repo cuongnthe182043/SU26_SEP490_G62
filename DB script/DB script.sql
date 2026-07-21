@@ -531,12 +531,17 @@ CREATE TABLE payrolls (
     holiday_bonus           NUMERIC(12,2) NOT NULL DEFAULT 0,
     other_bonus             NUMERIC(12,2) NOT NULL DEFAULT 0,
 
+    -- Điều chỉnh thủ công do Kế toán nhập tay khi cần tính lại — KHÔNG bị "Tính lương"
+    -- (generate) ghi đè, tách bạch với các số hệ thống tự tính.
+    manual_bonus            NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (manual_bonus >= 0),
+
     insurance_employee      NUMERIC(12,2) NOT NULL DEFAULT 0,
     insurance_company       NUMERIC(12,2) NOT NULL DEFAULT 0,
     driver_debt_deduction   NUMERIC(12,2) NOT NULL DEFAULT 0,
     advance_deduction       NUMERIC(12,2) NOT NULL DEFAULT 0,
     absence_penalty         NUMERIC(12,2) NOT NULL DEFAULT 0,
     other_deduction         NUMERIC(12,2) NOT NULL DEFAULT 0,
+    manual_deduction        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (manual_deduction >= 0),
 
     -- Hoàn chi phí tài đã ứng (chi hộ khách + chi phí công ty tài trả trước) —
     -- KHÔNG phải thu nhập: không vào gross, không BHXH, chỉ cộng vào tiền thực chi trả
@@ -546,18 +551,21 @@ CREATE TABLE payrolls (
                                 base_salary + revenue_bonus
                                 + kpi_bonus + top_driver_bonus
                                 + overtime_bonus + holiday_bonus + other_bonus
+                                + manual_bonus
                             ) STORED,
 
     net_salary              NUMERIC(12,2) GENERATED ALWAYS AS (
                                 base_salary + revenue_bonus
                                 + kpi_bonus + top_driver_bonus
                                 + overtime_bonus + holiday_bonus + other_bonus
+                                + manual_bonus
                                 + expense_reimbursement
                                 - insurance_employee
                                 - driver_debt_deduction
                                 - advance_deduction
                                 - absence_penalty
                                 - other_deduction
+                                - manual_deduction
                             ) STORED,
 
     status                  TEXT NOT NULL DEFAULT 'pending'
@@ -568,6 +576,11 @@ CREATE TABLE payrolls (
     approved_at             TIMESTAMPTZ,
     paid_by                 INT REFERENCES profiles(id),
     paid_at                 TIMESTAMPTZ,
+
+    -- Vết điều chỉnh/trả-về-tính-lại gần nhất (ai, khi nào, lý do) — phục vụ audit
+    adjusted_by             INT REFERENCES profiles(id),
+    adjusted_at             TIMESTAMPTZ,
+    adjustment_note         TEXT,
 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),

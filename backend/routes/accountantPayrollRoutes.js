@@ -9,5 +9,7 @@ router.post('/generate',               ctrl.generatePayrolls);
 router.get('/',               ctrl.getPayrolls);
 router.patch('/:id/confirm',  ctrl.confirmPayroll);
 router.patch('/:id/pay',      ctrl.markPayrollPaid);
+router.patch('/:id/revert',   ctrl.revertPayroll);
+router.patch('/:id/adjust',   ctrl.adjustPayroll);
 
 module.exports = router;

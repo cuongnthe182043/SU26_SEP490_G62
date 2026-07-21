@@ -124,13 +124,15 @@ const driverHasUnverifiedMaintenance = (driver) => Number(driver?.unverified_mai
 const driverHasActiveShipments = (driver) => Number(driver?.active_shipment_count || 0) > 0;
 
 const broadcastManagerVehicleChange = (action, vehicle, extra = {}) => {
-    notificationGateway.broadcastToRole('manager', {
+    const payload = {
         type: 'manager.vehicles.changed',
         action,
         vehicleId: vehicle?.id ?? null,
         status: vehicle?.status ?? null,
         ...extra,
-    });
+    };
+    notificationGateway.broadcastToRole('manager', payload);
+    notificationGateway.broadcastToRole('accountant', payload);
 };
 
 const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existingVehicle = null } = {}) => {

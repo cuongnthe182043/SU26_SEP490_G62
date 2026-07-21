@@ -44,6 +44,7 @@ export const managerService = {
   // ─── Payroll ──────────────────────────────────────────────────────────────
   getPayrolls: (params = {}) => apiRequest(`${BASE}/payrolls?${new URLSearchParams(params)}`),
   reviewPayroll: (id) => apiRequest(`${BASE}/payrolls/${id}/review`, { method: "PATCH" }),
+  revertPayroll: (id, reason) => apiRequest(`${BASE}/payrolls/${id}/revert`, { method: "PATCH", body: { reason: reason || undefined } }),
 
   // ─── Bonus ────────────────────────────────────────────────────────────────
   getBonuses: (params = {}) => apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),

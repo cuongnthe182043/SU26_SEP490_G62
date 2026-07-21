@@ -851,15 +851,22 @@ const exportOrdersReport = async (filters = {}) => {
             GROUP BY ts.shipment_id
         ),
         debt_agg AS (
+            -- Gộp về đúng 1 dòng / shipment_id (không group theo d.id) — một chuyến
+            -- về lý thuyết có thể phát sinh nhiều dòng debt driver, nếu group theo d.id
+            -- thì JOIN os.id = da.shipment_id bên dưới sẽ nhân đôi cả dòng export.
             SELECT
                 d.shipment_id,
-                d.total_amount,
-                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS driver_paid
+                SUM(d.total_amount) AS total_amount,
+                COALESCE(SUM(dp_agg.paid), 0) AS driver_paid
             FROM debts d
-            LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+            LEFT JOIN (
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                FROM debt_payments
+                GROUP BY debt_id
+            ) dp_agg ON dp_agg.debt_id = d.id
             WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
               AND d.debt_type = 'driver'
-            GROUP BY d.id, d.shipment_id, d.total_amount
+            GROUP BY d.shipment_id
         ),
         receipt_agg AS (
             SELECT DISTINCT ON (orr.requesting_shipment_id)

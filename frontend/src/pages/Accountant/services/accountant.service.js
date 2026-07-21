@@ -109,6 +109,9 @@ export const accountantService = {
   getReportOverview: (months = 6, granularity = "month") =>
     apiRequest(`${BASE}/reports/overview?months=${months}&granularity=${granularity}`),
 
+  // Thông tin công ty (header phiếu lương) — mọi vai trò đã đăng nhập đều đọc được
+  getCompanyInfo: () => apiRequest("/api/company/info"),
+
   getPayrolls: (params) =>
     apiRequest(`${BASE}/payroll?${new URLSearchParams(params)}`),
 
@@ -120,6 +123,17 @@ export const accountantService = {
 
   markPayrollPaid: (id) =>
     apiRequest(`${BASE}/payroll/${id}/pay`, { method: "PATCH" }),
+
+  // Trả phiếu lương về 'pending' để tính lại (kèm lý do)
+  revertPayroll: (id, reason) =>
+    apiRequest(`${BASE}/payroll/${id}/revert`, { method: "PATCH", body: { reason: reason || undefined } }),
+
+  // Điều chỉnh tay: thưởng thêm (+) / khấu trừ thêm (−), tự đưa phiếu về pending để duyệt lại
+  adjustPayroll: (id, { manual_bonus, manual_deduction, note }) =>
+    apiRequest(`${BASE}/payroll/${id}/adjust`, {
+      method: "PATCH",
+      body: { manual_bonus, manual_deduction, note: note || undefined },
+    }),
 
   getSalaryAdvances: (params) =>
     apiRequest(`${BASE}/payroll/advances?${new URLSearchParams(params)}`),
@@ -197,4 +211,80 @@ export const accountantService = {
 
   getSpendingSummary: (params = {}) =>
     apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
+
+  // ─── Chấm công (attendance) ───────────────────────────────────────────────
+  getAttendanceGrid: (params = {}) =>
+    apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),
+
+  markAttendance: (data) =>
+    apiRequest("/api/attendance", { method: "POST", body: data }),
+
+  clearAttendance: (driverId, workDate) =>
+    apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
+
+  // ─── Nhóm xe ──────────────────────────────────────────────────────────────
+  getVehicleGroups: () => apiRequest("/api/admin/vehicle-groups"),
+
+  getVehicleGroupDetail: (id) => apiRequest(`/api/admin/vehicle-groups/${id}`),
+
+  createVehicleGroup: (payload) =>
+    apiRequest("/api/admin/vehicle-groups", { method: "POST", body: payload }),
+
+  updateVehicleGroup: (id, payload) =>
+    apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "PUT", body: payload }),
+
+  deleteVehicleGroup: (id) =>
+    apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "DELETE" }),
+
+  // ─── Quản lý xe + gán tài xế ────────────────────────────────────────────────
+  getVehicles: (params = {}) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") search.set(k, String(v)); });
+    return apiRequest(`/api/admin/vehicles?${search.toString()}`);
+  },
+
+  getVehicleDetail: (id) => apiRequest(`/api/admin/vehicles/${id}`),
+
+  createVehicle: (payload) =>
+    apiRequest("/api/admin/vehicles", { method: "POST", body: payload }),
+
+  updateVehicle: (id, payload) =>
+    apiRequest(`/api/admin/vehicles/${id}`, { method: "PUT", body: payload }),
+
+  getVehicleAssignmentHistory: (id) =>
+    apiRequest(`/api/admin/vehicles/${id}/assignment-history`),
+
+  assignVehicleDriver: (id, driverId) =>
+    apiRequest(`/api/admin/vehicles/${id}/driver-assignment`, {
+      method: "PATCH",
+      body: { assigned_driver_id: driverId ?? null },
+    }),
+
+  getDriverOptions: (vehicleId) =>
+    apiRequest(`/api/admin/vehicles/driver-options${vehicleId ? `?vehicle_id=${vehicleId}` : ""}`),
+
+  // Vehicle lifecycle
+  sendVehicleToMaintenance: (id, payload) =>
+    apiRequest(`/api/admin/vehicles/${id}/send-to-maintenance`, { method: "POST", body: payload }),
+
+  verifyVehicleMaintenance: (id, payload = {}) =>
+    apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
+
+  markVehicleBroken: (id, payload) =>
+    apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),
+
+  restoreVehicle: (id, payload = {}) =>
+    apiRequest(`/api/admin/vehicles/${id}/restore`, { method: "POST", body: payload }),
+
+  retireVehicle: (id, payload = {}) =>
+    apiRequest(`/api/admin/vehicles/${id}/retire`, { method: "POST", body: payload }),
+
+  // Maintenance requests (driver-submitted)
+  getMaintenanceRequests: () => apiRequest("/api/admin/maintenance-requests"),
+
+  approveMaintenanceRequest: (id, payload = {}) =>
+    apiRequest(`/api/admin/maintenance-requests/${id}/approve`, { method: "POST", body: payload }),
+
+  rejectMaintenanceRequest: (id, payload) =>
+    apiRequest(`/api/admin/maintenance-requests/${id}/reject`, { method: "POST", body: payload }),
 };

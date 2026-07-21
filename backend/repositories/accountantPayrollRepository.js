@@ -286,11 +286,14 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             p.advance_deduction::text,
             p.absence_penalty::text,
             p.other_deduction::text,
+            p.manual_bonus::text,
+            p.manual_deduction::text,
             p.expense_reimbursement::text,
             p.gross_salary::text,
             p.net_salary::text,
             p.status,
             p.reviewed_at, p.approved_at, p.paid_at,
+            p.adjusted_at, p.adjustment_note,
             p.created_at, p.updated_at,
             pr.full_name  AS driver_name,
             pr.phone      AS driver_phone,
@@ -713,11 +716,65 @@ const reviewPayroll = async (payrollId, managerId) => {
     return row;
 };
 
+// Trả phiếu lương về 'pending' để tính lại (Manager hoặc Kế toán) — huỷ mọi dấu duyệt cũ.
+// Chỉ áp dụng khi phiếu đang reviewed/approved; đã 'paid' thì khoá (đã sinh bút toán + xoá nợ).
+const revertPayrollToPending = async (payrollId, actorId, reason = null) => {
+    const { rows: [row] } = await pool.query(`
+        UPDATE payrolls
+        SET status          = 'pending',
+            reviewed_by     = NULL,
+            reviewed_at     = NULL,
+            approved_by     = NULL,
+            approved_at     = NULL,
+            adjusted_by     = $2,
+            adjusted_at     = NOW(),
+            adjustment_note = $3,
+            updated_at      = NOW()
+        WHERE id = $1
+          AND status IN ('reviewed', 'approved')
+        RETURNING *
+    `, [payrollId, actorId, reason ? `Trả về tính lại: ${reason}` : 'Trả về tính lại']);
+
+    if (!row) {
+        throw new Error('Không thể trả về: phiếu không tồn tại, đang chờ duyệt hoặc đã trả lương');
+    }
+    return row;
+};
+
+// Kế toán nhập khoản điều chỉnh tay (thưởng thêm / khấu trừ thêm) rồi đưa phiếu về 'pending'
+// để duyệt lại từ đầu. net_salary được DB tự tính lại. Không cho sửa khi đã 'paid'.
+const adjustPayroll = async (payrollId, { manualBonus, manualDeduction, note }, actorId) => {
+    const { rows: [row] } = await pool.query(`
+        UPDATE payrolls
+        SET manual_bonus     = $2,
+            manual_deduction = $3,
+            adjustment_note  = $4,
+            adjusted_by      = $5,
+            adjusted_at      = NOW(),
+            status           = 'pending',
+            reviewed_by      = NULL,
+            reviewed_at      = NULL,
+            approved_by      = NULL,
+            approved_at      = NULL,
+            updated_at       = NOW()
+        WHERE id = $1
+          AND status <> 'paid'
+        RETURNING *
+    `, [payrollId, manualBonus, manualDeduction, note || null, actorId]);
+
+    if (!row) {
+        throw new Error('Không thể điều chỉnh: phiếu không tồn tại hoặc đã trả lương');
+    }
+    return row;
+};
+
 module.exports = {
     getAllPayrolls,
     getPayrollStats,
     calculateAndUpsertPayrolls,
     reviewPayroll,
+    revertPayrollToPending,
+    adjustPayroll,
     confirmPayroll,
     markPayrollPaid,
     getSalaryAdvances,
