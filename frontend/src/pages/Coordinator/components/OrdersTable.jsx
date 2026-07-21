@@ -3,6 +3,7 @@ import { Button, Spinner } from "@heroui/react";
 import { RiArrowDownSLine, RiArrowRightSLine, RiInboxLine, RiPencilLine, RiCloseCircleLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
+import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { ShipmentSubRows } from "./ShipmentSubRows";
 import { canCancelTrip, canEditTrip, formatCurrency } from "../utils";
 
@@ -34,7 +35,13 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
         <td className="py-3.5 pr-4"><span className="text-xs text-gray-500">{trip.date || "—"}</span></td>
         <td className="py-3.5 pr-4"><span className="text-xs text-gray-600">{trip.plate || "—"}</span></td>
         <td className="py-3.5 pr-4"><span className="text-xs text-gray-600">{trip.driverName || "—"}</span></td>
-        <td className="py-3.5 pr-4 max-w-[200px]"><span className="text-xs text-gray-500 truncate block">{trip.route || "—"}</span></td>
+        <td className="py-3.5 pr-4 overflow-hidden">
+          {trip.isMultiShipment ? (
+            <span className="text-xs text-gray-500 truncate block">{trip.route || "—"}</span>
+          ) : (
+            <RouteStops pickups={trip.pickupAddresses} deliveries={trip.deliveryAddresses} className="text-xs text-gray-500 min-w-0 max-w-full" />
+          )}
+        </td>
         <td className="py-3.5 pr-4"><span className="text-sm font-bold text-gray-800">{formatCurrency(trip.fare)}</span></td>
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <StatusBadge status={trip.statusClass} />
@@ -95,7 +102,8 @@ export function OrdersTable({
   return (
     <div className="flex flex-col gap-4 p-5">
       <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
-        <table className="w-full table-fixed">
+        <div className="overflow-x-auto">
+        <table className="w-full table-fixed min-w-[1000px]">
           <colgroup>
             <col className="w-10" />
             <col />
@@ -131,6 +139,7 @@ export function OrdersTable({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <PaginationBar

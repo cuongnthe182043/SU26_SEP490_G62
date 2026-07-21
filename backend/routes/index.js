@@ -23,11 +23,11 @@ const managerRoutes          = require('./managerRoutes');
 const bonusRoutes            = require('./bonusRoutes');
 const customerRoutes         = require('./customerRoutes');
 const bonusRuleRoutes        = require('./bonusRuleRoutes');
+const attendanceRoutes       = require('./attendanceRoutes');
 
 
 // Register route modules
 router.use('/auth', authRoutes);
-router.use('/orders', orderRoutes);
 router.use('/accountant', accountantRoutes);
 router.use('/api/trips', tripRoutes);
 router.use('/api/profile', profileRoutes);
@@ -48,5 +48,6 @@ router.use('/api/manager',          managerRoutes);
 router.use('/api/bonuses',          bonusRoutes);
 router.use('/api/customers',        customerRoutes);
 router.use('/api/bonus-rules',      bonusRuleRoutes);
+router.use('/api/attendance',       attendanceRoutes);
 
 module.exports = router;

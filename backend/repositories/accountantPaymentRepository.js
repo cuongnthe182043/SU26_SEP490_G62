@@ -15,7 +15,7 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
 
     if (numericAmount > remaining + 0.01) {
         throw new Error(
-            `Sá»‘ tiá»n thanh toÃ¡n (${numericAmount.toLocaleString('vi-VN')}Ä‘) vÆ°á»£t quÃ¡ sá»‘ dÆ° (${remaining.toLocaleString('vi-VN')}Ä‘)`
+            `Số tiền thanh toán (${numericAmount.toLocaleString('vi-VN')}đ) vượt quá số dư (${remaining.toLocaleString('vi-VN')}đ)`
         );
     }
 
@@ -64,14 +64,14 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
          GROUP BY o.customer_id`,
         [orderId]
     );
-    if (!order) throw new Error(`KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng #${orderId}`);
+    if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
 
     const totalAmount = Number(order.order_total) || 0;
     const { rows: [created] } = await client.query(
         `INSERT INTO debts (debt_type, customer_id, order_id, total_amount, due_date, notes, updated_by, created_at, updated_at)
          VALUES ('customer', $1, $2, $3, CURRENT_DATE + INTERVAL '30 days', $4, $5, NOW(), NOW())
          RETURNING id`,
-        [order.customer_id, orderId, totalAmount, `Tá»± Ä‘á»™ng táº¡o cÃ´ng ná»£ cho Ä‘Æ¡n #${orderId}`, createdBy]
+        [order.customer_id, orderId, totalAmount, `Tự động tạo công nợ cho đơn #${orderId}`, createdBy]
     );
     return created.id;
 };
@@ -357,7 +357,7 @@ const recordPaymentByDebt = async (debtId, paymentData) => {
              GROUP BY d.id, d.total_amount, d.customer_id`,
             [debtId]
         );
-        if (!debt) throw new Error('KhÃ´ng tÃ¬m tháº¥y khoáº£n cÃ´ng ná»£');
+        if (!debt) throw new Error('Không tìm thấy khoản công nợ');
 
         const result = await _applyPaymentToDebt(client, {
             debt,
@@ -471,7 +471,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
         }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
-                `Sá»‘ tiá»n thanh toÃ¡n (${requestedAmount.toLocaleString('vi-VN')}Ä‘) vÆ°á»£t quÃ¡ sá»‘ dÆ° cÃ´ng ná»£ (${totalRemaining.toLocaleString('vi-VN')}Ä‘)`
+                `Số tiền thanh toán (${requestedAmount.toLocaleString('vi-VN')}đ) vượt quá số dư công nợ (${totalRemaining.toLocaleString('vi-VN')}đ)`
             );
         }
 
@@ -566,7 +566,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
                  WHERE os.id = $1`,
                 [shipmentId]
             );
-            if (!s) throw new Error('KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe');
+            if (!s) throw new Error('Không tìm thấy chuyến xe');
 
             // Nợ tài xế = số tiền tài xế đang cầm = cước + chi hộ khách
             const shipmentPrice = (Number(s.actual_price || s.estimated_price) || 0) + Number(s.pass_through_total || 0);
@@ -607,7 +607,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
 
             await client.query(
                 `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
-                 SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Káº¿ toÃ¡n xÃ¡c nháº­n thu tiá»n tÃ i xáº¿'
+                 SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Kế toán xác nhận thu tiền tài xế'
                  FROM debts d WHERE d.shipment_id = $4 AND d.debt_type = 'driver'
                  RETURNING debt_id`,
                 [amount, paymentMethod || 'cash', confirmedBy, shipmentId]
@@ -688,6 +688,85 @@ const getPaymentHistoryByPerson = async (personType, personId) => {
     return unique;
 };
 
+// ─── Lịch sử thanh toán công nợ toàn cục (khách + tài xế) ─────────────────────
+// sort resolved via allowlist, never interpolated directly from user input
+const HISTORY_SORTS = {
+    oldest:        'dp.paid_at ASC, dp.id ASC',
+    'amount-desc': 'dp.amount DESC, dp.id DESC',
+    'amount-asc':  'dp.amount ASC, dp.id DESC',
+};
+
+const listAllDebtPayments = async ({ personType, status, method, month, year, search, sort, page, limit } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+
+    if (personType) { conds.push(`d.debt_type = $${i++}`);        params.push(personType); }
+    if (status)     { conds.push(`dp.status = $${i++}`);          params.push(status); }
+    if (method)     { conds.push(`dp.payment_method = $${i++}`);  params.push(method); }
+    if (month)      { conds.push(`EXTRACT(MONTH FROM dp.paid_at) = $${i++}`); params.push(Number(month)); }
+    if (year)       { conds.push(`EXTRACT(YEAR  FROM dp.paid_at) = $${i++}`); params.push(Number(year)); }
+    if (search) {
+        conds.push(`(drv.full_name ILIKE $${i} OR c.full_name ILIKE $${i} OR c.company_name ILIKE $${i})`);
+        params.push(`%${search}%`);
+        i++;
+    }
+
+    const where       = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const orderClause = HISTORY_SORTS[sort] ?? 'dp.paid_at DESC, dp.id DESC';
+    const safeLimit   = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage    = Math.max(1, Number(page) || 1);
+    const offset      = (safePage - 1) * safeLimit;
+
+    const baseFrom = `
+        FROM debt_payments dp
+        JOIN debts d           ON d.id = dp.debt_id
+        LEFT JOIN customers c  ON c.id = d.customer_id
+        LEFT JOIN profiles drv ON drv.id = d.driver_id
+        LEFT JOIN profiles cfb ON cfb.id = dp.confirmed_by
+        LEFT JOIN profiles crb ON crb.id = dp.created_by
+    `;
+
+    const [{ rows }, { rows: countRows }, { rows: [stats] }] = await Promise.all([
+        pool.query(
+            `SELECT
+                dp.id, dp.debt_id, dp.amount::text, dp.payment_method, dp.status,
+                dp.paid_at, dp.confirmed_at, dp.notes, dp.reject_reason, dp.receipt_url,
+                d.debt_type, d.order_id, d.shipment_id, d.total_amount::text AS debt_total,
+                CASE WHEN d.debt_type = 'driver'
+                     THEN drv.full_name
+                     ELSE COALESCE(c.company_name, c.full_name) END AS person_name,
+                CASE WHEN d.debt_type = 'driver' THEN drv.phone ELSE c.phone END AS person_phone,
+                cfb.full_name AS confirmed_by_name,
+                crb.full_name AS created_by_name
+             ${baseFrom} ${where}
+             ORDER BY ${orderClause}
+             LIMIT $${i} OFFSET $${i + 1}`,
+            [...params, safeLimit, offset],
+        ),
+        pool.query(`SELECT COUNT(*)::int AS total ${baseFrom} ${where}`, params),
+        pool.query(
+            `SELECT
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)::text AS confirmed_total,
+                COUNT(*) FILTER (WHERE dp.status = 'confirmed')::int                     AS confirmed_count,
+                COUNT(*) FILTER (WHERE dp.status = 'pending')::int                       AS pending_count,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'customer'), 0)::text AS customer_confirmed_total,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'driver'),   0)::text AS driver_confirmed_total
+             ${baseFrom} ${where}`,
+            params,
+        ),
+    ]);
+
+    return {
+        rows,
+        stats,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
+};
+
 module.exports = {
     getPaymentsByOrderId,
     recordPaymentWithOverflow,
@@ -698,5 +777,6 @@ module.exports = {
     recordPaymentByShipment,
     recordPaymentByDebt,
     getPaymentHistoryByPerson,
+    listAllDebtPayments,
 };
 

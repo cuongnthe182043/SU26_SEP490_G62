@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Select, SelectItem,
 } from "@heroui/react";
-import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine } from "react-icons/ri";
+import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine, RiKeyLine } from "react-icons/ri";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import UserFormModal from "../modals/UserFormModal";
@@ -88,6 +89,9 @@ export default function UsersView({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("name_asc");
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
@@ -96,6 +100,8 @@ export default function UsersView({ user }) {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [toggleTarget, setToggleTarget] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
   const fileInputRef = useRef(null);
 
   const fetchUsers = async () => {
@@ -118,20 +124,151 @@ export default function UsersView({ user }) {
 
   const filtered = allUsers.filter((u) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch = (
       String(u.id).includes(q) || (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q) || (u.phone || "").toLowerCase().includes(q) ||
       (u.role || "").toLowerCase().includes(q) || (u.city || "").toLowerCase().includes(q)
     );
+    const matchesRole = !roleFilter || u.role === roleFilter;
+    const matchesStatus = !statusFilter || String(!!u.is_active) === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    switch (sortBy) {
+      case "name_desc":
+        return list.sort((a, b) => (b.full_name || "").localeCompare(a.full_name || ""));
+      case "role":
+        return list.sort((a, b) => (ROLE_LABEL[a.role] || a.role || "").localeCompare(ROLE_LABEL[b.role] || b.role || ""));
+      case "status":
+        return list.sort((a, b) => Number(!!b.is_active) - Number(!!a.is_active));
+      case "name_asc":
+      default:
+        return list.sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+    }
+  }, [filtered, sortBy]);
 
-  const handleDownloadSample = () => {
-    const worksheet = XLSX.utils.json_to_sheet(SAMPLE_ROWS, { header: IMPORT_HEADERS });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "users");
-    XLSX.writeFile(workbook, "user-import-sample.xlsx");
+  useEffect(() => { setPage(1); }, [roleFilter, statusFilter, sortBy]);
+
+  const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleDownloadSample = async () => {
+    const REQUIRED_HEADERS = new Set(["email", "full_name", "phone", "role"]);
+    const BRAND_BLUE = "FF2563EB";
+    const HEADER_TEXT = "FFFFFFFF";
+    const REQUIRED_FILL = "FFF59E0B";
+    const ZEBRA_FILL = "FFF8FAFC";
+    const BORDER_COLOR = "FFE2E8F0";
+    const thinBorder = { style: "thin", color: { argb: BORDER_COLOR } };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "LogisCount";
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet("users", { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = IMPORT_HEADERS.map((h) => ({ header: h, key: h, width: Math.max(h.length + 2, 16) }));
+
+    const headerRow = ws.getRow(1);
+    headerRow.height = 24;
+    headerRow.eachCell((cell, colNumber) => {
+      const h = IMPORT_HEADERS[colNumber - 1];
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REQUIRED_HEADERS.has(h) ? REQUIRED_FILL : BRAND_BLUE } };
+      cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: IMPORT_HEADERS.length } };
+
+    SAMPLE_ROWS.forEach((sample, i) => {
+      const row = ws.addRow(IMPORT_HEADERS.map((h) => sample[h] ?? ""));
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        cell.alignment = { vertical: "middle" };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    // Dropdown cho "role" và "gender" — áp dụng 300 dòng đầu để chừa chỗ nhập thêm
+    const roleColIndex = IMPORT_HEADERS.indexOf("role") + 1;
+    const genderColIndex = IMPORT_HEADERS.indexOf("gender") + 1;
+    const roleOptions = Object.keys(ROLE_LABEL);
+    const genderOptions = Object.keys(GENDER_LABEL);
+    for (let r = 2; r <= 300; r += 1) {
+      ws.getCell(r, roleColIndex).dataValidation = {
+        type: "list", allowBlank: true,
+        formulae: [`"${roleOptions.join(",")}"`],
+        showErrorMessage: true, errorTitle: "Vai trò không hợp lệ",
+        error: `Chỉ chọn 1 trong: ${roleOptions.join(" / ")}`,
+      };
+      ws.getCell(r, genderColIndex).dataValidation = {
+        type: "list", allowBlank: true,
+        formulae: [`"${genderOptions.join(",")}"`],
+        showErrorMessage: true, errorTitle: "Giới tính không hợp lệ",
+        error: `Chỉ chọn 1 trong: ${genderOptions.join(" / ")}`,
+      };
+    }
+
+    // ─── Sheet hướng dẫn ────────────────────────────────────────────────────
+    const wsGuide = wb.addWorksheet("HUONG_DAN", { views: [{ showGridLines: false }] });
+    wsGuide.columns = [{ width: 24 }, { width: 70 }];
+
+    const titleRow = wsGuide.addRow(["HƯỚNG DẪN NHẬP LIỆU — TEMPLATE IMPORT NGƯỜI DÙNG"]);
+    wsGuide.mergeCells(`A${titleRow.number}:B${titleRow.number}`);
+    titleRow.height = 28;
+    titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: HEADER_TEXT } };
+    titleRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+    titleRow.getCell(1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    wsGuide.addRow([]);
+
+    const addNote = (text) => {
+      const row = wsGuide.addRow([text]);
+      wsGuide.mergeCells(`A${row.number}:B${row.number}`);
+      row.getCell(1).font = { size: 10.5 };
+      row.getCell(1).alignment = { wrapText: true, vertical: "top" };
+    };
+    addNote("• Cột có nền cam ở sheet \"users\" (email, full_name, phone, role) là BẮT BUỘC — thiếu sẽ bị từ chối.");
+    addNote("• Ngày sinh (dob) nhập dạng yyyy-mm-dd hoặc dd/mm/yyyy.");
+    addNote("• country để trống sẽ mặc định là VN.");
+    wsGuide.addRow([]);
+
+    const roleTableHeader = wsGuide.addRow(["Giá trị role", "Diễn giải"]);
+    roleTableHeader.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: HEADER_TEXT } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    roleOptions.forEach((r, i) => {
+      const row = wsGuide.addRow([r, ROLE_LABEL[r]]);
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    wsGuide.addRow([]);
+    const genderTableHeader = wsGuide.addRow(["Giá trị gender", "Diễn giải"]);
+    genderTableHeader.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: HEADER_TEXT } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    genderOptions.forEach((g, i) => {
+      const row = wsGuide.addRow([g, GENDER_LABEL[g]]);
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "user-import-sample.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleImport = async (event) => {
@@ -203,6 +340,20 @@ export default function UsersView({ user }) {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      await managerService.resetUserPassword(resetTarget.id);
+      setResetTarget(null);
+      alert("Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+    } catch (error) {
+      alert(error.message || "Không thể reset mật khẩu.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -218,17 +369,57 @@ export default function UsersView({ user }) {
         </div>
       </div>
 
-      <Input
-        placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
-        value={search}
-        onValueChange={(v) => { setSearch(v); setPage(1); }}
-        startContent={<RiSearchLine size={15} className="text-gray-400" />}
-        variant="bordered"
-        isClearable
-        className="max-w-md"
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
+          value={search}
+          onValueChange={(v) => { setSearch(v); setPage(1); }}
+          startContent={<RiSearchLine size={15} className="text-gray-400" />}
+          variant="bordered"
+          size="sm"
+          isClearable
+          className="max-w-md"
+        />
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-44"
+          selectedKeys={new Set([roleFilter])}
+          onSelectionChange={(keys) => setRoleFilter([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Tất cả vai trò">Tất cả vai trò</SelectItem>
+          {Object.entries(ROLE_LABEL).map(([k, v]) => (
+            <SelectItem key={k} textValue={v}>{v}</SelectItem>
+          ))}
+        </Select>
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-40"
+          selectedKeys={new Set([statusFilter])}
+          onSelectionChange={(keys) => setStatusFilter([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Tất cả trạng thái">Tất cả trạng thái</SelectItem>
+          <SelectItem key="true" textValue="Hoạt động">Hoạt động</SelectItem>
+          <SelectItem key="false" textValue="Đã khóa">Đã khóa</SelectItem>
+        </Select>
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-44"
+          placeholder="Sắp xếp"
+          selectedKeys={new Set([sortBy])}
+          onSelectionChange={(keys) => setSortBy([...keys][0] ?? "name_asc")}
+        >
+          <SelectItem key="name_asc" textValue="Tên A→Z">Tên A→Z</SelectItem>
+          <SelectItem key="name_desc" textValue="Tên Z→A">Tên Z→A</SelectItem>
+          <SelectItem key="role" textValue="Vai trò">Vai trò</SelectItem>
+          <SelectItem key="status" textValue="Trạng thái (hoạt động trước)">Trạng thái (hoạt động trước)</SelectItem>
+        </Select>
+      </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Danh sách người dùng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>HỌ VÀ TÊN</TableColumn>
@@ -258,6 +449,16 @@ export default function UsersView({ user }) {
                     <Button
                       size="sm"
                       variant="flat"
+                      color="warning"
+                      isDisabled={u.role === "manager"}
+                      startContent={<RiKeyLine size={13} />}
+                      onPress={() => setResetTarget(u)}
+                    >
+                      Reset MK
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="flat"
                       color={u.is_active ? "danger" : "success"}
                       isDisabled={u.role === "manager"}
                       startContent={u.is_active ? <RiLockLine size={13} /> : <RiLockUnlockLine size={13} />}
@@ -271,6 +472,7 @@ export default function UsersView({ user }) {
             )}
           </TableBody>
         </Table>
+        </div>
         <div className="px-5 py-3">
           <PaginationBar page={page} pageSize={pageSize} totalItems={filtered.length} totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))} onPageChange={setPage} />
         </div>
@@ -289,6 +491,21 @@ export default function UsersView({ user }) {
           <ModalFooter>
             <Button variant="flat" onPress={() => setToggleTarget(null)}>Hủy</Button>
             <Button color="danger" onPress={handleToggleStatus}>Xác nhận</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={!!resetTarget} onOpenChange={(open) => !open && !resetting && setResetTarget(null)} size="sm">
+        <ModalContent>
+          <ModalHeader>Reset mật khẩu</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Đặt lại mật khẩu cho tài khoản "{resetTarget?.full_name || resetTarget?.email}"? Mật khẩu tạm thời sẽ được gửi qua email <strong>{resetTarget?.email}</strong> — mật khẩu cũ sẽ ngừng hoạt động ngay và nhân viên phải đổi mật khẩu ở lần đăng nhập kế tiếp.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={() => setResetTarget(null)} isDisabled={resetting}>Hủy</Button>
+            <Button color="warning" onPress={handleResetPassword} isLoading={resetting}>Reset mật khẩu</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

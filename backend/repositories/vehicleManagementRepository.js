@@ -207,12 +207,19 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     return result.rows[0] ?? null;
 };
 
+// sort resolved via allowlist, never interpolated directly from user input
+const VEHICLE_SORTS = {
+    plate:  'v.plate_number ASC',
+    status: 'v.status ASC, v.plate_number ASC',
+};
+
 const listVehicles = async ({
     page = 1,
     limit = 10,
     search = null,
     status = null,
     vehicleGroupId = null,
+    sort = null,
 } = {}) => {
     const offset = (page - 1) * limit;
     const conditions = [];
@@ -247,7 +254,7 @@ const listVehicles = async ({
         pool.query(
             `${VEHICLE_DETAIL_SELECT}
              ${whereClause}
-             ORDER BY v.updated_at DESC, v.id DESC
+             ORDER BY ${VEHICLE_SORTS[sort] ?? 'v.updated_at DESC, v.id DESC'}
              LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
             rowsParams,
         ),
@@ -434,11 +441,14 @@ const createVehicle = async ({
 
         const vehicleId = result.rows[0]?.id;
         if (assigned_driver_id) {
+            // default_vehicle_group_id chỉ set nếu đang trống (gán xe lần đầu) — không
+            // ghi đè nhóm KPI cố định của tài nếu đã có từ trước (BR KPI: gắn chết 1 nhóm).
             await client.query(
                 `UPDATE drivers
-                 SET vehicle_id = $1
+                 SET vehicle_id = $1,
+                     default_vehicle_group_id = COALESCE(default_vehicle_group_id, $3)
                  WHERE profile_id = $2`,
-                [vehicleId, assigned_driver_id],
+                [vehicleId, assigned_driver_id, vehicle_group_id],
             );
         }
 
@@ -501,9 +511,10 @@ const updateVehicle = async (
         if (assigned_driver_id) {
             await client.query(
                 `UPDATE drivers
-                 SET vehicle_id = $1
+                 SET vehicle_id = $1,
+                     default_vehicle_group_id = COALESCE(default_vehicle_group_id, $3)
                  WHERE profile_id = $2`,
-                [vehicleId, assigned_driver_id],
+                [vehicleId, assigned_driver_id, vehicle_group_id],
             );
         }
 
@@ -1014,15 +1025,12 @@ const verifyMaintenanceRecordAndSetStatus = async ({
         );
         const expenseId = expenseResult.rows[0].id;
 
-        // Ghi sổ nhật ký tài chính: chi phí bảo dưỡng đã xác minh
-        const financialLedgerRepository = require('./financialLedgerRepository');
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: 'expense_recorded',
-            debitAccount: '642', creditAccount: '1111',
-            amount: expenseAmount,
-            description: `Chi phí bảo dưỡng xe #${vehicleId} — ${expenseDescription}`,
-            refType: 'expense', refId: expenseId, actorId: managerId,
-        });
+        // Tài xế đã ứng tiền trả xưởng — không ghi sổ tại đây, chuyển 'pending'
+        // chờ hoàn (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
+        await client.query(
+            `UPDATE expenses SET reimbursement_status = 'pending', updated_at = NOW() WHERE id = $1`,
+            [expenseId],
+        );
 
         for (const fileUrl of billPics) {
             await client.query(

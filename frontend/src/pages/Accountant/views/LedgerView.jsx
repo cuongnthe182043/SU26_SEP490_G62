@@ -46,7 +46,13 @@ function ExportModal({ onClose, onExported }) {
     setError(null);
     try {
       const csv = await accountantService.exportLedgerPeriod(from, to);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      // apiRequest() đọc response bằng response.text() — theo spec Fetch, bước decode UTF-8
+      // này TỰ ĐỘNG XÓA BOM ở đầu chuỗi (dù backend đã cố tình chèn BOM cho Excel/MISA nhận
+      // đúng UTF-8). Thiếu BOM khiến Excel mở file bằng bảng mã ANSI mặc định của Windows,
+      // làm tiếng Việt bị lỗi phông (mojibake) — phải chèn lại BOM thủ công ở đây trước khi
+      // tạo Blob để tải xuống.
+      const csvWithBom = csv.charCodeAt(0) === 0xfeff ? csv : `﻿${csv}`;
+      const blob = new Blob([csvWithBom], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -103,6 +109,7 @@ export function LedgerView() {
   const [filterFrom, setFilterFrom]         = useState("");
   const [filterTo, setFilterTo]             = useState("");
   const [filterExported, setFilterExported] = useState("");
+  const [sortBy, setSortBy]                 = useState("");
   const [showExport, setShowExport]         = useState(false);
 
   const [reverseTarget, setReverseTarget]   = useState(null);
@@ -135,6 +142,7 @@ export function LedgerView() {
       if (filterFrom)     params.from = filterFrom;
       if (filterTo)       params.to = filterTo;
       if (filterExported) params.exported = filterExported;
+      if (sortBy)         params.sort = sortBy;
       const data = await accountantService.getLedger(params);
       setRows(data.transactions ?? []);
       setTotal(data.total ?? 0);
@@ -144,7 +152,7 @@ export function LedgerView() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, filterEvent, filterFrom, filterTo, filterExported]);
+  }, [page, pageSize, filterEvent, filterFrom, filterTo, filterExported, sortBy]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -183,6 +191,19 @@ export function LedgerView() {
         >
           <SelectItem key="pending">Chưa xuất</SelectItem>
           <SelectItem key="exported">Đã xuất</SelectItem>
+        </Select>
+        <Select
+          label="Sắp xếp"
+          size="sm"
+          variant="bordered"
+          className="w-52"
+          selectedKeys={new Set([sortBy])}
+          onChange={(e) => resetPageAnd(setSortBy)(e.target.value)}
+        >
+          <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+          <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+          <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+          <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
         </Select>
         <div className="flex-1" />
         <Button

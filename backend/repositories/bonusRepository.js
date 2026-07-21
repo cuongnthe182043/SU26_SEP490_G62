@@ -8,6 +8,8 @@ const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 
 /**
  * Tính thưởng Tết cho 1 driver dựa trên hire_date và số ngày nghỉ không lương theo tháng.
+ * "Tháng đủ 28 công" dùng cùng định nghĩa với tính lương: vắng không vượt quá phần dư
+ * ngày lịch so với quota 28 thì vẫn tính là đủ công (xem accountantPayrollRepository).
  *
  * Công thức (PDF Điều II §6):
  *   months_incomplete < 3  → 1.000.000 × months_full   (max 12.000.000)
@@ -24,7 +26,14 @@ const _calcTet = (driverId, hireDate, year, unpaidByMonth) => {
 
     let monthsFull = 0;
     for (let m = fromMonth; m <= toMonth; m++) {
-        if (!unpaidByMonth[m + 1]) monthsFull++; // unpaidByMonth is 1-indexed
+        const monthNum     = m + 1; // unpaidByMonth is 1-indexed
+        // "đủ 28 công" khớp đúng định nghĩa dùng trong tính lương: tháng dài hơn 28 ngày
+        // lịch có phần dư được miễn trừ tự nhiên, chỉ vắng NHIỀU HƠN phần dư đó mới tính
+        // là thiếu công (accountantPayrollRepository._calcDriverPayroll dùng cùng công thức).
+        const daysInMonth  = new Date(year, monthNum, 0).getDate();
+        const allowedSlack = Math.max(0, daysInMonth - 28);
+        const unpaidDays   = unpaidByMonth[monthNum] || 0;
+        if (unpaidDays <= allowedSlack) monthsFull++;
     }
     const monthsIncomplete = monthsInRange - monthsFull;
 
@@ -68,16 +77,29 @@ const previewTetBonuses = async (year) => {
 
     const driverIds = drivers.map((d) => d.driver_id);
 
+    // Một tháng bị coi là "thiếu công" (không đủ 28 công) nếu có ít nhất 1 ngày nghỉ
+    // không lương đã duyệt (trừ ngày đã bị Manager/Coordinator override thành 'present')
+    // HOẶC có ít nhất 1 ngày attendance_overrides đánh dấu 'absent_unexcused' — khớp với
+    // cách tính ngày công trong accountantPayrollRepository._calcDriverPayroll.
     const { rows: leaveRows } = await pool.query(
-        `SELECT driver_id,
-                EXTRACT(MONTH FROM leave_date)::int AS month,
-                COUNT(*) AS cnt
-         FROM leave_requests
-         WHERE driver_id = ANY($1)
-           AND EXTRACT(YEAR FROM leave_date) = $2
-           AND leave_type = 'unpaid'
-           AND status     = 'approved'
-         GROUP BY driver_id, EXTRACT(MONTH FROM leave_date)`,
+        `SELECT driver_id, month, COUNT(*) AS cnt
+         FROM (
+             SELECT lr.driver_id, EXTRACT(MONTH FROM lr.leave_date)::int AS month
+             FROM leave_requests lr
+             LEFT JOIN attendance_overrides ao
+                    ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
+             WHERE lr.driver_id = ANY($1)
+               AND EXTRACT(YEAR FROM lr.leave_date) = $2
+               AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
+               AND COALESCE(ao.status, 'leave_unpaid') != 'present'
+             UNION ALL
+             SELECT ao2.driver_id, EXTRACT(MONTH FROM ao2.work_date)::int AS month
+             FROM attendance_overrides ao2
+             WHERE ao2.driver_id = ANY($1)
+               AND EXTRACT(YEAR FROM ao2.work_date) = $2
+               AND ao2.status = 'absent_unexcused'
+         ) x
+         GROUP BY driver_id, month`,
         [driverIds, year],
     );
 
@@ -174,7 +196,14 @@ const BASE = `
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-const getAll = async ({ type, status, year, search, driverId } = {}) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const BONUS_SORTS = {
+    oldest:        'db.created_at ASC',
+    'amount-desc': 'db.amount DESC',
+    'amount-asc':  'db.amount ASC',
+};
+
+const getAll = async ({ type, status, year, search, driverId, sort, page, limit } = {}) => {
     const conds  = [];
     const params = [];
     let   i      = 1;
@@ -190,8 +219,29 @@ const getAll = async ({ type, status, year, search, driverId } = {}) => {
     }
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const { rows } = await pool.query(`${BASE} ${where} ORDER BY db.created_at DESC`, params);
-    return rows;
+    const orderClause = BONUS_SORTS[sort] ?? 'db.created_at DESC';
+
+    if (!limit) {
+        const { rows } = await pool.query(`${BASE} ${where} ORDER BY ${orderClause}`, params);
+        return rows;
+    }
+
+    const safeLimit  = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage   = Math.max(1, Number(page) || 1);
+    const offset     = (safePage - 1) * safeLimit;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(`${BASE} ${where} ORDER BY ${orderClause} LIMIT $${i} OFFSET $${i + 1}`, [...params, safeLimit, offset]),
+        pool.query(`SELECT COUNT(*)::int AS total FROM driver_bonuses db JOIN profiles p ON p.id = db.driver_id ${where}`, params),
+    ]);
+
+    return {
+        rows,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
 };
 
 const getById = async (id) => {
@@ -305,6 +355,29 @@ const getStats = async (year) => {
     return row;
 };
 
+// Danh sách người nhận thưởng cho dropdown "Tạo phúc lợi" — thưởng Tết/hiếu hỉ/sinh nhật/
+// đặc biệt áp dụng cho MỌI nhân viên (không chỉ tài xế), khớp với driver_bonuses.driver_id
+// vốn tham chiếu profiles(id) chung, không giới hạn role ở tầng schema.
+const staffExists = async (profileId) => {
+    const { rows } = await pool.query(
+        `SELECT 1 FROM profiles p JOIN accounts a ON a.id = p.id WHERE p.id = $1 AND a.is_active = TRUE`,
+        [profileId],
+    );
+    return rows.length > 0;
+};
+
+const getStaffLookup = async () => {
+    const { rows } = await pool.query(
+        `SELECT p.id, p.full_name, p.phone, r.name AS role
+         FROM profiles p
+         JOIN accounts a ON a.id = p.id
+         JOIN roles r    ON r.id = p.role_id
+         WHERE a.is_active = TRUE
+         ORDER BY p.full_name ASC`
+    );
+    return rows;
+};
+
 module.exports = {
     BONUS_TYPES,
     BONUS_STATUSES,
@@ -318,4 +391,6 @@ module.exports = {
     reject,
     pay,
     getStats,
+    getStaffLookup,
+    staffExists,
 };

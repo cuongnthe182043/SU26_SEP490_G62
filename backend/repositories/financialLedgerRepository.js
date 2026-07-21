@@ -27,7 +27,14 @@ const insertTransaction = async (executor, {
     return row;
 };
 
-const getJournal = async ({ eventType = null, from = null, to = null, exported = null, limit = 200, offset = 0 }) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const JOURNAL_SORTS = {
+    oldest:        'ft.occurred_at ASC, ft.id ASC',
+    'amount-desc': 'ft.amount DESC, ft.id DESC',
+    'amount-asc':  'ft.amount ASC, ft.id DESC',
+};
+
+const getJournal = async ({ eventType = null, from = null, to = null, exported = null, sort = null, limit = 200, offset = 0 }) => {
     const params = [];
     const conditions = [];
     if (eventType) { params.push(eventType); conditions.push(`ft.event_type = $${params.length}`); }
@@ -37,6 +44,7 @@ const getJournal = async ({ eventType = null, from = null, to = null, exported =
     if (exported === 'exported') conditions.push('ft.exported_at IS NOT NULL');
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const orderClause = JOURNAL_SORTS[sort] ?? 'ft.occurred_at DESC, ft.id DESC';
     params.push(limit, offset);
 
     const { rows } = await pool.query(
@@ -56,7 +64,7 @@ const getJournal = async ({ eventType = null, from = null, to = null, exported =
          LEFT JOIN profiles p ON p.id = ft.actor_id
          LEFT JOIN financial_transactions rev ON rev.reversal_of_id = ft.id
          ${where}
-         ORDER BY ft.occurred_at DESC, ft.id DESC
+         ORDER BY ${orderClause}
          LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params,
     );
@@ -197,4 +205,49 @@ const exportPeriod = async ({ from, to, accountantId }) => {
     }
 };
 
-module.exports = { insertTransaction, getJournal, getJournalStats, exportPeriod, reverseTransaction };
+// ─── Tổng hợp chi (money-out) ─────────────────────────────────────────────────
+// Các event tiền RA khỏi công ty. Bút toán đảo (reversal_of_id) trừ ngược để
+// số liệu tự triệt tiêu khi có sai sót đã đảo.
+const MONEY_OUT_EVENTS = [
+    'expense_recorded', 'pass_through_cost', 'payroll_paid',
+    'bonus_paid', 'advance_disbursed', 'prepaid_refunded',
+];
+
+const getSpendingSummary = async ({ month, year }) => {
+    const m = Number(month);
+    const y = Number(year);
+
+    const [byType, trend] = await Promise.all([
+        // Tổng theo loại trong tháng được chọn
+        pool.query(
+            `SELECT event_type,
+                    COUNT(*) FILTER (WHERE reversal_of_id IS NULL)::int AS tx_count,
+                    COALESCE(SUM(CASE WHEN reversal_of_id IS NULL THEN amount ELSE -amount END), 0)::text AS total_amount
+             FROM financial_transactions
+             WHERE event_type = ANY($1)
+               AND EXTRACT(MONTH FROM occurred_at) = $2
+               AND EXTRACT(YEAR  FROM occurred_at) = $3
+             GROUP BY event_type
+             ORDER BY event_type`,
+            [MONEY_OUT_EVENTS, m, y],
+        ),
+        // Xu hướng 6 tháng gần nhất tính đến tháng được chọn
+        pool.query(
+            `SELECT EXTRACT(YEAR  FROM occurred_at)::int AS year,
+                    EXTRACT(MONTH FROM occurred_at)::int AS month,
+                    COALESCE(SUM(CASE WHEN reversal_of_id IS NULL THEN amount ELSE -amount END), 0)::text AS total_amount
+             FROM financial_transactions
+             WHERE event_type = ANY($1)
+               AND occurred_at >= (make_date($3, $2, 1) - INTERVAL '5 months')
+               AND occurred_at <  (make_date($3, $2, 1) + INTERVAL '1 month')
+             GROUP BY 1, 2
+             ORDER BY 1, 2`,
+            [MONEY_OUT_EVENTS, m, y],
+        ),
+    ]);
+
+    const grandTotal = byType.rows.reduce((s, r) => s + Number(r.total_amount), 0);
+    return { by_type: byType.rows, trend: trend.rows, grand_total: String(grandTotal) };
+};
+
+module.exports = { insertTransaction, getJournal, getJournalStats, exportPeriod, reverseTransaction, getSpendingSummary };

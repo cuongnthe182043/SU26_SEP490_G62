@@ -201,8 +201,8 @@ const listVehicleGroups = async () => orderRepository.listCoordinatorVehicleGrou
 
 const listPartners = async () => orderRepository.listCoordinatorPartners();
 
-const getIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
-  return incidentRepository.getCoordinatorIncidents({ status, search, page, limit });
+const getIncidents = async ({ status = null, severityLevel = null, search = '', sort = 'newest', page = 1, limit = 10 } = {}) => {
+  return incidentRepository.getCoordinatorIncidents({ status, severityLevel, search, sort, page, limit });
 };
 
 const importExcel = async (userId, fileBuffer) => {
@@ -508,6 +508,7 @@ const getReceiptRequests = async ({
     search = '',
     dateFrom = '',
     dateTo = '',
+    sort = null,
     page = 1,
     limit = 10,
 } = {}) => {
@@ -561,7 +562,7 @@ const getReceiptRequests = async ({
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const { rows, total } = await coordinatorRepository.listReceiptRequests({
-        where, params, limit: normalizedLimit, offset,
+        where, params, limit: normalizedLimit, offset, sort,
     });
 
     return {
@@ -638,7 +639,7 @@ const getReceiptRequestDetail = async (requestId) => {
 };
 
 // POST approve — chốt actual income/expenses + cập nhật request status
-const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses = [] } = {}) => {
+const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses = [], priceOverride } = {}) => {
     const normalizedExpenses = normalizeExpenses(expenses);
 
     const req = await coordinatorRepository.getReceiptRequestForApproval(requestId);
@@ -665,6 +666,23 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             }
         }
         const computed = computeReceiptAmount(pricingSnapshot);
+
+        // Đơn giá/km × actual_km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho
+        // đúng chuyến đang duyệt (không đụng các chuyến khác trong đơn multi-driver).
+        const normalizedOverride = Number(priceOverride);
+        if (Number.isFinite(normalizedOverride) && normalizedOverride > 0) {
+            const targetBreakdown = computed.shipment_breakdown.find(
+                (item) => Number(item.shipment_id) === Number(targetShipment.id),
+            );
+            if (targetBreakdown) {
+                const diff = normalizedOverride - targetBreakdown.actual_income;
+                targetBreakdown.actual_income = normalizedOverride;
+                computed.actual_income += diff;
+                computed.gross_amount += diff;
+                computed.remaining_amount = Math.max(computed.actual_income - computed.prepaid_amount, 0);
+            }
+        }
+
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {
@@ -673,23 +691,14 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 throw new Error('Chi phí có chuyến xe không thuộc đơn hàng này');
             }
             const expenseVehicleId = pricingSnapshot.shipments.find((shipment) => Number(shipment.id) === Number(expenseShipmentId))?.vehicle_id ?? null;
-            const insertedExpense = await coordinatorRepository.insertApprovedExpense(client, {
+            // Không ghi sổ ở đây — tiền tài đã ứng, chờ hoàn (cấn trừ nợ TH2 hoặc qua lương TH1)
+            await coordinatorRepository.insertApprovedExpense(client, {
                 shipmentId: expenseShipmentId,
                 vehicleId: expenseVehicleId,
                 coordinatorId,
                 expenseType: expense.expense_type,
                 amount: expense.amount,
                 description: expense.description,
-            });
-            // Ghi sổ: pass-through (khách chịu) tách khỏi chi phí vận hành (công ty chịu)
-            const isPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type);
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                debitAccount: isPassThrough ? '3388' : '642',
-                creditAccount: '1111',
-                amount: expense.amount,
-                description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${expense.expense_type}) — chuyến #${expenseShipmentId}`,
-                refType: 'expense', refId: insertedExpense.id, actorId: coordinatorId,
             });
         }
 
@@ -705,19 +714,9 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             });
         }
 
-        // Duyệt phiếu thu = duyệt luôn các chi phí pending mà driver đã khai trong đơn
-        const autoApprovedExpenses = await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
-        for (const exp of autoApprovedExpenses) {
-            const expPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(exp.expense_type);
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                debitAccount: expPassThrough ? '3388' : '642',
-                creditAccount: '1111',
-                amount: exp.amount,
-                description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — chuyến #${exp.shipment_id}, duyệt cùng phiếu thu`,
-                refType: 'expense', refId: exp.id, actorId: coordinatorId,
-            });
-        }
+        // Duyệt phiếu thu = duyệt luôn các chi phí pending mà driver đã khai trong đơn.
+        // Không ghi sổ tại đây — khoản tài ứng chuyển sang 'pending' chờ hoàn.
+        await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
 
         // Cập nhật trạng thái request → approved
         await coordinatorRepository.markReceiptRequestApproved(client, { coordinatorId, requestId, notes });

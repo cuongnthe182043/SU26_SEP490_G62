@@ -1,9 +1,25 @@
 ﻿const accountantOrderRepository = require('../repositories/accountantOrderRepository');
 const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const accountantLookupRepository = require('../repositories/accountantLookupRepository');
+const kpiService = require('./kpiService');
+
+// Đơn ngoài được tạo với shipment status='completed' ngay từ đầu (không qua luồng
+// driver hoàn thành trip bình thường), nên phải tự trigger tính KPI ở đây — nếu không
+// kpi_records sẽ không bao giờ được cập nhật cho các chuyến import này.
+const triggerKpiRecalc = (result) => {
+    (result?.kpiTriggers || []).forEach(({ driverId, completedAt }) => {
+        kpiService.recalculateAfterCompletion(driverId, completedAt ? new Date(completedAt) : new Date());
+    });
+    delete result?.kpiTriggers;
+    return result;
+};
 
 const getOrders = async (filters, page, limit) => {
     return accountantOrderRepository.getAllOrders(filters, page, limit);
+};
+
+const exportOrdersReport = async (filters) => {
+    return accountantOrderRepository.exportOrdersReport(filters);
 };
 
 const getOrderShipments = async (orderId) => {
@@ -13,7 +29,7 @@ const getOrderShipments = async (orderId) => {
 const createOrder = async (orderData) => {
     const result = await accountantOrderRepository.createOrderWithShipments(orderData);
     accountantLookupRepository.invalidateLookupCache();
-    return result;
+    return triggerKpiRecalc(result);
 };
 
 const importOrders = async (orders, createdByUserId) => {
@@ -23,7 +39,7 @@ const importOrders = async (orders, createdByUserId) => {
             ...order,
             created_by: createdByUserId,
         });
-        results.push(result);
+        results.push(triggerKpiRecalc(result));
     }
     accountantLookupRepository.invalidateLookupCache();
     return results;
@@ -64,4 +80,5 @@ module.exports = {
     confirmDriverPayment,
     getVehicleDriverLookup,
     updateOrder,
+    exportOrdersReport,
 };

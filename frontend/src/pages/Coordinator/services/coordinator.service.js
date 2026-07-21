@@ -28,6 +28,11 @@ export const coordinatorService = {
   getDrivers: () => apiRequest("/api/drivers"),
   getPartners: () => apiRequest(`${BASE}/partners`),
 
+  // ─── Attendance (chấm công) ────────────────────────────────────────────────
+  getAttendanceGrid: (params = {}) => apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),
+  markAttendance: (data) => apiRequest("/api/attendance", { method: "POST", body: data }),
+  clearAttendance: (driverId, workDate) => apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
+
   // ─── Incidents ────────────────────────────────────────────────────────────
   getIncidents: (params) => apiRequest(`${BASE}/incidents?${new URLSearchParams(params)}`),
   updateIncidentStatus: (id, data) => apiRequest(`/api/incidents/${id}/status`, { method: "PATCH", body: data }),
@@ -50,6 +55,8 @@ export const coordinatorService = {
   getAllDriversKPI: (params) => apiRequest(`/api/kpi/all?${new URLSearchParams(params)}`),
   getLeaderboardByGroup: (vehicleGroupId, params) =>
     apiRequest(`/api/kpi/leaderboard/group/${vehicleGroupId}?${new URLSearchParams(params)}`),
+  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
 };
 
 export default coordinatorService;
