@@ -83,6 +83,15 @@ const VIEW_META = {
   },
 };
 
+// entity_type do backend gắn vào thông báo → màn hình tương ứng bên điều phối.
+// Thực thể không có trong bảng này thì thông báo giữ nguyên dạng tĩnh, không bấm được.
+const NOTIFICATION_VIEW_BY_ENTITY = {
+  incidents: "incidents",
+  orders: "orders",
+  order_shipments: "orders",
+  receipt_requests: "receipts",
+};
+
 const VIEW_STORAGE_KEY = "coordinator_active_view";
 const VALID_VIEWS = Object.keys(VIEW_META);
 
@@ -133,6 +142,13 @@ export default function CoordinatorPage({ user, onLogout }) {
     try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* ignore */ }
   };
 
+  // Bấm thông báo → mở màn hình tương ứng với thực thể được nhắc tới.
+  // VD: phiếu đền bù bị từ chối gắn entity_type 'incidents' → nhảy về danh sách sự cố.
+  const handleNotificationSelect = (notification) => {
+    const view = NOTIFICATION_VIEW_BY_ENTITY[notification?.entity_type];
+    if (view) handleViewChange(view);
+  };
+
   const handleLogout = () => onLogout?.();
 
   const handleProfileUpdated = (nextProfile) => {
@@ -174,6 +190,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             onSearchChange={showSearch ? setSearch : undefined}
             searchPlaceholder={meta.searchPlaceholder}
             primaryAction={primaryAction}
+            onNotificationSelect={handleNotificationSelect}
           />
 
           <main className="flex-1 overflow-y-auto p-6">
