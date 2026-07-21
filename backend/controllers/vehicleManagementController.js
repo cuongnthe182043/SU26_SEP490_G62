@@ -125,6 +125,15 @@ const verifyMaintenance = async (req, res) => {
     }
 };
 
+const scanMaintenanceBill = async (req, res) => {
+    try {
+        const data = await vehicleManagementService.scanMaintenanceBill(req.params.id);
+        res.json(data);
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
 const markVehicleAsBroken = async (req, res) => {
     try {
         const vehicle = await vehicleManagementService.markVehicleAsBroken(req.params.id, req.user.userId, req.body);
@@ -229,6 +238,7 @@ module.exports = {
     sendVehicleToMaintenance,
     completeMaintenance,
     verifyMaintenance,
+    scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,
     retireVehicle,
