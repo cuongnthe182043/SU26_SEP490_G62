@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-    Alert, Image, KeyboardAvoidingView, Modal, Platform,
+    Alert, KeyboardAvoidingView, Modal, Platform,
     ScrollView, StyleSheet, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { useLocalSearchParams } from 'expo-router';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import {
     Bank, Buildings, Camera, Car, CaretDown, CaretRight, CheckCircle,
     CurrencyDollar, MapPin, MapPinLine, Money, Package,
-    PencilSimple, Phone, Receipt, Ruler, Scales,
+    PencilSimple, Phone, Receipt, Ruler, Scales, Trash,
     Truck, User, UserCircle, Warning, X, ListNumbers,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -127,6 +128,43 @@ function Row({ label, value, bold, icon }: {
     );
 }
 
+// ─── Route stops (đánh số toàn bộ điểm lấy/trả, tránh mất điểm khi multi-stop) ─
+
+function RouteStops({ pickups, deliveries }: { pickups?: (string | null)[] | null; deliveries?: (string | null)[] | null }) {
+    const stops = [
+        ...(pickups ?? []).filter((a): a is string => !!a).map((address) => ({ address, kind: 'Lấy' as const })),
+        ...(deliveries ?? []).filter((a): a is string => !!a).map((address) => ({ address, kind: 'Trả' as const })),
+    ];
+    if (stops.length === 0) return null;
+
+    if (stops.length === 2 && stops[0].kind === 'Lấy' && stops[1].kind === 'Trả') {
+        return (
+            <>
+                <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
+                    label="Điểm lấy hàng" value={stops[0].address} />
+                <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
+                    label="Điểm giao hàng" value={stops[1].address} />
+            </>
+        );
+    }
+
+    return (
+        <YStack gap={5} paddingVertical={5}>
+            {stops.map((s, i) => (
+                <XStack key={i} alignItems="center" gap={6}>
+                    <View style={[styles.stopIndex, s.kind === 'Lấy' ? styles.stopIndexPickup : styles.stopIndexDelivery]}>
+                        <Text fontSize={9} fontWeight="900" color={s.kind === 'Lấy' ? '#16A34A' : '#C2410C'}>{i + 1}</Text>
+                    </View>
+                    <View style={[styles.stopTag, s.kind === 'Lấy' ? styles.stopTagPickup : styles.stopTagDelivery]}>
+                        <Text fontSize={9} fontWeight="700" color={s.kind === 'Lấy' ? '#16A34A' : '#C2410C'}>{s.kind}</Text>
+                    </View>
+                    <Text fontSize={12} color={appTheme.colors.text} flex={1} numberOfLines={2}>{s.address}</Text>
+                </XStack>
+            ))}
+        </YStack>
+    );
+}
+
 // ─── Shipment row (bên trong accordion tất cả chuyến) ────────────────────────
 
 const SHIPMENT_STATUS_LABEL: Record<string, string> = {
@@ -188,22 +226,34 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                             </Text>
                         </XStack>
                     ) : null}
-                    {s.pickup_address ? (
-                        <XStack alignItems="flex-start" gap={5}>
-                            <MapPinLine size={11} color={appTheme.colors.textMuted} weight="fill" style={{ marginTop: 1 }} />
-                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
-                                {s.pickup_address}
-                            </Text>
-                        </XStack>
-                    ) : null}
-                    {s.delivery_address ? (
-                        <XStack alignItems="flex-start" gap={5}>
-                            <MapPin size={11} color={appTheme.colors.primary} weight="fill" style={{ marginTop: 1 }} />
-                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
-                                {s.delivery_address}
-                            </Text>
-                        </XStack>
-                    ) : null}
+                    {(() => {
+                        const pickups     = s.pickup_addresses?.length ? s.pickup_addresses : [s.pickup_address];
+                        const deliveries  = s.delivery_addresses?.length ? s.delivery_addresses : [s.delivery_address];
+                        const stops = [...pickups.filter(Boolean), ...deliveries.filter(Boolean)];
+                        if (stops.length <= 2) {
+                            return (
+                                <>
+                                    {s.pickup_address ? (
+                                        <XStack alignItems="flex-start" gap={5}>
+                                            <MapPinLine size={11} color={appTheme.colors.textMuted} weight="fill" style={{ marginTop: 1 }} />
+                                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                                {s.pickup_address}
+                                            </Text>
+                                        </XStack>
+                                    ) : null}
+                                    {s.delivery_address ? (
+                                        <XStack alignItems="flex-start" gap={5}>
+                                            <MapPin size={11} color={appTheme.colors.primary} weight="fill" style={{ marginTop: 1 }} />
+                                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                                {s.delivery_address}
+                                            </Text>
+                                        </XStack>
+                                    ) : null}
+                                </>
+                            );
+                        }
+                        return <RouteStops pickups={pickups} deliveries={deliveries} />;
+                    })()}
                     {km ? (
                         <XStack alignItems="center" gap={5}>
                             <Ruler size={11} color={appTheme.colors.textMuted} weight="fill" />
@@ -254,7 +304,9 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
 
 // ─── Expense row (inside order accordion) ────────────────────────────────────
 
-function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit: () => void; canEdit: boolean }) {
+function ExpenseRow({ expense, onEdit, onDelete, canEdit, isDeleting }: {
+    expense: ExpenseItem; onEdit: () => void; onDelete: () => void; canEdit: boolean; isDeleting: boolean;
+}) {
     const [showPhotos, setShowPhotos] = useState(false);
     return (
         <View style={styles.expenseRow}>
@@ -281,8 +333,11 @@ function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit
                             </Text>
                         </TouchableOpacity>
                     ) : null}
-                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip}>
+                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip} disabled={isDeleting}>
                         <PencilSimple size={12} color={appTheme.colors.primary} weight="fill" />
+                    </TouchableOpacity> : null}
+                    {canEdit ? <TouchableOpacity onPress={onDelete} style={styles.deleteChip} disabled={isDeleting}>
+                        <Trash size={12} color="#E53E3E" weight="fill" />
                     </TouchableOpacity> : null}
                 </XStack>
             </XStack>
@@ -291,7 +346,7 @@ function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
                     <XStack gap={8}>
                         {expense.receipt_urls.map((url, i) => (
-                            <Image key={i} source={{ uri: url }} style={styles.expenseThumb} resizeMode="cover" />
+                            <Image key={i} source={{ uri: url }} style={styles.expenseThumb} contentFit="cover" />
                         ))}
                     </XStack>
                 </ScrollView>
@@ -383,7 +438,7 @@ function ExpenseEditModal({
                                 Ảnh chứng từ {photoUri ? '(mới)' : '(giữ nguyên nếu không chụp)'}
                             </Text>
                             {photoUri
-                                ? <Image source={{ uri: photoUri }} style={styles.modalPreview} resizeMode="cover" />
+                                ? <Image source={{ uri: photoUri }} style={styles.modalPreview} contentFit="cover" />
                                 : null}
                             <TouchableOpacity style={styles.camBtn} onPress={takePhoto}>
                                 <Camera size={15} color={appTheme.colors.primary} weight="fill" />
@@ -499,6 +554,7 @@ export function ReceiptDetailScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
+    const [deletingExpenseId, setDeletingExpenseId] = useState<number | null>(null);
     const [resubmitting, setResubmitting] = useState(false);
     const [driverNote,   setDriverNote]   = useState('');
 
@@ -614,6 +670,30 @@ export function ReceiptDetailScreen() {
         } finally {
             setResubmitting(false);
         }
+    };
+
+    // Xoá chi phí phát sinh — chỉ khi yêu cầu phiếu thu đang bị từ chối (BE kiểm tra lại)
+    const handleDeleteExpense = (expense: ExpenseItem) => {
+        Alert.alert(
+            'Xoá chi phí?',
+            `Xoá khoản "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${fmtMoney(expense.amount)}? Ảnh chứng từ đính kèm sẽ mất theo.`,
+            [
+                { text: 'Huỷ', style: 'cancel' },
+                {
+                    text: 'Xoá', style: 'destructive', onPress: async () => {
+                        setDeletingExpenseId(expense.id);
+                        try {
+                            await tripService.deleteExpense(expense.id);
+                            load();
+                        } catch (err: any) {
+                            Alert.alert('Lỗi', err?.message ?? 'Không thể xoá chi phí.');
+                        } finally {
+                            setDeletingExpenseId(null);
+                        }
+                    },
+                },
+            ],
+        );
     };
 
     // ── Render loading / error ────────────────────────────────────────────────
@@ -750,7 +830,17 @@ export function ReceiptDetailScreen() {
                             Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)
                         </Text>
 
-                       
+                        {Number(receipt.prepaid_amount) > 0 ? (
+                            <View style={styles.prepaidNote}>
+                                <XStack alignItems="center" gap={5}>
+                                    <CurrencyDollar size={12} color={appTheme.colors.textMuted} weight="fill" />
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Khách đã trả trước</Text>
+                                </XStack>
+                                <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
+                                    −{fmtMoney(receipt.prepaid_amount)}
+                                </Text>
+                            </View>
+                        ) : null}
 
                         <View style={[
                             styles.statusChip,
@@ -888,10 +978,10 @@ export function ReceiptDetailScreen() {
                                 ) : (
                                     /* Đơn 1 chuyến — layout cũ */
                                     <>
-                                        <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
-                                            label="Điểm lấy hàng" value={receipt.pickup_address} />
-                                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
-                                            label="Điểm giao hàng" value={receipt.delivery_address} />
+                                        <RouteStops
+                                            pickups={receipt.pickup_addresses?.length ? receipt.pickup_addresses : [receipt.pickup_address]}
+                                            deliveries={receipt.delivery_addresses?.length ? receipt.delivery_addresses : [receipt.delivery_address]}
+                                        />
                                         {kmDisplay ? (
                                             <Row icon={<Ruler size={13} color={appTheme.colors.primary} weight="fill" />}
                                                 label="Quãng đường" value={kmDisplay} />
@@ -927,7 +1017,9 @@ export function ReceiptDetailScreen() {
                                                             key={exp.id}
                                                             expense={exp}
                                                             canEdit={isRejected}
+                                                            isDeleting={deletingExpenseId === exp.id}
                                                             onEdit={() => setEditExpense(exp)}
+                                                            onDelete={() => handleDeleteExpense(exp)}
                                                         />
                                                     ))}
                                                 </YStack>
@@ -976,7 +1068,7 @@ export function ReceiptDetailScreen() {
                                 title="QR chuyển khoản công ty"
                             >
                                 <YStack gap={8} alignItems="center">
-                                    <Image source={{ uri: companyInfo.bank_qr_url }} style={styles.qrImage} resizeMode="contain" />
+                                    <Image source={{ uri: companyInfo.bank_qr_url }} style={styles.qrImage} contentFit="contain" />
                                     {companyInfo.bank_account_name ? (
                                         <Row label="Tên TK" value={companyInfo.bank_account_name} />
                                     ) : null}
@@ -1084,7 +1176,7 @@ export function ReceiptDetailScreen() {
                                 <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>Ảnh xác minh *</Text>
                                 {proofUri ? (
                                     <View style={styles.proofWrap}>
-                                        <Image source={{ uri: proofUri }} style={styles.proofImg} resizeMode="cover" />
+                                        <Image source={{ uri: proofUri }} style={styles.proofImg} contentFit="cover" />
                                         <TouchableOpacity style={styles.retakeBtn} onPress={takeProofPhoto}>
                                             <Camera size={13} color="#fff" weight="fill" />
                                             <Text fontSize={11} color="#fff" marginLeft={4}>Chụp lại</Text>
@@ -1156,6 +1248,19 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: `${appTheme.colors.border}`,
     },
     statusChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, marginTop: 2 },
+    prepaidNote:    {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', paddingHorizontal: 4,
+    },
+    stopIndex:      {
+        width: 16, height: 16, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    stopIndexPickup:   { backgroundColor: '#DCFCE7' },
+    stopIndexDelivery: { backgroundColor: '#FFEDD5' },
+    stopTag:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexShrink: 0 },
+    stopTagPickup:     { backgroundColor: '#F0FDF4' },
+    stopTagDelivery:   { backgroundColor: '#FFF7ED' },
     divider:        { height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 },
     statusBanner:   { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1.5, overflow: 'hidden' },
     // Accordion
@@ -1185,6 +1290,11 @@ const styles = StyleSheet.create({
         width: 28, height: 28, borderRadius: 8,
         alignItems: 'center', justifyContent: 'center',
         backgroundColor: `${appTheme.colors.primary}15`,
+    },
+    deleteChip:     {
+        width: 28, height: 28, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#FEE2E2',
     },
     // QR
     qrImage:        { width: 200, height: 200, borderRadius: 10, backgroundColor: '#f9f9f9' },

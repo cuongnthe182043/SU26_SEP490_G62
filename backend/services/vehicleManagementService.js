@@ -261,6 +261,7 @@ const listVehicles = async (query = {}) => {
         search: query.search?.trim?.() || null,
         status,
         vehicleGroupId,
+        sort: query.sort || null,
     });
 
     return {

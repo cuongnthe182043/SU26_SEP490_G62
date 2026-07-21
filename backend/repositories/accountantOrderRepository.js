@@ -10,7 +10,7 @@ const trimToNull = (value) => {
 
 const buildOrderNotes = (orderData) => {
     const segments = [];
-    if (orderData.order_date) segments.push(`NgÃ y Ä‘Æ¡n: ${orderData.order_date}`);
+    if (orderData.order_date) segments.push(`Ngày đơn: ${orderData.order_date}`);
     if (trimToNull(orderData.notes)) segments.push(trimToNull(orderData.notes));
     return segments.filter(Boolean).join(' | ') || null;
 };
@@ -108,7 +108,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     orderId, shipmentIndex,
     vehicleId, driverId, estimatedPrice, actualPrice,
     cargoName, cargoWeight, shipmentNotes,
-    pickupAddresses, deliveryAddress, contactName, contactPhone,
+    pickupAddresses, deliveryAddresses, contactName, contactPhone,
     expenses, createdByUserId,
     distanceKm = null, completedAt = null,
 }) => {
@@ -143,8 +143,8 @@ const insertShipmentWithStopsAndExpenses = async (client, {
         });
     }
 
-    const stopAddresses = [...pickupAddresses, deliveryAddress];
-    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
+    const stopAddresses = [...pickupAddresses, ...deliveryAddresses];
+    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), ...deliveryAddresses.map(() => 'delivery')];
     const stopIndices   = stopAddresses.map((_, i) => i + 1);
     await client.query(
         `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes, completed_at, created_at)
@@ -155,11 +155,12 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 
     const expList = expenses || [];
     if (expList.length > 0) {
-        const { rows: insertedExpenses } = await client.query(
-            `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, created_at, updated_at)
-             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, NOW(), NOW()
-             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)
-             RETURNING id, expense_type, amount`,
+        // Không ghi sổ tại đây — khoản tài ứng vào trạng thái 'pending' chờ hoàn
+        // (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
+        await client.query(
+            `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
+             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW()
+             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)`,
             [
                 shipmentId, vehicleId, createdByUserId,
                 expList.map((e) => e.expense_type),
@@ -167,18 +168,6 @@ const insertShipmentWithStopsAndExpenses = async (client, {
                 expList.map((e) => e.description || null),
             ]
         );
-        for (const exp of insertedExpenses) {
-            const expPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(exp.expense_type);
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                debitAccount: expPassThrough ? '3388' : '642',
-                creditAccount: '1111',
-                amount: exp.amount,
-                description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — đơn ngoài, chuyến #${shipmentId}`,
-                refType: 'expense', refId: exp.id, actorId: createdByUserId,
-                occurredAt: completedAt,
-            });
-        }
     }
 
     return shipmentId;
@@ -207,7 +196,7 @@ const insertDebtForShipment = async (client, {
         && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
     ) {
         if (!driverId) {
-            throw new Error('KhÃ´ng thá»ƒ táº¡o cÃ´ng ná»£ tÃ i xáº¿ khi chuyáº¿n chÆ°a cÃ³ tÃ i xáº¿.');
+            throw new Error('Không thể tạo công nợ tài xế khi chuyến chưa có tài xế.');
         }
         const debtInsertResult = await client.query(
             `INSERT INTO debts (
@@ -217,7 +206,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'TÃ i xáº¿ Ä‘Ã£ thu nhÆ°ng chÆ°a mang tiá»n vá» cÃ´ng ty',
+                'Tài xế đã thu nhưng chưa mang tiền về công ty',
                 $5, NOW(), NOW())
              RETURNING id`,
             [driverId, orderId, shipmentId, actualPrice, createdByUserId]
@@ -259,7 +248,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'KhÃ¡ch chÆ°a thanh toÃ¡n', $5, NOW(), NOW())`,
+                'Khách chưa thanh toán', $5, NOW(), NOW())`,
             [customerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
         // KHÔNG ghi FT: shipment_revenue (131/511) đã ghi cho chuyến này khi tạo đơn ngoài
@@ -274,7 +263,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'Äá»‘i tÃ¡c chÆ°a thanh toÃ¡n', $5, NOW(), NOW())`,
+                'Đối tác chưa thanh toán', $5, NOW(), NOW())`,
             [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     }
@@ -341,14 +330,66 @@ const createOrderWithShipments = async (orderData) => {
         });
 
         const shipmentIds = [];
+        const kpiTriggers = [];
+        const autoResolvedDrivers = [];
         for (let i = 0; i < (orderData.shipments || []).length; i += 1) {
             const s = orderData.shipments[i];
-            const vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
-            const driverId = await findDriverById(client, s.driver_id) || await findDriverByName(client, s.driver_name);
+            const rowLabel = `Chuyến ${i + 1}`;
+
+            // KHÔNG tự tạo xe/tài xế nữa — Excel ghi biển số/tên không khớp hệ thống là
+            // dấu hiệu sai sót (gõ nhầm, xe/tài chưa được thêm) chứ không nên âm thầm
+            // tạo bản ghi thiếu thông tin (không nhóm xe, không hồ sơ đầy đủ) rồi để
+            // KPI/lương/thưởng tính sai hoặc bỏ sót sau này. Bắt buộc xe và tài khoản
+            // tài xế phải có sẵn trong hệ thống trước khi import.
+            let vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
+            if (!vehicleId && trimToNull(s.vehicle_plate)) {
+                throw new Error(`${rowLabel}: Xe biển số "${s.vehicle_plate.trim()}" chưa có trong hệ thống — vui lòng thêm xe trước khi import.`);
+            }
+
+            let driverId = await findDriverById(client, s.driver_id) || await findDriverByName(client, s.driver_name);
+            if (!driverId && trimToNull(s.driver_name)) {
+                throw new Error(`${rowLabel}: Tài xế "${s.driver_name.trim()}" chưa có tài khoản trong hệ thống — vui lòng tạo tài khoản cho tài xế này trước khi import.`);
+            }
+            if (!driverId && s.driver_id) {
+                throw new Error(`${rowLabel}: Không tìm thấy tài xế với ID đã chọn.`);
+            }
+
+            // Tài xế đã tồn tại nhưng chưa có "xe nhà" (drivers.vehicle_id) — vd tài
+            // xế được Manager tạo qua form thường, chưa từng gán xe. KPI dùng
+            // default_vehicle_group_id (nhóm cố định, không đổi theo xe hiện tại) nên
+            // phải gán ngay lần đầu có đủ thông tin xe, tránh KPI/lương/thưởng bị bỏ sót.
+            if (driverId && vehicleId) {
+                await client.query(
+                    `UPDATE drivers
+                     SET vehicle_id = $2,
+                         default_vehicle_group_id = COALESCE(default_vehicle_group_id, (SELECT vehicle_group_id FROM vehicles WHERE id = $2))
+                     WHERE profile_id = $1 AND vehicle_id IS NULL`,
+                    [driverId, vehicleId],
+                );
+                await client.query(
+                    `UPDATE vehicles SET assigned_driver_id = $2, updated_at = NOW() WHERE id = $1 AND assigned_driver_id IS NULL`,
+                    [vehicleId, driverId],
+                );
+            }
+
+            // Tài xế có xe nhưng chưa từng có nhóm KPI cố định (VD tạo từ trước khi có
+            // cột này) — gán ngay lúc import để chuyến này không bị bỏ sót khỏi KPI.
+            if (driverId) {
+                await client.query(
+                    `UPDATE drivers
+                     SET default_vehicle_group_id = COALESCE(default_vehicle_group_id, (SELECT vehicle_group_id FROM vehicles WHERE id = drivers.vehicle_id))
+                     WHERE profile_id = $1 AND default_vehicle_group_id IS NULL AND vehicle_id IS NOT NULL`,
+                    [driverId],
+                );
+            }
+
             const actualPrice = computeActualPrice(s);
             const passThrough = computePassThrough(s);
             const shipmentNotes = buildShipmentNotes(s);
             const pickupAddresses = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
+            const deliveryAddresses = (Array.isArray(s.delivery_addresses) ? s.delivery_addresses : [s.delivery_address])
+                .map((d) => trimToNull(d))
+                .filter(Boolean);
 
             const shipmentId = await insertShipmentWithStopsAndExpenses(client, {
                 orderId: newOrder.id,
@@ -361,7 +402,7 @@ const createOrderWithShipments = async (orderData) => {
                 cargoWeight: s.cargo_weight,
                 shipmentNotes,
                 pickupAddresses,
-                deliveryAddress: trimToNull(s.delivery_address),
+                deliveryAddresses,
                 contactName: trimToNull(orderData.customer_name),
                 contactPhone: trimToNull(orderData.customer_phone),
                 expenses: s.expenses || [],
@@ -403,6 +444,8 @@ const createOrderWithShipments = async (orderData) => {
                 occurredAt: shipmentOccurredAt,
             });
 
+            if (driverId) kpiTriggers.push({ driverId, completedAt: shipmentOccurredAt });
+
             shipmentIds.push(shipmentId);
         }
 
@@ -424,13 +467,20 @@ const createOrderWithShipments = async (orderData) => {
              GROUP BY o.id, c.full_name, c.company_name, c.phone`,
             [shipmentIds, newOrder.id]
         );
-        return result.rows[0];
+        return { ...result.rows[0], kpiTriggers, autoResolvedDrivers };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
     } finally {
         client.release();
     }
+};
+
+const ORDER_SORT_OPTIONS = {
+    newest:      'o.created_at DESC',
+    oldest:      'o.created_at ASC',
+    value_desc:  'ship_agg.actual_price DESC NULLS LAST, o.created_at DESC',
+    value_asc:   'ship_agg.actual_price ASC NULLS LAST, o.created_at DESC',
 };
 
 const getAllOrders = async (filters = {}, page = null, limit = null) => {
@@ -449,6 +499,21 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         )`);
     }
 
+    if (filters.customer) {
+        params.push(`%${filters.customer}%`);
+        conditions.push(`(c.full_name ILIKE $${params.length} OR c.company_name ILIKE $${params.length})`);
+    }
+
+    if (filters.dateFrom) {
+        params.push(filters.dateFrom);
+        conditions.push(`o.created_at >= $${params.length}`);
+    }
+
+    if (filters.dateTo) {
+        params.push(filters.dateTo);
+        conditions.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
     // debt_status filter is applied as a compound condition across customer + driver debts
     // Khách phải trả = cước (actual_price) + chi hộ khách (toll/parking/etc) — nợ & phiếu thu đều gồm chi hộ
     if (filters.debt_status) {
@@ -464,6 +529,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const orderByClause = ORDER_SORT_OPTIONS[filters.sort] || ORDER_SORT_OPTIONS.newest;
 
     const lateralJoins = `
         LEFT JOIN LATERAL (
@@ -578,7 +644,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             ) AS company_received
         ${baseFrom}
         ${whereClause}
-        ORDER BY o.created_at DESC
+        ORDER BY ${orderByClause}
     `;
 
     const queryParams = [...params];
@@ -623,7 +689,10 @@ const getOrderShipments = async (orderId) => {
                     JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
                     ORDER BY ts.stop_index
                 ) FILTER (WHERE ts.stop_type = 'pickup')                                              AS pickups,
-                MAX(ts.address) FILTER (WHERE ts.stop_type = 'delivery')                              AS delivery_address
+                JSON_AGG(
+                    JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
+                    ORDER BY ts.stop_index
+                ) FILTER (WHERE ts.stop_type = 'delivery')                                            AS deliveries
             FROM trip_stops ts
             WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
             GROUP BY ts.shipment_id
@@ -683,7 +752,7 @@ const getOrderShipments = async (orderId) => {
             COALESCE(ea.other, 0)                  AS other,
             COALESCE(ea.pass_through_total, 0)     AS pass_through_total,
             sa.pickups,
-            sa.delivery_address,
+            sa.deliveries,
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
             da.driver_paid,
@@ -735,7 +804,8 @@ const getOrderShipments = async (orderId) => {
         status: row.status,
         notes: row.notes,
         pickup_addresses:  row.pickups || [],
-        delivery_address:  row.delivery_address || null,
+        delivery_addresses: row.deliveries || [],
+        delivery_address:  row.deliveries?.[0]?.address || null,
         payment_type:         row.payment_type || null,
         driver_payment_state: row.driver_payment_state || null,
         driver_total:         row.driver_total ? Number(row.driver_total) : null,
@@ -746,6 +816,128 @@ const getOrderShipments = async (orderId) => {
         proof_urls:           row.proof_urls || [],
         bank_confirmed:       row.bank_confirmed || false,
     }));
+};
+
+// Xuất báo cáo — mọi chuyến (shipment) của các đơn khớp bộ lọc hiện tại của màn Quản lý
+// doanh thu (tái dùng đúng logic lọc của getAllOrders), kèm chi tiết chi phí + trạng thái
+// thanh toán thực tế. Dùng cho FE dựng file Excel theo layout giống template import.
+const exportOrdersReport = async (filters = {}) => {
+    const { orders } = await getAllOrders(filters, null, null);
+    if (orders.length === 0) return [];
+
+    const orderIds = orders.map((o) => o.id);
+
+    const { rows } = await pool.query(
+        `WITH
+        exp_agg AS (
+            SELECT
+                e.shipment_id,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'fuel'    THEN e.amount END), 0) AS fuel,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'toll'    THEN e.amount END), 0) AS toll,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'parking' THEN e.amount END), 0) AS parking,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'repair'  THEN e.amount END), 0) AS repair
+            FROM expenses e
+            WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+              AND e.status != 'rejected'
+            GROUP BY e.shipment_id
+        ),
+        stop_agg AS (
+            SELECT
+                ts.shipment_id,
+                STRING_AGG(ts.address, ' | ' ORDER BY ts.stop_index) FILTER (WHERE ts.stop_type = 'pickup')    AS pickups,
+                STRING_AGG(ts.address, ' | ' ORDER BY ts.stop_index) FILTER (WHERE ts.stop_type = 'delivery')  AS deliveries
+            FROM trip_stops ts
+            WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+            GROUP BY ts.shipment_id
+        ),
+        debt_agg AS (
+            SELECT
+                d.shipment_id,
+                d.total_amount,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS driver_paid
+            FROM debts d
+            LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+            WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+              AND d.debt_type = 'driver'
+            GROUP BY d.id, d.shipment_id, d.total_amount
+        ),
+        receipt_agg AS (
+            SELECT DISTINCT ON (orr.requesting_shipment_id)
+                orr.requesting_shipment_id AS shipment_id,
+                sr.payment_type            AS receipt_payment_type
+            FROM order_receipt_requests orr
+            JOIN shipment_receipts sr ON sr.order_receipt_request_id = orr.id
+            WHERE orr.requesting_shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ANY($1::int[]))
+            ORDER BY orr.requesting_shipment_id, sr.id DESC
+        )
+        SELECT
+            os.id, os.order_id, os.shipment_index,
+            COALESCE(os.completed_at, os.created_at) AS run_date,
+            v.plate_number AS vehicle_plate,
+            p.full_name    AS driver_name,
+            COALESCE(cu.full_name, cu.company_name) AS customer_name,
+            cu.phone        AS customer_phone,
+            sa.pickups, sa.deliveries,
+            os.estimated_distance_km AS distance_km,
+            os.cargo_name,
+            COALESCE(os.actual_price, os.estimated_price, 0) AS cargo_fee,
+            COALESCE(ea.toll, 0) AS toll, COALESCE(ea.parking, 0) AS parking,
+            COALESCE(ea.fuel, 0) AS fuel, COALESCE(ea.repair, 0) AS repair,
+            ra.receipt_payment_type,
+            da.total_amount AS driver_debt_total,
+            da.driver_paid  AS driver_debt_paid,
+            os.notes
+        FROM order_shipments os
+        JOIN orders o ON o.id = os.order_id
+        LEFT JOIN customers cu ON cu.id = o.customer_id
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+        LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+        LEFT JOIN profiles p ON p.id = sc.owner_driver_id
+        LEFT JOIN exp_agg     ea ON ea.shipment_id = os.id
+        LEFT JOIN stop_agg    sa ON sa.shipment_id = os.id
+        LEFT JOIN debt_agg    da ON da.shipment_id = os.id
+        LEFT JOIN receipt_agg ra ON ra.shipment_id = os.id
+        WHERE os.order_id = ANY($1::int[])
+        ORDER BY os.order_id ASC, os.shipment_index ASC`,
+        [orderIds],
+    );
+
+    return rows.map((row) => {
+        const driverTotal = Number(row.driver_debt_total || 0);
+        const driverPaid  = Number(row.driver_debt_paid || 0);
+        const driverRemaining = Math.max(driverTotal - driverPaid, 0);
+
+        // Suy ra nhãn "Thanh toán" từ trạng thái thực tế (phiếu thu + công nợ tài xế),
+        // dùng cùng 4 nhãn với dropdown của template import để nhất quán 2 chiều.
+        let paymentLabel = 'Chưa chốt phiếu thu';
+        if (row.receipt_payment_type === 'bank_transfer') paymentLabel = 'CK công ty';
+        else if (row.receipt_payment_type === 'client_credit') paymentLabel = 'Khách nợ';
+        else if (row.receipt_payment_type === 'cash_collected') {
+            paymentLabel = driverRemaining <= 0.01 ? 'Tiền mặt - tài đã nộp' : 'Tiền mặt - tài đang giữ';
+        }
+
+        return {
+            order_id: row.order_id,
+            shipment_id: row.id,
+            run_date: row.run_date,
+            vehicle_plate: row.vehicle_plate,
+            driver_name: row.driver_name,
+            customer_name: row.customer_name,
+            customer_phone: row.customer_phone,
+            pickup: row.pickups || '',
+            delivery: row.deliveries || '',
+            distance_km: row.distance_km ? Number(row.distance_km) : null,
+            cargo_name: row.cargo_name,
+            cargo_fee: Number(row.cargo_fee) || 0,
+            toll: Number(row.toll) || 0,
+            parking: Number(row.parking) || 0,
+            fuel: Number(row.fuel) || 0,
+            repair: Number(row.repair) || 0,
+            payment_label: paymentLabel,
+            driver_holding: paymentLabel === 'Tiền mặt - tài đang giữ' ? driverRemaining : null,
+            notes: row.notes,
+        };
+    });
 };
 
 const updateOrder = async (orderId, orderData) => {
@@ -775,7 +967,7 @@ const updateOrder = async (orderId, orderData) => {
         }
 
         const orderNotes = [
-            orderData.order_date ? `NgÃ y Ä‘Æ¡n: ${orderData.order_date}` : null,
+            orderData.order_date ? `Ngày đơn: ${orderData.order_date}` : null,
             orderData.notes,
         ].filter(Boolean).join(' | ') || null;
 
@@ -814,5 +1006,6 @@ module.exports = {
     getOrderShipments,
     createOrderWithShipments,
     updateOrder,
+    exportOrdersReport,
 };
 

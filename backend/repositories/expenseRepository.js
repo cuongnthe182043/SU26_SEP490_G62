@@ -101,6 +101,24 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
     }
 };
 
+// Chỉ cho xoá khi cùng điều kiện với sửa: yêu cầu phiếu thu liên quan đang 'rejected'
+// và chi phí chưa được duyệt. expense_attachments tự xoá theo (ON DELETE CASCADE).
+const deleteExpense = async (expenseId, driverId) => {
+    const result = await pool.query(
+        `DELETE FROM expenses e
+         USING order_receipt_requests orr
+         WHERE e.id = $1
+           AND e.created_by = $2
+           AND orr.requesting_shipment_id = e.shipment_id
+           AND orr.driver_id = $2
+           AND orr.status = 'rejected'
+           AND e.status != 'approved'
+         RETURNING e.id`,
+        [expenseId, driverId],
+    );
+    if (!result.rows[0]) throw new Error('Chỉ được xoá chi phí khi yêu cầu phiếu thu bị từ chối và chi phí chưa được duyệt');
+};
+
 const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
     const { rows: [row] } = await pool.query(
         `SELECT 1 FROM shipment_assignment_history
@@ -111,40 +129,21 @@ const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
     return !!row;
 };
 
-// Coordinator/Manager duyệt chi phí — ghi sổ nhật ký tài chính trong cùng transaction
+// Coordinator/Manager duyệt chi phí tài xế khai.
+// KHÔNG ghi sổ tại đây nữa — tiền là tài ứng túi, duyệt chỉ xác nhận "công ty nợ tài"
+// (reimbursement_status = 'pending'). Bút toán chi được ghi khi khoản này thực sự
+// được hoàn: cấn trừ vào nợ thu hộ (TH2) hoặc hoàn qua kỳ lương (TH1).
 const approveExpense = async (expenseId, reviewerId) => {
-    const financialLedgerRepository = require('./financialLedgerRepository');
-    const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const { rows: [expense] } = await client.query(
-            `UPDATE expenses
-             SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
-             WHERE id = $1 AND status = 'pending'
-             RETURNING id, shipment_id, expense_type, amount, created_by`,
-            [expenseId, reviewerId],
-        );
-        if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
-
-        const isPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type);
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
-            debitAccount: isPassThrough ? '3388' : '642',
-            creditAccount: '1111',
-            amount: Number(expense.amount),
-            description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${expense.expense_type}) — chuyến #${expense.shipment_id}, duyệt chi phí tài xế khai`,
-            refType: 'expense', refId: expense.id, actorId: reviewerId,
-        });
-
-        await client.query('COMMIT');
-        return expense;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    const { rows: [expense] } = await pool.query(
+        `UPDATE expenses
+         SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(),
+             reimbursement_status = 'pending', updated_at = NOW()
+         WHERE id = $1 AND status = 'pending'
+         RETURNING id, shipment_id, expense_type, amount, created_by`,
+        [expenseId, reviewerId],
+    );
+    if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
+    return expense;
 };
 
 const rejectExpense = async (expenseId, reviewerId, reason) => {
@@ -159,7 +158,100 @@ const rejectExpense = async (expenseId, reviewerId, reason) => {
     return expense;
 };
 
+// sort resolved via allowlist, never interpolated directly from user input
+const EXPENSE_SORTS = {
+    oldest:        'e.created_at ASC',
+    'amount-desc': 'e.amount DESC',
+    'amount-asc':  'e.amount ASC',
+    status:        'e.status ASC, e.created_at DESC',
+};
+
+// Danh sách chi phí toàn hệ thống cho web Manager (duyệt) / Accountant (đối chiếu)
+const listAllExpenses = async ({ status, expenseType, reimbursementStatus, month, year, search, sort, page, limit } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+
+    if (status)      { conds.push(`e.status = $${i++}`);       params.push(status); }
+    if (reimbursementStatus) { conds.push(`e.reimbursement_status = $${i++}`); params.push(reimbursementStatus); }
+    if (expenseType) { conds.push(`e.expense_type = $${i++}`); params.push(expenseType); }
+    if (month)       { conds.push(`EXTRACT(MONTH FROM e.expense_date) = $${i++}`); params.push(Number(month)); }
+    if (year)        { conds.push(`EXTRACT(YEAR  FROM e.expense_date) = $${i++}`); params.push(Number(year)); }
+    if (search) {
+        conds.push(`(p.full_name ILIKE $${i} OR v.plate_number ILIKE $${i} OR e.description ILIKE $${i})`);
+        params.push(`%${search}%`);
+        i++;
+    }
+
+    const where       = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const orderClause = EXPENSE_SORTS[sort] ?? 'e.created_at DESC';
+    const safeLimit   = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage    = Math.max(1, Number(page) || 1);
+    const offset      = (safePage - 1) * safeLimit;
+
+    const baseFrom = `
+        FROM expenses e
+        JOIN profiles p        ON p.id = e.created_by
+        LEFT JOIN vehicles v   ON v.id = e.vehicle_id
+        LEFT JOIN profiles rev ON rev.id = e.reviewed_by
+    `;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(
+            `SELECT
+                e.id, e.shipment_id, e.expense_type, e.amount::text, e.description,
+                e.expense_date, e.status, e.reject_reason, e.reviewed_at, e.created_at,
+                e.reimbursement_status, e.reimbursed_at,
+                p.full_name      AS driver_name,
+                p.phone          AS driver_phone,
+                v.plate_number   AS vehicle_plate,
+                rev.full_name    AS reviewed_by_name,
+                COALESCE(
+                    (SELECT json_agg(ea.file_url ORDER BY ea.uploaded_at)
+                     FROM expense_attachments ea WHERE ea.expense_id = e.id),
+                    '[]'::json
+                ) AS receipt_urls
+             ${baseFrom} ${where}
+             ORDER BY ${orderClause}
+             LIMIT $${i} OFFSET $${i + 1}`,
+            [...params, safeLimit, offset],
+        ),
+        pool.query(`SELECT COUNT(*)::int AS total ${baseFrom} ${where}`, params),
+    ]);
+
+    return {
+        rows,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
+};
+
+const getExpenseStats = async ({ month, year } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+    if (month) { conds.push(`EXTRACT(MONTH FROM expense_date) = $${i++}`); params.push(Number(month)); }
+    if (year)  { conds.push(`EXTRACT(YEAR  FROM expense_date) = $${i++}`); params.push(Number(year)); }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    const { rows: [row] } = await pool.query(
+        `SELECT
+             COUNT(*)::int                                                     AS total_count,
+             COUNT(*) FILTER (WHERE status = 'pending')::int                   AS pending_count,
+             COUNT(*) FILTER (WHERE status = 'approved')::int                  AS approved_count,
+             COUNT(*) FILTER (WHERE status = 'rejected')::int                  AS rejected_count,
+             COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0)::text AS approved_total,
+             COALESCE(SUM(amount) FILTER (WHERE status = 'approved' AND reimbursement_status = 'pending'), 0)::text AS reimbursable_total
+         FROM expenses ${where}`,
+        params,
+    );
+    return row;
+};
+
 module.exports = {
-    createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense,
+    createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense,
+    listAllExpenses, getExpenseStats,
 };

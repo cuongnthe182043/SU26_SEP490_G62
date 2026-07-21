@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiSearchLine, RiRefreshLine, RiCheckLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
 
-const net = (r) =>
-  (r.base_salary || 0) + (r.revenue_bonus || 0) + (r.kpi_bonus || 0) + (r.top_driver_bonus || 0) + (r.other_bonus || 0)
-  - (r.insurance_employee || 0) - (r.driver_debt_deduction || 0) - (r.advance_deduction || 0) - (r.other_deduction || 0);
+// Các trường số từ backend là chuỗi (::text, vd "9000000.00") để giữ chính xác thập
+// phân — backend đã tính sẵn net_salary đúng, dùng lại trực tiếp thay vì cộng trừ lại
+// ở FE (trước đây cộng chuỗi bằng "+" bị nối chuỗi thay vì cộng số, ra NaN).
+const net = (r) => Number(r.net_salary || 0);
+const sumBonus = (r) => Number(r.revenue_bonus || 0) + Number(r.kpi_bonus || 0) + Number(r.top_driver_bonus || 0) + Number(r.other_bonus || 0);
+const sumDeduction = (r) => Number(r.insurance_employee || 0) + Number(r.driver_debt_deduction || 0) + Number(r.advance_deduction || 0) + Number(r.other_deduction || 0);
 
 const PAYROLL_STATUS_LABELS = {
   pending: "Chờ xác nhận",
@@ -29,21 +33,32 @@ export default function PayrollView() {
   const [month, setMonth] = useState(NOW.getMonth() + 1);
   const [year, setYear] = useState(NOW.getFullYear());
   const [status, setStatus] = useState("");
+  const [sort, setSort] = useState("");
   const [reviewing, setReviewing] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await managerService.getPayrolls({ month, year, ...(status ? { status } : {}), ...(search ? { search } : {}) });
+      const res = await managerService.getPayrolls({ month, year, ...(status ? { status } : {}), ...(search ? { search } : {}), ...(sort ? { sort } : {}) });
       setPayrolls(res.payrolls || []);
     } catch (e) {
       alert(e.message || "Lỗi tải bảng lương");
     } finally {
       setLoading(false);
     }
-  }, [month, year, status, search]);
+  }, [month, year, status, search, sort]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [month, year, status, search, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(payrolls.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedPayrolls = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return payrolls.slice(start, start + pageSize);
+  }, [payrolls, safePage, pageSize]);
 
   const handleReview = async (record) => {
     setReviewing(record.id);
@@ -101,22 +116,37 @@ export default function PayrollView() {
             className="w-56"
             isClearable
           />
+          <Select
+            selectedKeys={new Set([sort])}
+            onSelectionChange={(k) => setSort([...k][0] ?? "")}
+            variant="bordered"
+            size="sm"
+            className="w-52"
+            aria-label="Sắp xếp"
+          >
+            <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
+            <SelectItem key="net-salary-desc" textValue="Thực lĩnh cao nhất">Thực lĩnh cao nhất</SelectItem>
+            <SelectItem key="net-salary-asc" textValue="Thực lĩnh thấp nhất">Thực lĩnh thấp nhất</SelectItem>
+            <SelectItem key="status" textValue="Trạng thái">Trạng thái</SelectItem>
+          </Select>
           <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={load}>Làm mới</Button>
         </div>
 
+        <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Bảng lương tài xế" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>TÀI XẾ</TableColumn>
             <TableColumn>KỲ LƯƠNG</TableColumn>
             <TableColumn>LƯƠNG CƠ BẢN</TableColumn>
             <TableColumn>THƯỞNG</TableColumn>
+            <TableColumn>HOÀN CHI PHÍ</TableColumn>
             <TableColumn>KHẤU TRỪ</TableColumn>
             <TableColumn>THỰC LĨNH</TableColumn>
             <TableColumn>TRẠNG THÁI</TableColumn>
             <TableColumn> </TableColumn>
           </TableHeader>
           <TableBody
-            items={payrolls}
+            items={pagedPayrolls}
             isLoading={loading}
             loadingContent={<Spinner color="primary" />}
             emptyContent="Không có bảng lương nào."
@@ -125,14 +155,20 @@ export default function PayrollView() {
               <TableRow key={r.id}>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-semibold text-gray-800 text-sm">{r.full_name}</span>
-                    <span className="text-xs text-gray-400">{r.phone}</span>
+                    <span className="font-semibold text-gray-800 text-sm">{r.driver_name}</span>
+                    <span className="text-xs text-gray-400">{r.driver_phone}</span>
                   </div>
                 </TableCell>
                 <TableCell>{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
                 <TableCell>{fmt(r.base_salary)}</TableCell>
-                <TableCell>{fmt((r.revenue_bonus || 0) + (r.kpi_bonus || 0) + (r.top_driver_bonus || 0) + (r.other_bonus || 0))}</TableCell>
-                <TableCell>{fmt((r.insurance_employee || 0) + (r.driver_debt_deduction || 0) + (r.advance_deduction || 0) + (r.other_deduction || 0))}</TableCell>
+                <TableCell>{fmt(sumBonus(r))}</TableCell>
+                <TableCell>
+                  {/* Tiền công ty hoàn lại khoản tài đã ứng (chi hộ + chi phí) — không phải thưởng */}
+                  <span className={Number(r.expense_reimbursement || 0) > 0 ? "font-semibold text-teal-600" : "text-gray-400"}>
+                    {fmt(r.expense_reimbursement)}
+                  </span>
+                </TableCell>
+                <TableCell>{fmt(sumDeduction(r))}</TableCell>
                 <TableCell><span className="font-bold text-blue-600">{fmt(net(r))}</span></TableCell>
                 <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
                 <TableCell>
@@ -146,6 +182,20 @@ export default function PayrollView() {
             )}
           </TableBody>
         </Table>
+        </div>
+
+        {payrolls.length > 0 && (
+          <div className="mt-4">
+            <PaginationBar
+              page={safePage}
+              pageSize={pageSize}
+              totalItems={payrolls.length}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

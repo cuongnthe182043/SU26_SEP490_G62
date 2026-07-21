@@ -61,7 +61,14 @@ const getReceiptRequestPricingHeader = async (db, requestId) => {
     return result.rows[0] ?? null;
 };
 
-const listReceiptRequests = async ({ where, params, limit, offset }) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const RECEIPT_REQUEST_SORTS = {
+    'amount-desc': 'receipt_amount DESC',
+    'amount-asc':  'receipt_amount ASC',
+};
+
+const listReceiptRequests = async ({ where, params, limit, offset, sort = null }) => {
+    const orderClause = RECEIPT_REQUEST_SORTS[sort] ?? 'rr.requested_at DESC';
     const result = await pool.query(
         `SELECT
             rr.id,
@@ -159,7 +166,7 @@ const listReceiptRequests = async ({ where, params, limit, offset }) => {
               AND e.status != 'rejected'
          ) exp ON TRUE
          ${where}
-         ORDER BY rr.requested_at DESC
+         ORDER BY ${orderClause}
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
     );
@@ -243,8 +250,8 @@ const insertApprovedExpense = async (client, { shipmentId, vehicleId, coordinato
     const { rows: [expense] } = await client.query(
         `INSERT INTO expenses
             (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date,
-             status, reviewed_by, reviewed_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), NOW(), NOW())
+             status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW())
          RETURNING id`,
         [shipmentId, vehicleId, coordinatorId, expenseType, amount, description],
     );
@@ -264,7 +271,8 @@ const updateShipmentActualPrice = async (client, shipmentId, actualIncome) => {
 const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
     const { rows } = await client.query(
         `UPDATE expenses e
-         SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(), updated_at = NOW()
+         SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(),
+             reimbursement_status = 'pending', updated_at = NOW()
          FROM order_shipments os
          WHERE os.id = e.shipment_id
            AND os.order_id = $2

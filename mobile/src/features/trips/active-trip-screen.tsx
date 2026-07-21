@@ -8,7 +8,7 @@ import {
     FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }              from '@/components/app-text';
@@ -189,7 +189,7 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
                                     key={i}
                                     source={{ uri: url }}
                                     style={s.receiptThumb}
-                                    resizeMode="cover"
+                                    contentFit="cover"
                                 />
                             ))}
                         </XStack>
@@ -574,7 +574,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const handleStartTransitViaStops = async () => {
         setTransitingViaStops(true);
         try {
-            await tripService.submitLoadingProof(trip.id, new FormData());
+            await tripService.submitLoadingProof(trip.id, null);
             showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển', duration: 2500 });
             refresh();
         } catch (e: unknown) {
@@ -587,7 +587,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const handleCompleteTripViaStops = async () => {
         setCompletingViaStops(true);
         try {
-            const result = await tripService.completeWithProof(trip.id, new FormData());
+            const result = await tripService.completeWithProof(trip.id, null);
             setCompletedTripData(result.trip);
         } catch (e: unknown) {
             showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });

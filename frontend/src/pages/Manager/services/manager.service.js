@@ -30,7 +30,13 @@ export const managerService = {
   },
 
   // ─── Partners ─────────────────────────────────────────────────────────────
-  getPartners: (search = "") => apiRequest(`${BASE}/partners${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getPartners: (search = "", { page = 1, limit = 10, hasDebt = "", sort = "" } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search) params.set("search", search);
+    if (hasDebt) params.set("hasDebt", hasDebt);
+    if (sort) params.set("sort", sort);
+    return apiRequest(`${BASE}/partners?${params}`);
+  },
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),
   updatePartner: (id, payload) => apiRequest(`${BASE}/partners/${id}`, { method: "PUT", body: payload }),
   getPartnerDebts: (id) => apiRequest(`${BASE}/partners/${id}/debts`),
@@ -42,6 +48,7 @@ export const managerService = {
   // ─── Bonus ────────────────────────────────────────────────────────────────
   getBonuses: (params = {}) => apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),
   getBonusStats: (year) => apiRequest(`/api/bonuses/stats?year=${year}`),
+  getBonusStaffLookup: () => apiRequest("/api/bonuses/staff-lookup"),
   previewTetBonuses: (year) => apiRequest(`/api/bonuses/tet/preview?year=${year}`),
   generateTetBonuses: (year) => apiRequest("/api/bonuses/tet/generate", { method: "POST", body: { year } }),
   createBonus: (data) => apiRequest("/api/bonuses", { method: "POST", body: data }),
@@ -57,6 +64,11 @@ export const managerService = {
   updateBonusRule: (id, data) => apiRequest(`/api/bonus-rules/${id}`, { method: "PUT", body: data }),
   deleteBonusRule: (id) => apiRequest(`/api/bonus-rules/${id}`, { method: "DELETE" }),
 
+  // ─── Attendance (chấm công) ────────────────────────────────────────────────
+  getAttendanceGrid: (params = {}) => apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),
+  markAttendance: (data) => apiRequest("/api/attendance", { method: "POST", body: data }),
+  clearAttendance: (driverId, workDate) => apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
+
   // ─── Holidays ─────────────────────────────────────────────────────────────
   getHolidays: (year) => apiRequest(`/api/admin/holidays?year=${year}`),
   createHoliday: (payload) => apiRequest("/api/admin/holidays", { method: "POST", body: payload }),
@@ -67,6 +79,7 @@ export const managerService = {
   createUser: (payload) => apiRequest("/api/admin/users", { method: "POST", body: payload }),
   updateUser: (id, payload) => apiRequest(`/api/admin/users/${id}`, { method: "PUT", body: payload }),
   toggleUserStatus: (id, isActive) => apiRequest(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active: isActive } }),
+  resetUserPassword: (id) => apiRequest(`/api/admin/users/${id}/reset-password`, { method: "POST" }),
   getDriverList: () => apiRequest("/api/admin/users?role=driver&limit=200"),
   getDrivers: () => apiRequest("/api/drivers"),
 
@@ -113,6 +126,8 @@ export const managerService = {
   getVehicleGroupsForKpi: () => apiRequest(`${BASE}/vehicle-groups`),
   getAllDriversKPI: (params) => apiRequest(`/api/kpi/all?${new URLSearchParams(params)}`),
   getLeaderboardByGroup: (vehicleGroupId, params) => apiRequest(`/api/kpi/leaderboard/group/${vehicleGroupId}?${new URLSearchParams(params)}`),
+  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
 
   // ─── Incidents (shared with Coordinator) ─────────────────────────────────
   getIncidents: (params = {}) => apiRequest(`${BASE}/incidents?${new URLSearchParams(params)}`),
@@ -125,6 +140,13 @@ export const managerService = {
   rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
   cancelShipment: (shipmentId, reason) => apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+
+  // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ─────────────────
+  getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+  getVouchers: (params = {}) => apiRequest(`${BASE}/vouchers?${new URLSearchParams(params)}`),
+  approveVoucher: (id) => apiRequest(`${BASE}/vouchers/${id}/approve`, { method: "PATCH" }),
+  rejectVoucher: (id, reason) => apiRequest(`${BASE}/vouchers/${id}/reject`, { method: "PATCH", body: { reason } }),
+  getSpendingSummary: (params = {}) => apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
 };
 
 export default managerService;

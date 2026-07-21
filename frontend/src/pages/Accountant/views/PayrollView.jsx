@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Spinner, Button, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Input, Select, SelectItem,
@@ -6,12 +6,13 @@ import {
 import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
-  RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine,
+  RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
+import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -32,6 +33,20 @@ const STATUS_CHIP = {
   paid:     { color: "success",  label: "Đã trả lương" },
 };
 
+const PAYROLL_STATUS_OPTIONS = [
+  { key: "",         label: "Tất cả trạng thái" },
+  { key: "pending",  label: "Chờ duyệt" },
+  { key: "reviewed", label: "Manager đã duyệt" },
+  { key: "approved", label: "Kế toán xác nhận" },
+  { key: "paid",     label: "Đã trả lương" },
+];
+
+const PAYROLL_SORT_OPTIONS = [
+  { key: "net_desc", label: "Thực lĩnh cao nhất" },
+  { key: "net_asc",  label: "Thực lĩnh thấp nhất" },
+  { key: "status",   label: "Trạng thái" },
+];
+
 function StatCard({ label, value, icon: Icon, bg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm`}>
@@ -46,7 +61,7 @@ function StatCard({ label, value, icon: Icon, bg, text, border }) {
   );
 }
 
-function PayrollRow({ row, onConfirm, onPay, confirming }) {
+function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
 
@@ -59,6 +74,8 @@ function PayrollRow({ row, onConfirm, onPay, confirming }) {
     { label: "Thưởng xuất sắc",     value: row.top_driver_bonus },
     { label: "Thưởng & Phúc lợi",  value: row.overtime_bonus },
     { label: "Lương gộp",           value: row.gross_salary,  bold: true },
+    // Tiền hoàn khoản tài đã ứng (chi hộ khách + chi phí công ty) — không phải thu nhập
+    { label: "Hoàn chi phí đã ứng", value: row.expense_reimbursement },
     { label: "BHXH (10.5%)",    value: `-${VND(row.insurance_employee)}`, raw: true, neg: true },
     { label: "Nghỉ không lương",value: `-${VND(row.absence_penalty)}`,    raw: true, neg: true },
     { label: "Trừ ứng lương",   value: `-${VND(row.advance_deduction)}`,  raw: true, neg: true },
@@ -86,8 +103,16 @@ function PayrollRow({ row, onConfirm, onPay, confirming }) {
             )}
           </div>
         </td>
-        <td className="py-3.5 pr-4 hidden sm:table-cell">
-          <span className="text-xs text-gray-500">{row.vehicle_group || "—"}</span>
+        <td className="py-3.5 pr-4 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500">{row.vehicle_group || "—"}</span>
+            <Button
+              isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
+              onPress={() => onEditGroup(row)}
+            >
+              <RiPencilLine size={12} className="text-gray-400" />
+            </Button>
+          </div>
         </td>
         <td className="py-3.5 pr-4">
           <MoneyText amount={row.gross_salary} className="text-sm font-semibold text-gray-700" />
@@ -276,6 +301,14 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
   const [tab, setTab] = useState(defaultTab);
   const [confirming, setConfirming] = useState(null);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
+  const [editingDriver, setEditingDriver] = useState(null);
+
+  useEffect(() => {
+    accountantService.getVehicleGroupsForKpi()
+      .then((data) => setVehicleGroups(data.vehicleGroups || []))
+      .catch(() => {});
+  }, []);
   const [generating, setGenerating] = useState(false);
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
@@ -283,20 +316,42 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [payPage, setPayPage]         = useState(1);
   const [payPageSize, setPayPageSize] = useState(10);
 
+  const [payrollSearch, setPayrollSearch]             = useState("");
+  const [payrollStatusFilter, setPayrollStatusFilter] = useState("");
+  const [payrollSort, setPayrollSort]                 = useState("net_desc");
+
   const [advPage, setAdvPage]         = useState(1);
   const [advPageSize, setAdvPageSize] = useState(10);
 
+  const filteredPayrolls = useMemo(() => {
+    const rows = payrolls.filter((row) => {
+      if (payrollStatusFilter && row.status !== payrollStatusFilter) return false;
+      if (payrollSearch && !(row.driver_name ?? "").toLowerCase().includes(payrollSearch.toLowerCase())) return false;
+      return true;
+    });
+    const sorted = [...rows];
+    if (payrollSort === "net_asc") {
+      sorted.sort((a, b) => Number(a.net_salary || 0) - Number(b.net_salary || 0));
+    } else if (payrollSort === "status") {
+      const order = { pending: 0, reviewed: 1, approved: 2, paid: 3 };
+      sorted.sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99));
+    } else {
+      sorted.sort((a, b) => Number(b.net_salary || 0) - Number(a.net_salary || 0));
+    }
+    return sorted;
+  }, [payrolls, payrollStatusFilter, payrollSearch, payrollSort]);
+
   const pagedPayrolls = useMemo(() => {
     const start = (payPage - 1) * payPageSize;
-    return payrolls.slice(start, start + payPageSize);
-  }, [payrolls, payPage, payPageSize]);
+    return filteredPayrolls.slice(start, start + payPageSize);
+  }, [filteredPayrolls, payPage, payPageSize]);
 
   const pagedAdvances = useMemo(() => {
     const start = (advPage - 1) * advPageSize;
     return advances.slice(start, start + advPageSize);
   }, [advances, advPage, advPageSize]);
 
-  const payTotalPages = Math.max(1, Math.ceil(payrolls.length / payPageSize));
+  const payTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / payPageSize));
   const advTotalPages = Math.max(1, Math.ceil(advances.length / advPageSize));
 
   const handleGenerate = async () => {
@@ -430,6 +485,41 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </Button>
           </div>
 
+          {}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input
+              size="sm"
+              placeholder="Tìm theo tên tài xế..."
+              value={payrollSearch}
+              onValueChange={(v) => { setPayrollSearch(v); setPayPage(1); }}
+              className="w-56"
+            />
+            <Select
+              size="sm"
+              placeholder="Trạng thái"
+              aria-label="Trạng thái"
+              className="w-52"
+              selectedKeys={new Set([payrollStatusFilter])}
+              onChange={(e) => { setPayrollStatusFilter(e.target.value); setPayPage(1); }}
+            >
+              {PAYROLL_STATUS_OPTIONS.map(({ key, label }) => (
+                <SelectItem key={key} textValue={label}>{label}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              placeholder="Sắp xếp"
+              aria-label="Sắp xếp"
+              className="w-48"
+              selectedKeys={new Set([payrollSort])}
+              onChange={(e) => { setPayrollSort(e.target.value); setPayPage(1); }}
+            >
+              {PAYROLL_SORT_OPTIONS.map(({ key, label }) => (
+                <SelectItem key={key} textValue={label}>{label}</SelectItem>
+              ))}
+            </Select>
+          </div>
+
           {generateErr && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
               <RiAlertLine size={15} />
@@ -458,7 +548,15 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   Tạo bảng lương ngay
                 </Button>
               </div>
+            ) : filteredPayrolls.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center">
+                  <RiWalletLine size={20} className="text-violet-400" />
+                </div>
+                <p className="text-gray-500 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
+              </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -489,19 +587,21 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       onConfirm={handleConfirm}
                       onPay={handlePay}
                       confirming={confirming}
+                      onEditGroup={setEditingDriver}
                     />
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
           {}
-          {!loading && payrolls.length > 0 && (
+          {!loading && filteredPayrolls.length > 0 && (
             <PaginationBar
               page={Math.min(payPage, payTotalPages)}
               pageSize={payPageSize}
-              totalItems={payrolls.length}
+              totalItems={filteredPayrolls.length}
               totalPages={payTotalPages}
               onPageChange={setPayPage}
               onPageSizeChange={(s) => { setPayPageSize(s); setPayPage(1); }}
@@ -550,6 +650,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <p className="text-gray-500 text-sm">Không có yêu cầu ứng lương nào.</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -582,6 +683,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
@@ -606,6 +708,17 @@ export function PayrollView({ defaultTab = "payroll" }) {
           onDone={refetchAdvances}
         />
       )}
+
+      <DriverVehicleGroupModal
+        open={!!editingDriver}
+        driver={editingDriver}
+        vehicleGroups={vehicleGroups}
+        onSave={async (driverId, vehicleGroupId) => {
+          await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId);
+          refetch();
+        }}
+        onClose={() => setEditingDriver(null)}
+      />
     </div>
   );
 }

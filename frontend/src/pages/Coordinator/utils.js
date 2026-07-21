@@ -10,7 +10,7 @@ export const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }],
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", price: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }],
 });
 
 export const requiredFields = [
@@ -74,6 +74,7 @@ export const newReceiptExpense = () => ({
 export const emptyReceiptForm = () => ({
   notes: "",
   expenses: [],
+  priceOverride: "",
 });
 
 export const STATUS_QUERY = {
@@ -184,6 +185,8 @@ export function buildTripFromOrder(order) {
   const firstTrip = trips[0] || {};
   const pickupAddress = firstStop(firstTrip, "pickup_addresses", "pickup_address") || order.pickup_address || "";
   const deliveryAddress = firstStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
+  const pickupAddresses = firstTrip.pickup_addresses?.length ? firstTrip.pickup_addresses : [pickupAddress];
+  const deliveryAddresses = firstTrip.delivery_addresses?.length ? firstTrip.delivery_addresses : [deliveryAddress];
   const arrivedAt = firstTrip.arrived_at || order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
@@ -212,6 +215,9 @@ export function buildTripFromOrder(order) {
     prepaidAmount: order.prepaid_amount || "",
     pickupAddress,
     deliveryAddress,
+    pickupAddresses,
+    deliveryAddresses,
+    isMultiShipment,
     route: isMultiShipment
       ? `${trips.length} chuyến - mở chi tiết để xem từng chuyến`
       : (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),

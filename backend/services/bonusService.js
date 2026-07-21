@@ -1,6 +1,5 @@
 const bonusRepository  = require('../repositories/bonusRepository');
 const roleRepository   = require('../repositories/roleRepository');
-const driverRepository = require('../repositories/driverRepository');
 const notificationService = require('./notificationService');
 
 const TYPE_LABEL = {
@@ -23,9 +22,11 @@ const FUNERAL_AMOUNTS = {
 
 const _getUserIdsByRole = async (role) => roleRepository.getUserIdsByRole(role);
 
+// Thưởng Tết/hiếu hỉ/sinh nhật/đặc biệt áp dụng cho MỌI nhân viên đang hoạt động,
+// không chỉ tài xế — chỉ kiểm tra profile còn tồn tại và tài khoản đang active.
 const _assertDriverExists = async (driverId) => {
-    const exists = await driverRepository.driverExists(driverId);
-    if (!exists) throw new Error(`Tài xế #${driverId} không tồn tại`);
+    const exists = await bonusRepository.staffExists(driverId);
+    if (!exists) throw new Error(`Nhân viên #${driverId} không tồn tại hoặc đã bị khóa`);
 };
 
 // ─── Tet ─────────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ const getByDriver = async (driverId) => bonusRepository.getByDriver(driverId);
  * Tạo khoản phúc lợi / thưởng đột xuất.
  * amount được tính tự động với welfare_birthday, welfare_wedding, welfare_funeral.
  */
-const createWelfare = async (data, createdBy) => {
+const createWelfare = async (data, createdBy, createdByRole) => {
     const { driver_id, type, beneficiary_name, beneficiary_relation, notes, proof_url, year } = data;
 
     if (type === 'tet_annual') throw new Error('Thưởng Tết phải dùng chức năng tạo hàng loạt');
@@ -105,24 +106,30 @@ const createWelfare = async (data, createdBy) => {
         type,
         year:                 year ?? new Date().getFullYear(),
         amount,
-        notes:                notes ?? null,
-        beneficiary_name:     beneficiary_name ?? null,
-        beneficiary_relation: beneficiary_relation ?? null,
-        proof_url:            proof_url ?? null,
+        notes:                notes || null,
+        beneficiary_name:     beneficiary_name || null,
+        // Chuỗi rỗng ("" — form không cần trường này, vd type != welfare_funeral) phải
+        // thành NULL chứ không lưu "" — CHECK constraint chỉ chấp nhận NULL hoặc 1 trong
+        // các quan hệ hợp lệ, "" sẽ vi phạm constraint và làm insert thất bại.
+        beneficiary_relation: beneficiary_relation || null,
+        proof_url:            proof_url || null,
     }, createdBy);
 
-    // Notify managers to approve (nếu người tạo không phải manager)
-    const managerIds = await _getUserIdsByRole('manager');
-    const notifyIds  = managerIds.filter((id) => id !== createdBy);
-    if (notifyIds.length) {
-        notificationService.createForUsers(notifyIds, {
-            title:      'Yêu cầu phúc lợi mới',
-            message:    `Có phiếu "${TYPE_LABEL[type] ?? type}" mới chờ duyệt.`,
-            type:       'BONUS_REQUEST',
-            entityType: 'driver_bonuses',
-            entityId:   bonus.id,
-        }, { displayMode: 'alert' }).catch(() => {});
+    // Manager tự tạo → tự động duyệt luôn, không cần đợi thêm 1 bước duyệt thừa.
+    // Accountant tạo → vẫn giữ pending, chờ Manager duyệt như bình thường.
+    if (createdByRole === 'manager') {
+        return approve(bonus.id, createdBy, null);
     }
+
+    // Không notify chính người tạo phiếu
+    const managerIds = (await _getUserIdsByRole('manager')).filter((id) => id !== createdBy);
+    notificationService.createForUsers(managerIds, {
+        title:      'Yêu cầu phúc lợi mới',
+        message:    `Có phiếu "${TYPE_LABEL[type] ?? type}" mới chờ duyệt.`,
+        type:       'BONUS_REQUEST',
+        entityType: 'driver_bonuses',
+        entityId:   bonus.id,
+    }, { displayMode: 'alert' }).catch(() => {});
 
     return bonus;
 };
@@ -188,6 +195,10 @@ const pay = async (id, paidBy) => {
     return bonus;
 };
 
+const getStaffLookup = async () => {
+    return bonusRepository.getStaffLookup();
+};
+
 module.exports = {
     TYPE_LABEL,
     previewTet,
@@ -200,4 +211,5 @@ module.exports = {
     approve,
     reject,
     pay,
+    getStaffLookup,
 };

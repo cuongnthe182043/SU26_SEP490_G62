@@ -45,6 +45,7 @@ export default function VehiclesView({ user }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [detailVehicle, setDetailVehicle] = useState(null);
@@ -82,6 +83,7 @@ export default function VehiclesView({ user }) {
         search: opts.search ?? search,
         status: opts.status ?? statusFilter,
         vehicle_group_id: opts.group ?? groupFilter,
+        sort: opts.sort ?? sortBy,
       });
       setVehicles(data.items || []);
       setPagination({ page: data.pagination?.page || 1, limit: data.pagination?.limit || 10, total: data.pagination?.total || 0 });
@@ -312,6 +314,7 @@ export default function VehiclesView({ user }) {
             <span className="text-sm font-bold text-gray-800">Yêu cầu bảo dưỡng chờ duyệt</span>
           </div>
           <p className="text-xs text-gray-400 mb-3">{maintenanceRequests.length} yêu cầu từ tài xế</p>
+          <div className="overflow-x-auto">
           <Table removeWrapper aria-label="Yêu cầu bảo dưỡng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
             <TableHeader>
               <TableColumn>XE</TableColumn>
@@ -344,6 +347,7 @@ export default function VehiclesView({ user }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
 
@@ -370,9 +374,15 @@ export default function VehiclesView({ user }) {
           <Select selectedKeys={groupFilter ? [groupFilter] : []} onSelectionChange={(k) => setGroupFilter([...k][0] ?? "")} placeholder="Tất cả nhóm xe" variant="bordered" size="sm">
             {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{g.name}</SelectItem>)}
           </Select>
+          <Select selectedKeys={new Set([sortBy])} onSelectionChange={(k) => setSortBy([...k][0] ?? "")} placeholder="Sắp xếp" variant="bordered" size="sm">
+            <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
+            <SelectItem key="plate" textValue="Biển số A→Z">Biển số A→Z</SelectItem>
+            <SelectItem key="status" textValue="Trạng thái">Trạng thái</SelectItem>
+          </Select>
           <Button color="primary" size="sm" onPress={() => loadVehicles({ page: 1 })}>Áp dụng</Button>
         </div>
 
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách xe"
@@ -446,6 +456,7 @@ export default function VehiclesView({ user }) {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* Modals */}
@@ -470,7 +481,7 @@ export default function VehiclesView({ user }) {
         onSubmit={handleVehicleSubmit}
       />
 
-      <VehicleDetailModal open={!!detailVehicle} vehicle={detailVehicle} assignmentHistory={assignmentHistory} onClose={() => setDetailVehicle(null)} />
+      <VehicleDetailModal open={!!detailVehicle} vehicle={detailVehicle} assignmentHistory={assignmentHistory} vehicleGroups={vehicleGroups} onClose={() => setDetailVehicle(null)} />
 
       <Modal isOpen={!!unassignTarget} onOpenChange={(open) => !open && setUnassignTarget(null)} size="sm">
         <ModalContent>

@@ -5,8 +5,10 @@ import {
 } from "@heroui/react";
 import { RiFileExcel2Line, RiUploadCloud2Line, RiCheckboxCircleLine, RiErrorWarningLine, RiDownloadLine } from "react-icons/ri";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
+import { RouteStops } from "../components/shared/RouteStops";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
@@ -71,34 +73,141 @@ const TEMPLATE_EXAMPLES = [
     "Tiền mặt - tài đang giữ", 900000, "Tài đã nộp trước 100k"],
 ];
 
-const TEMPLATE_GUIDE = [
-  ["HƯỚNG DẪN NHẬP LIỆU — TEMPLATE IMPORT ĐƠN NGOÀI (đơn đã hoàn thành)"],
-  [""],
-  ["- Mỗi dòng = 1 chuyến đã chạy xong. Cột (*) là BẮT BUỘC — thiếu sẽ bị từ chối."],
-  ["- Số tiền nhập SỐ THUẦN (vd 1000000). Ngày dạng dd/mm/yyyy."],
-  ["- KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng."],
-  [""],
-  ["Cột \"Thanh toán\" — chọn đúng 1 trong 4 (copy nguyên văn):"],
-  ["CK công ty", "khách đã chuyển khoản/trả thẳng công ty → không phát sinh nợ"],
-  ["Tiền mặt - tài đã nộp", "khách đưa tiền mặt cho tài, tài ĐÃ nộp về → nợ tài xế đã tất toán"],
-  ["Tiền mặt - tài đang giữ", "tài ĐANG giữ tiền của khách → ghi NỢ TÀI XẾ"],
-  ["Khách nợ", "khách CHƯA thanh toán → ghi NỢ KHÁCH HÀNG (bắt buộc có SĐT khách)"],
-  [""],
-  ["SĐT khách: hệ thống nhận diện khách cũ/mới và gom công nợ theo SĐT — khách quen bắt buộc điền."],
-  ["Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách N chuyến, cước chia đều."],
-  ["Tiền tài đang giữ: chỉ điền khi KHÁC (cước + phí khách chịu) — vd khách trả thiếu, tài nộp một phần."],
-  ["Phí cầu đường/đỗ xe: KHÁCH chịu (cộng vào tiền khách phải trả). Xăng dầu/Sửa xe: CÔNG TY chịu."],
-];
+const PAYMENT_OPTIONS = ["CK công ty", "Tiền mặt - tài đã nộp", "Tiền mặt - tài đang giữ", "Khách nợ"];
+const REQUIRED_COLS = new Set([
+  "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Điểm lấy hàng (*)",
+  "Điểm giao hàng (*)", "Cước xe (đ) (*)", "Thanh toán (*)",
+]);
+const MONEY_COLS = new Set([
+  "Cước xe (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
+]);
 
-const downloadTemplate = () => {
-  const wb = XLSX.utils.book_new();
-  const wsData = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_EXAMPLES]);
-  wsData["!cols"] = TEMPLATE_HEADERS.map((h) => ({ wch: Math.max(h.length + 2, 14) }));
-  XLSX.utils.book_append_sheet(wb, wsData, "DON_HANG");
-  const wsGuide = XLSX.utils.aoa_to_sheet(TEMPLATE_GUIDE);
-  wsGuide["!cols"] = [{ wch: 30 }, { wch: 80 }];
-  XLSX.utils.book_append_sheet(wb, wsGuide, "HUONG_DAN");
-  XLSX.writeFile(wb, "Template Import Don Ngoai.xlsx");
+const BRAND_BLUE = "FF2563EB";
+const HEADER_TEXT = "FFFFFFFF";
+const REQUIRED_FILL = "FFFEF3C7";
+const ZEBRA_FILL = "FFF8FAFC";
+const BORDER_COLOR = "FFE2E8F0";
+
+const thinBorder = { style: "thin", color: { argb: BORDER_COLOR } };
+
+const downloadTemplate = async () => {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "LogisCount";
+  wb.created = new Date();
+
+  // ─── Sheet 1: DON_HANG ───────────────────────────────────────────────────
+  const ws = wb.addWorksheet("DON_HANG", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  ws.columns = TEMPLATE_HEADERS.map((h) => ({
+    header: h,
+    key: h,
+    width: Math.max(h.length + 2, 16),
+  }));
+
+  const headerRow = ws.getRow(1);
+  headerRow.height = 26;
+  headerRow.eachCell((cell, colNumber) => {
+    const h = TEMPLATE_HEADERS[colNumber - 1];
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REQUIRED_COLS.has(h) ? "FFF59E0B" : BRAND_BLUE } };
+    cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+  });
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: TEMPLATE_HEADERS.length } };
+
+  TEMPLATE_EXAMPLES.forEach((rowValues, i) => {
+    const row = ws.addRow(rowValues);
+    row.eachCell((cell, colNumber) => {
+      const h = TEMPLATE_HEADERS[colNumber - 1];
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+      cell.alignment = { vertical: "middle", horizontal: MONEY_COLS.has(h) ? "right" : "left" };
+      if (MONEY_COLS.has(h) && typeof cell.value === "number") cell.numFmt = "#,##0";
+      if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+    });
+  });
+
+  // Dropdown chọn sẵn cho cột "Thanh toán (*)" — áp dụng cho 500 dòng đầu để chừa chỗ nhập thêm
+  const paymentColIndex = TEMPLATE_HEADERS.indexOf("Thanh toán (*)") + 1;
+  for (let r = 2; r <= 500; r += 1) {
+    ws.getCell(r, paymentColIndex).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`"${PAYMENT_OPTIONS.join(",")}"`],
+      showErrorMessage: true,
+      errorTitle: "Giá trị không hợp lệ",
+      error: `Chỉ chọn 1 trong: ${PAYMENT_OPTIONS.join(" / ")}`,
+    };
+  }
+
+  // ─── Sheet 2: HUONG_DAN ──────────────────────────────────────────────────
+  const wsGuide = wb.addWorksheet("HUONG_DAN", { views: [{ showGridLines: false }] });
+  wsGuide.columns = [{ width: 32 }, { width: 78 }];
+
+  const titleRow = wsGuide.addRow(["HƯỚNG DẪN NHẬP LIỆU — TEMPLATE IMPORT ĐƠN NGOÀI"]);
+  wsGuide.mergeCells(`A${titleRow.number}:B${titleRow.number}`);
+  titleRow.height = 28;
+  titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: HEADER_TEXT } };
+  titleRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+  titleRow.getCell(1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+
+  wsGuide.addRow([]);
+
+  const addNote = (text) => {
+    const row = wsGuide.addRow([text]);
+    wsGuide.mergeCells(`A${row.number}:B${row.number}`);
+    row.getCell(1).font = { size: 10.5 };
+    row.getCell(1).alignment = { wrapText: true, vertical: "top" };
+  };
+  addNote("• Mỗi dòng = 1 chuyến đã chạy xong. Cột có nền vàng ở sheet DON_HANG là BẮT BUỘC — thiếu sẽ bị từ chối.");
+  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy). Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
+  addNote("• Nhiều điểm lấy/điểm trả trong 1 chuyến: gõ nhiều dòng trong CÙNG 1 ô (Alt+Enter) hoặc phân cách bằng dấu \"|\", vd: Kho A|Kho B.");
+  addNote("• KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng.");
+  addNote("• Biển số xe và Tên tài xế PHẢI khớp đúng với xe/tài khoản đã có sẵn trong hệ thống — hệ thống KHÔNG tự tạo xe hoặc tài khoản tài xế mới nữa. Nếu chưa có, nhờ Manager thêm xe/tạo tài khoản tài xế trước khi import (dòng không khớp sẽ báo lỗi và không được import).");
+
+  wsGuide.addRow([]);
+  const sectionRow = wsGuide.addRow(["Cột \"Thanh toán\" — chọn từ dropdown (đã cấu hình sẵn trong sheet DON_HANG):"]);
+  wsGuide.mergeCells(`A${sectionRow.number}:B${sectionRow.number}`);
+  sectionRow.getCell(1).font = { bold: true, size: 11 };
+
+  const tableHeaderRow = wsGuide.addRow(["Giá trị", "Ý nghĩa"]);
+  tableHeaderRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: HEADER_TEXT } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+    cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+  });
+
+  const paymentGuideRows = [
+    ["CK công ty", "khách đã chuyển khoản/trả thẳng công ty → không phát sinh nợ"],
+    ["Tiền mặt - tài đã nộp", "khách đưa tiền mặt cho tài, tài ĐÃ nộp về → nợ tài xế đã tất toán"],
+    ["Tiền mặt - tài đang giữ", "tài ĐANG giữ tiền của khách → ghi NỢ TÀI XẾ"],
+    ["Khách nợ", "khách CHƯA thanh toán → ghi NỢ KHÁCH HÀNG (bắt buộc có SĐT khách)"],
+  ];
+  paymentGuideRows.forEach(([val, meaning], i) => {
+    const row = wsGuide.addRow([val, meaning]);
+    row.eachCell((cell) => {
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+      cell.alignment = { wrapText: true, vertical: "top" };
+      if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+    });
+    row.getCell(1).font = { bold: true };
+  });
+
+  wsGuide.addRow([]);
+  addNote("SĐT khách: hệ thống nhận diện khách cũ/mới và gom công nợ theo SĐT — khách quen bắt buộc điền.");
+  addNote("Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách N chuyến, cước chia đều.");
+  addNote("Tiền tài đang giữ: chỉ điền khi KHÁC (cước + phí khách chịu) — vd khách trả thiếu, tài nộp một phần.");
+  addNote("Phí cầu đường/đỗ xe: KHÁCH chịu (cộng vào tiền khách phải trả). Xăng dầu/Sửa xe: CÔNG TY chịu.");
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Template Import Don Ngoai.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 const parseMoney = (v) => {
@@ -112,14 +221,36 @@ const parseKm = (v) => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const parseDate = (v) => {
-  const s = String(v ?? "").trim();
-  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+// Đọc trực tiếp cell gốc (không qua sheet_to_json) để tránh SheetJS tự format lại
+// text của ô kiểu "Date" theo bảng định dạng dựng sẵn (thiên về kiểu Mỹ m/d/yy),
+// khiến chuỗi hiển thị khác với dd/mm/yyyy dù Excel vẫn hiện đúng dd/mm/yyyy.
+const parseDateCell = (cell) => {
+  if (!cell) return null;
+
+  if (cell.t === "n" && typeof cell.v === "number") {
+    const d = XLSX.SSF.parse_date_code(cell.v);
+    if (!d) return null;
+    return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  }
+
+  if (cell.v instanceof Date && !Number.isNaN(cell.v.getTime())) {
+    return `${cell.v.getUTCFullYear()}-${String(cell.v.getUTCMonth() + 1).padStart(2, "0")}-${String(cell.v.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  const s = String(cell.w ?? cell.v ?? "").trim();
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (!m) return null;
-  const [, d, mo, y] = m;
+  let [, d, mo, y] = m;
+  if (y.length === 2) y = (Number(y) < 70 ? "20" : "19") + y;
   const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   return Number.isNaN(new Date(iso).getTime()) ? null : iso;
 };
+
+// Tách nhiều điểm lấy/trả trong cùng 1 ô — phân cách bằng "|" hoặc xuống dòng (Alt+Enter)
+const splitStops = (v) => String(v ?? "")
+  .split(/\r?\n|\|/)
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Parse workbook → { rows: [{rowIndex, order, display}], errors: [string] }
 function parseWorkbook(wb) {
@@ -151,7 +282,8 @@ function parseWorkbook(wb) {
     const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
     const rowErr = [];
 
-    const dateIso = parseDate(get(r, "date"));
+    const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
+    const dateIso = parseDateCell(ws[dateCellAddr]);
     if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
 
     const plate = String(get(r, "plate")).trim();
@@ -159,10 +291,10 @@ function parseWorkbook(wb) {
     const driver = String(get(r, "driver")).trim();
     if (!driver) rowErr.push("Thiếu tên tài xế");
 
-    const pickup = String(get(r, "pickup")).trim();
-    const delivery = String(get(r, "delivery")).trim();
-    if (!pickup) rowErr.push("Thiếu điểm lấy hàng");
-    if (!delivery) rowErr.push("Thiếu điểm giao hàng");
+    const pickups = splitStops(get(r, "pickup"));
+    const deliveries = splitStops(get(r, "delivery"));
+    if (pickups.length === 0) rowErr.push("Thiếu điểm lấy hàng");
+    if (deliveries.length === 0) rowErr.push("Thiếu điểm giao hàng");
 
     const cargoFee = parseMoney(get(r, "cargo_fee"));
     if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
@@ -212,8 +344,8 @@ function parseWorkbook(wb) {
       shipments.push({
         vehicle_plate: plate,
         driver_name: driver,
-        pickup_addresses: [pickup],
-        delivery_address: delivery,
+        pickup_addresses: pickups,
+        delivery_addresses: deliveries,
         cargo_fee: isFirst ? feeFirst : feePerRun,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
@@ -230,7 +362,7 @@ function parseWorkbook(wb) {
       display: {
         date: get(r, "date"), plate, driver,
         customer: customerName || "Khách lẻ",
-        route: `${pickup} → ${delivery}`,
+        pickups, deliveries,
         cargoFee, paymentRaw, runs,
       },
       order: {
@@ -372,7 +504,10 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                         <td className="px-3 py-1.5">{display.date}</td>
                         <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
                         <td className="px-3 py-1.5">{display.customer}</td>
-                        <td className="px-3 py-1.5 max-w-[220px] truncate">{display.route}{display.runs > 1 ? ` (x${display.runs})` : ""}</td>
+                        <td className="px-3 py-1.5 max-w-[220px]">
+                          <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
+                          {display.runs > 1 ? <span className="text-gray-400"> (x{display.runs})</span> : null}
+                        </td>
                         <td className="px-3 py-1.5 text-right font-semibold"><MoneyText amount={display.cargoFee} /></td>
                         <td className="px-3 py-1.5">{display.paymentRaw}</td>
                       </tr>

@@ -7,6 +7,12 @@ export const accountantService = {
   getFinanceStats: () =>
     apiRequest(`${BASE}/finance/stats`),
 
+  getVehicleGroupsForKpi: () =>
+    apiRequest(`${BASE}/vehicle-groups`),
+
+  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
+
   getOrders: (params) =>
     apiRequest(`${BASE}/orders?${new URLSearchParams(params)}`),
 
@@ -25,6 +31,16 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  exportOrdersReport: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.debt_status) params.set("debt_status", filters.debt_status);
+    if (filters.customer) params.set("customer", filters.customer);
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    return apiRequest(`${BASE}/orders/export?${params}`);
+  },
+
   getCustomerDebt: (orderId) =>
     apiRequest(`${BASE}/orders/${orderId}/customer-debt`),
 
@@ -42,6 +58,13 @@ export const accountantService = {
       `${BASE}/orders/${orderId}/shipments/${shipmentId}/driver-payment`,
       { method: "POST", body: data }
     ),
+
+  // Chuyển toàn bộ số dư còn lại của 1 công nợ khách hàng sang công nợ tài xế mới
+  transferDebtToDriver: (debtId, driverId, notes) =>
+    apiRequest(`${BASE}/debts/${debtId}/transfer-to-driver`, {
+      method: "POST",
+      body: { driverId, notes: notes || undefined },
+    }),
 
   getDebts: (params) =>
     apiRequest(`${BASE}/debts?${new URLSearchParams(params)}`),
@@ -120,6 +143,9 @@ export const accountantService = {
   payBonus: (id) =>
     apiRequest(`/api/bonuses/${id}/pay`, { method: "PATCH" }),
 
+  getBonusStaffLookup: () =>
+    apiRequest("/api/bonuses/staff-lookup"),
+
   getPendingBankTransfers: (params) =>
     apiRequest(`${BASE}/receipts/bank-transfer?${new URLSearchParams(params)}`),
 
@@ -150,4 +176,25 @@ export const accountantService = {
       method: "PATCH",
       body: { reason },
     }),
+
+  // Lịch sử thanh toán công nợ toàn cục (khách + tài xế), có lọc/phân trang
+  getDebtPaymentHistory: (params = {}) =>
+    apiRequest(`${BASE}/debts/payment/history?${new URLSearchParams(params)}`),
+
+  // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ────────────────────
+  getSpendingExpenses: (params = {}) =>
+    apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+
+  getVouchers: (params = {}) =>
+    apiRequest(`${BASE}/vouchers?${new URLSearchParams(params)}`),
+
+  // data là FormData (có thể kèm file 'proof')
+  createVoucher: (formData) =>
+    apiRequest(`${BASE}/vouchers`, { method: "POST", body: formData }),
+
+  payVoucher: (id) =>
+    apiRequest(`${BASE}/vouchers/${id}/pay`, { method: "PATCH" }),
+
+  getSpendingSummary: (params = {}) =>
+    apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
 };

@@ -6,6 +6,7 @@ import {
 } from "@heroui/react";
 import { RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const NOW = new Date();
@@ -37,6 +38,8 @@ export default function BonusView() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [driverFilter, setDriverFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
@@ -54,26 +57,38 @@ export default function BonusView() {
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [creating, setCreating] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+
   const loadBonuses = useCallback(async () => {
     setLoading(true);
     try {
       const [bonusRes, statsRes] = await Promise.all([
-        managerService.getBonuses({ year, ...(typeFilter ? { type: typeFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}) }),
+        managerService.getBonuses({
+          year, page, limit: pageSize,
+          ...(typeFilter ? { type: typeFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(driverFilter ? { driver_id: driverFilter } : {}),
+          ...(sortBy ? { sort: sortBy } : {}),
+        }),
         managerService.getBonusStats(year),
       ]);
       setBonuses(bonusRes.bonuses || []);
       setStats(statsRes);
+      setPagination(bonusRes.pagination || { total: (bonusRes.bonuses || []).length, totalPages: 1 });
     } catch (e) {
       alert(e.message || "Lỗi tải dữ liệu thưởng");
     } finally {
       setLoading(false);
     }
-  }, [year, typeFilter, statusFilter]);
+  }, [year, typeFilter, statusFilter, driverFilter, sortBy, page, pageSize]);
 
   useEffect(() => { loadBonuses(); }, [loadBonuses]);
+  useEffect(() => { setPage(1); }, [year, typeFilter, statusFilter, driverFilter, sortBy]);
 
   useEffect(() => {
-    managerService.getDriverList().then((res) => setDrivers((res.users || []).filter((u) => u.role === "driver"))).catch(() => {});
+    managerService.getBonusStaffLookup().then((res) => setDrivers(res.staff || [])).catch(() => {});
   }, []);
 
   const handleApprove = async () => {
@@ -137,7 +152,7 @@ export default function BonusView() {
   };
 
   const handleCreate = async () => {
-    if (!createForm.driver_id) { alert("Chọn tài xế"); return; }
+    if (!createForm.driver_id) { alert("Chọn nhân viên"); return; }
     if (!createForm.type) { alert("Chọn loại phúc lợi"); return; }
     if (!createForm.amount) { alert("Nhập số tiền"); return; }
     setCreating(true);
@@ -195,12 +210,36 @@ export default function BonusView() {
                 <SelectItem key="rejected">Từ chối</SelectItem>
                 <SelectItem key="paid">Đã chi</SelectItem>
               </Select>
+              <Select
+                selectedKeys={new Set([driverFilter])}
+                onSelectionChange={(k) => setDriverFilter([...k][0] ?? "")}
+                placeholder="Tất cả nhân viên"
+                variant="bordered"
+                size="sm"
+                className="w-56"
+              >
+                <SelectItem key="" textValue="Tất cả nhân viên">Tất cả nhân viên</SelectItem>
+                {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>)}
+              </Select>
+              <Select
+                selectedKeys={new Set([sortBy])}
+                onSelectionChange={(k) => setSortBy([...k][0] ?? "")}
+                variant="bordered"
+                size="sm"
+                className="w-48"
+              >
+                <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+                <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+                <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+                <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
+              </Select>
               <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={loadBonuses}>Làm mới</Button>
             </div>
 
+            <div className="overflow-x-auto">
             <Table removeWrapper aria-label="Danh sách thưởng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
               <TableHeader>
-                <TableColumn>TÀI XẾ</TableColumn>
+                <TableColumn>NHÂN VIÊN</TableColumn>
                 <TableColumn>LOẠI</TableColumn>
                 <TableColumn>NĂM</TableColumn>
                 <TableColumn>SỐ TIỀN</TableColumn>
@@ -240,6 +279,20 @@ export default function BonusView() {
                 )}
               </TableBody>
             </Table>
+            </div>
+
+            {bonuses.length > 0 && (
+              <div className="mt-3">
+                <PaginationBar
+                  page={page}
+                  pageSize={pageSize}
+                  totalItems={pagination.total}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+                />
+              </div>
+            )}
           </Tab>
 
           <Tab key="tet" title="Thưởng Tết">
@@ -259,7 +312,7 @@ export default function BonusView() {
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm text-blue-700">
                   {preview.filter((p) => !p.already_exists).length} tài xế sẽ được tạo phiếu thưởng mới · {preview.filter((p) => p.already_exists).length} đã có sẵn
                 </div>
-                <div className="max-h-[360px] overflow-y-auto">
+                <div className="max-h-[360px] overflow-auto">
                   <Table removeWrapper aria-label="Xem trước thưởng Tết" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
                     <TableHeader>
                       <TableColumn>TÀI XẾ</TableColumn>
@@ -292,13 +345,13 @@ export default function BonusView() {
           <Tab key="create" title="Tạo phúc lợi">
             <div className="max-w-xl flex flex-col gap-4 my-4">
               <Select
-                label="Tài xế"
-                placeholder="Chọn tài xế..."
+                label="Nhân viên"
+                placeholder="Chọn nhân viên..."
                 selectedKeys={createForm.driver_id ? [String(createForm.driver_id)] : []}
                 onSelectionChange={(k) => setCreateForm((p) => ({ ...p, driver_id: [...k][0] }))}
                 variant="bordered"
               >
-                {drivers.map((d) => <SelectItem key={String(d.id)}>{`${d.full_name} — ${d.phone}`}</SelectItem>)}
+                {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{`${d.full_name} — ${d.phone}`}</SelectItem>)}
               </Select>
 
               <Select
@@ -363,7 +416,7 @@ export default function BonusView() {
             {approveTarget && (
               <>
                 <div className="text-sm text-gray-600">
-                  <div>Tài xế: <strong>{approveTarget.driver_name}</strong></div>
+                  <div>Nhân viên: <strong>{approveTarget.driver_name}</strong></div>
                   <div>Loại: <strong>{TYPE_LABEL[approveTarget.type]}</strong></div>
                   <div>Số tiền gốc: <strong>{fmt(approveTarget.amount)}</strong></div>
                 </div>
@@ -384,7 +437,7 @@ export default function BonusView() {
           <ModalBody className="gap-3">
             {rejectTarget && (
               <div className="text-sm text-gray-600">
-                <div>Tài xế: <strong>{rejectTarget.driver_name}</strong></div>
+                <div>Nhân viên: <strong>{rejectTarget.driver_name}</strong></div>
                 <div>Số tiền: <strong>{fmt(rejectTarget.amount)}</strong></div>
               </div>
             )}
