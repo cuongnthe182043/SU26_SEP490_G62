@@ -4,6 +4,7 @@ const getReportOverview = async ({ months = 6, granularity = 'month' } = {}) => 
     const [
         revenueChart,
         topCustomers,
+        topPartners,
         debtAging,
         payrollSummary,
         revenueByVehicle,
@@ -11,6 +12,7 @@ const getReportOverview = async ({ months = 6, granularity = 'month' } = {}) => 
     ] = await Promise.all([
         _getRevenueTrend(granularity, months),
         _getTopCustomers(),
+        _getTopPartners(),
         _getDebtAging(),
         _getPayrollSummary(),
         _getRevenueByVehicle(months),
@@ -20,6 +22,7 @@ const getReportOverview = async ({ months = 6, granularity = 'month' } = {}) => 
     return {
         revenueChart,
         topCustomers,
+        topPartners,
         debtAging,
         payrollSummary,
         revenueByVehicle,
@@ -99,7 +102,49 @@ const _getTopCustomers = async () => {
         JOIN orders o ON o.customer_id = c.id
         JOIN shipment_revenue sr ON sr.order_id = o.id
         LEFT JOIN order_debt od ON od.order_id = o.id
+        WHERE o.partner_id IS NULL   -- đơn đối tác: doanh thu tính về đối tác, không về khách chủ hàng
         GROUP BY c.id, c.full_name, c.phone, c.company_name
+        ORDER BY total_revenue DESC
+        LIMIT 10
+    `);
+    return rows;
+};
+
+// Top đối tác theo doanh thu — CHỈ các đơn thuộc đối tác (o.partner_id). Doanh thu +
+// công nợ đối tác gộp riêng theo order trước khi join (tránh Cartesian như top khách).
+const _getTopPartners = async () => {
+    const { rows } = await pool.query(`
+        WITH shipment_revenue AS (
+            SELECT order_id, COALESCE(SUM(actual_price), 0) AS revenue
+            FROM order_shipments
+            WHERE status = 'completed'
+            GROUP BY order_id
+        ),
+        debt_paid AS (
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+            FROM debt_payments
+            GROUP BY debt_id
+        ),
+        order_debt AS (
+            SELECT d.order_id,
+                   SUM(GREATEST(d.total_amount - COALESCE(dp.paid, 0), 0)) AS outstanding
+            FROM debts d
+            LEFT JOIN debt_paid dp ON dp.debt_id = d.id
+            WHERE d.debt_type = 'partner'
+            GROUP BY d.order_id
+        )
+        SELECT
+            p.company_name                          AS name,
+            p.short_name,
+            p.phone,
+            COUNT(DISTINCT o.id)::int               AS total_orders,
+            COALESCE(SUM(sr.revenue), 0)::float      AS total_revenue,
+            COALESCE(SUM(od.outstanding), 0)::float  AS outstanding_debt
+        FROM partners p
+        JOIN orders o ON o.partner_id = p.id
+        JOIN shipment_revenue sr ON sr.order_id = o.id
+        LEFT JOIN order_debt od ON od.order_id = o.id
+        GROUP BY p.id, p.company_name, p.short_name, p.phone
         ORDER BY total_revenue DESC
         LIMIT 10
     `);

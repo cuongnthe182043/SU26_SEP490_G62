@@ -31,6 +31,14 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  // Danh sách đối tác (cho đơn đối tác) — { partners: [{id, company_name, ...}] }
+  getPartners: () =>
+    apiRequest(`${BASE}/orders/partners`),
+
+  // Gợi ý khách cũ theo phần đầu SĐT (chuẩn hoá + prefix) — trả { customers: [...] }
+  findCustomerByPhone: (phone, signal) =>
+    apiRequest(`${BASE}/orders/customer-by-phone?phone=${encodeURIComponent(phone)}`, { signal }),
+
   exportOrdersReport: (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
@@ -180,10 +188,6 @@ export const accountantService = {
   exportLedgerPeriod: (from, to) =>
     apiRequest(`${BASE}/ledger/export`, { method: "POST", body: { from, to } }),
 
-  // Bút toán đảo — ghi dòng ngược chiều, không sửa/xóa dòng gốc
-  reverseLedgerEntry: (id, reason) =>
-    apiRequest(`${BASE}/ledger/${id}/reverse`, { method: "POST", body: { reason } }),
-
   // Hủy xác nhận khoản nộp tiền đã confirmed (nợ hồi phục + tự đảo sổ)
   voidRepayment: (paymentId, reason) =>
     apiRequest(`/api/debts/repayments/${paymentId}/void`, {
@@ -208,6 +212,10 @@ export const accountantService = {
 
   payVoucher: (id) =>
     apiRequest(`${BASE}/vouchers/${id}/pay`, { method: "PATCH" }),
+
+  // Huỷ phiếu đã duyệt nhưng chưa chi — quyền của kế toán, không cần Manager duyệt lại.
+  cancelVoucher: (id, reason) =>
+    apiRequest(`${BASE}/vouchers/${id}/cancel`, { method: "PATCH", body: { reason } }),
 
   getSpendingSummary: (params = {}) =>
     apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),

@@ -7,6 +7,13 @@ const _debtStatus = (paid, total) => {
     return 'unpaid';
 };
 
+// Map người-chịu-nợ → cột + debt_type. Đối tác dùng như công nợ phải thu (giống khách).
+const _personMap = (personType) => {
+    if (personType === 'driver')  return { field: 'd.driver_id',  type: 'driver' };
+    if (personType === 'partner') return { field: 'd.partner_id', type: 'partner' };
+    return { field: 'd.customer_id', type: 'customer' };
+};
+
 const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, notes }) => {
     const numericAmount = Number(amount);
     const currentPaid   = Number(debt.paid_amount);
@@ -95,8 +102,7 @@ const getPaymentsByOrderId = async (orderId) => {
 };
 
 const previewAllocation = async (personType, personId, amount) => {
-    const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
-    const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
+    const { field: personField, type: debtType } = _personMap(personType);
 
     const { rows } = await pool.query(
         `SELECT
@@ -440,8 +446,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
     try {
         await client.query('BEGIN');
 
-        const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
-        const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
+        const { field: personField, type: debtType } = _personMap(personType);
 
         // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
         const { rows: debts } = await client.query(
@@ -527,7 +532,9 @@ const allocatePayment = async (personType, personId, paymentData) => {
             amount: totalAllocated,
             description: personType === 'driver'
                 ? `Tài xế nộp quỹ (phân bổ ${debtIds.length} công nợ)`
-                : `Khách hàng thanh toán (phân bổ ${debtIds.length} công nợ)`,
+                : personType === 'partner'
+                    ? `Đối tác thanh toán (phân bổ ${debtIds.length} công nợ)`
+                    : `Khách hàng thanh toán (phân bổ ${debtIds.length} công nợ)`,
             refType: 'debt', refId: debtIds[0], actorId: paymentData.createdBy,
         });
 

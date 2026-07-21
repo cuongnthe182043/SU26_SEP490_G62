@@ -979,38 +979,5 @@
  *         description: Không có bút toán nào chưa xuất trong kỳ này
  */
 
-/**
- * @swagger
- * /accountant/ledger/{id}/reverse:
- *   post:
- *     tags: [Accountant]
- *     summary: Tạo bút toán đảo cho một bút toán đã ghi sổ
- *     description: Ghi 1 dòng ngược chiều cùng số tiền (không sửa/xoá dòng gốc) — dùng khi cần huỷ/điều chỉnh một bút toán đã export hoặc ghi sai.
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *         description: id bút toán gốc (financial_transactions.id)
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [reason]
- *             properties:
- *               reason:
- *                 type: string
- *     responses:
- *       201:
- *         description: Đã tạo bút toán đảo — trả về reversalId, originalId
- *       400:
- *         description: Thiếu lý do đảo bút toán
- *       404:
- *         description: Không tìm thấy bút toán gốc
- *       409:
- *         description: Bút toán đã được đảo trước đó
- */
+// Không có endpoint đảo bút toán thủ công — bút toán đảo chỉ sinh ra từ luồng nghiệp vụ
+// (VD: POST /accountant/debt-payments/{id}/void).

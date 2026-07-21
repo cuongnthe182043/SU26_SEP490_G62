@@ -2,6 +2,7 @@
 const { insertAssignmentHistory } = require('./tripRepository');
 const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql } = require('../utils/phone');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -38,14 +39,16 @@ const buildOrderPaymentType = (shipments = []) => {
 
 const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
     // customers.phone NOT NULL — khách lẻ không SĐT dùng phone rỗng (gom chung 1 hồ sơ)
-    const cleanPhone = trimToNull(phone) || '';
+    // SĐT được chuẩn hoá (bỏ dấu cách/gạch, +84→0...) để khớp khách cũ dù gõ khác định dạng.
+    const cleanPhone = normalizeVietnamPhone(phone);
     const cleanName = trimToNull(name);
     const cleanCompanyName = trimToNull(companyName);
 
+    // So khớp cả hồ sơ cũ đang lưu ở định dạng chưa chuẩn — chuẩn hoá luôn cột phone trong SQL.
     const lookup = await client.query(
         `SELECT id, full_name, company_name
          FROM customers
-         WHERE phone = $1
+         WHERE ${normalizedPhoneSql('phone')} = $1
          ORDER BY id ASC LIMIT 1`,
         [cleanPhone]
     );
@@ -58,6 +61,25 @@ const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
         [cleanName, cleanCompanyName, cleanPhone]
     );
     return insert.rows[0].id;
+};
+
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) cho màn Nhập đơn ngoài.
+// Trả danh sách (tối đa `limit`) kèm số đơn đã có. Guard tối thiểu 3 số để tránh quét rộng.
+const searchCustomersByPhone = async (phonePrefix, limit = 8) => {
+    const prefix = normalizeVietnamPhonePrefix(phonePrefix);
+    if (prefix.length < 3) return [];
+
+    // ORDER BY theo tên (rẻ) để LIMIT sớm; order_count chỉ tính cho ~8 dòng xuất ra.
+    const { rows } = await pool.query(
+        `SELECT c.id, c.full_name, c.company_name, c.phone,
+                (SELECT COUNT(*)::int FROM orders o WHERE o.customer_id = c.id) AS order_count
+         FROM customers c
+         WHERE ${normalizedPhoneSql('c.phone')} LIKE $1 || '%'
+         ORDER BY c.full_name ASC NULLS LAST, c.id ASC
+         LIMIT $2`,
+        [prefix, limit]
+    );
+    return rows;
 };
 
 const findVehicleById = async (client, id) => {
@@ -239,33 +261,28 @@ const insertDebtForShipment = async (client, {
             });
         }
     } else if (normalizedPaymentType === 'client_credit') {
-
+        // Đơn đối tác (partnerId) → công nợ ĐỐI TÁC; đơn thường → công nợ khách.
+        const isPartnerOrder = !!partnerId;
         await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+             VALUES ($1, NULL, $2, $3, $4, $5, $6,
                 CURRENT_DATE + INTERVAL '30 days',
-                'Khách chưa thanh toán', $5, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, actualPrice, createdByUserId]
+                $7, $8, NOW(), NOW())`,
+            [
+                isPartnerOrder ? 'partner' : 'customer',
+                isPartnerOrder ? null : customerId,
+                isPartnerOrder ? partnerId : null,
+                orderId, shipmentId, actualPrice,
+                isPartnerOrder ? 'Đối tác chưa thanh toán' : 'Khách chưa thanh toán',
+                createdByUserId,
+            ]
         );
         // KHÔNG ghi FT: shipment_revenue (131/511) đã ghi cho chuyến này khi tạo đơn ngoài
         // — ghi thêm customer_debt_created sẽ đội doanh thu. Nợ theo dõi ở bảng debts.
-    } else if (partnerId && normalizedPaymentType === 'partner') {
-
-        await client.query(
-            `INSERT INTO debts (
-                debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
-                total_amount, due_date, notes,
-                updated_by, created_at, updated_at
-            )
-             VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
-                CURRENT_DATE + INTERVAL '30 days',
-                'Đối tác chưa thanh toán', $5, NOW(), NOW())`,
-            [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
-        );
     }
 
 };
@@ -303,9 +320,9 @@ const createOrderWithShipments = async (orderData) => {
             customer_id, created_by, updated_by,
             cargo_name, payment_type,
             total_estimated_price, prepaid_amount,
-            derived_status, notes, created_at, updated_at
+            derived_status, notes, partner_id, partner_name, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $6, 'completed', $7, $8, $9, NOW(), NOW())
          RETURNING *`,
         [
             customerId,
@@ -315,6 +332,8 @@ const createOrderWithShipments = async (orderData) => {
             totalActualPrice,
             Number(orderData.prepaid_amount || 0),
             orderNotes,
+            orderData.partner_id || null,
+            orderData.partner_name || null,
         ]
     );
         const newOrder = orderResult.rows[0];
@@ -1014,5 +1033,6 @@ module.exports = {
     createOrderWithShipments,
     updateOrder,
     exportOrdersReport,
+    searchCustomersByPhone,
 };
 

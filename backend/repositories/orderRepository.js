@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const { ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { insertAssignmentHistory } = require('./tripRepository');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql } = require('../utils/phone');
 
 
 //Query to list order specific detail
@@ -17,6 +18,7 @@ const selectOrderProjection = `
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
+        o.partner_id,
         COALESCE(actual_totals.total_actual_price, 0) AS total_actual_price,
         o.derived_status,
         o.derived_status AS order_status,
@@ -613,14 +615,16 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
     const normalizedName = safeTrim(customerName);
 
     if (normalizedPhone) {
-        const existingCustomer = await client.query(// Nếu có khách hàng tìm bởi số điện thoại
-            `SELECT id, full_name, phone 
+        // Chuẩn hoá luôn cột phone đã lưu để khớp cả hồ sơ cũ ở định dạng chưa chuẩn.
+        const existingCustomer = await client.query(
+            `SELECT id, full_name, phone
              FROM customers
-             WHERE phone = $1
+             WHERE ${normalizedPhoneSql('phone')} = $1
+             ORDER BY id ASC
              LIMIT 1`,
-            [normalizedPhone],//Query tìm khách hàng 
+            [normalizedPhone],
         );
-        if (existingCustomer.rows[0]) return existingCustomer.rows[0];//Thì return khách hàng
+        if (existingCustomer.rows[0]) return existingCustomer.rows[0];
 
     }else {
         return null;
@@ -633,6 +637,23 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
         [normalizedName || normalizedPhone, normalizedPhone],
     );
     return createdCustomer.rows[0];
+};
+
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) cho form tạo đơn Coordinator/Manager.
+const searchCustomersByPhone = async (phonePrefix, limit = 8) => {
+    const prefix = normalizeVietnamPhonePrefix(phonePrefix);
+    if (prefix.length < 3) return [];
+
+    const { rows } = await pool.query(
+        `SELECT c.id, c.full_name, c.company_name, c.phone,
+                (SELECT COUNT(*)::int FROM orders o WHERE o.customer_id = c.id) AS order_count
+         FROM customers c
+         WHERE ${normalizedPhoneSql('c.phone')} LIKE $1 || '%'
+         ORDER BY c.full_name ASC NULLS LAST, c.id ASC
+         LIMIT $2`,
+        [prefix, limit]
+    );
+    return rows;
 };
 
 // Excel import: khách không có SĐT — chỉ khớp theo tên đã tồn tại (không tạo mới)
@@ -783,8 +804,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, created_at, partner_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, created_at, partner_name, partner_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -797,6 +818,7 @@ const createOrderWithMultipleShipments = async ({
             orderData.prepaid_amount || 0,
             orderData.created_at || null,
             orderData.partner_name || null,
+            orderData.partner_id || null,
         ],
     );
 
@@ -919,6 +941,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         arrived_at,
         date,
         partner_name,
+        partner_id,
         prepaid_amount,
     } = payload;
 
@@ -953,6 +976,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  total_estimated_price = COALESCE($4, total_estimated_price),
                  notes = $5,
                  partner_name = COALESCE($7, partner_name),
+                 partner_id = $9,
                  prepaid_amount = COALESCE($8, prepaid_amount),
                  updated_at = NOW()
              WHERE id = $1
@@ -966,6 +990,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 customer?.id ?? null,
                 partner_name !== undefined ? partner_name : null,
                 prepaid_amount,
+                partner_id ?? null,
             ],
         );
 
@@ -1198,6 +1223,7 @@ module.exports = {
     getExistingShipmentIds,
     findOrCreateCustomer,
     findCustomerByName,
+    searchCustomersByPhone,
     validateVehicleShipmentAssignment,
     createOrderWithShipment,
     createOrderWithMultipleShipments,

@@ -349,6 +349,38 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     const incident = await incidentRepository.getIncidentById(incidentId);
     if (!incident) throw new Error('Sự cố không tồn tại');
 
+    // Chỉ cho phép một khoản đền bù đang sống tại một thời điểm. Sau khi Manager từ chối
+    // (compensation_status = 'rejected') thì coordinator được sửa số tiền và gửi lại — đó là
+    // đường quay lại của luồng này.
+    if (compensationPayload && ['pending', 'approved', 'paid'].includes(incident.compensation_status)) {
+        throw new Error(
+            incident.compensation_status === 'pending'
+                ? 'Khoản đền bù trước của sự cố này đang chờ duyệt'
+                : 'Sự cố này đã có khoản đền bù được duyệt',
+        );
+    }
+
+    // Có khoản đền bù → khóa sự cố ở "đang xử lý" bất kể coordinator chọn gì.
+    // Sự cố chỉ được coi là xong khi Manager duyệt khoản chi, lúc đó hệ thống tự
+    // chuyển sang 'resolved'. Nhờ vậy không bao giờ có sự cố đã đóng mà tiền còn treo.
+    const effectiveStatus = compensationPayload ? 'investigating' : status;
+
+    // Phiếu chi đền bù phải nằm trong cùng transaction với việc cập nhật sự cố:
+    // nếu tạo phiếu lỗi thì toàn bộ thay đổi bị rollback, không có chuyện sự cố đã
+    // cập nhật với một khoản đền bù chưa hề được ghi nhận.
+    const applyCompensation = async (client) => {
+        if (!compensationPayload) return;
+        await spendingService.createVoucher({
+            voucher_type: 'compensation',
+            amount: compensationPayload.amount,
+            payee: compensationPayload.payee,
+            reason: compensationPayload.reason,
+            payment_method: compensationPayload.payment_method,
+            incident_id: incidentId,
+        }, coordinatorId, client);
+        await incidentRepository.setCompensationStatus(client, incidentId, 'pending');
+    };
+
     let replacementDriver = null;
     let replacementVehicleId = null;
     let revenueMode = null;
@@ -426,13 +458,15 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
                 );
 
                 const updatedIncident = await incidentRepository.updateIncidentResolution(client, incidentId, {
-                    status,
+                    status: effectiveStatus,
                     resolution,
                     resolvedBy: coordinatorId,
                     replacementDriverId: parsedReplacementDriverId,
                     replacementVehicleId,
                 });
                 if (!updatedIncident) throw new Error('Không thể cập nhật sự cố');
+
+                await applyCompensation(client);
 
                 await client.query('COMMIT');
                 return updatedIncident;
@@ -448,12 +482,16 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
             try {
                 await client.query('BEGIN');
                 const updatedIncident = await incidentRepository.updateIncidentResolution(client, incidentId, {
-                    status,
+                    status: effectiveStatus,
                     resolution,
                     resolvedBy: coordinatorId,
                     replacementDriverId: incident.replacement_driver_id ?? null,
                     replacementVehicleId: incident.replacement_vehicle_id ?? null,
                 });
+                if (!updatedIncident) throw new Error('Không thể cập nhật sự cố');
+
+                await applyCompensation(client);
+
                 await client.query('COMMIT');
                 return updatedIncident;
             } catch (error) {
@@ -464,17 +502,6 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
             }
         })();
     if (!updated) throw new Error('Không thể cập nhật sự cố');
-
-    // Khoản đền bù hàng hóa hư hại → tạo phiếu chi (pending) chờ Manager duyệt, Kế toán chi.
-    if (compensationPayload) {
-        await spendingService.createVoucher({
-            voucher_type: 'compensation',
-            amount: compensationPayload.amount,
-            payee: compensationPayload.payee,
-            reason: compensationPayload.reason,
-            payment_method: compensationPayload.payment_method,
-        }, coordinatorId);
-    }
 
     // Xe hỏng giữa chuyến + đã điều tài xế thay thế → tự đồng bộ trạng thái xe cũ sang "broken"
     // để Manager thấy đồng nhất bên Vehicle Management, không cần tự cập nhật thủ công.
@@ -492,7 +519,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
 
     // Notify driver về phản hồi từ coordinator
     const driverId = incident.reported_by;
-    const statusText = STATUS_LABEL[status] ?? status;
+    const statusText = STATUS_LABEL[effectiveStatus] ?? effectiveStatus;
     const msgBody = resolution
         ? `Trạng thái: ${statusText}. Phản hồi: ${resolution.slice(0, 100)}`
         : `Sự cố #${incidentId} được cập nhật trạng thái: ${statusText}.`;
@@ -503,7 +530,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         type: 'INCIDENT_FEEDBACK',
         entityType: 'incidents',
         entityId: incidentId,
-    }, { displayMode: status === 'resolved' || status === 'closed' ? 'toast' : 'silent' }).catch(() => {});
+    }, { displayMode: effectiveStatus === 'resolved' || effectiveStatus === 'closed' ? 'toast' : 'silent' }).catch(() => {});
     broadcastCoordinatorIncidentChange('status_updated', incidentId);
 
     if (replacementDriver) {

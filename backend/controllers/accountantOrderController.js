@@ -54,11 +54,33 @@ const getVehicleDriverLookup = async (_req, res) => {
     }
 };
 
+const getPartners = async (_req, res) => {
+    try {
+        const partners = await accountantOrderService.listPartners();
+        res.json({ partners });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) ở màn Nhập đơn ngoài.
+const findCustomerByPhone = async (req, res) => {
+    try {
+        const phone = req.query.phone?.trim();
+        if (!phone) return res.json({ customers: [] });
+        const customers = await accountantOrderService.searchCustomersByPhone(phone);
+        res.json({ customers });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 // Validate 1 payload đơn ngoài (dùng chung cho tạo tay + import Excel)
 const validateOrderBody = (body, { requirePhone = true } = {}) => {
     const {
         customer_name, customer_phone, customer_company,
         customer_id, order_date, notes, prepaid_amount,
+        partner_id, partner_name,
         shipments,
     } = body;
 
@@ -150,6 +172,8 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
         completed_at:     body.completed_at || null,
         notes:            notes?.trim() || null,
         prepaid_amount:   Number(prepaid_amount ?? 0),
+        partner_id:       partner_id ? Number(partner_id) : null,
+        partner_name:     partner_name?.trim() || null,
         shipments,
     };
 };
@@ -353,4 +377,6 @@ module.exports = {
     confirmDriverPayment,
     updateOrder,
     exportOrdersReport,
+    findCustomerByPhone,
+    getPartners,
 };
