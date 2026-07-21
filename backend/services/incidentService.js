@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const vehicleManagementService = require('./vehicleManagementService');
+const spendingService = require('./spendingService');
 const {
     ALLOWED_INCIDENT_TYPES,
     ALLOWED_SEVERITIES,
@@ -321,9 +322,28 @@ const buildRevenueAllocationPlan = ({ existingDriverIds = [], originalDriverId, 
 };
 
 // Coordinator cập nhật trạng thái sự cố → notify driver
-const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolution, replacementDriverId = null }) => {
+const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolution, replacementDriverId = null, compensation = null }) => {
     if (!status || !ALLOWED_INCIDENT_STATUSES.includes(status)) {
         throw new Error('Trạng thái sự cố không hợp lệ');
+    }
+
+    // Khoản đền bù hàng hóa hư hại (tùy chọn) — validate trước khi thay đổi dữ liệu sự cố
+    let compensationPayload = null;
+    if (compensation && compensation.amount != null && String(compensation.amount).trim() !== '') {
+        const amount = Number(compensation.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new Error('Số tiền đền bù không hợp lệ');
+        }
+        if (!compensation.payee || !String(compensation.payee).trim()) {
+            throw new Error('Cần ghi rõ người/đơn vị nhận đền bù');
+        }
+        const note = compensation.reason ? String(compensation.reason).trim() : '';
+        compensationPayload = {
+            amount,
+            payee: String(compensation.payee).trim(),
+            reason: `Đền bù hàng hóa hư hại — sự cố #${incidentId}${note ? `: ${note}` : ''}`,
+            payment_method: compensation.payment_method || 'cash',
+        };
     }
 
     const incident = await incidentRepository.getIncidentById(incidentId);
@@ -444,6 +464,17 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
             }
         })();
     if (!updated) throw new Error('Không thể cập nhật sự cố');
+
+    // Khoản đền bù hàng hóa hư hại → tạo phiếu chi (pending) chờ Manager duyệt, Kế toán chi.
+    if (compensationPayload) {
+        await spendingService.createVoucher({
+            voucher_type: 'compensation',
+            amount: compensationPayload.amount,
+            payee: compensationPayload.payee,
+            reason: compensationPayload.reason,
+            payment_method: compensationPayload.payment_method,
+        }, coordinatorId);
+    }
 
     // Xe hỏng giữa chuyến + đã điều tài xế thay thế → tự đồng bộ trạng thái xe cũ sang "broken"
     // để Manager thấy đồng nhất bên Vehicle Management, không cần tự cập nhật thủ công.

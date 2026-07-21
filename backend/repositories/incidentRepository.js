@@ -161,6 +161,8 @@ const getCoordinatorIncidents = async ({ status = null, severityLevel = null, se
             p_replace.full_name AS replacement_driver_name,
             os.order_id,
             os.status AS shipment_status,
+            o.customer_id,
+            COALESCE(c.company_name, c.full_name, o.partner_name) AS customer_name,
             sc.owner_driver_id AS current_driver_id,
             p_owner.full_name AS current_driver_name,
             v.plate_number,
@@ -173,6 +175,8 @@ const getCoordinatorIncidents = async ({ status = null, severityLevel = null, se
             ) AS pickup_completed
          FROM incidents i
          LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN orders o ON o.id = os.order_id
+         LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_report ON p_report.id = i.reported_by
          LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
