@@ -74,6 +74,8 @@ const getJournal = async ({ eventType = null, from = null, to = null, exported =
 // ─── Bút toán đảo (reversal entry) ────────────────────────────────────────────
 // Không sửa/xóa dòng gốc — ghi 1 dòng NGƯỢC CHIỀU (đổi TK nợ/có) cùng số tiền,
 // gắn reversal_of_id + lý do. Số dư tự triệt tiêu, audit trail giữ nguyên vẹn.
+// Chỉ gọi từ luồng nghiệp vụ (voidRepayment...), luôn nằm trong transaction của caller.
+// Không có đường gọi thủ công từ phía kế toán — xem ghi chú ở accountantLedgerController.
 const reverseTransaction = async (ftId, { reason, actorId }, executor = pool) => {
     const { rows: [original] } = await executor.query(
         `SELECT ft.*, rev.id AS reversed_by_id

@@ -121,7 +121,9 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
     setSaving(true);
     try {
       await coordinatorService.updateIncidentStatus(selectedIncident.id, {
-        status: form.status,
+        // Sự cố có đền bù bị khóa ở "đang xử lý" tới khi Manager duyệt khoản chi.
+        // Backend cũng ép giá trị này, gửi đúng ngay từ đây để tránh lệch với thứ đang hiện trên form.
+        status: compensationPayload ? "investigating" : form.status,
         resolution: form.resolution || null,
         replacementDriverId: form.replacement_driver_id ? Number(form.replacement_driver_id) : null,
         compensation: compensationPayload,
