@@ -139,6 +139,9 @@ CREATE TABLE orders (
     created_by      INT NOT NULL REFERENCES profiles(id),
     updated_by      INT REFERENCES profiles(id),
     partner_name TEXT,
+    -- Đơn đối tác: khách A thuê Đối tác A, Đối tác A thuê công ty mình chở.
+    -- partner_id = bên THUÊ công ty (người trả cước / chịu công nợ). customer_id chỉ là chủ hàng/điểm giao.
+    partner_id          INT REFERENCES partners(id),
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
     payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','client_credit')),

@@ -4,7 +4,7 @@ import {
   RiLineChartLine, RiMoneyDollarCircleLine,
   RiFileList3Line, RiAlertLine,
   RiGroupLine, RiTimeLine, RiCoinLine,
-  RiBankCard2Line, RiShieldUserLine,
+  RiBankCard2Line, RiShieldUserLine, RiBuilding2Line,
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 import { StatCard } from "../../../components/shared-ui/StatCard";
@@ -172,7 +172,7 @@ export function ReportView() {
       <div className="grid grid-cols-3 gap-4">
         {}
         <div className="col-span-2">
-          <Section title="Top khách hàng theo doanh thu" icon={RiGroupLine}>
+          <Section title="Top khách hàng theo doanh thu (đơn trực tiếp)" icon={RiGroupLine}>
             <TopCustomersTable data={data?.topCustomers} />
           </Section>
         </div>
@@ -181,6 +181,15 @@ export function ReportView() {
         <Section title="Tiền tài xế đang cầm" icon={RiCoinLine}>
           <DriverHoldingsList data={data?.driverHoldings} />
         </Section>
+      </div>
+
+      {}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2">
+          <Section title="Top đối tác theo doanh thu (đơn đối tác)" icon={RiBuilding2Line}>
+            <TopCustomersTable data={data?.topPartners} />
+          </Section>
+        </div>
       </div>
 
       {}

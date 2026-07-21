@@ -40,6 +40,8 @@ export const managerService = {
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),
   updatePartner: (id, payload) => apiRequest(`${BASE}/partners/${id}`, { method: "PUT", body: payload }),
   getPartnerDebts: (id) => apiRequest(`${BASE}/partners/${id}/debts`),
+  recordPartnerPayment: (id, { amount, payment_method, notes }) =>
+    apiRequest(`${BASE}/partners/${id}/payments`, { method: "POST", body: { amount, payment_method, notes } }),
 
   // ─── Payroll ──────────────────────────────────────────────────────────────
   getPayrolls: (params = {}) => apiRequest(`${BASE}/payrolls?${new URLSearchParams(params)}`),

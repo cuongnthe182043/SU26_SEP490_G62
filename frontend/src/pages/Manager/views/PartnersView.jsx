@@ -108,6 +108,19 @@ export default function PartnersView({ user }) {
     }
   };
 
+  // Sau khi ghi nhận đối tác thanh toán → tải lại công nợ trong modal + danh sách ngoài
+  const handlePartnerPaid = async (partnerId) => {
+    setDebtLoading(true);
+    try {
+      const data = await managerService.getPartnerDebts(partnerId);
+      setSelectedPartner(data.partner || selectedPartner);
+      setSelectedDebts(data.debts || []);
+    } catch { /* ignore */ } finally {
+      setDebtLoading(false);
+    }
+    load();
+  };
+
   const totalRemaining = Number(summary.total_remaining || 0);
 
   return (
@@ -248,6 +261,7 @@ export default function PartnersView({ user }) {
         partner={selectedPartner}
         debts={selectedDebts}
         loading={debtLoading}
+        onPaid={handlePartnerPaid}
         onClose={() => { setDebtModalOpen(false); setSelectedPartner(null); setSelectedDebts([]); }}
       />
     </div>
