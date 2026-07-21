@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { connectRealtime } from "../services/realtime";
 import { refreshAuthSession } from "../services/apiClient";
 
-const ENABLED_ROLES = new Set(["manager", "coordinator"]);
+const ENABLED_ROLES = new Set(["manager", "coordinator", "accountant"]);
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_DELAY_MS = 60000;
 
