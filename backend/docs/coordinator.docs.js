@@ -184,3 +184,179 @@
  *       409:
  *         description: Yêu cầu đã được xử lý
  */
+
+/**
+ * @swagger
+ * /api/coordinator/dashboard:
+ *   get:
+ *     tags: [Coordinator]
+ *     summary: Tổng quan điều phối (trip pool, incidents, receipt requests đang chờ...)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dữ liệu dashboard coordinator
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/trip-pool:
+ *   get:
+ *     tags: [Coordinator]
+ *     summary: Xem Trip Pool (toàn bộ nhóm xe, hoặc filter theo vehicleGroupId) — read-only, không claim được
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 5, maximum: 20 }
+ *       - in: query
+ *         name: vehicleGroupId
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Danh sách chuyến AVAILABLE trong pool phân trang
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/trips/{id}/cancel:
+ *   patch:
+ *     tags: [Coordinator]
+ *     summary: Hủy 1 chuyến cụ thể (ngoài luồng sự cố)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: shipment_id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đã hủy chuyến
+ *       404:
+ *         description: Chuyến không tồn tại
+ *       422:
+ *         description: Thiếu lý do, hoặc chuyến không ở trạng thái có thể hủy
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/trips/{id}/reassign:
+ *   patch:
+ *     tags: [Coordinator]
+ *     summary: Điều chuyển chuyến sang tài xế khác
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: shipment_id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [toDriverId]
+ *             properties:
+ *               toDriverId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Đã điều chuyển chuyến
+ *       404:
+ *         description: Chuyến không tồn tại
+ *       422:
+ *         description: Thiếu toDriverId, tài xế mới phải khác tài xế hiện tại, hoặc chuyến chưa ở trạng thái hợp lệ
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/receipt-requests/{id}/scan-expenses:
+ *   get:
+ *     tags: [Coordinator]
+ *     summary: Quét OCR đối chiếu ảnh hóa đơn chi phí của các chuyến trong yêu cầu phiếu thu
+ *     description: |
+ *       Gom toàn bộ expenses của các shipment trong yêu cầu, chỉ scan các expense có ảnh hóa đơn
+ *       (receipt_urls). Expense không có ảnh trả về valid = null (bỏ qua, không scan).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: order_receipt_requests.id
+ *     responses:
+ *       200:
+ *         description: Mảng kết quả OCR theo từng expense_id (valid, reject_reason)
+ *       404:
+ *         description: Không tìm thấy yêu cầu phiếu thu
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/expenses/{id}/approve:
+ *   patch:
+ *     tags: [Coordinator]
+ *     summary: Duyệt chi phí driver khai báo (luồng duyệt độc lập ngoài phiếu thu)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: expense_id
+ *     responses:
+ *       200:
+ *         description: Đã duyệt chi phí
+ *       404:
+ *         description: Không tìm thấy chi phí
+ */
+
+/**
+ * @swagger
+ * /api/coordinator/expenses/{id}/reject:
+ *   patch:
+ *     tags: [Coordinator]
+ *     summary: Từ chối chi phí driver khai báo
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: expense_id
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đã từ chối chi phí
+ *       404:
+ *         description: Không tìm thấy chi phí
+ */

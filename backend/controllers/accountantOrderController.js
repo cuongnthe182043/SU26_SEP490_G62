@@ -27,6 +27,24 @@ const getOrders = async (req, res) => {
     }
 };
 
+// GET /accountant/orders/export — báo cáo chi tiết từng chuyến khớp bộ lọc hiện tại của
+// màn Quản lý doanh thu (cùng filter với getOrders), kèm chi phí + trạng thái thanh toán.
+const exportOrdersReport = async (req, res) => {
+    try {
+        const filters = {
+            search:      req.query.search?.trim()      || null,
+            debt_status: req.query.debt_status?.trim() || null,
+            customer:    req.query.customer?.trim()    || null,
+            dateFrom:    req.query.dateFrom?.trim()     || null,
+            dateTo:      req.query.dateTo?.trim()       || null,
+        };
+        const rows = await accountantOrderService.exportOrdersReport(filters);
+        res.json({ rows });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const getVehicleDriverLookup = async (_req, res) => {
     try {
         const lookup = await accountantOrderService.getVehicleDriverLookup();
@@ -334,4 +352,5 @@ module.exports = {
     createPayment,
     confirmDriverPayment,
     updateOrder,
+    exportOrdersReport,
 };

@@ -60,26 +60,45 @@ const _getRevenueTrend = async (granularity, months) => {
     return rows;
 };
 
+// Doanh thu tính theo os.status = 'completed' (cấp CHUYẾN) — thống nhất với
+// _getRevenueTrend / _getRevenueByVehicle, KHÔNG dùng o.derived_status (cấp ĐƠN,
+// có thể completed sớm hơn/khác các chuyến còn lại vì các chuyến trong 1 đơn chạy
+// độc lập theo BR-008). Doanh thu và công nợ mỗi đơn được gộp riêng trong subquery
+// (1 dòng / order_id) TRƯỚC KHI join vào customers, tránh Cartesian product khi
+// một đơn có nhiều chuyến (order_shipments) và/hoặc nhiều công nợ (debts) —
+// cả hai bảng đều không có quan hệ 1-1 với order_id.
 const _getTopCustomers = async () => {
     const { rows } = await pool.query(`
+        WITH shipment_revenue AS (
+            SELECT order_id, COALESCE(SUM(actual_price), 0) AS revenue
+            FROM order_shipments
+            WHERE status = 'completed'
+            GROUP BY order_id
+        ),
+        debt_paid AS (
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+            FROM debt_payments
+            GROUP BY debt_id
+        ),
+        order_debt AS (
+            SELECT d.order_id,
+                   SUM(GREATEST(d.total_amount - COALESCE(dp.paid, 0), 0)) AS outstanding
+            FROM debts d
+            LEFT JOIN debt_paid dp ON dp.debt_id = d.id
+            WHERE d.debt_type = 'customer'
+            GROUP BY d.order_id
+        )
         SELECT
             COALESCE(c.full_name, c.company_name, 'Không tên') AS name,
             c.phone,
             c.company_name,
-            COUNT(DISTINCT o.id)::int                          AS total_orders,
-            COALESCE(SUM(os.actual_price), 0)::float           AS total_revenue,
-            COALESCE(
-                SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0
-            )::float AS outstanding_debt
+            COUNT(DISTINCT o.id)::int              AS total_orders,
+            COALESCE(SUM(sr.revenue), 0)::float     AS total_revenue,
+            COALESCE(SUM(od.outstanding), 0)::float AS outstanding_debt
         FROM customers c
         JOIN orders o ON o.customer_id = c.id
-        JOIN order_shipments os ON os.order_id = o.id
-        LEFT JOIN debts d ON d.order_id = o.id AND d.debt_type = 'customer'
-        LEFT JOIN (
-            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
-            FROM debt_payments GROUP BY debt_id
-        ) dp_agg ON dp_agg.debt_id = d.id
-        WHERE o.derived_status = 'completed'
+        JOIN shipment_revenue sr ON sr.order_id = o.id
+        LEFT JOIN order_debt od ON od.order_id = o.id
         GROUP BY c.id, c.full_name, c.phone, c.company_name
         ORDER BY total_revenue DESC
         LIMIT 10
@@ -87,31 +106,32 @@ const _getTopCustomers = async () => {
     return rows;
 };
 
+// "Quá hạn" tính theo due_date (hạn thanh toán thực tế), fallback về created_at
+// cho các đường tạo debt cũ chưa set due_date (ví dụ createCustomerDebtForTrip,
+// record-collection client_credit...). Nợ chưa tới hạn (due_date ở tương lai)
+// được gộp vào bucket đầu (0-30) qua GREATEST(...,0) thay vì báo âm ngày quá hạn.
 const _getDebtAging = async () => {
     const { rows } = await pool.query(`
         WITH dp_agg AS (
             SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
             FROM debt_payments GROUP BY debt_id
+        ),
+        overdue AS (
+            SELECT
+                d.id,
+                GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) AS remaining,
+                GREATEST(NOW()::date - COALESCE(d.due_date, d.created_at::date), 0) AS overdue_days
+            FROM debts d
+            LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
+            WHERE d.debt_type = 'customer'
         )
         SELECT
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
-                FILTER (WHERE NOW() - d.created_at <= INTERVAL '30 days'), 0)::float
-                AS d0_30,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
-                FILTER (WHERE NOW() - d.created_at > INTERVAL '30 days'
-                          AND NOW() - d.created_at <= INTERVAL '60 days'), 0)::float
-                AS d30_60,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
-                FILTER (WHERE NOW() - d.created_at > INTERVAL '60 days'
-                          AND NOW() - d.created_at <= INTERVAL '90 days'), 0)::float
-                AS d60_90,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
-                FILTER (WHERE NOW() - d.created_at > INTERVAL '90 days'), 0)::float
-                AS d90_plus
-        FROM debts d
-        LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
-        WHERE GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) > 0.01
-          AND d.debt_type = 'customer'
+            COALESCE(SUM(remaining) FILTER (WHERE overdue_days <= 30), 0)::float AS d0_30,
+            COALESCE(SUM(remaining) FILTER (WHERE overdue_days > 30 AND overdue_days <= 60), 0)::float AS d30_60,
+            COALESCE(SUM(remaining) FILTER (WHERE overdue_days > 60 AND overdue_days <= 90), 0)::float AS d60_90,
+            COALESCE(SUM(remaining) FILTER (WHERE overdue_days > 90), 0)::float AS d90_plus
+        FROM overdue
+        WHERE remaining > 0.01
     `);
     return rows[0];
 };

@@ -46,7 +46,7 @@ describe('Driver Service', () => {
             vehicleManagementRepository.completeMaintenanceRecordAndSetStatus.mock.calls[0].arguments[0].cost,
             450000,
         );
-        assert.strictEqual(notificationGateway.broadcastToRole.mock.calls.length, 2);
+        assert.strictEqual(notificationGateway.broadcastToRole.mock.calls.length, 3);
         assert.deepStrictEqual(notificationService.getUserIdsByRole.mock.calls[0].arguments, ['manager']);
         assert.deepStrictEqual(notificationService.createForUsers.mock.calls[0].arguments[0], [5, 8]);
         assert.strictEqual(

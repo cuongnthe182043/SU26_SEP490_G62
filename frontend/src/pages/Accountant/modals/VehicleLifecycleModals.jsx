@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image, Chip } from "@heroui/react";
-import { RiCheckLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri";
-import { managerService } from "../services/manager.service";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image } from "@heroui/react";
 
 const MAINTENANCE_TYPES = [
   { value: "scheduled", label: "Định kỳ" },
@@ -88,28 +86,9 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [ocrResults, setOcrResults] = useState({});
-  const [ocrLoading, setOcrLoading] = useState(false);
   const pending = vehicle?.active_maintenance_status === "pending_verification";
 
   useEffect(() => { if (open) { setNote(""); setError(null); } }, [open]);
-
-  useEffect(() => {
-    if (!open || !vehicle?.id) return;
-    const images = normalizeBillPics(vehicle?.active_maintenance_bill_pics);
-    if (images.length === 0) return;
-
-    setOcrResults({});
-    setOcrLoading(true);
-    managerService.scanMaintenanceBill(vehicle.id)
-      .then((data) => {
-        const map = {};
-        (data.results || []).forEach((r) => { map[r.image_url] = r; });
-        setOcrResults(map);
-      })
-      .catch(() => {})
-      .finally(() => setOcrLoading(false));
-  }, [open, vehicle?.id]);
 
   const handleOk = async () => {
     if (!note.trim()) return setError("Ghi chú xác nhận là bắt buộc.");
@@ -134,30 +113,11 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Ảnh hóa đơn</div>
             {images.length > 0 ? (
-              <div className="flex gap-3 flex-wrap">
-                {images.map((url, i) => {
-                  const ocr = ocrResults[url];
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      <Image src={url} width={100} height={100} className="object-cover rounded-lg" />
-                      {ocrLoading && !ocr ? (
-                        <Chip size="sm" variant="flat" color="primary" startContent={<RiLoader4Line size={12} className="animate-spin" />}>Đang quét</Chip>
-                      ) : ocr?.valid === true ? (
-                        <Chip size="sm" variant="flat" color="success" startContent={<RiCheckLine size={12} />}>Hợp lệ</Chip>
-                      ) : ocr?.valid === false ? (
-                        <Chip size="sm" variant="flat" color="danger" startContent={<RiErrorWarningLine size={12} />}>Không khớp</Chip>
-                      ) : null}
-                    </div>
-                  );
-                })}
+              <div className="flex gap-2 flex-wrap">
+                {images.map((url, i) => <Image key={i} src={url} width={100} height={100} className="object-cover rounded-lg" />)}
               </div>
             ) : (
               <p className="text-xs text-gray-400">Chưa có ảnh hóa đơn.</p>
-            )}
-            {Object.values(ocrResults).some((r) => r?.valid === false) && (
-              <p className="text-xs text-amber-600 mt-2">
-                {Object.values(ocrResults).find((r) => r?.valid === false)?.reject_reason || "Có ảnh hóa đơn không khớp với chi phí đã khai. Vui lòng kiểm tra kỹ trước khi xác nhận."}
-              </p>
             )}
           </div>
           <Textarea label="Ghi chú xác nhận *" value={note} onValueChange={setNote} minRows={3} variant="bordered" />

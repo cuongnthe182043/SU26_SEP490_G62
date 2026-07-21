@@ -44,6 +44,54 @@
 
 /**
  * @swagger
+ * /api/incidents/staff:
+ *   post:
+ *     tags: [Incidents]
+ *     summary: Coordinator / Manager tự tạo sự cố
+ *     description: |
+ *       Dùng khi khách gọi điện báo sự cố, hoặc coordinator/manager phát hiện qua giám sát
+ *       (khác với POST /api/incidents — dành cho driver tự báo cáo).
+ *       shipment_id có thể để trống nếu sự cố chưa gắn với chuyến cụ thể.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [incidentType, description]
+ *             properties:
+ *               shipmentId:
+ *                 type: integer
+ *                 description: Chuyến liên quan (tuỳ chọn)
+ *               incidentType:
+ *                 type: string
+ *                 enum: [vehicle_breakdown, cargo_damage, road_incident, customer_refusal, traffic_jam, other]
+ *               severityLevel:
+ *                 type: string
+ *                 enum: [low, medium, high, critical]
+ *               description:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *                 description: Tối đa 3 ảnh
+ *     responses:
+ *       201:
+ *         description: Báo cáo sự cố đã được tạo
+ *       404:
+ *         description: Chuyến không tồn tại
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       409:
+ *         description: Đã tồn tại sự cố cùng loại chưa xử lý cho chuyến này
+ */
+
+/**
+ * @swagger
  * /api/incidents/my:
  *   get:
  *     tags: [Incidents]
