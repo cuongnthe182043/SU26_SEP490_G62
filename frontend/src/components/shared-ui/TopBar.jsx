@@ -19,7 +19,7 @@ function formatTime(value) {
   return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }
 
-function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead }) {
+function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead, onSelect }) {
   return (
     <div className="w-80 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -56,36 +56,44 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead 
           </div>
         ) : (
           <div className="flex flex-col divide-y divide-gray-50">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                className={`px-4 py-3 transition-colors ${
-                  !n.is_read ? "bg-blue-50/50" : "hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <span
-                    className={`mt-[5px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      !n.is_read ? "bg-blue-500" : "bg-transparent"
-                    }`}
-                  />
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2">
-                      {n.title}
-                    </p>
-                    {n.message && (
-                      <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
-                        {n.message}
+            {notifications.map((n) => {
+              // Chỉ những thông báo có entity_type mới biết đường điều hướng;
+              // số còn lại giữ nguyên dạng tĩnh thay vì bấm vào rồi không xảy ra gì.
+              const clickable = Boolean(onSelect && n.entity_type);
+              const Wrapper = clickable ? "button" : "div";
+              return (
+                <Wrapper
+                  key={n.id}
+                  type={clickable ? "button" : undefined}
+                  onClick={clickable ? () => onSelect(n) : undefined}
+                  className={`px-4 py-3 transition-colors ${clickable ? "w-full text-left cursor-pointer" : ""} ${
+                    !n.is_read ? "bg-blue-50/50" : "hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={`mt-[5px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        !n.is_read ? "bg-blue-500" : "bg-transparent"
+                      }`}
+                    />
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2">
+                        {n.title}
                       </p>
-                    )}
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <RiTimeLine size={10} className="text-gray-300" />
-                      <span className="text-[10px] text-gray-400">{formatTime(n.created_at)}</span>
+                      {n.message && (
+                        <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
+                          {n.message}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <RiTimeLine size={10} className="text-gray-300" />
+                        <span className="text-[10px] text-gray-400">{formatTime(n.created_at)}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                </Wrapper>
+              );
+            })}
           </div>
         )}
       </div>
@@ -101,9 +109,18 @@ export function TopBar({
   searchPlaceholder = "Tìm kiếm...",
   primaryAction,
   secondaryAction,
+  onNotificationSelect,
 }) {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, loading, markAllRead } = useNotifications();
+
+  // Đóng popover trước khi chuyển màn, nếu không nó che mất chỗ vừa điều hướng tới.
+  const handleNotificationSelect = onNotificationSelect
+    ? (notification) => {
+        setOpen(false);
+        onNotificationSelect(notification);
+      }
+    : undefined;
 
   const handleOpenChange = async (isOpen) => {
     setOpen(isOpen);
@@ -193,6 +210,7 @@ export function TopBar({
               loading={loading}
               unreadCount={unreadCount}
               onMarkAllRead={markAllRead}
+              onSelect={handleNotificationSelect}
             />
           </PopoverContent>
         </Popover>
