@@ -22,7 +22,7 @@ const EXPENSE_TYPE_LABEL = {
 
 const VOUCHER_TYPE_LABEL = {
   office: "Văn phòng phẩm", rent: "Thuê mặt bằng/kho", utilities: "Điện nước/Internet",
-  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", other: "Khác",
+  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", compensation: "Đền bù hàng hóa", other: "Khác",
 };
 
 const EVENT_LABEL = {
