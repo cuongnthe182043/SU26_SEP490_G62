@@ -1,8 +1,11 @@
+import { useState } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Button, Input, Select, SelectItem, Textarea,
+  Button, Input, Select, SelectItem, Textarea, Spinner,
 } from "@heroui/react";
-import { RiCloseLine, RiAddLine, RiDeleteBinLine } from "react-icons/ri";
+import { RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine } from "react-icons/ri";
+import { coordinatorService } from "../services/coordinator.service";
+import { useCustomerPhoneSuggest } from "../../../hooks/useCustomerPhoneSuggest";
 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -28,6 +31,21 @@ export default function OrderFormModal({
   getTripFare,
   getSuggestedFare,
 }) {
+  const [showSuggest, setShowSuggest] = useState(false);
+  const { suggestions, loading, clear } = useCustomerPhoneSuggest(
+    open ? form.customer_phone : "",
+    coordinatorService.findCustomerByPhone,
+  );
+
+  const pickCustomer = (c) => {
+    updateField("customer_phone", c.phone || form.customer_phone);
+    updateField("customer_name", c.full_name || "");
+    clear();
+    setShowSuggest(false);
+  };
+
+  const suggestOpen = showSuggest && (loading || suggestions.length > 0);
+
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="4xl" scrollBehavior="inside">
       <ModalContent>
@@ -53,14 +71,50 @@ export default function OrderFormModal({
                 errorMessage={formErrors.date}
                 variant="bordered"
               />
-              <Input
-                label="SĐT"
-                value={form.customer_phone}
-                onValueChange={(v) => updateField("customer_phone", v)}
-                isInvalid={!!formErrors.customer_phone}
-                errorMessage={formErrors.customer_phone}
-                variant="bordered"
-              />
+              <div className="relative">
+                <Input
+                  label="SĐT"
+                  placeholder="Gõ vài số đầu để tìm khách cũ..."
+                  value={form.customer_phone}
+                  onValueChange={(v) => { updateField("customer_phone", v); setShowSuggest(true); }}
+                  onFocus={() => setShowSuggest(true)}
+                  onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
+                  isInvalid={!!formErrors.customer_phone}
+                  errorMessage={formErrors.customer_phone}
+                  variant="bordered"
+                  autoComplete="off"
+                />
+                {suggestOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                    {loading && suggestions.length === 0 ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400">
+                        <Spinner size="sm" /> Đang tìm khách cũ...
+                      </div>
+                    ) : (
+                      suggestions.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => pickCustomer(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-2 text-xs border-b border-gray-50 last:border-0"
+                        >
+                          <span className="flex flex-col min-w-0">
+                            <span className="font-semibold text-gray-800 truncate">
+                              {c.full_name?.trim() || "(chưa có tên)"}
+                              {c.company_name ? ` · ${c.company_name}` : ""}
+                            </span>
+                            <span className="text-gray-400 font-mono">{c.phone}</span>
+                          </span>
+                          <span className="shrink-0 flex items-center gap-1 text-emerald-600 font-semibold">
+                            <RiUserFollowLine size={12} />{c.order_count} đơn
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <Input
                 label="Khách hàng"
                 value={form.customer_name}
@@ -121,14 +175,19 @@ export default function OrderFormModal({
             <Select
               label="Đối tác"
               placeholder="Chọn đối tác"
-              selectedKeys={form.partner_name ? [form.partner_name] : []}
-              onSelectionChange={(keys) => updateField("partner_name", [...keys][0] ?? "")}
+              selectedKeys={form.partner_id ? [String(form.partner_id)] : []}
+              onSelectionChange={(keys) => {
+                const id = [...keys][0] ?? "";
+                updateField("partner_id", id ? Number(id) : "");
+                const p = partners.find((x) => String(x.id) === String(id));
+                updateField("partner_name", p?.company_name ?? "");
+              }}
               isInvalid={!!formErrors.partner_name}
               errorMessage={formErrors.partner_name}
               variant="bordered"
             >
               {partners.map((partner) => (
-                <SelectItem key={partner.company_name}>
+                <SelectItem key={String(partner.id)} textValue={partner.company_name}>
                   {partner.contact_person ? `${partner.company_name} - ${partner.contact_person}` : partner.company_name}
                 </SelectItem>
               ))}

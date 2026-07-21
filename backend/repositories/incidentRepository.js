@@ -26,6 +26,11 @@ const getIncidentById = async (incidentId) => {
         `SELECT
             i.*,
             p.full_name AS reported_by_name,
+            cv.id               AS compensation_voucher_id,
+            cv.amount::text     AS compensation_amount,
+            cv.payee            AS compensation_payee,
+            cv.status           AS compensation_voucher_status,
+            cv.rejection_reason AS compensation_rejection_reason,
             COALESCE(
                 json_agg(ie.file_url ORDER BY ie.uploaded_at)
                 FILTER (WHERE ie.id IS NOT NULL),
@@ -34,8 +39,20 @@ const getIncidentById = async (incidentId) => {
          FROM incidents i
          LEFT JOIN profiles p ON p.id = i.reported_by
          LEFT JOIN incident_evidences ie ON ie.incident_id = i.id
+         -- Phiếu đền bù mới nhất: coordinator có thể gửi lại sau khi bị từ chối,
+         -- lịch sử các phiếu cũ vẫn giữ nguyên để đối chiếu.
+         LEFT JOIN LATERAL (
+             -- Lý do khoản đền bù không thành nằm ở 2 cột tuỳ đường đi:
+             -- Manager từ chối, hoặc Kế toán huỷ trước khi chi.
+             SELECT pv.id, pv.amount, pv.payee, pv.status,
+                    COALESCE(pv.rejection_reason, pv.cancellation_reason) AS rejection_reason
+             FROM payment_vouchers pv
+             WHERE pv.incident_id = i.id
+             ORDER BY pv.created_at DESC
+             LIMIT 1
+         ) cv ON TRUE
          WHERE i.id = $1
-         GROUP BY i.id, p.full_name`,
+         GROUP BY i.id, p.full_name, cv.id, cv.amount, cv.payee, cv.status, cv.rejection_reason`,
         [incidentId],
     );
     return result.rows[0] ?? null;
@@ -154,6 +171,7 @@ const getCoordinatorIncidents = async ({ status = null, severityLevel = null, se
             i.description,
             i.location,
             i.status,
+            i.compensation_status,
             i.occurred_at,
             i.created_at,
             i.resolved_at,
@@ -166,6 +184,9 @@ const getCoordinatorIncidents = async ({ status = null, severityLevel = null, se
             sc.owner_driver_id AS current_driver_id,
             p_owner.full_name AS current_driver_name,
             v.plate_number,
+            cv.amount::text     AS compensation_amount,
+            cv.payee            AS compensation_payee,
+            cv.rejection_reason AS compensation_rejection_reason,
             EXISTS (
                 SELECT 1
                 FROM trip_stops ts
@@ -182,6 +203,16 @@ const getCoordinatorIncidents = async ({ status = null, severityLevel = null, se
          LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
          LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+         -- Phiếu đền bù mới nhất của sự cố, để coordinator thấy ngay lý do bị từ chối
+         -- mà không cần mở thêm màn hình phiếu chi.
+         LEFT JOIN LATERAL (
+             SELECT pv.amount, pv.payee,
+                    COALESCE(pv.rejection_reason, pv.cancellation_reason) AS rejection_reason
+             FROM payment_vouchers pv
+             WHERE pv.incident_id = i.id
+             ORDER BY pv.created_at DESC
+             LIMIT 1
+         ) cv ON TRUE
          ${whereSql}
          ORDER BY ${orderBySql}
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -310,6 +341,57 @@ const updateIncidentResolution = async (
     return result.rows[0] ?? null;
 };
 
+// Đồng bộ cờ đền bù trên sự cố theo vòng đời phiếu chi (pending → approved/rejected → paid).
+// Không đụng tới incidents.status — sự cố bị khóa ở 'investigating' trong lúc chờ duyệt,
+// riêng lúc Manager duyệt thì dùng resolveAfterCompensationApproved bên dưới.
+const setCompensationStatus = async (client, incidentId, compensationStatus) => {
+    const result = await (client ?? pool).query(
+        `UPDATE incidents
+         SET compensation_status = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, compensation_status`,
+        [incidentId, compensationStatus],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Manager duyệt khoản đền bù → sự cố coi như giải quyết xong. Đây là mắt xích khép kín
+// luồng: coordinator không tự đóng được sự cố có đền bù, phải chờ khoản chi được duyệt.
+// Chỉ nâng từ trạng thái đang mở lên, không hạ cấp sự cố đã 'closed'.
+const resolveAfterCompensationApproved = async (client, incidentId) => {
+    const result = await (client ?? pool).query(
+        `UPDATE incidents
+         SET compensation_status = 'approved',
+             status = CASE WHEN status IN ('open','investigating') THEN 'resolved' ELSE status END,
+             resolved_at = CASE
+                 WHEN status IN ('open','investigating') THEN COALESCE(resolved_at, NOW())
+                 ELSE resolved_at
+             END,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, status, compensation_status`,
+        [incidentId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Kế toán huỷ khoản đền bù đã duyệt → đảo lại đúng thứ resolveAfterCompensationApproved
+// đã làm: sự cố quay về 'investigating' để coordinator sửa và gửi duyệt lại.
+// Chỉ hạ từ 'resolved' — sự cố đã 'closed' là do người khác chủ động đóng, không đụng vào.
+const revertAfterCompensationCancelled = async (client, incidentId) => {
+    const result = await (client ?? pool).query(
+        `UPDATE incidents
+         SET compensation_status = 'cancelled',
+             status      = CASE WHEN status = 'resolved' THEN 'investigating' ELSE status END,
+             resolved_at = CASE WHEN status = 'resolved' THEN NULL ELSE resolved_at END,
+             updated_at  = NOW()
+         WHERE id = $1
+         RETURNING id, status, compensation_status`,
+        [incidentId],
+    );
+    return result.rows[0] ?? null;
+};
+
 const getMyIncidentCounts = async (driverId) => {
     const result = await pool.query(
         `SELECT
@@ -340,4 +422,7 @@ module.exports = {
     getActiveDriverIds,
     updateIncidentStatus,
     updateIncidentResolution,
+    setCompensationStatus,
+    resolveAfterCompensationApproved,
+    revertAfterCompensationCancelled,
 };

@@ -10,6 +10,7 @@ export const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
+  partner_id: "",
   trips: [{ vehicle_group_id: "", plate: "", distance: "", price: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }],
 });
 
@@ -226,8 +227,9 @@ export function buildTripFromOrder(order) {
     status: getOrderStatusLabel(order, trips),
     statusClass: isMultiShipment ? "partial" : normalizeStatus(firstTrip.status || order.status || order.first_shipment_status || order.order_status),
     notes: order.notes,
-    is_partner: !!order.partner_name,
+    is_partner: !!(order.partner_id || order.partner_name),
     partner_name: order.partner_name || "",
+    partner_id: order.partner_id || "",
     trips,
   };
 }
