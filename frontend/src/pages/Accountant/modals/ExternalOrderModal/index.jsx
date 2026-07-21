@@ -69,6 +69,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [drivers, setDrivers] = useState([]);
+  const [matchedCustomer, setMatchedCustomer] = useState(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -77,6 +78,41 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
       .catch(() => {});
   }, [isOpen]);
 
+  // Gõ SĐT → tìm khách cũ (debounce). Nếu khớp và ô tên/công ty đang trống thì tự điền.
+  useEffect(() => {
+    const digits = customer.phone.replace(/\D/g, "");
+    if (!isOpen || digits.length < 9) { setMatchedCustomer(null); return undefined; }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const { customer: found } = await accountantService.findCustomerByPhone(customer.phone.trim());
+        if (cancelled) return;
+        setMatchedCustomer(found);
+        if (found) {
+          setCustomer((c) => ({
+            ...c,
+            name: c.name.trim() ? c.name : (found.full_name || ""),
+            company: c.company.trim() ? c.company : (found.company_name || ""),
+          }));
+        }
+      } catch {
+        if (!cancelled) setMatchedCustomer(null);
+      }
+    }, 400);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [customer.phone, isOpen]);
+
+  const applyMatchedCustomer = useCallback(() => {
+    if (!matchedCustomer) return;
+    setCustomer((c) => ({
+      ...c,
+      name: matchedCustomer.full_name || c.name,
+      company: matchedCustomer.company_name || c.company,
+    }));
+  }, [matchedCustomer]);
+
   const resetForm = useCallback(() => {
     setCustomer({ name: "", phone: "", company: "" });
     setOrderDate("");
@@ -84,6 +120,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
     setShipments([EMPTY_SHIPMENT()]);
     setErrors({});
     setApiError(null);
+    setMatchedCustomer(null);
   }, []);
 
   const handleClose = () => {
@@ -177,6 +214,8 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
             company={customer.company}
             onCompanyChange={(v) => setCustomer((c) => ({ ...c, company: v }))}
             errors={errors}
+            matched={matchedCustomer}
+            onApplyMatched={applyMatchedCustomer}
           />
 
           <div className="grid grid-cols-2 gap-3">
