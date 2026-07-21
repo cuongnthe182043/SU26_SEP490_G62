@@ -650,6 +650,11 @@ CREATE TABLE incidents (
     replacement_vehicle_id  INT REFERENCES vehicles(id),
     replacement_driver_id   INT REFERENCES profiles(id),
 
+    -- Tách bạch "sự cố đã xử lý xong" khỏi "khoản đền bù đã được duyệt chưa":
+    -- sự cố có thể resolved trong khi phiếu chi đền bù vẫn đang chờ/bị từ chối.
+    compensation_status     TEXT NOT NULL DEFAULT 'none'
+                                CHECK (compensation_status IN ('none','pending','approved','rejected','paid','cancelled')),
+
     occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     resolved_at     TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -968,8 +973,16 @@ CREATE TABLE payment_vouchers (
     reason           TEXT NOT NULL,
     payment_method   TEXT NOT NULL DEFAULT 'cash' CHECK (payment_method IN ('cash','bank_transfer')),
     proof_url        TEXT,
-    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','paid')),
+    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','paid','cancelled')),
     rejection_reason TEXT,
+    -- Kế toán huỷ phiếu đã duyệt nhưng CHƯA chi (chưa phát sinh bút toán nào).
+    -- Không xoá phiếu — giữ lại kèm người huỷ và lý do để quy trách nhiệm được.
+    cancelled_by        INT REFERENCES profiles(id),
+    cancelled_at        TIMESTAMPTZ,
+    cancellation_reason TEXT,
+    -- Phiếu chi đền bù sinh ra từ một sự cố → giữ liên kết để phản hồi ngược khi bị từ chối.
+    -- NULL với các phiếu chi thông thường (văn phòng, thuê nhà...).
+    incident_id      INT REFERENCES incidents(id) ON DELETE SET NULL,
     created_by       INT NOT NULL REFERENCES profiles(id),
     approved_by      INT REFERENCES profiles(id),
     paid_by          INT REFERENCES profiles(id),
@@ -981,6 +994,7 @@ CREATE TABLE payment_vouchers (
 
 CREATE INDEX idx_payment_vouchers_status     ON payment_vouchers(status);
 CREATE INDEX idx_payment_vouchers_created_at ON payment_vouchers(created_at DESC);
+CREATE INDEX idx_payment_vouchers_incident   ON payment_vouchers(incident_id) WHERE incident_id IS NOT NULL;
 
 CREATE TABLE driver_bonuses (
     id                      SERIAL PRIMARY KEY,

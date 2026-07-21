@@ -124,25 +124,8 @@ const exportPeriod = async (req, res) => {
     }
 };
 
-// POST /api/accountant/ledger/:id/reverse  Body: { reason }
-// Bút toán đảo: ghi dòng ngược chiều cùng số tiền, không sửa/xóa dòng gốc
-const reverseEntry = async (req, res) => {
-    try {
-        const ftId = Number(req.params.id);
-        if (!ftId) return res.status(400).json({ error: 'ID bút toán không hợp lệ' });
-        const reason = String(req.body?.reason || '').trim();
-        if (!reason) return res.status(400).json({ error: 'Cần ghi lý do đảo bút toán' });
-
-        const result = await financialLedgerRepository.reverseTransaction(ftId, {
-            reason, actorId: req.user.userId,
-        });
-        res.status(201).json({ message: `Đã tạo bút toán đảo #${result.reversalId} cho bút toán #${result.originalId}`, ...result });
-    } catch (err) {
-        const code = err.message.includes('Không tìm thấy') ? 404
-            : err.message.includes('đã') ? 409
-            : 500;
-        res.status(code).json({ error: err.message });
-    }
-};
-
-module.exports = { getJournal, getJournalStats, exportPeriod, reverseEntry };
+// Không có endpoint đảo bút toán thủ công. Bút toán đảo chỉ sinh ra từ luồng nghiệp vụ
+// (VD: hủy xác nhận khoản nộp → debtRepository.voidRepayment vừa set debt_payments='voided'
+// vừa đảo dòng sổ tương ứng). Cho sửa sổ trực tiếp sẽ khiến sổ lệch với bản ghi nghiệp vụ,
+// vì không tồn tại chiều đồng bộ ngược từ sổ về nghiệp vụ.
+module.exports = { getJournal, getJournalStats, exportPeriod };
