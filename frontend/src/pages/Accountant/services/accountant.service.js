@@ -124,6 +124,17 @@ export const accountantService = {
   markPayrollPaid: (id) =>
     apiRequest(`${BASE}/payroll/${id}/pay`, { method: "PATCH" }),
 
+  // Trả phiếu lương về 'pending' để tính lại (kèm lý do)
+  revertPayroll: (id, reason) =>
+    apiRequest(`${BASE}/payroll/${id}/revert`, { method: "PATCH", body: { reason: reason || undefined } }),
+
+  // Điều chỉnh tay: thưởng thêm (+) / khấu trừ thêm (−), tự đưa phiếu về pending để duyệt lại
+  adjustPayroll: (id, { manual_bonus, manual_deduction, note }) =>
+    apiRequest(`${BASE}/payroll/${id}/adjust`, {
+      method: "PATCH",
+      body: { manual_bonus, manual_deduction, note: note || undefined },
+    }),
+
   getSalaryAdvances: (params) =>
     apiRequest(`${BASE}/payroll/advances?${new URLSearchParams(params)}`),
 
