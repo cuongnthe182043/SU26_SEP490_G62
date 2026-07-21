@@ -8,6 +8,7 @@ const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('../repositories/financialLedgerRepository');
+const { normalizeVietnamPhone } = require('../utils/phone');
 
 const COLUMN_ALIASES = {
   date: [
@@ -116,6 +117,7 @@ const parseSpreadsheet = (buffer) => {
 };
 
 const safeTrim = (value) => String(value ?? '').trim();
+// (normalizePhone bên dưới dùng chuẩn hoá SĐT VN dùng chung)
 
 const normalizeText = (value) => safeTrim(value)
   .toLowerCase()
@@ -123,7 +125,7 @@ const normalizeText = (value) => safeTrim(value)
   .replace(/đ/g, 'd')
   .replace(/[\u0300-\u036f]/g, '');
 
-const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
+const normalizePhone = (value) => normalizeVietnamPhone(value);
 
 const isLeaveNote = (value) => normalizeText(value) === 'nghi';
 

@@ -1,15 +1,40 @@
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip } from "@heroui/react";
+import { useState } from "react";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip, Input, Select, SelectItem } from "@heroui/react";
+import { RiMoneyDollarCircleLine } from "react-icons/ri";
+import { managerService } from "../services/manager.service";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN") + " đ";
 
 const DEBT_STATUS_LABEL = { paid: "Đã thu đủ", partial: "Thu một phần", unpaid: "Chưa thu", overdue: "Quá hạn" };
 const DEBT_STATUS_COLOR = { paid: "success", partial: "warning", unpaid: "danger", overdue: "danger" };
 
-export default function PartnerDebtModal({ open, partner, debts, loading, onClose }) {
+export default function PartnerDebtModal({ open, partner, debts, loading, onClose, onPaid }) {
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("bank_transfer");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
   if (!partner) return null;
 
   const totalAmount = debts.reduce((sum, d) => sum + Number(d.total_amount || 0), 0);
   const totalRemaining = debts.reduce((sum, d) => sum + Number(d.remaining || 0), 0);
+
+  const handlePay = async () => {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setError("Số tiền phải lớn hơn 0."); return; }
+    if (amt > totalRemaining + 0.01) { setError("Số tiền vượt quá công nợ còn lại."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await managerService.recordPartnerPayment(partner.id, { amount: amt, payment_method: method });
+      setAmount("");
+      onPaid?.(partner.id);
+    } catch (err) {
+      setError(err.message ?? "Lỗi khi ghi nhận thanh toán.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="4xl" scrollBehavior="inside">
@@ -62,6 +87,36 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {totalRemaining > 0.01 && (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                    <RiMoneyDollarCircleLine size={16} /> Ghi nhận đối tác thanh toán
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Số tiền được phân bổ tự động vào các khoản nợ cũ nhất trước (FIFO). Tối đa {fmt(totalRemaining)}.
+                  </p>
+                  {error && <div className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</div>}
+                  <div className="flex items-end gap-3 flex-wrap">
+                    <Input
+                      type="number" min={0} label="Số tiền" size="sm" className="w-48"
+                      value={amount} onValueChange={setAmount}
+                      endContent={<span className="text-xs text-gray-400">đ</span>}
+                    />
+                    <Select
+                      label="Hình thức" size="sm" className="w-44"
+                      selectedKeys={new Set([method])}
+                      onChange={(e) => setMethod(e.target.value)}
+                    >
+                      <SelectItem key="bank_transfer" textValue="Chuyển khoản">Chuyển khoản</SelectItem>
+                      <SelectItem key="cash" textValue="Tiền mặt">Tiền mặt</SelectItem>
+                    </Select>
+                    <Button color="success" size="sm" isLoading={saving} onPress={handlePay}>
+                      Ghi nhận thanh toán
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
