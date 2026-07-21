@@ -1236,7 +1236,7 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         SELECT sr.id AS sr_id, sr.payment_type,
                orr.requesting_shipment_id AS shipment_id,
                orr.order_id, orr.driver_id,
-               o.customer_id,
+               o.customer_id, o.partner_id,
                COALESCE(sr.amount,
                    (SELECT GREATEST(
                        COALESCE(SUM(os2.actual_price),0) - COALESCE(MAX(o2.prepaid_amount),0), 0
@@ -1255,6 +1255,14 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     const rec = found.rows[0];
     if (!rec) throw new Error('Không tìm thấy phiếu thu hoặc bạn không có quyền');
     if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
+
+    // Đơn đối tác (rec.partner_id) → khoản ghi nợ thuộc về ĐỐI TÁC (người thuê công ty),
+    // không phải khách chủ hàng. Đơn thường → công nợ khách như cũ.
+    const isPartnerOrder = !!rec.partner_id;
+    const debtorType   = isPartnerOrder ? 'partner'  : 'customer';
+    const debtorCustId = isPartnerOrder ? null        : rec.customer_id;
+    const debtorPartId = isPartnerOrder ? rec.partner_id : null;
+    const hasDebtor    = isPartnerOrder || !!rec.customer_id;
 
     const receiptAmount  = Number(rec.amount);
     // collectedAmount: số tiền tài xế thực nhận từ khách (có thể ít hơn, đủ, hoặc hơn)
@@ -1360,18 +1368,20 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
             // Thanh toán một phần: phần còn thiếu → Customer Debt
             // KHÔNG ghi FT: doanh thu (131/511) đã ghi đủ khi duyệt phiếu thu (shipment_revenue);
             // phần phải thu còn lại đã nằm sẵn trên 131 — ghi thêm sẽ đội doanh thu.
-            if (shortfall > 0.01 && rec.customer_id) {
+            if (shortfall > 0.01 && hasDebtor) {
+                const who = isPartnerOrder ? 'Đối tác' : 'Khách';
                 await client.query(
                     `INSERT INTO debts (
                         debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                         total_amount, due_date, notes, updated_by, created_at, updated_at
                     )
-                     VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                     VALUES ($1, NULL, $2, $3, $4, $5, $6,
                         CURRENT_DATE + INTERVAL '30 days',
-                        $5, $6, NOW(), NOW())`,
+                        $7, $8, NOW(), NOW())`,
                     [
-                        rec.customer_id, rec.order_id, rec.shipment_id, shortfall,
-                        `Khách chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
+                        debtorType, debtorCustId, debtorPartId,
+                        rec.order_id, rec.shipment_id, shortfall,
+                        `${who} chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
                         driverId,
                     ],
                 );
@@ -1385,18 +1395,23 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 );
             }
         } else if (paymentType === 'client_credit') {
-            // Khách nợ công ty → Customer Debt
+            // Ghi nợ công ty → Customer Debt, hoặc Partner Debt nếu là đơn đối tác.
             // KHÔNG ghi FT: doanh thu đã ghi khi duyệt phiếu thu — nợ theo dõi ở bảng debts.
+            const who = isPartnerOrder ? 'Đối tác' : 'Khách hàng';
             await client.query(
                 `INSERT INTO debts (
                     debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                     total_amount, due_date, notes, updated_by, created_at, updated_at
                 )
-                 VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                 VALUES ($1, NULL, $2, $3, $4, $5, $6,
                     CURRENT_DATE + INTERVAL '30 days',
-                    'Khách hàng chưa thanh toán — ghi nhận công nợ',
-                    $5, NOW(), NOW())`,
-                [rec.customer_id, rec.order_id, rec.shipment_id, receiptAmount, driverId],
+                    $7, $8, NOW(), NOW())`,
+                [
+                    debtorType, debtorCustId, debtorPartId,
+                    rec.order_id, rec.shipment_id, receiptAmount,
+                    `${who} chưa thanh toán — ghi nhận công nợ`,
+                    driverId,
+                ],
             );
         }
 
@@ -1487,13 +1502,22 @@ const markOrderCompleted = async (orderId) => {
     );
 };
 
-// Khách chưa thanh toán khi driver báo nợ (không qua flow phiếu thu — customer_debt trực tiếp trên trip)
+// Chưa thanh toán khi driver báo nợ (không qua flow phiếu thu — ghi nợ trực tiếp trên trip).
+// Đơn đối tác → công nợ ĐỐI TÁC; đơn thường → công nợ khách.
 const createCustomerDebtForTrip = async ({ customerId, driverId, shipmentId, orderId, amount, notes }) => {
+    const { rows: [ord] } = await pool.query(`SELECT partner_id FROM orders WHERE id = $1`, [orderId]);
+    const partnerId = ord?.partner_id ?? null;
+
     const { rows: [debt] } = await pool.query(
-        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, notes, created_at, updated_at)
-         VALUES ('customer', $1, $2, $3, $4, $5, $6, NOW(), NOW())
+        `INSERT INTO debts (debt_type, customer_id, partner_id, driver_id, shipment_id, order_id, total_amount, notes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
          RETURNING *`,
-        [customerId, driverId, shipmentId, orderId, amount, notes ?? null],
+        [
+            partnerId ? 'partner' : 'customer',
+            partnerId ? null : customerId,
+            partnerId,
+            driverId, shipmentId, orderId, amount, notes ?? null,
+        ],
     );
     return debt;
 };

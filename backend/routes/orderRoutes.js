@@ -17,6 +17,7 @@ router.post('/:id/request-receipt', driverOnly, tripController.requestOrderRecei
 router.get('/:id/receipt-request', driverOnly, tripController.getOrderReceiptRequest);
 
 // ── Coordinator / Manager / Admin routes ──────────────────────────────────────
+router.get('/customer-by-phone', coordinatorOnly, orderController.customerByPhone);
 router.get('/',                  coordinatorOnly, orderController.listOrders);
 router.post('/',                 coordinatorOnly, orderController.createOrder);
 router.patch('/:id',             coordinatorOnly, orderController.updateOrder);

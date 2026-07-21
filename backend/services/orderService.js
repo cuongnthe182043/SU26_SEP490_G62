@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { normalizeVietnamPhone } = require('../utils/phone');
 
 
 const normalizeNumber = (value) => {
@@ -26,7 +27,8 @@ const normalizeText = (value) => safeTrim(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 const isLeaveNote = (value) => normalizeText(value) === 'nghi';
-const normalizePhone = (value) => safeTrim(value).replace(/[^\d+]/g, '');
+// Chuẩn hoá SĐT VN (bỏ dấu cách/gạch, +84→0...) để khớp khách cũ dù gõ khác định dạng
+const normalizePhone = (value) => normalizeVietnamPhone(value);
 
 const normalizeDateInput = (value) => {
     if (!value) return null;
@@ -136,7 +138,7 @@ const createOrder = async (userId, payload) => {
         notes,
         is_partner,
         partner_name,
-        partner_fee,
+        partner_id,
         prepaid_amount,
     } = payload;
 
@@ -259,6 +261,7 @@ const createOrder = async (userId, payload) => {
                 payment_type: payload.payment_type,
                 notes: notes !== undefined ? safeTrim(notes) : '',
                 partner_name: is_partner ? safeTrim(partner_name) : null,
+                partner_id: is_partner ? (Number(partner_id) || null) : null,
                 prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
             },
             shipmentsDataArray
@@ -414,7 +417,7 @@ const updateOrder = async (orderId, payload) => {
         distance,
         is_partner,
         partner_name,
-        partner_fee,
+        partner_id,
         prepaid_amount,
     } = payload;
 
@@ -515,6 +518,7 @@ const updateOrder = async (orderId, payload) => {
         notes,
         arrived_at: arrived_at || date,
         partner_name: is_partner ? safeTrim(partner_name) : null,
+        partner_id: is_partner ? (Number(partner_id) || null) : null,
         prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
     broadcastCoordinatorOrderChange('updated', updatedOrder);
@@ -527,4 +531,6 @@ const cancelOrder = async (orderId, reason) => {
     return cancelledOrder;
 };
 
-module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder };
+const searchCustomersByPhone = async (phonePrefix) => orderRepository.searchCustomersByPhone(phonePrefix);
+
+module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder, searchCustomersByPhone };

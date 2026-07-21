@@ -144,6 +144,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       note: trip.notes || "",
       is_partner: !!trip.is_partner,
       partner_name: trip.partner_name || "",
+      partner_id: trip.partner_id || "",
       trips: mappedTrips,
     });
     setFormErrors({});
@@ -168,7 +169,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     if (normalizeNumericText(form.prepaid_amount) && (!isFiniteNumber(normalizeNumericText(form.prepaid_amount)) || Number(normalizeNumericText(form.prepaid_amount)) < 0)) {
       nextErrors.prepaid_amount = "Số tiền ứng trước phải là số không âm.";
     }
-    if (form.is_partner && !String(form.partner_name || "").trim()) {
+    if (form.is_partner && !form.partner_id) {
       nextErrors.partner_name = "Vui lòng chọn đối tác.";
     }
 
@@ -221,6 +222,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       notes: String(form.note || "").trim(),
       is_partner: !!form.is_partner,
       partner_name: form.is_partner ? String(form.partner_name || "").trim() : "",
+      partner_id: form.is_partner ? (form.partner_id || null) : null,
       pickup_address: firstTrip.pickup_address || "",
       delivery_address: firstTrip.delivery_address || "",
       trips: normalizedTrips,
@@ -320,7 +322,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   const updateField = (key, value) => {
     setForm((current) => {
       const next = { ...current, [key]: value };
-      if (key === "is_partner" && !value) next.partner_name = "";
+      if (key === "is_partner" && !value) { next.partner_name = ""; next.partner_id = ""; }
       return next;
     });
     setFormErrors((current) => {

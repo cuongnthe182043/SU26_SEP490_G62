@@ -1,6 +1,7 @@
 ﻿const accountantOrderRepository = require('../repositories/accountantOrderRepository');
 const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const accountantLookupRepository = require('../repositories/accountantLookupRepository');
+const orderRepository = require('../repositories/orderRepository');
 const kpiService = require('./kpiService');
 
 // Đơn ngoài được tạo với shipment status='completed' ngay từ đầu (không qua luồng
@@ -69,6 +70,14 @@ const getVehicleDriverLookup = async () => {
     return accountantLookupRepository.getVehicleDriverLookup();
 };
 
+const searchCustomersByPhone = async (phonePrefix) => {
+    return accountantOrderRepository.searchCustomersByPhone(phonePrefix);
+};
+
+const listPartners = async () => {
+    return orderRepository.listCoordinatorPartners();
+};
+
 module.exports = {
     getOrders,
     getOrderShipments,
@@ -81,4 +90,6 @@ module.exports = {
     getVehicleDriverLookup,
     updateOrder,
     exportOrdersReport,
+    searchCustomersByPhone,
+    listPartners,
 };
