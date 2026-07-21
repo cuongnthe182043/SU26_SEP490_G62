@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 
-const VOUCHER_TYPES    = ['office', 'rent', 'utilities', 'equipment', 'entertainment', 'other'];
+const VOUCHER_TYPES    = ['office', 'rent', 'utilities', 'equipment', 'entertainment', 'compensation', 'other'];
 const VOUCHER_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 const PAYMENT_METHODS  = ['cash', 'bank_transfer'];
 
