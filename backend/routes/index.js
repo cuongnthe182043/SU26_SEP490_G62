@@ -34,7 +34,7 @@ router.use('/api/profile', profileRoutes);
 router.use('/api/coordinator', coordinatorRoutes);
 router.use('/api/orders', orderRoutes);
 router.use('/api/drivers', driverRoutes);
-router.use('/api/admin', adminRoutes);
+router.use('/api/admin/users', adminRoutes);
 router.use('/api/admin', vehicleManagementRoutes);
 router.use('/api/expenses', expenseRoutes);
 router.use('/api/incidents', incidentRoutes);
