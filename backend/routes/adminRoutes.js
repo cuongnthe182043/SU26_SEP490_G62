@@ -6,11 +6,11 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 router.use(verifyToken);
 router.use(requireRole('manager'));
 
-router.get('/users', adminController.getAllUsers);
+router.get('/', adminController.getAllUsers);
 
-router.post('/users', adminController.createUser);
-router.put('/users/:id', adminController.updateUser);
-router.patch('/users/:id/status', adminController.toggleUserStatus);
-router.post('/users/:id/reset-password', adminController.resetUserPassword);
+router.post('/', adminController.createUser);
+router.put('/:id', adminController.updateUser);
+router.patch('/:id/status', adminController.toggleUserStatus);
+router.post('/:id/reset-password', adminController.resetUserPassword);
 
 module.exports = router;
