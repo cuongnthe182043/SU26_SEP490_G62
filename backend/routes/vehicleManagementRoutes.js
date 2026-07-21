@@ -6,7 +6,7 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.use(verifyToken);
-router.use(requireRole('manager'));
+router.use(requireRole('manager', 'accountant'));
 
 router.get('/vehicle-groups', vehicleManagementController.listVehicleGroups);
 router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
@@ -29,6 +29,7 @@ router.post('/maintenance-requests/:id/reject', vehicleManagementController.reje
 router.post('/vehicles/:id/send-to-maintenance', vehicleManagementController.sendVehicleToMaintenance);
 router.post('/vehicles/:id/complete-maintenance', vehicleManagementController.completeMaintenance);
 router.post('/vehicles/:id/verify-maintenance', vehicleManagementController.verifyMaintenance);
+router.get('/vehicles/:id/scan-maintenance-bill', vehicleManagementController.scanMaintenanceBill);
 router.post('/vehicles/:id/mark-broken', vehicleManagementController.markVehicleAsBroken);
 router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle);
 router.post('/vehicles/:id/retire', vehicleManagementController.retireVehicle);

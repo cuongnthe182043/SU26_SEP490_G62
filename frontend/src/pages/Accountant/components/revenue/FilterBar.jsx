@@ -1,5 +1,5 @@
-import { Input, Select, SelectItem } from "@heroui/react";
-import { RiFileList3Line, RiTimeLine, RiLoader2Line, RiCheckboxCircleLine } from "react-icons/ri";
+import { Input, Select, SelectItem, Button } from "@heroui/react";
+import { RiFileList3Line, RiTimeLine, RiLoader2Line, RiCheckboxCircleLine, RiFileExcel2Line } from "react-icons/ri";
 
 const DEBT_FILTERS = [
   { key: "all",     label: "Tất cả",      icon: RiFileList3Line },
@@ -21,6 +21,7 @@ export function FilterBar({
   dateTo, onDateToChange,
   customer, onCustomerChange,
   sort, onSortChange,
+  onExport, exporting,
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -76,6 +77,16 @@ export function FilterBar({
             <SelectItem key={key} textValue={label}>{label}</SelectItem>
           ))}
         </Select>
+        {onExport && (
+          <Button
+            variant="flat" color="success" size="sm"
+            startContent={<RiFileExcel2Line size={15} />}
+            isLoading={exporting}
+            onPress={onExport}
+          >
+            Xuất báo cáo
+          </Button>
+        )}
       </div>
     </div>
   );

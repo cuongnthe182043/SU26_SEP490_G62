@@ -63,12 +63,16 @@ const requestMaintenance = async (driverId, payload, billUrls = []) => {
         throw err;
     }
 
-    notificationGateway.broadcastToRole('manager', {
-        type: 'manager.vehicles.changed',
-        action: 'maintenance_requested',
-        vehicleId: vehicle.id,
-        maintenanceRecordId: result.maintenanceId,
-    });
+    {
+        const payload = {
+            type: 'manager.vehicles.changed',
+            action: 'maintenance_requested',
+            vehicleId: vehicle.id,
+            maintenanceRecordId: result.maintenanceId,
+        };
+        notificationGateway.broadcastToRole('manager', payload);
+        notificationGateway.broadcastToRole('accountant', payload);
+    }
 
     try {
         const managerIds = await notificationService.getUserIdsByRole('manager');
@@ -115,12 +119,16 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     const nextBillPics = [...currentBillPics, billUrl];
     await vehicleManagementRepository.updateMaintenanceBillPics(record.id, nextBillPics);
 
-    notificationGateway.broadcastToRole('manager', {
-        type: 'manager.vehicles.changed',
-        action: 'maintenance_bill_uploaded',
-        vehicleId: parsedVehicleId,
-        maintenanceRecordId: record.id,
-    });
+    {
+        const payload = {
+            type: 'manager.vehicles.changed',
+            action: 'maintenance_bill_uploaded',
+            vehicleId: parsedVehicleId,
+            maintenanceRecordId: record.id,
+        };
+        notificationGateway.broadcastToRole('manager', payload);
+        notificationGateway.broadcastToRole('accountant', payload);
+    }
 
     return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
 };
@@ -174,13 +182,17 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
     const vehicle = await vehicleManagementRepository.getVehicleById(parsedVehicleId);
     const notificationMessage = buildMaintenanceVerificationMessage(vehicle);
 
-    notificationGateway.broadcastToRole('manager', {
-        type: 'manager.vehicles.changed',
-        action: 'maintenance_completed',
-        vehicleId: parsedVehicleId,
-        maintenanceRecordId: record.id,
-        status: vehicle?.status ?? 'maintenance',
-    });
+    {
+        const payload = {
+            type: 'manager.vehicles.changed',
+            action: 'maintenance_completed',
+            vehicleId: parsedVehicleId,
+            maintenanceRecordId: record.id,
+            status: vehicle?.status ?? 'maintenance',
+        };
+        notificationGateway.broadcastToRole('manager', payload);
+        notificationGateway.broadcastToRole('accountant', payload);
+    }
 
     notificationGateway.broadcastToRole('manager', {
         type: 'maintenance.completed',

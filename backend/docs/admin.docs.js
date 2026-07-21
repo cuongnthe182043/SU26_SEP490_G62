@@ -111,3 +111,28 @@
  *       200:
  *         description: Cập nhật trạng thái thành công
  */
+
+/**
+ * @swagger
+ * /api/admin/users/{id}/reset-password:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Reset mật khẩu tài khoản (Manager)
+ *     description: |
+ *       Sinh mật khẩu ngẫu nhiên mới, gửi qua email của nhân viên.
+ *       Không cho phép manager tự reset mật khẩu của chính mình.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email
+ *       400:
+ *         description: Không thể tự reset mật khẩu của chính mình
+ *       404:
+ *         description: Người dùng không tồn tại
+ */
