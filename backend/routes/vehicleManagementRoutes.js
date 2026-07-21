@@ -6,7 +6,7 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.use(verifyToken);
-router.use(requireRole('manager'));
+router.use(requireRole('manager', 'accountant'));
 
 router.get('/vehicle-groups', vehicleManagementController.listVehicleGroups);
 router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
