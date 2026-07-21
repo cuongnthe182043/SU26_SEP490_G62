@@ -3,6 +3,7 @@ import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
   RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine,
+  RiCalendarCheckLine, RiTruckLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
 import "../../styles/accountant.css";
@@ -16,6 +17,8 @@ import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
 import SpendingView from "./views/SpendingView";
+import AttendanceView from "./views/AttendanceView";
+import VehiclesView from "./views/VehiclesView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
@@ -43,6 +46,13 @@ const NAV_GROUPS = [
       { key: "salary",  label: "Bảng lương",        icon: RiMoneyDollarCircleLine },
       { key: "advance", label: "Ứng lương",          icon: RiHandCoinLine },
       { key: "bonus",   label: "Thưởng & Phúc lợi", icon: RiGiftLine },
+      { key: "attendance", label: "Chấm công", icon: RiCalendarCheckLine },
+    ],
+  },
+  {
+    label: "Vận hành",
+    items: [
+      { key: "vehicles", label: "Quản lý xe", icon: RiTruckLine },
     ],
   },
 ];
@@ -88,10 +98,20 @@ const VIEW_META = {
     subtitle: "Tạo phiếu chi, xác nhận chi tiền và đối chiếu chi phí tài xế, tổng hợp mọi khoản chi",
     searchPlaceholder: "",
   },
+  attendance: {
+    title: "Chấm công tài xế",
+    subtitle: "Theo dõi và điều chỉnh chấm công theo tháng — ảnh hưởng trực tiếp tới ngày công tính lương.",
+    searchPlaceholder: "",
+  },
+  vehicles: {
+    title: "Quản lý xe",
+    subtitle: "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
+    searchPlaceholder: "",
+  },
 };
 
 const VIEW_STORAGE_KEY = "accountant_active_view";
-const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger", "spending"];
+const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger", "spending", "attendance", "vehicles"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -140,7 +160,8 @@ export default function AccountantPage({ user, onLogout }) {
     ? { label: "Import Excel", onPress: () => setShowImportModal(true) }
     : null;
 
-  const showSearch = activeView !== "report" && activeView !== "ledger" && activeView !== "spending";
+  const showSearch = activeView !== "report" && activeView !== "ledger" && activeView !== "spending"
+    && activeView !== "attendance" && activeView !== "vehicles";
 
   return (
     <HeroUIProvider>
@@ -194,6 +215,12 @@ export default function AccountantPage({ user, onLogout }) {
             )}
             {activeView === "spending" && (
               <SpendingView />
+            )}
+            {activeView === "attendance" && (
+              <AttendanceView />
+            )}
+            {activeView === "vehicles" && (
+              <VehiclesView user={currentUser} />
             )}
           </main>
         </div>

@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const attendanceController = require('../controllers/attendanceController');
 
 router.use(verifyToken);
-router.use(requireRole('manager', 'coordinator'));
+router.use(requireRole('manager', 'coordinator', 'accountant'));
 
 router.get('/grid',                       attendanceController.getMonthlyGrid);
 router.post('/',                          attendanceController.markAttendance);
