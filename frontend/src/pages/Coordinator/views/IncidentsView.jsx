@@ -8,6 +8,7 @@ import { coordinatorService } from "../services/coordinator.service";
 import { incidentTypeLabel } from "../utils";
 
 const EMPTY_CREATE_FORM = { incidentType: "", severityLevel: "medium", shipmentId: "", description: "", location: "" };
+const EMPTY_COMPENSATION = { enabled: false, amount: "", payee: "", reason: "", payment_method: "cash" };
 
 const STATUS_FILTER_OPTIONS = [
   { value: "", label: "Tất cả trạng thái" },
@@ -44,6 +45,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   const [saving, setSaving] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [form, setForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
+  const [compensation, setCompensation] = useState(EMPTY_COMPENSATION);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -81,6 +83,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
     setModalOpen(false);
     setSelectedIncident(null);
     setForm({ status: "investigating", resolution: "", replacement_driver_id: "" });
+    setCompensation(EMPTY_COMPENSATION);
   };
 
   const openModal = (incident) => {
@@ -90,17 +93,38 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       resolution: "",
       replacement_driver_id: incident.replacement_driver_id ? String(incident.replacement_driver_id) : "",
     });
+    setCompensation(EMPTY_COMPENSATION);
     setModalOpen(true);
   };
 
   const handleSubmit = async () => {
     if (!selectedIncident) return;
+
+    let compensationPayload = null;
+    if (compensation.enabled) {
+      if (!compensation.amount || Number(compensation.amount) <= 0) {
+        alert("Nhập số tiền đền bù hợp lệ.");
+        return;
+      }
+      if (!compensation.payee.trim()) {
+        alert("Nhập người/đơn vị nhận đền bù.");
+        return;
+      }
+      compensationPayload = {
+        amount: Number(compensation.amount),
+        payee: compensation.payee.trim(),
+        reason: compensation.reason.trim() || null,
+        payment_method: compensation.payment_method,
+      };
+    }
+
     setSaving(true);
     try {
       await coordinatorService.updateIncidentStatus(selectedIncident.id, {
         status: form.status,
         resolution: form.resolution || null,
         replacementDriverId: form.replacement_driver_id ? Number(form.replacement_driver_id) : null,
+        compensation: compensationPayload,
       });
       closeModal();
       loadIncidents();
@@ -272,6 +296,8 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
         drivers={drivers}
         onClose={closeModal}
         onSubmit={handleSubmit}
+        compensation={compensation}
+        setCompensation={setCompensation}
       />
 
       <CreateIncidentModal
