@@ -200,6 +200,32 @@ const reviewPayroll = async (req, res) => {
     }
 };
 
+const revertPayroll = async (req, res) => {
+    try {
+        const payrollId = parseId(req.params.id, 'Payroll ID');
+        const reason = req.body?.reason?.trim() || null;
+        if (reason && reason.length > 500)
+            return res.status(400).json({ error: 'Lý do không được vượt quá 500 ký tự.' });
+
+        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason);
+
+        notificationService.getUserIdsByRole('accountant').then((ids) =>
+            notificationService.createForUsers(ids, {
+                title: 'Bảng lương bị trả về tính lại',
+                message: `Manager đã trả về bảng lương tháng ${row.payroll_month}/${row.payroll_year} để tính lại${reason ? `: ${reason}` : ''}.`,
+                type: 'PAYROLL_REVERTED',
+                entityType: 'payroll',
+                entityId: row.id,
+            }, { displayMode: 'toast' })
+        ).catch(() => {});
+
+        res.json({ message: 'Đã trả phiếu lương về để tính lại.', payroll: row });
+    } catch (err) {
+        if (!err.status) err.status = err.message?.includes('không tồn tại') ? 404 : 400;
+        sendError(res, err);
+    }
+};
+
 const approveExpense = async (req, res) => {
     try {
         const expenseId = parseId(req.params.id, 'Expense ID');
@@ -278,6 +304,7 @@ module.exports = {
     getPartnerDebtDetails,
     getPayrolls,
     reviewPayroll,
+    revertPayroll,
     approveExpense,
     rejectExpense,
     cancelShipment,
