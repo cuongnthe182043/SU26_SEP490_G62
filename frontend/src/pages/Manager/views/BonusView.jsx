@@ -4,7 +4,12 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine } from "react-icons/ri";
+import {
+  RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine,
+  RiCalendarLine, RiPriceTag3Line, RiFlag2Line, RiUserLine, RiSortDesc,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
@@ -184,7 +189,7 @@ export default function BonusView() {
         <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary">
           <Tab key="list" title="Duyệt thưởng">
             <div className="flex flex-wrap gap-3 my-4">
-              <Select selectedKeys={[String(year)]} onSelectionChange={(k) => setYear(Number([...k][0]))} variant="bordered" size="sm" className="w-24">
+              <Select selectedKeys={[String(year)]} onSelectionChange={(k) => setYear(Number([...k][0]))} variant="bordered" size="sm" className="w-24" startContent={ic(RiCalendarLine)}>
                 {YEARS.map((y) => <SelectItem key={String(y)}>{String(y)}</SelectItem>)}
               </Select>
               <Select
@@ -194,6 +199,7 @@ export default function BonusView() {
                 variant="bordered"
                 size="sm"
                 className="w-56"
+                startContent={ic(RiPriceTag3Line)}
               >
                 {Object.entries(TYPE_LABEL).map(([k, v]) => <SelectItem key={k}>{v}</SelectItem>)}
               </Select>
@@ -203,6 +209,7 @@ export default function BonusView() {
                 variant="bordered"
                 size="sm"
                 className="w-44"
+                startContent={ic(RiFlag2Line)}
               >
                 <SelectItem key="">Tất cả trạng thái</SelectItem>
                 <SelectItem key="pending">Chờ duyệt</SelectItem>
@@ -217,6 +224,7 @@ export default function BonusView() {
                 variant="bordered"
                 size="sm"
                 className="w-56"
+                startContent={ic(RiUserLine)}
               >
                 <SelectItem key="" textValue="Tất cả nhân viên">Tất cả nhân viên</SelectItem>
                 {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>)}
@@ -227,6 +235,7 @@ export default function BonusView() {
                 variant="bordered"
                 size="sm"
                 className="w-48"
+                startContent={ic(RiSortDesc)}
               >
                 <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
                 <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
