@@ -1,5 +1,6 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const activityLogRepository = require('./activityLogRepository');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -719,6 +720,7 @@ const reviewPayroll = async (payrollId, managerId) => {
 // Trả phiếu lương về 'pending' để tính lại (Manager hoặc Kế toán) — huỷ mọi dấu duyệt cũ.
 // Chỉ áp dụng khi phiếu đang reviewed/approved; đã 'paid' thì khoá (đã sinh bút toán + xoá nợ).
 const revertPayrollToPending = async (payrollId, actorId, reason = null) => {
+    const { rows: [prev] } = await pool.query(`SELECT status FROM payrolls WHERE id = $1`, [payrollId]);
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
         SET status          = 'pending',
@@ -738,12 +740,19 @@ const revertPayrollToPending = async (payrollId, actorId, reason = null) => {
     if (!row) {
         throw new Error('Không thể trả về: phiếu không tồn tại, đang chờ duyệt hoặc đã trả lương');
     }
+    activityLogRepository.logSafe({
+        userId: actorId, action: 'payroll_revert', entityType: 'payroll', entityId: payrollId,
+        oldData: { status: prev?.status ?? null },
+        newData: { status: 'pending', reason: reason || null },
+    });
     return row;
 };
 
 // Kế toán nhập khoản điều chỉnh tay (thưởng thêm / khấu trừ thêm) rồi đưa phiếu về 'pending'
 // để duyệt lại từ đầu. net_salary được DB tự tính lại. Không cho sửa khi đã 'paid'.
 const adjustPayroll = async (payrollId, { manualBonus, manualDeduction, note }, actorId) => {
+    const { rows: [prev] } = await pool.query(
+        `SELECT manual_bonus, manual_deduction, net_salary, status FROM payrolls WHERE id = $1`, [payrollId]);
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
         SET manual_bonus     = $2,
@@ -765,6 +774,20 @@ const adjustPayroll = async (payrollId, { manualBonus, manualDeduction, note }, 
     if (!row) {
         throw new Error('Không thể điều chỉnh: phiếu không tồn tại hoặc đã trả lương');
     }
+    activityLogRepository.logSafe({
+        userId: actorId, action: 'payroll_adjust', entityType: 'payroll', entityId: payrollId,
+        oldData: {
+            manual_bonus: Number(prev?.manual_bonus ?? 0),
+            manual_deduction: Number(prev?.manual_deduction ?? 0),
+            net_salary: Number(prev?.net_salary ?? 0),
+        },
+        newData: {
+            manual_bonus: Number(row.manual_bonus),
+            manual_deduction: Number(row.manual_deduction),
+            net_salary: Number(row.net_salary),
+            note: note || null,
+        },
+    });
     return row;
 };
 

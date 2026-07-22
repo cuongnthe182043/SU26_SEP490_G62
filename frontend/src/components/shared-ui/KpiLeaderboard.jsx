@@ -171,7 +171,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-6 text-right flex-shrink-0">
+                      <div className="flex items-center gap-6 text-right shrink-0">
                         <div>
                           <div className="text-[10px] text-gray-400 uppercase">Chuyến</div>
                           <div className="text-sm font-semibold text-gray-700">{row.completed_shipments}</div>
@@ -227,13 +227,13 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                   {pagedLeaderboard.map((row) => (
                     <div key={row.driver_id} className={`flex items-center justify-between py-3 gap-4 ${row.is_me ? "bg-blue-50/40 -mx-5 px-5" : ""}`}>
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
                           ${row.revenue_rank === 1 ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
                           {row.revenue_rank}
                         </span>
                         <span className="text-sm font-semibold text-gray-800 truncate">{row.driver_name}</span>
                       </div>
-                      <div className="flex items-center gap-6 text-right flex-shrink-0">
+                      <div className="flex items-center gap-6 text-right shrink-0">
                         <div>
                           <div className="text-[10px] text-gray-400 uppercase">Chuyến</div>
                           <div className="text-sm font-semibold text-gray-700">{row.completed_shipments}</div>

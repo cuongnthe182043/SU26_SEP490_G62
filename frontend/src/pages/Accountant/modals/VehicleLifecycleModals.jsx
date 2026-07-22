@@ -35,7 +35,6 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
   }, [open, vehicle]);
 
   const handleOk = async () => {
-    if (!form.description.trim()) return setError("Mô tả là bắt buộc.");
     if (!form.performed_by) return setError("Vui lòng chọn tài xế thực hiện.");
     setSaving(true);
     try {
@@ -56,7 +55,7 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
           <Select label="Loại bảo dưỡng *" selectedKeys={[form.maintenance_type]} onSelectionChange={(k) => setForm((p) => ({ ...p, maintenance_type: [...k][0] }))} variant="bordered">
             {MAINTENANCE_TYPES.map((t) => <SelectItem key={t.value}>{t.label}</SelectItem>)}
           </Select>
-          <Textarea label="Mô tả *" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" />
+          <Textarea label="Mô tả" placeholder="Không bắt buộc" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" />
           <Input type="date" label="Ngày bảo dưỡng *" value={form.maintenance_date} onValueChange={(v) => setForm((p) => ({ ...p, maintenance_date: v }))} variant="bordered" />
           <Select
             label="Người thực hiện *"
@@ -91,7 +90,6 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
   useEffect(() => { if (open) { setNote(""); setError(null); } }, [open]);
 
   const handleOk = async () => {
-    if (!note.trim()) return setError("Ghi chú xác nhận là bắt buộc.");
     setSaving(true);
     try {
       await onSubmit({ verification_note: note });
@@ -120,7 +118,7 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
               <p className="text-xs text-gray-400">Chưa có ảnh hóa đơn.</p>
             )}
           </div>
-          <Textarea label="Ghi chú xác nhận *" value={note} onValueChange={setNote} minRows={3} variant="bordered" />
+          <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" />
           {!pending && <p className="text-xs text-amber-600">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất.</p>}
         </ModalBody>
         <ModalFooter>
