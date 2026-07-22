@@ -4,7 +4,7 @@ import {
 } from "@heroui/react";
 import { RiAlertLine, RiErrorWarningLine, RiTruckLine, RiFileTextLine, RiMapPinLine } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 const INCIDENT_TYPES = [
   { value: "vehicle_breakdown", label: "Sự cố xe" },
@@ -26,8 +26,8 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="2xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
-          <span className="text-base font-bold text-gray-900">Tạo sự cố thủ công</span>
-          <span className="text-xs font-normal text-gray-400">
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">Tạo sự cố thủ công</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">
             Dùng khi khách gọi điện báo sự cố, hoặc điều phối/quản lý phát hiện sự cố mà tài xế chưa kịp báo cáo.
           </span>
         </ModalHeader>

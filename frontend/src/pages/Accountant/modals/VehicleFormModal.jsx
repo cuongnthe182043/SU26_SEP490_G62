@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, NumberInput } from "@heroui/react";
 import {
   RiInformationLine, RiTruckLine, RiRoadMapLine, RiCarLine, RiRoadsterLine,
-  RiScales3Line, RiCalendarLine, RiCalendarEventLine, RiUserLine,
+  RiScales3Line, RiCalendarLine, RiUserLine,
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 const EMPTY_FORM = {
   plate_number: "", vehicle_group_id: "", brand: "", model: "",
@@ -68,7 +68,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           {editingVehicle && (
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 flex items-center gap-2 text-xs text-blue-700">
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-3 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
               <RiInformationLine size={16} />
               Trạng thái vòng đời xe (bảo trì, hỏng, thu hồi...) quản lý qua nút thao tác ở danh sách xe, không sửa ở đây.
             </div>
@@ -93,7 +93,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
             <NumberInput label="Tải trọng (kg)" minValue={0.01} value={form.load_capacity_kg} onValueChange={(v) => setForm((p) => ({ ...p, load_capacity_kg: v }))} variant="bordered" startContent={ic(RiScales3Line)} />
             <NumberInput label="Năm sản xuất" minValue={1900} formatOptions={{ useGrouping: false }} value={form.manufacture_year} onValueChange={(v) => setForm((p) => ({ ...p, manufacture_year: v }))} variant="bordered" startContent={ic(RiCalendarLine)} />
           </div>
-          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" startContent={ic(RiCalendarEventLine)} />
+          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" />
           <Select
             label="Tài xế được gán"
             placeholder="Chọn tài xế"

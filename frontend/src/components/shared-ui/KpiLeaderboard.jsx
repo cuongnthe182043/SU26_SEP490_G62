@@ -27,23 +27,23 @@ const SORT_LABELS = {
 
 // Huy chương top 3: vàng - bạc - đồng.
 const RANK_STYLE = {
-  1: "bg-gradient-to-br from-amber-300 to-yellow-500 text-white shadow-sm",
-  2: "bg-gradient-to-br from-slate-200 to-slate-400 text-white",
-  3: "bg-gradient-to-br from-orange-300 to-orange-500 text-white",
+  1: "bg-linear-to-br from-amber-300 to-yellow-500 text-white shadow-sm",
+  2: "bg-linear-to-br from-slate-200 to-slate-400 text-white",
+  3: "bg-linear-to-br from-orange-300 to-orange-500 text-white",
 };
-const rankBadge = (rank) => RANK_STYLE[rank] || "bg-gray-100 text-gray-500";
+const rankBadge = (rank) => RANK_STYLE[rank] || "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400";
 
 // Thẻ tổng quan nhỏ.
 function StatChip({ label, value, tone = "gray" }) {
   const toneCls = {
-    gray: "text-gray-800",
-    blue: "text-blue-600",
-    green: "text-emerald-600",
+    gray: "text-gray-800 dark:text-gray-100",
+    blue: "text-blue-600 dark:text-blue-300",
+    green: "text-emerald-600 dark:text-emerald-300",
     rose: "text-rose-500",
   }[tone];
   return (
-    <div className="flex-1 min-w-[120px] rounded-xl border border-gray-100 bg-white px-4 py-3">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</div>
+    <div className="flex-1 min-w-30 rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-4 py-3">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400">{label}</div>
       <div className={`mt-0.5 text-lg font-bold ${toneCls}`}>{value}</div>
     </div>
   );
@@ -53,8 +53,8 @@ function StatChip({ label, value, tone = "gray" }) {
 function RevenueBar({ value, max }) {
   const pct = Math.max(2, Math.min(100, (Number(value || 0) / (max || 1)) * 100));
   return (
-    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-      <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
+    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+      <div className="h-full rounded-full bg-linear-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -216,42 +216,42 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
             {kpiLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : kpiRows.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu KPI trong kỳ này.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu KPI trong kỳ này.</p>
             ) : (
               <>
-                <div className="flex flex-col divide-y divide-gray-50 mt-3">
+                <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 mt-3">
                   {pagedKpiRows.map((row) => (
                     <div key={row.driver_id} className="py-3">
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-semibold text-gray-800">{row.driver_name}</span>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
                           <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-400">{row.vehicle_group_name}</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-400">{row.vehicle_group_name}</span>
                             {onUpdateDriverGroup && (
                               <Button
                                 isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
                                 onPress={() => setEditingDriver(row)}
                               >
-                                <RiPencilLine size={12} className="text-gray-400" />
+                                <RiPencilLine size={12} className="text-gray-400 dark:text-gray-400" />
                               </Button>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-6 text-right shrink-0">
                           <div>
-                            <div className="text-[10px] text-gray-400 uppercase">Chuyến</div>
-                            <div className="text-sm font-semibold text-gray-700">{row.completed_shipments}</div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Chuyến</div>
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{row.completed_shipments}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] text-gray-400 uppercase">Doanh thu</div>
-                            <div className="text-sm font-semibold text-blue-600">{formatCurrency(row.total_revenue)}</div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Doanh thu</div>
+                            <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(row.total_revenue)}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] text-gray-400 uppercase">Sự cố</div>
-                            <div className={`text-sm font-semibold ${Number(row.incident_count) > 0 ? "text-rose-500" : "text-gray-400"}`}>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Sự cố</div>
+                            <div className={`text-sm font-semibold ${Number(row.incident_count) > 0 ? "text-rose-500" : "text-gray-400 dark:text-gray-400"}`}>
                               {row.incident_count}
                               {Number(row.critical_incident_count) > 0 && (
-                                <span className="ml-1 text-[10px] font-bold text-red-600">({row.critical_incident_count} nặng)</span>
+                                <span className="ml-1 text-[10px] font-bold text-red-600 dark:text-red-300">({row.critical_incident_count} nặng)</span>
                               )}
                             </div>
                           </div>
@@ -293,19 +293,19 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
             {leaderboardLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : leaderboard.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu xếp hạng — chọn 1 nhóm xe.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu xếp hạng — chọn 1 nhóm xe.</p>
             ) : (
               <>
-                <div className="flex flex-col divide-y divide-gray-50 mt-3">
+                <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 mt-3">
                   {pagedLeaderboard.map((row) => (
-                    <div key={row.driver_id} className={`py-3 ${row.is_me ? "bg-blue-50/40 -mx-5 px-5 rounded-lg" : ""}`}>
+                    <div key={row.driver_id} className={`py-3 ${row.is_me ? "bg-blue-50/40 dark:bg-blue-500/10 -mx-5 px-5 rounded-lg" : ""}`}>
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
                           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${rankBadge(row.revenue_rank)}`}>
                             {row.revenue_rank}
                           </span>
                           <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-semibold text-gray-800 truncate">
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                               {row.driver_name}
                               {row.is_me && <span className="ml-1.5 text-[10px] font-bold text-blue-500">(Bạn)</span>}
                             </span>
@@ -316,12 +316,12 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                         </div>
                         <div className="flex items-center gap-6 text-right shrink-0">
                           <div>
-                            <div className="text-[10px] text-gray-400 uppercase">Chuyến</div>
-                            <div className="text-sm font-semibold text-gray-700">{row.completed_shipments}</div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Chuyến</div>
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{row.completed_shipments}</div>
                           </div>
                           <div>
-                            <div className="text-[10px] text-gray-400 uppercase">Doanh thu</div>
-                            <div className="text-sm font-semibold text-blue-600">{formatCurrency(row.total_revenue)}</div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Doanh thu</div>
+                            <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(row.total_revenue)}</div>
                           </div>
                         </div>
                       </div>

@@ -5,7 +5,7 @@ import {
   RiBankLine, RiBankCardLine, RiUser3Line, RiStickyNoteLine,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 export default function PartnerFormModal({ open, editing, form, setForm, saving, onClose, onSubmit }) {
   const update = (key) => (value) => setForm((p) => ({ ...p, [key]: value }));

@@ -15,7 +15,7 @@ import {
   RiSearchLine, RiFilter3Line, RiFlag2Line, RiBankCardLine, RiCalendarLine, RiCalendarEventLine,
 } from "react-icons/ri";
 
-const fic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const fic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { useDebts } from "../hooks/useDebts";
@@ -124,10 +124,10 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
   };
 
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 flex flex-col gap-3">
+    <div className="rounded-2xl border border-amber-200 dark:border-amber-500/25 bg-amber-50/50 dark:bg-amber-500/10 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <RiTimeLine size={16} className="text-amber-500" />
-        <span className="text-sm font-bold text-amber-700">
+        <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
           Báo nộp tiền chờ xác nhận {items.length > 0 && `(${items.length})`}
         </span>
       </div>
@@ -138,26 +138,26 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
         <div className="flex justify-center py-3"><Spinner size="sm" /></div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 gap-2">
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center">
             <RiCheckboxCircleLine size={18} className="text-green-400" />
           </div>
-          <p className="text-xs text-gray-400">Không có báo nộp tiền nào đang chờ.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400">Không có báo nộp tiền nào đang chờ.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2 max-h-[560px] overflow-y-auto pr-1">
           {items.map((item) => (
             <div key={item.id}
-              className="flex items-center gap-3 bg-white rounded-xl border border-amber-100 px-4 py-3">
+              className="flex items-center gap-3 bg-white dark:bg-[#161922] rounded-xl border border-amber-100 dark:border-amber-500/20 px-4 py-3">
               {/* Ảnh chứng từ */}
               {item.receipt_url ? (
                 <button
                   onClick={() => setLightboxUrl(item.receipt_url)}
-                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 hover:ring-2 hover:ring-blue-400"
+                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 shrink-0 hover:ring-2 hover:ring-blue-400"
                 >
                   <img src={item.receipt_url} alt="Chứng từ" className="w-full h-full object-cover" />
                 </button>
               ) : (
-                <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center shrink-0">
                   <RiFileList3Line size={18} className="text-gray-300" />
                 </div>
               )}
@@ -165,25 +165,25 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
               {/* Nội dung */}
               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800 truncate">{item.driver_name}</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{item.driver_name}</span>
                   <Chip size="sm" variant="flat"
                     color={item.debt_type === "driver" ? "warning" : "primary"}
                     className="text-[10px] h-4">
                     {item.debt_type === "driver" ? "Tài xế nộp quỹ" : "Khách thanh toán"}
                   </Chip>
                 </div>
-                <span className="text-[11px] text-gray-400">
+                <span className="text-[11px] text-gray-400 dark:text-gray-400">
                   Nợ #{item.debt_id}{item.cargo_name ? ` · ${item.cargo_name}` : ""}
                   {" · "}{REPAY_METHOD_LABEL[item.payment_method] ?? item.payment_method ?? "—"}
                   {item.paid_at ? ` · ${new Date(item.paid_at).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
                 </span>
-                {item.notes && <span className="text-[11px] text-gray-400 italic truncate">{item.notes}</span>}
+                {item.notes && <span className="text-[11px] text-gray-400 dark:text-gray-400 italic truncate">{item.notes}</span>}
               </div>
 
-              <MoneyText amount={item.amount} className="text-sm font-bold text-gray-800 flex-shrink-0" />
+              <MoneyText amount={item.amount} className="text-sm font-bold text-gray-800 dark:text-gray-100 shrink-0" />
 
               {/* Thao tác */}
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex gap-2 shrink-0">
                 <Button size="sm" color="success" variant="flat"
                   isLoading={actingId === item.id}
                   onPress={() => handleConfirm(item)}
@@ -301,14 +301,14 @@ function PaymentHistoryPanel() {
           sub={stats ? `${stats.confirmed_count} lần thanh toán` : ""}
           icon={RiCheckboxCircleLine}
           gradient="from-emerald-500 to-emerald-600"
-          lightBg="bg-emerald-50" text="text-emerald-600" border="border-emerald-100"
+          lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" border="border-emerald-100 dark:border-emerald-500/20"
         />
         <DebtStatCard
           label="Khách hàng đã trả"
           value={stats?.customer_confirmed_total ?? 0}
           icon={RiGroupLine}
           gradient="from-blue-500 to-blue-600"
-          lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+          lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
         />
         <DebtStatCard
           label="Tài xế đã nộp"
@@ -316,7 +316,7 @@ function PaymentHistoryPanel() {
           sub={stats?.pending_count > 0 ? `${stats.pending_count} khoản đang chờ xác nhận` : ""}
           icon={RiTruckLine}
           gradient="from-amber-500 to-amber-600"
-          lightBg="bg-amber-50" text="text-amber-600" border="border-amber-100"
+          lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" border="border-amber-100 dark:border-amber-500/20"
         />
       </div>
 
@@ -364,23 +364,23 @@ function PaymentHistoryPanel() {
       </div>
 
       {/* Bảng lịch sử */}
-      <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+      <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-16"><Spinner color="primary" size="lg" /></div>
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-gray-50 dark:bg-white/5 flex items-center justify-center">
               <RiHistoryLine size={22} className="text-gray-300" />
             </div>
-            <p className="text-gray-500 text-sm">Chưa có lần thanh toán nào khớp bộ lọc.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Chưa có lần thanh toán nào khớp bộ lọc.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: 980 }}>
             <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200">
+              <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {["Thời điểm", "Người thanh toán", "Khoản nợ", "Số tiền", "Hình thức", "Trạng thái", "Người xác nhận", "Ghi chú"].map((h, idx) => (
-                  <th key={idx} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3 px-4">{h}</th>
+                  <th key={idx} className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider py-3 px-4">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -388,33 +388,33 @@ function PaymentHistoryPanel() {
               {rows.map((r) => {
                 const chip = PAY_STATUS_CHIP[r.status] ?? { label: r.status, color: "default" };
                 return (
-                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                    <td className="py-3 px-4 text-xs text-gray-500 whitespace-nowrap">{fmtDateTime(r.paid_at)}</td>
+                  <tr key={r.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50/60 dark:hover:bg-white/5">
+                    <td className="py-3 px-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtDateTime(r.paid_at)}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
                         <Chip size="sm" variant="flat" color={r.debt_type === "driver" ? "warning" : "primary"} className="text-[10px] h-4">
                           {r.debt_type === "driver" ? "Tài xế" : "Khách"}
                         </Chip>
                         <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-gray-800">{r.person_name ?? "—"}</span>
-                          {r.person_phone && <span className="text-[10px] text-gray-400 font-mono">{r.person_phone}</span>}
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.person_name ?? "—"}</span>
+                          {r.person_phone && <span className="text-[10px] text-gray-400 dark:text-gray-400 font-mono">{r.person_phone}</span>}
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-xs text-gray-500 whitespace-nowrap">
+                    <td className="py-3 px-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       Nợ #{r.debt_id}{r.order_id ? ` · Đơn #${r.order_id}` : ""}
-                      <div className="text-[10px] text-gray-400">Tổng nợ {VND(r.debt_total)}</div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-400">Tổng nợ {VND(r.debt_total)}</div>
                     </td>
-                    <td className="py-3 px-4"><span className="text-sm font-bold text-gray-800">{VND(r.amount)}</span></td>
-                    <td className="py-3 px-4 text-xs text-gray-600">{REPAY_METHOD_LABEL[r.payment_method] ?? r.payment_method ?? "—"}</td>
+                    <td className="py-3 px-4"><span className="text-sm font-bold text-gray-800 dark:text-gray-100">{VND(r.amount)}</span></td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-gray-300">{REPAY_METHOD_LABEL[r.payment_method] ?? r.payment_method ?? "—"}</td>
                     <td className="py-3 px-4">
                       <Chip size="sm" variant="flat" color={chip.color} className="text-[10px] h-5">{chip.label}</Chip>
                       {r.status === "rejected" && r.reject_reason && (
                         <div className="text-[10px] text-rose-500 mt-0.5 max-w-[160px] truncate">{r.reject_reason}</div>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-xs text-gray-600">{r.confirmed_by_name ?? "—"}</td>
-                    <td className="py-3 px-4 text-[11px] text-gray-400 italic max-w-[180px] truncate">{r.notes ?? ""}</td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-gray-300">{r.confirmed_by_name ?? "—"}</td>
+                    <td className="py-3 px-4 text-[11px] text-gray-400 dark:text-gray-400 italic max-w-[180px] truncate">{r.notes ?? ""}</td>
                   </tr>
                 );
               })}
@@ -440,17 +440,17 @@ function PaymentHistoryPanel() {
 
 function DebtStatCard({ label, value, sub, icon: Icon, gradient, lightBg, text, border }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
+    <div className={`relative overflow-hidden rounded-2xl bg-white dark:bg-[#161922] border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
       <div className="flex items-start justify-between">
         <div className={`w-10 h-10 rounded-xl ${lightBg} flex items-center justify-center`}>
           <Icon size={20} className={text} />
         </div>
-        <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
+        <div className={`w-14 h-14 rounded-full bg-linear-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
       </div>
       <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+        <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{label}</span>
         <span className={`text-2xl font-bold ${text} leading-tight`}>{VND(value)}</span>
-        {sub && <span className="text-[11px] text-gray-400 mt-0.5">{sub}</span>}
+        {sub && <span className="text-[11px] text-gray-400 dark:text-gray-400 mt-0.5">{sub}</span>}
       </div>
     </div>
   );
@@ -490,29 +490,29 @@ function PayDebtModal({ person, onClose, onDone }) {
     <Modal isOpen onClose={onClose} size="sm">
       <ModalContent>
         <ModalHeader className="flex items-center gap-2 pb-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-            <RiBankCard2Line size={16} className="text-blue-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+            <RiBankCard2Line size={16} className="text-blue-600 dark:text-blue-300" />
           </div>
           <div>
             <p className="text-base font-bold">Ghi nhận thanh toán</p>
-            <p className="text-xs font-normal text-gray-400">{name}</p>
+            <p className="text-xs font-normal text-gray-400 dark:text-gray-400">{name}</p>
           </div>
         </ModalHeader>
 
         <ModalBody className="gap-3">
           <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-0.5 bg-red-50 rounded-xl p-3">
+            <div className="flex flex-col gap-0.5 bg-red-50 dark:bg-red-500/10 rounded-xl p-3">
               <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wide">Tổng nợ</span>
-              <MoneyText amount={person?.total_amount} className="text-sm font-bold text-red-600" />
+              <MoneyText amount={person?.total_amount} className="text-sm font-bold text-red-600 dark:text-red-300" />
             </div>
-            <div className="flex flex-col gap-0.5 bg-orange-50 rounded-xl p-3">
+            <div className="flex flex-col gap-0.5 bg-orange-50 dark:bg-orange-500/10 rounded-xl p-3">
               <span className="text-[10px] text-orange-400 font-semibold uppercase tracking-wide">Còn lại</span>
-              <MoneyText amount={person?.total_remaining} className="text-sm font-bold text-orange-600" />
+              <MoneyText amount={person?.total_remaining} className="text-sm font-bold text-orange-600 dark:text-orange-300" />
             </div>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               <RiAlertLine size={13} />
               {error}
             </div>
@@ -524,7 +524,7 @@ function PayDebtModal({ person, onClose, onDone }) {
             value={amount}
             onValueChange={(v) => { setAmount(v); setError(null); }}
             isInvalid={!!error}
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
           <Select
             label="Hình thức thanh toán"
@@ -539,7 +539,7 @@ function PayDebtModal({ person, onClose, onDone }) {
             placeholder="Mã GD, tên người nộp..."
             value={notes}
             onValueChange={setNotes}
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
         </ModalBody>
 
@@ -591,31 +591,31 @@ function TransferDebtModal({ debt, onClose, onDone }) {
     <Modal isOpen onClose={onClose} size="sm">
       <ModalContent>
         <ModalHeader className="flex items-center gap-2 pb-2">
-          <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-            <RiArrowLeftRightLine size={16} className="text-amber-600" />
+          <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+            <RiArrowLeftRightLine size={16} className="text-amber-600 dark:text-amber-300" />
           </div>
           <div>
             <p className="text-base font-bold">Chuyển công nợ sang tài xế</p>
-            <p className="text-xs font-normal text-gray-400">Nợ #{debt?.id}</p>
+            <p className="text-xs font-normal text-gray-400 dark:text-gray-400">Nợ #{debt?.id}</p>
           </div>
         </ModalHeader>
 
         <ModalBody className="gap-3">
-          <div className="flex flex-col gap-0.5 bg-orange-50 rounded-xl p-3">
+          <div className="flex flex-col gap-0.5 bg-orange-50 dark:bg-orange-500/10 rounded-xl p-3">
             <span className="text-[10px] text-orange-400 font-semibold uppercase tracking-wide">
               Toàn bộ số dư còn lại sẽ được chuyển
             </span>
-            <MoneyText amount={debt?.remaining} className="text-lg font-bold text-orange-600" />
+            <MoneyText amount={debt?.remaining} className="text-lg font-bold text-orange-600 dark:text-orange-300" />
           </div>
 
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Đây là bút toán tái phân loại khoản phải thu (Nợ 1388 / Có 131), <strong>không phải</strong> khách
             hoặc tài xế đã trả tiền thật. Khoản nợ khách hàng này sẽ tất toán, thay bằng 1 khoản nợ tài xế mới
             cùng số tiền — tài xế sau đó nộp tiền theo đúng luồng công nợ tài xế thông thường.
           </p>
 
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               <RiAlertLine size={13} />
               {error}
             </div>
@@ -640,7 +640,7 @@ function TransferDebtModal({ debt, onClose, onDone }) {
             placeholder="Lý do chuyển công nợ..."
             value={notes}
             onValueChange={setNotes}
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
         </ModalBody>
 
@@ -661,7 +661,7 @@ function DebtDetailRow({ d, onTransfer }) {
   const status  = d.computed_status;
 
   return (
-    <tr className="bg-orange-50/20 border-b border-orange-100/30">
+    <tr className="bg-orange-50/20 dark:bg-orange-500/10 border-b border-orange-100/30">
       {}
       <td className="py-2.5 pl-4" />
 
@@ -670,12 +670,12 @@ function DebtDetailRow({ d, onTransfer }) {
         <div className="flex items-start gap-2">
           <span className="text-[10px] text-orange-400 font-bold shrink-0 mt-0.5">#{d.id}</span>
           <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="text-xs font-medium text-gray-700 truncate">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
               {d.order_id ? `Đơn #${d.order_id}` : "—"}
               {d.order_cargo_name ? ` · ${d.order_cargo_name}` : ""}
             </span>
             {d.notes && (
-              <span className="text-[10px] text-gray-400 italic truncate">{d.notes}</span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-400 italic truncate">{d.notes}</span>
             )}
           </div>
         </div>
@@ -684,11 +684,11 @@ function DebtDetailRow({ d, onTransfer }) {
       {}
       <td className="py-2.5 pr-4 text-center">
         <div className="flex flex-col gap-0.5 items-center">
-          <span className="text-[10px] text-gray-400">
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">
             {d.created_at ? new Date(d.created_at).toLocaleDateString("vi-VN") : "—"}
           </span>
           {d.due_date && (
-            <span className={`text-[10px] font-medium ${overdue ? "text-red-500" : "text-gray-400"}`}>
+            <span className={`text-[10px] font-medium ${overdue ? "text-red-500" : "text-gray-400 dark:text-gray-400"}`}>
               Hạn: {new Date(d.due_date).toLocaleDateString("vi-VN")}
               {overdue && <RiAlertLine size={10} className="inline text-red-500 ml-0.5 align-middle" />}
             </span>
@@ -700,7 +700,7 @@ function DebtDetailRow({ d, onTransfer }) {
       <td className="py-2.5 pr-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-bold text-red-500">{VND(d.remaining)}</span>
-          <span className="text-[10px] text-gray-400">/ {VND(d.total_amount)}</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">/ {VND(d.total_amount)}</span>
         </div>
       </td>
 
@@ -768,13 +768,13 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
   return (
     <>
       <tr
-        className={`border-b border-gray-100 cursor-pointer transition-colors
-                   ${expanded ? "bg-orange-50/40" : "hover:bg-gray-50/60"}`}
+        className={`border-b border-gray-100 dark:border-white/10 cursor-pointer transition-colors
+                   ${expanded ? "bg-orange-50/40 dark:bg-orange-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={toggle}
       >
         {}
         <td className="py-3.5 pl-4">
-          <span className="text-gray-400">
+          <span className="text-gray-400 dark:text-gray-400">
             {expanded ? <RiArrowDownSLine size={17} /> : <RiArrowRightSLine size={17} />}
           </span>
         </td>
@@ -782,24 +782,24 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
         {}
         <td className="py-3.5 pr-4 overflow-hidden">
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
-            {phone && <span className="text-xs text-gray-400 font-mono">{phone}</span>}
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{name}</span>
+            {phone && <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{phone}</span>}
             {person.debt_type === "customer" && person.customer_company && (
-              <span className="text-[11px] text-gray-400 truncate">{person.customer_company}</span>
+              <span className="text-[11px] text-gray-400 dark:text-gray-400 truncate">{person.customer_company}</span>
             )}
           </div>
         </td>
 
         {}
         <td className="py-3.5 pr-4 text-center">
-          <span className="text-xs text-gray-500">{person.debt_count ?? 0} khoản</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{person.debt_count ?? 0} khoản</span>
         </td>
 
         {}
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-bold text-red-600">{VND(person.total_remaining)}</span>
-            <span className="text-[10px] text-gray-400">/ {VND(person.total_amount)}</span>
+            <span className="text-sm font-bold text-red-600 dark:text-red-300">{VND(person.total_remaining)}</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-400">/ {VND(person.total_amount)}</span>
           </div>
         </td>
 
@@ -835,13 +835,13 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
       {expanded && (
         loading ? (
           <tr>
-            <td colSpan={6} className="py-4 text-center bg-orange-50/20">
+            <td colSpan={6} className="py-4 text-center bg-orange-50/20 dark:bg-orange-500/10">
               <Spinner size="sm" color="warning" />
             </td>
           </tr>
         ) : (debts ?? []).length === 0 ? (
           <tr>
-            <td colSpan={6} className="py-3 pl-10 text-xs text-gray-400 italic bg-orange-50/10">
+            <td colSpan={6} className="py-3 pl-10 text-xs text-gray-400 dark:text-gray-400 italic bg-orange-50/10 dark:bg-orange-500/10">
               Không có khoản nợ nào.
             </td>
           </tr>
@@ -920,11 +920,11 @@ export function DebtView({ search = "" }) {
     <div className="flex flex-col gap-5">
 
       {/* Tab chuyển giữa Công nợ và Báo nộp tiền chờ xác nhận */}
-      <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
+      <div className="flex gap-1 bg-white dark:bg-[#161922] border border-gray-100 dark:border-white/10 rounded-2xl p-1.5 shadow-sm w-fit">
         <button
           onClick={() => setTab("debts")}
           className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
-            ${tab === "debts" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+            ${tab === "debts" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"}`}
         >
           <RiListCheck2 size={15} />
           Công nợ
@@ -932,12 +932,12 @@ export function DebtView({ search = "" }) {
         <button
           onClick={() => setTab("pending")}
           className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
-            ${tab === "pending" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+            ${tab === "pending" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"}`}
         >
           <RiTimeLine size={15} />
           Chờ xác nhận
           {pendingCount > 0 && (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === "pending" ? "bg-white/20" : "bg-amber-100 text-amber-600"}`}>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === "pending" ? "bg-white/20" : "bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-300"}`}>
               {pendingCount}
             </span>
           )}
@@ -945,7 +945,7 @@ export function DebtView({ search = "" }) {
         <button
           onClick={() => setTab("history")}
           className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
-            ${tab === "history" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+            ${tab === "history" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"}`}
         >
           <RiHistoryLine size={15} />
           Lịch sử thanh toán
@@ -969,7 +969,7 @@ export function DebtView({ search = "" }) {
           sub={statsLoading ? "" : `${stats.customer_count + stats.driver_count} khoản nợ`}
           icon={RiAlertLine}
           gradient="from-red-500 to-rose-600"
-          lightBg="bg-red-50" text="text-red-600" border="border-red-100"
+          lightBg="bg-red-50 dark:bg-red-500/10" text="text-red-600 dark:text-red-300" border="border-red-100 dark:border-red-500/20"
         />
         <DebtStatCard
           label="Khách hàng nợ"
@@ -977,7 +977,7 @@ export function DebtView({ search = "" }) {
           sub={statsLoading ? "" : `${stats.customer_count} khoản`}
           icon={RiGroupLine}
           gradient="from-blue-500 to-blue-600"
-          lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+          lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
         />
         <DebtStatCard
           label="Tài xế đang giữ tiền"
@@ -985,14 +985,14 @@ export function DebtView({ search = "" }) {
           sub={statsLoading ? "" : `${stats.driver_count} khoản`}
           icon={RiTruckLine}
           gradient="from-amber-500 to-amber-600"
-          lightBg="bg-amber-50" text="text-amber-600" border="border-amber-100"
+          lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" border="border-amber-100 dark:border-amber-500/20"
         />
       </div>
 
       {}
       <div className="flex items-center justify-between flex-wrap gap-3">
         {}
-        <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/80 dark:bg-white/5 p-1 rounded-xl">
           {[
             { key: "customer", label: "Khách hàng", icon: RiUserLine,  count: customerDebts.length },
             { key: "driver",   label: "Tài xế",     icon: RiTruckLine, count: driverDebts.length },
@@ -1004,12 +1004,12 @@ export function DebtView({ search = "" }) {
                 onClick={() => { setDebtType(key); setStatusFilter("all"); }}
                 className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium
                             transition-all duration-150
-                  ${active ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                  ${active ? "bg-white dark:bg-[#161922] text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100"}`}
               >
-                <Icon size={14} className={active ? "text-blue-500" : "text-gray-400"} />
+                <Icon size={14} className={active ? "text-blue-500" : "text-gray-400 dark:text-gray-400"} />
                 {label}
                 <span className={`ml-1 text-[11px] px-1.5 py-0.5 rounded-full font-bold
-                  ${active ? "bg-blue-100 text-blue-600" : "bg-gray-200 text-gray-500"}`}>
+                  ${active ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300" : "bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400"}`}>
                   {count}
                 </span>
               </button>
@@ -1018,7 +1018,7 @@ export function DebtView({ search = "" }) {
         </div>
 
         {}
-        <div className="flex gap-1 bg-gray-100/60 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/60 dark:bg-white/5 p-1 rounded-xl">
           {STATUS_OPTIONS.map(({ key, label }) => {
             const active = statusFilter === key;
             return (
@@ -1026,14 +1026,14 @@ export function DebtView({ search = "" }) {
                 key={key}
                 onClick={() => setStatusFilter(key)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-150
-                  ${active ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                  ${active ? "bg-white dark:bg-[#161922] text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100"}`}
               >
                 {label}
                 {key === "unpaid"  && unpaidCount  > 0 && (
-                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded-full bg-red-100 text-red-600 font-bold">{unpaidCount}</span>
+                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded-full bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-300 font-bold">{unpaidCount}</span>
                 )}
                 {key === "partial" && partialCount > 0 && (
-                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold">{partialCount}</span>
+                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/15 text-orange-600 dark:text-orange-300 font-bold">{partialCount}</span>
                 )}
               </button>
             );
@@ -1055,17 +1055,17 @@ export function DebtView({ search = "" }) {
       </div>
 
       {}
-      <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+      <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
         {groupedLoading ? (
           <div className="flex items-center justify-center py-20">
             <Spinner color="primary" label="Đang tải..." size="lg" />
           </div>
         ) : filteredList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center">
               <RiCheckboxCircleLine size={22} className="text-green-400" />
             </div>
-            <p className="text-gray-500 text-sm">Không có công nợ nào.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Không có công nợ nào.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1079,7 +1079,7 @@ export function DebtView({ search = "" }) {
               <col style={{ width: 44 }} />
             </colgroup>
             <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200">
+              <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {[
                   { label: "",              cls: "pl-4" },
                   { label: "Tên / Liên hệ" },
@@ -1090,7 +1090,7 @@ export function DebtView({ search = "" }) {
                 ].map(({ label, cls }, i) => (
                   <th
                     key={i}
-                    className={`text-left text-[11px] font-semibold text-gray-400 uppercase
+                    className={`text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                                tracking-wider py-3 pr-4 ${cls ?? ""}`}
                   >
                     {label}

@@ -7,9 +7,10 @@ import {
 import {
   RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine,
   RiCalendarLine, RiPriceTag3Line, RiFlag2Line, RiUserLine, RiSortDesc,
+  RiCheckboxCircleLine, RiHandCoinLine, RiWalletLine,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
@@ -179,13 +180,13 @@ export default function BonusView() {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Chờ duyệt" value={stats?.pending_count || 0} icon={RiGiftLine} border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600" />
-        <StatCard label="Đã duyệt" value={stats?.approved_count || 0} border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600" />
-        <StatCard label="Tổng đã duyệt" value={fmt(stats?.approved_total || 0)} border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600" />
-        <StatCard label="Tổng đã chi" value={fmt(stats?.paid_total || 0)} border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600" />
+        <StatCard label="Chờ duyệt" value={stats?.pending_count || 0} icon={RiGiftLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
+        <StatCard label="Đã duyệt" value={stats?.approved_count || 0} icon={RiCheckboxCircleLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+        <StatCard label="Tổng đã duyệt" value={fmt(stats?.approved_total || 0)} icon={RiHandCoinLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+        <StatCard label="Tổng đã chi" value={fmt(stats?.paid_total || 0)} icon={RiWalletLine} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
         <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary">
           <Tab key="list" title="Duyệt thưởng">
             <div className="flex flex-wrap gap-3 my-4">
@@ -261,15 +262,15 @@ export default function BonusView() {
                   <TableRow key={r.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-semibold text-gray-800 text-sm">{r.driver_name}</span>
-                        <span className="text-xs text-gray-400">{r.driver_phone}</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.driver_name}</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-400">{r.driver_phone}</span>
                       </div>
                     </TableCell>
                     <TableCell>{TYPE_LABEL[r.type] || r.type}</TableCell>
                     <TableCell>{r.year}</TableCell>
                     <TableCell><span className="font-semibold">{fmt(r.amount)}</span></TableCell>
                     <TableCell>
-                      <div className="flex flex-col text-xs text-gray-500">
+                      <div className="flex flex-col text-xs text-gray-500 dark:text-gray-400">
                         {r.notes && <span>{r.notes}</span>}
                         {r.beneficiary_name && <span>{r.beneficiary_name} ({r.beneficiary_relation})</span>}
                         {r.rejection_reason && <span className="text-rose-500">Lý do: {r.rejection_reason}</span>}
@@ -306,7 +307,7 @@ export default function BonusView() {
 
           <Tab key="tet" title="Thưởng Tết">
             <div className="flex items-center gap-3 my-4 flex-wrap">
-              <span className="text-sm font-semibold text-gray-700">Năm:</span>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Năm:</span>
               <Select selectedKeys={[String(tetYear)]} onSelectionChange={(k) => setTetYear(Number([...k][0]))} variant="bordered" size="sm" className="w-24">
                 {YEARS.map((y) => <SelectItem key={String(y)}>{String(y)}</SelectItem>)}
               </Select>
@@ -318,7 +319,7 @@ export default function BonusView() {
 
             {preview && (
               <div className="flex flex-col gap-3">
-                <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm text-blue-700">
+                <div className="rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-3 text-sm text-blue-700 dark:text-blue-300">
                   {preview.filter((p) => !p.already_exists).length} tài xế sẽ được tạo phiếu thưởng mới · {preview.filter((p) => p.already_exists).length} đã có sẵn
                 </div>
                 <div className="max-h-[360px] overflow-auto">
@@ -424,7 +425,7 @@ export default function BonusView() {
           <ModalBody className="gap-3">
             {approveTarget && (
               <>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-300">
                   <div>Nhân viên: <strong>{approveTarget.driver_name}</strong></div>
                   <div>Loại: <strong>{TYPE_LABEL[approveTarget.type]}</strong></div>
                   <div>Số tiền gốc: <strong>{fmt(approveTarget.amount)}</strong></div>
@@ -445,7 +446,7 @@ export default function BonusView() {
           <ModalHeader>Từ chối thưởng</ModalHeader>
           <ModalBody className="gap-3">
             {rejectTarget && (
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
                 <div>Nhân viên: <strong>{rejectTarget.driver_name}</strong></div>
                 <div>Số tiền: <strong>{fmt(rejectTarget.amount)}</strong></div>
               </div>
@@ -462,7 +463,7 @@ export default function BonusView() {
       <Modal isOpen={confirmGenerate} onOpenChange={(open) => !open && setConfirmGenerate(false)} size="sm">
         <ModalContent>
           <ModalHeader>Tạo thưởng Tết {tetYear}</ModalHeader>
-          <ModalBody><p className="text-sm text-gray-600">Hệ thống sẽ tự động tính và tạo phiếu thưởng Tết {tetYear} cho tất cả tài xế chưa có. Tiếp tục?</p></ModalBody>
+          <ModalBody><p className="text-sm text-gray-600 dark:text-gray-300">Hệ thống sẽ tự động tính và tạo phiếu thưởng Tết {tetYear} cho tất cả tài xế chưa có. Tiếp tục?</p></ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setConfirmGenerate(false)}>Hủy</Button>
             <Button color="primary" isLoading={generating} onPress={handleGenerate}>Tạo thưởng</Button>

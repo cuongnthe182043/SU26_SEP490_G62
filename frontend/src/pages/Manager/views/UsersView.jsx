@@ -358,8 +358,8 @@ export default function UsersView({ user }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <span className="text-sm font-bold text-gray-800">Danh sách tài khoản</span>
-          <span className="text-xs text-gray-400 ml-2">Tổng: {filtered.length} / {allUsers.length} người dùng</span>
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Danh sách tài khoản</span>
+          <span className="text-xs text-gray-400 dark:text-gray-400 ml-2">Tổng: {filtered.length} / {allUsers.length} người dùng</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="flat" size="sm" startContent={<RiDownloadLine size={15} />} onPress={handleDownloadSample}>Tải file mẫu</Button>
@@ -374,7 +374,7 @@ export default function UsersView({ user }) {
           placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
           value={search}
           onValueChange={(v) => { setSearch(v); setPage(1); }}
-          startContent={<RiSearchLine size={15} className="text-gray-400" />}
+          startContent={<RiSearchLine size={15} className="text-gray-400 dark:text-gray-400" />}
           variant="bordered"
           size="sm"
           isClearable
@@ -418,7 +418,7 @@ export default function UsersView({ user }) {
         </Select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Danh sách người dùng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
@@ -484,7 +484,7 @@ export default function UsersView({ user }) {
         <ModalContent>
           <ModalHeader>Xác nhận</ModalHeader>
           <ModalBody>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Bạn có chắc muốn {toggleTarget?.is_active ? "khóa" : "mở khóa"} tài khoản "{toggleTarget?.full_name || toggleTarget?.email}"?
             </p>
           </ModalBody>
@@ -499,7 +499,7 @@ export default function UsersView({ user }) {
         <ModalContent>
           <ModalHeader>Reset mật khẩu</ModalHeader>
           <ModalBody>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Đặt lại mật khẩu cho tài khoản "{resetTarget?.full_name || resetTarget?.email}"? Mật khẩu tạm thời sẽ được gửi qua email <strong>{resetTarget?.email}</strong> — mật khẩu cũ sẽ ngừng hoạt động ngay và nhân viên phải đổi mật khẩu ở lần đăng nhập kế tiếp.
             </p>
           </ModalBody>
@@ -516,13 +516,13 @@ export default function UsersView({ user }) {
           <ModalBody className="gap-3">
             {importResult && (
               <>
-                <p className="text-sm text-gray-700">Đã tạo thành công {importResult.successes.length}/{importResult.total} nhân viên từ file.</p>
+                <p className="text-sm text-gray-700 dark:text-gray-200">Đã tạo thành công {importResult.successes.length}/{importResult.total} nhân viên từ file.</p>
                 {importResult.skippedRows.length > 0 && (
-                  <p className="text-xs text-gray-400">Đã bỏ qua {importResult.skippedRows.length} dòng trống (dòng {importResult.skippedRows.map((s) => s.rowNumber).join(", ")}).</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-400">Đã bỏ qua {importResult.skippedRows.length} dòng trống (dòng {importResult.skippedRows.map((s) => s.rowNumber).join(", ")}).</p>
                 )}
                 {importResult.failures.length > 0 && (
-                  <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3 max-h-60 overflow-y-auto">
-                    <p className="text-xs font-bold text-rose-600 mb-2">Có {importResult.failures.length} dòng chưa import được:</p>
+                  <div className="rounded-xl border border-rose-100 dark:border-rose-500/20 bg-rose-50/40 dark:bg-rose-500/10 p-3 max-h-60 overflow-y-auto">
+                    <p className="text-xs font-bold text-rose-600 dark:text-rose-300 mb-2">Có {importResult.failures.length} dòng chưa import được:</p>
                     {importResult.failures.slice(0, 20).map((f) => (
                       <p key={`${f.row}-${f.message}`} className="text-xs text-rose-500">Dòng {f.row}: {f.message}</p>
                     ))}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Textarea, NumberInput } from "@heroui/react";
 import { RiTruckLine, RiFileTextLine, RiScales3Line, RiMoneyDollarCircleLine } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 const EMPTY_FORM = { name: "", description: "", max_load_weight_kg: null, price_per_km: null };
 

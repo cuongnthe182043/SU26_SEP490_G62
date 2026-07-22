@@ -8,7 +8,7 @@ import {
   RiMoneyDollarCircleLine, RiTruckLine, RiPriceTag3Line, RiFileTextLine,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { coordinatorService } from "../services/coordinator.service";
 import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
@@ -65,8 +65,8 @@ export default function ReceiptDetailModal({
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="5xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
-          <span className="text-base font-bold text-gray-900">{readonly ? "Chi tiết phiếu thu" : "Tạo phiếu thu"}</span>
-          <span className="text-xs font-normal text-gray-400">
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">{readonly ? "Chi tiết phiếu thu" : "Tạo phiếu thu"}</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">
             {detail?.request ? `Yêu cầu #${detail.request.id} · Đơn #${detail.order?.id}` : "Đang tải thông tin yêu cầu phiếu thu"}
           </span>
         </ModalHeader>
@@ -77,42 +77,42 @@ export default function ReceiptDetailModal({
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Khách hàng</div>
+                  <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-3">Khách hàng</div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><span className="text-xs text-gray-400 block">Khách hàng</span><strong>{detail.customer?.full_name || "Khách lẻ"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Số điện thoại</span><strong>{detail.customer?.phone || "-"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Công ty</span><strong>{detail.customer?.company_name || "-"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Tài xế</span><strong>{detail.request?.driver_name || "-"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Đơn hàng</span><strong>#{detail.order?.id || "-"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Số chuyến</span><strong>{shipments.length || 0}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Khách hàng</span><strong>{detail.customer?.full_name || "Khách lẻ"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Số điện thoại</span><strong>{detail.customer?.phone || "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Công ty</span><strong>{detail.customer?.company_name || "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Tài xế</span><strong>{detail.request?.driver_name || "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Đơn hàng</span><strong>#{detail.order?.id || "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Số chuyến</span><strong>{shipments.length || 0}</strong></div>
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Thông tin đơn hàng</div>
+                  <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-3">Thông tin đơn hàng</div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><span className="text-xs text-gray-400 block">Hàng hóa</span><strong>{detail.order?.cargo_name || "-"}</strong></div>
-                    <div><span className="text-xs text-gray-400 block">Khối lượng</span><strong>{detail.order?.cargo_weight_kg ? `${detail.order.cargo_weight_kg} kg` : "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Hàng hóa</span><strong>{detail.order?.cargo_name || "-"}</strong></div>
+                    <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Khối lượng</span><strong>{detail.order?.cargo_weight_kg ? `${detail.order.cargo_weight_kg} kg` : "-"}</strong></div>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3">
                 {shipments.map((shipment) => (
-                  <div key={shipment.id} className="rounded-xl border border-gray-100 p-4 flex flex-col gap-2">
+                  <div key={shipment.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-4 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <strong className="text-sm">Chuyến #{shipment.id} · {shipment.shipment_index || "-"}</strong>
                       <StatusBadge status={shipment.status} />
                     </div>
                     <div className="grid grid-cols-4 gap-3 text-sm">
-                      <div><span className="text-xs text-gray-400 block">Tài xế</span><strong>{shipment.driver_name || "-"}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">Biển số</span><strong>{shipment.plate_number || "-"}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">Nhóm xe</span><strong>{shipment.vehicle_group_name || "-"}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">Đơn giá/km</span><strong>{formatCurrency(shipment.price_per_km)}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">KM thực tế</span><strong>{shipment.actual_km ? `${shipment.actual_km} km` : "-"}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Tài xế</span><strong>{shipment.driver_name || "-"}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Biển số</span><strong>{shipment.plate_number || "-"}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Nhóm xe</span><strong>{shipment.vehicle_group_name || "-"}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Đơn giá/km</span><strong>{formatCurrency(shipment.price_per_km)}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">KM thực tế</span><strong>{shipment.actual_km ? `${shipment.actual_km} km` : "-"}</strong></div>
                       {!readonly && primaryShipment && shipment.id === primaryShipment.id ? (
                         <div>
-                          <span className="text-xs text-gray-400 block">Doanh thu (có thể sửa)</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-400 block">Doanh thu (có thể sửa)</span>
                           <Input
                             type="number"
                             min="0"
@@ -126,10 +126,10 @@ export default function ReceiptDetailModal({
                           />
                         </div>
                       ) : (
-                        <div><span className="text-xs text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
+                        <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
                       )}
-                      <div className="col-span-2"><span className="text-xs text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">Chi phí chuyến</span><strong>{formatCurrency(shipment.total_expenses)}</strong></div>
+                      <div className="col-span-2"><span className="text-xs text-gray-400 dark:text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí chuyến</span><strong>{formatCurrency(shipment.total_expenses)}</strong></div>
                     </div>
                   </div>
                 ))}
@@ -138,8 +138,8 @@ export default function ReceiptDetailModal({
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">{readonly ? "Thông tin phiếu thu" : "Chi phí & phát hành"}</div>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{readonly ? "Thông tin phiếu thu" : "Chi phí & phát hành"}</div>
+                    <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                       {readonly ? "Xem lại chi phí đã ghi nhận và tổng hợp phiếu thu." : "Quản lý toàn bộ chi phí của đơn hàng và thêm khoản mới ngay bên dưới."}
                     </p>
                   </div>
@@ -154,11 +154,11 @@ export default function ReceiptDetailModal({
                     const images = Array.isArray(expense.receipt_urls) ? expense.receipt_urls : [];
                     const hasImage = images.length > 0;
                     return (
-                      <div key={expense.id} className="rounded-xl border border-gray-100 p-3 flex flex-col gap-2">
+                      <div key={expense.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                           <div>
                             <strong className="text-sm">{expenseTypeOptions.find((o) => o.value === expense.expense_type)?.label || expense.expense_type}</strong>
-                            <span className="ml-2 text-xs text-gray-400">
+                            <span className="ml-2 text-xs text-gray-400 dark:text-gray-400">
                               {expense.description || "Chi phí đã ghi nhận"}{expense.shipment_id ? ` · Chuyến #${expense.shipment_id}` : ""}
                             </span>
                           </div>
@@ -181,7 +181,7 @@ export default function ReceiptDetailModal({
                         {hasImage && (
                           <div className="flex gap-2 flex-wrap">
                             {images.map((url, idx) => (
-                              <Image key={idx} src={url} width={72} height={72} className="object-cover rounded-lg border border-gray-100" />
+                              <Image key={idx} src={url} width={72} height={72} className="object-cover rounded-lg border border-gray-100 dark:border-white/10" />
                             ))}
                           </div>
                         )}
@@ -190,7 +190,7 @@ export default function ReceiptDetailModal({
                   })}
 
                   {!readonly && (form?.expenses || []).map((expense, index) => (
-                    <div key={`expense-${index}`} className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex items-start gap-3">
+                    <div key={`expense-${index}`} className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-500/10 p-3 flex items-start gap-3">
                       <div className="grid grid-cols-4 gap-3 flex-1">
                         <Select
                           label="Chuyến"
@@ -242,10 +242,10 @@ export default function ReceiptDetailModal({
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-gray-100 p-4">
+                <div className="mt-4 rounded-xl border border-gray-100 dark:border-white/10 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <span className="text-xs text-gray-400 block">Ghi chú phiếu thu</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-400 block">Ghi chú phiếu thu</span>
                       <strong className="text-sm">Thông tin nội bộ cho coordinator</strong>
                     </div>
                     <Chip size="sm" variant="flat">{readonly ? (detail?.request?.status || "-") : "Không bắt buộc"}</Chip>
@@ -261,14 +261,14 @@ export default function ReceiptDetailModal({
                   />
                 </div>
 
-                <div className="mt-3 rounded-xl bg-blue-50 border border-blue-100 p-4 flex items-center justify-between">
+                <div className="mt-3 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-4 flex items-center justify-between">
                   <div>
                     <span className="text-xs text-blue-500 block">Chuyến dùng để chốt phiếu thu</span>
-                    <strong className="text-sm text-blue-900">{primaryShipment ? `#${primaryShipment.id} · ${primaryShipment.plate_number || primaryShipment.driver_name || "-"}` : "-"}</strong>
+                    <strong className="text-sm text-blue-900 dark:text-blue-200">{primaryShipment ? `#${primaryShipment.id} · ${primaryShipment.plate_number || primaryShipment.driver_name || "-"}` : "-"}</strong>
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-blue-500 block">Tổng thu</span>
-                    <strong className="text-lg text-blue-900">{formatCurrency(finalPrice)}</strong>
+                    <strong className="text-lg text-blue-900 dark:text-blue-200">{formatCurrency(finalPrice)}</strong>
                   </div>
                 </div>
               </div>

@@ -220,13 +220,13 @@ export default function DashboardView({ user }) {
   return (
     <div className="flex flex-col gap-5">
       {/* Thanh chuyển tab — gom mọi loại báo cáo (tổng quan, vận hành, tài chính, công nợ, KPI) vào 1 màn hình */}
-      <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
+      <div className="flex gap-1 bg-white dark:bg-[#161922] border border-gray-100 dark:border-white/10 rounded-2xl p-1.5 shadow-sm w-fit">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
-              ${tab === key ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+              ${tab === key ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"}`}
           >
             <Icon size={15} />
             {label}
@@ -241,28 +241,28 @@ export default function DashboardView({ user }) {
             value={overview?.workforce?.active_users || 0}
             icon={RiUserSettingsLine}
             sub={`${overview?.workforce?.driver_count || 0} tài xế, ${overview?.workforce?.active_staff || 0} nhân sự văn phòng`}
-            border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600"
+            border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600"
           />
           <StatCard
             label="Xe sẵn sàng"
             value={overview?.fleet?.active || 0}
             icon={RiTruckLine}
             sub={`${overview?.fleet?.maintenance || 0} bảo trì, ${overview?.fleet?.broken || 0} hư hỏng`}
-            border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600"
+            border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600"
           />
           <StatCard
             label="Công nợ cần thu"
             value={fmt(finance?.total_receivables)}
             icon={RiWalletLine}
             sub={`${finance?.pending_payments_count || 0} đơn chưa thu đủ`}
-            border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600"
+            border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600"
           />
           <StatCard
             label="Tiền chờ phê duyệt"
             value={fmt(workflow.pending_advances_amount)}
             icon={RiExchangeLine}
             sub="Ứng lương và nộp tiền đang chờ"
-            border="border-rose-100" lightBg="bg-rose-50" text="text-rose-600" gradient="from-rose-500 to-rose-600"
+            border="border-rose-100 dark:border-rose-500/20" lightBg="bg-rose-50 dark:bg-rose-500/10" text="text-rose-600 dark:text-rose-300" gradient="from-rose-500 to-rose-600"
           />
 
           <StatCard
@@ -270,28 +270,28 @@ export default function DashboardView({ user }) {
             value={overview?.workforce?.total_users || 0}
             icon={RiGroupLine}
             sub={`${overview?.workforce?.manager_count || 0} quản lý, ${overview?.workforce?.coordinator_count || 0} điều phối, ${overview?.workforce?.accountant_count || 0} kế toán`}
-            border="border-indigo-100" lightBg="bg-indigo-50" text="text-indigo-600" gradient="from-indigo-500 to-indigo-600"
+            border="border-indigo-100 dark:border-indigo-500/20" lightBg="bg-indigo-50 dark:bg-indigo-500/10" text="text-indigo-600 dark:text-indigo-300" gradient="from-indigo-500 to-indigo-600"
           />
           <StatCard
             label="Xe cần chú ý"
             value={(overview?.fleet?.maintenance || 0) + (overview?.fleet?.broken || 0)}
             icon={RiAlertLine}
             sub={`${overview?.fleet?.broken || 0} hư hỏng, ${overview?.fleet?.retired || 0} ngừng hoạt động`}
-            border="border-orange-100" lightBg="bg-orange-50" text="text-orange-600" gradient="from-orange-500 to-orange-600"
+            border="border-orange-100 dark:border-orange-500/20" lightBg="bg-orange-50 dark:bg-orange-500/10" text="text-orange-600 dark:text-orange-300" gradient="from-orange-500 to-orange-600"
           />
           <StatCard
             label="Doanh thu gộp"
             value={fmt(finance?.total_gross_revenue)}
             icon={RiLineChartLine}
             sub="Tổng cước các đơn đã hoàn thành"
-            border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600"
+            border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600"
           />
           <StatCard
             label="Đã thu về"
             value={fmt(finance?.total_collected)}
             icon={RiCoinLine}
             sub="Doanh thu thực nhận sau khi trừ công nợ"
-            border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600"
+            border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600"
           />
         </div>
       )}
@@ -299,19 +299,19 @@ export default function DashboardView({ user }) {
       {tab === "overview" && (
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 flex flex-col gap-4">
-          <Section title="Ứng lương" icon={RiExchangeLine} action={<span className="text-xs text-gray-400">{salaryAdvances.filter((a) => a.status === "pending").length} đang chờ</span>}>
+          <Section title="Ứng lương" icon={RiExchangeLine} action={<span className="text-xs text-gray-400 dark:text-gray-400">{salaryAdvances.filter((a) => a.status === "pending").length} đang chờ</span>}>
             {salaryAdvances.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Không có yêu cầu ứng lương.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-6">Không có yêu cầu ứng lương.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-50">
+              <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
                 {salaryAdvances.slice(0, 6).map((r) => (
                   <div key={r.id} className="flex items-center justify-between py-3 gap-3">
                     <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-semibold text-gray-800">{r.driver_name}</span>
-                      <span className="text-xs text-gray-400">{r.request_month}/{r.request_year} · {fmt(r.amount)}</span>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.driver_name}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-400">{r.request_month}/{r.request_year} · {fmt(r.amount)}</span>
                     </div>
                     {r.status === "pending" ? (
-                      <div className="flex gap-1 flex-shrink-0">
+                      <div className="flex gap-1 shrink-0">
                         <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={actingId === `advance-approve-${r.id}`} onPress={() => handleApproveAdvance(r)}>Duyệt</Button>
                         <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setRejectAdvanceTarget(r); setRejectReason(""); }}>Từ chối</Button>
                       </div>
@@ -324,18 +324,18 @@ export default function DashboardView({ user }) {
             )}
           </Section>
 
-          <Section title="Nộp tiền công nợ" icon={RiWalletLine} action={<span className="text-xs text-gray-400">{debtRepayments.length} đang chờ</span>}>
+          <Section title="Nộp tiền công nợ" icon={RiWalletLine} action={<span className="text-xs text-gray-400 dark:text-gray-400">{debtRepayments.length} đang chờ</span>}>
             {debtRepayments.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Không có yêu cầu nộp tiền.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-6">Không có yêu cầu nộp tiền.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-50">
+              <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
                 {debtRepayments.slice(0, 6).map((r) => (
                   <div key={r.id} className="flex items-center justify-between py-3 gap-3">
                     <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-semibold text-gray-800">{r.driver_name}</span>
-                      <span className="text-xs text-gray-400">{r.cargo_name || "Công nợ nội bộ"} · {fmt(r.amount)} / {fmt(r.total_amount)}</span>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.driver_name}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-400">{r.cargo_name || "Công nợ nội bộ"} · {fmt(r.amount)} / {fmt(r.total_amount)}</span>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex gap-1 shrink-0">
                       <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={actingId === `repayment-confirm-${r.id}`} onPress={() => handleConfirmRepayment(r)}>Xác nhận</Button>
                       <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setRejectRepaymentTarget(r); setRejectReason(""); }}>Từ chối</Button>
                     </div>
@@ -349,17 +349,17 @@ export default function DashboardView({ user }) {
         <div className="flex flex-col gap-4">
           <Section title="Yêu cầu phiếu thu" icon={RiFileTextLine}>
             {receiptRequests.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Không có yêu cầu phiếu thu.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-6">Không có yêu cầu phiếu thu.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-50">
+              <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
                 {receiptRequests.slice(0, 6).map((r, idx) => (
                   <div key={idx} className="py-2.5 flex flex-col gap-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-800">Đơn #{r.order_id}</span>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Đơn #{r.order_id}</span>
                       <StatusBadge status={r.status} />
                     </div>
-                    <span className="text-xs text-gray-500">{r.driver_name || "Chưa có tài xế"} → {r.customer_name || "Khách lẻ"}</span>
-                    <span className="text-xs text-gray-400">{r.cargo_name || "Không có tên hàng"} · {fmt(r.receipt_amount)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{r.driver_name || "Chưa có tài xế"} → {r.customer_name || "Khách lẻ"}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{r.cargo_name || "Không có tên hàng"} · {fmt(r.receipt_amount)}</span>
                   </div>
                 ))}
               </div>
@@ -376,18 +376,18 @@ export default function DashboardView({ user }) {
                 <Input label="Chủ tài khoản" value={companyForm.bank_account_name} onValueChange={(v) => setCompanyForm((p) => ({ ...p, bank_account_name: v }))} variant="bordered" size="sm" />
 
                 <div className="flex flex-col gap-2">
-                  <span className="text-xs font-medium text-gray-600">Ảnh QR ngân hàng</span>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Ảnh QR ngân hàng</span>
                   <div className="flex items-center gap-3">
                     {companyForm.bank_qr_url ? (
-                      <img src={companyForm.bank_qr_url} alt="QR ngân hàng" className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
+                      <img src={companyForm.bank_qr_url} alt="QR ngân hàng" className="w-20 h-20 rounded-xl object-cover border border-gray-200 dark:border-white/10" />
                     ) : (
-                      <div className="w-20 h-20 rounded-xl border border-dashed border-gray-300 flex items-center justify-center">
+                      <div className="w-20 h-20 rounded-xl border border-dashed border-gray-300 dark:border-white/15 flex items-center justify-center">
                         <RiQrCodeLine size={22} className="text-gray-300" />
                       </div>
                     )}
                     <label className="cursor-pointer">
                       <input type="file" accept="image/*" className="hidden" onChange={handleUploadQr} disabled={uploadingQr} />
-                      <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                         {uploadingQr ? <Spinner size="sm" /> : <RiUploadCloud2Line size={14} />}
                         {companyForm.bank_qr_url ? "Đổi ảnh QR" : "Tải ảnh QR"}
                       </span>
@@ -396,7 +396,7 @@ export default function DashboardView({ user }) {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 dark:text-gray-400">
                     {companyForm.updated_at ? `Cập nhật lần cuối: ${new Date(companyForm.updated_at).toLocaleString("vi-VN")}` : "Chưa có bản ghi công ty."}
                   </span>
                   <Button size="sm" color="primary" isLoading={savingCompany} onPress={handleSaveCompany}>Lưu thay đổi</Button>
@@ -411,12 +411,12 @@ export default function DashboardView({ user }) {
       {(tab === "financial" || tab === "debt") && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
+            <p className="text-xs text-gray-400 dark:text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
             <Select
               size="sm"
               selectedKeys={new Set([reportMonths])}
               onSelectionChange={(keys) => handleReportMonthsChange([...keys][0])}
-              classNames={{ base: "w-48", trigger: "h-8 bg-white border border-gray-200 rounded-lg text-xs" }}
+              classNames={{ base: "w-48", trigger: "h-8 bg-white dark:bg-[#161922] border border-gray-200 dark:border-white/10 rounded-lg text-xs" }}
               aria-label="Kỳ báo cáo"
             >
               {REPORT_MONTH_OPTIONS.map(({ key, label }) => (
@@ -429,10 +429,10 @@ export default function DashboardView({ user }) {
             <div className="flex items-center justify-center py-24"><Spinner color="primary" label="Đang tải báo cáo..." size="lg" /></div>
           ) : reportError ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
                 <RiAlertLine size={22} className="text-red-400" />
               </div>
-              <p className="text-sm text-gray-500">{reportError}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{reportError}</p>
             </div>
           ) : tab === "financial" ? (
             <>
@@ -442,28 +442,28 @@ export default function DashboardView({ user }) {
                   value={VND(reportTotalRevenue)}
                   icon={RiLineChartLine}
                   sub={`${reportTotalOrders} đơn hoàn thành`}
-                  gradient="from-blue-500 to-blue-600" lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+                  gradient="from-blue-500 to-blue-600" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
                 />
                 <StatCard
                   label="Nợ phải thu"
                   value={VND(reportTotalDebt)}
                   icon={RiFileTextLine}
                   sub={reportTotalDebt > 0 ? "Từ khách hàng chưa thu đủ" : "Không có công nợ"}
-                  gradient="from-orange-500 to-orange-600" lightBg="bg-orange-50" text="text-orange-600" border="border-orange-100"
+                  gradient="from-orange-500 to-orange-600" lightBg="bg-orange-50 dark:bg-orange-500/10" text="text-orange-600 dark:text-orange-300" border="border-orange-100 dark:border-orange-500/20"
                 />
                 <StatCard
                   label="Nợ quá hạn > 90 ngày"
                   value={VND(reportOverdueDebt)}
                   icon={RiAlertLine}
                   sub={reportOverdueDebt > 0 ? "Cần xử lý khẩn" : "Không có"}
-                  gradient="from-red-500 to-rose-600" lightBg="bg-red-50" text="text-red-600" border="border-red-100"
+                  gradient="from-red-500 to-rose-600" lightBg="bg-red-50 dark:bg-red-500/10" text="text-red-600 dark:text-red-300" border="border-red-100 dark:border-red-500/20"
                 />
                 <StatCard
                   label="Lương tháng này"
                   value={VND(report?.payrollSummary?.total_net ?? 0)}
                   icon={RiWalletLine}
                   sub={`${report?.payrollSummary?.paid ?? 0} tài xế đã chi`}
-                  gradient="from-emerald-500 to-emerald-600" lightBg="bg-emerald-50" text="text-emerald-600" border="border-emerald-100"
+                  gradient="from-emerald-500 to-emerald-600" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" border="border-emerald-100 dark:border-emerald-500/20"
                 />
               </div>
 
@@ -541,8 +541,8 @@ export default function DashboardView({ user }) {
 function RejectDialog({ title, reason, setReason, loading, onClose, onConfirm }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <span className="text-sm font-bold text-gray-900">{title}</span>
+      <div className="bg-white dark:bg-[#161922] rounded-2xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{title}</span>
         <Textarea placeholder="Lý do từ chối" value={reason} onValueChange={setReason} minRows={3} variant="bordered" />
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="flat" onPress={onClose}>Hủy</Button>

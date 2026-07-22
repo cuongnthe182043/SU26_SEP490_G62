@@ -66,10 +66,10 @@ export function ReportView() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
           <RiAlertLine size={22} className="text-red-400" />
         </div>
-        <p className="text-sm text-gray-500">{error}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{error}</p>
       </div>
     );
   }
@@ -79,14 +79,14 @@ export function ReportView() {
 
       {}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
+        <p className="text-xs text-gray-400 dark:text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
         <Select
           size="sm"
           selectedKeys={new Set([months])}
           onSelectionChange={(keys) => setMonths([...keys][0])}
           classNames={{
             base: "w-48",
-            trigger: "h-8 bg-white border border-gray-200 rounded-lg text-xs",
+            trigger: "h-8 bg-white dark:bg-[#161922] border border-gray-200 dark:border-white/10 rounded-lg text-xs",
           }}
           aria-label="Kỳ báo cáo"
         >
@@ -106,7 +106,7 @@ export function ReportView() {
           icon={RiLineChartLine}
           sub={`${totalOrders} đơn hoàn thành`}
           gradient="from-blue-500 to-blue-600"
-          lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+          lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
         />
         <StatCard
           label="Nợ phải thu"
@@ -114,7 +114,7 @@ export function ReportView() {
           icon={RiFileList3Line}
           sub={totalDebt > 0 ? "Từ khách hàng chưa thu đủ" : "Không có công nợ"}
           gradient="from-orange-500 to-orange-600"
-          lightBg="bg-orange-50" text="text-orange-600" border="border-orange-100"
+          lightBg="bg-orange-50 dark:bg-orange-500/10" text="text-orange-600 dark:text-orange-300" border="border-orange-100 dark:border-orange-500/20"
         />
         <StatCard
           label="Nợ quá hạn > 90 ngày"
@@ -122,7 +122,7 @@ export function ReportView() {
           icon={RiAlertLine}
           sub={overdueDebt > 0 ? "Cần xử lý khẩn" : "Không có"}
           gradient="from-red-500 to-rose-600"
-          lightBg="bg-red-50" text="text-red-600" border="border-red-100"
+          lightBg="bg-red-50 dark:bg-red-500/10" text="text-red-600 dark:text-red-300" border="border-red-100 dark:border-red-500/20"
         />
         <StatCard
           label="Lương tháng này"
@@ -130,7 +130,7 @@ export function ReportView() {
           icon={RiMoneyDollarCircleLine}
           sub={`${(data?.payrollSummary?.paid ?? 0)} tài xế đã chi`}
           gradient="from-emerald-500 to-emerald-600"
-          lightBg="bg-emerald-50" text="text-emerald-600" border="border-emerald-100"
+          lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" border="border-emerald-100 dark:border-emerald-500/20"
         />
       </div>
 
@@ -141,15 +141,15 @@ export function ReportView() {
             title="Xu hướng doanh thu"
             icon={RiLineChartLine}
             action={
-              <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
+              <div className="flex gap-0.5 bg-gray-100 dark:bg-white/10 p-0.5 rounded-lg">
                 {GRANULARITY_OPTIONS.map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => setGranularity(key)}
                     className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all
                       ${granularity === key
-                        ? "bg-white text-blue-600 shadow-sm"
-                        : "text-gray-400 hover:text-gray-600"}`}
+                        ? "bg-white dark:bg-[#161922] text-blue-600 dark:text-blue-300 shadow-sm"
+                        : "text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
                   >
                     {label}
                   </button>
