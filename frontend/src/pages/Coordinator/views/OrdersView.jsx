@@ -3,8 +3,7 @@ import {
   Button, Input, Tabs, Tab,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem, Textarea,
 } from "@heroui/react";
-import { RiRefreshLine, RiDownloadLine } from "react-icons/ri";
-import { exportCoordinatorOrdersToExcel } from "../utils/exportExcel";
+import { RiRefreshLine } from "react-icons/ri";
 import OrderFormModal from "../modals/OrderFormModal";
 import { OrdersTable } from "../components/OrdersTable";
 import { coordinatorService } from "../services/coordinator.service";
@@ -451,19 +450,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
             <div className="text-sm font-bold text-gray-800">Danh sách đơn hàng</div>
             <div className="text-xs text-gray-400">Bấm vào 1 dòng để xem các chuyến bên trong đơn (nếu có nhiều chuyến).</div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400">{pagination.total ? `${pagination.total} đơn` : `${trips.length} đơn`}</span>
-            <Button
-              size="sm"
-              variant="flat"
-              color="success"
-              startContent={<RiDownloadLine size={16} />}
-              onPress={() => exportCoordinatorOrdersToExcel(trips)}
-              isDisabled={!trips.length}
-            >
-              Xuất Excel
-            </Button>
-          </div>
+          <span className="text-xs text-gray-400">{pagination.total ? `${pagination.total} đơn` : `${trips.length} đơn`}</span>
         </div>
 
         <OrdersTable
