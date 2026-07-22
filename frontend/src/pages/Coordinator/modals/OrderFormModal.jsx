@@ -3,11 +3,18 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Select, SelectItem, Textarea, Spinner,
 } from "@heroui/react";
-import { RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine } from "react-icons/ri";
+import {
+  RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine,
+  RiCalendarEventLine, RiPhoneLine, RiUserLine, RiArchiveLine, RiScales3Line,
+  RiMoneyDollarCircleLine, RiRoadMapLine, RiTruckLine, RiRoadsterLine,
+  RiMapPinLine, RiFileTextLine,
+} from "react-icons/ri";
 import { coordinatorService } from "../services/coordinator.service";
 import { useCustomerPhoneSuggest } from "../../../hooks/useCustomerPhoneSuggest";
 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 export default function OrderFormModal({
   open,
