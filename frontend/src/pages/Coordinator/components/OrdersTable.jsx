@@ -11,38 +11,38 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
   return (
     <>
       <tr
-        className={`border-b border-gray-100 transition-colors cursor-pointer ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50/60"}`}
+        className={`border-b border-gray-100 dark:border-white/10 transition-colors cursor-pointer ${isExpanded ? "bg-blue-50/40 dark:bg-blue-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={onToggle}
       >
         <td className="py-3.5 pl-5">
-          <span className="text-gray-400">
+          <span className="text-gray-400 dark:text-gray-400">
             {isExpanded ? <RiArrowDownSLine size={17} /> : <RiArrowRightSLine size={17} />}
           </span>
         </td>
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-gray-800">#{trip.orderId}</span>
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">#{trip.orderId}</span>
               {trip.shipmentCount > 1 && (
-                <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 rounded px-1.5 py-0.5">
+                <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 rounded px-1.5 py-0.5">
                   {trip.shipmentCount} chuyến
                 </span>
               )}
             </div>
-            <span className="text-xs font-medium text-gray-600">{trip.customerName || "—"}</span>
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{trip.customerName || "—"}</span>
           </div>
         </td>
-        <td className="py-3.5 pr-4"><span className="text-xs text-gray-500">{trip.date || "—"}</span></td>
-        <td className="py-3.5 pr-4"><span className="text-xs text-gray-600">{trip.plate || "—"}</span></td>
-        <td className="py-3.5 pr-4"><span className="text-xs text-gray-600">{trip.driverName || "—"}</span></td>
+        <td className="py-3.5 pr-4"><span className="text-xs text-gray-500 dark:text-gray-400">{trip.date || "—"}</span></td>
+        <td className="py-3.5 pr-4"><span className="text-xs text-gray-600 dark:text-gray-300">{trip.plate || "—"}</span></td>
+        <td className="py-3.5 pr-4"><span className="text-xs text-gray-600 dark:text-gray-300">{trip.driverName || "—"}</span></td>
         <td className="py-3.5 pr-4 overflow-hidden">
           {trip.isMultiShipment ? (
-            <span className="text-xs text-gray-500 truncate block">{trip.route || "—"}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate block">{trip.route || "—"}</span>
           ) : (
-            <RouteStops pickups={trip.pickupAddresses} deliveries={trip.deliveryAddresses} className="text-xs text-gray-500 min-w-0 max-w-full" />
+            <RouteStops pickups={trip.pickupAddresses} deliveries={trip.deliveryAddresses} className="text-xs text-gray-500 dark:text-gray-400 min-w-0 max-w-full" />
           )}
         </td>
-        <td className="py-3.5 pr-4"><span className="text-sm font-bold text-gray-800">{formatCurrency(trip.fare)}</span></td>
+        <td className="py-3.5 pr-4"><span className="text-sm font-bold text-gray-800 dark:text-gray-100">{formatCurrency(trip.fare)}</span></td>
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <StatusBadge status={trip.statusClass} />
         </td>
@@ -91,17 +91,17 @@ export function OrdersTable({
   if (trips.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
-          <RiInboxLine size={26} className="text-gray-400" />
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/10 flex items-center justify-center">
+          <RiInboxLine size={26} className="text-gray-400 dark:text-gray-400" />
         </div>
-        <p className="text-gray-500 text-sm">Chưa có đơn hàng. Tạo mới đơn để bắt đầu điều phối.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Chưa có đơn hàng. Tạo mới đơn để bắt đầu điều phối.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4 p-5">
-      <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
+      <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922]">
         <div className="overflow-x-auto">
         <table className="w-full table-fixed min-w-[1000px]">
           <colgroup>
@@ -116,9 +116,9 @@ export function OrdersTable({
             <col className="w-40" />
           </colgroup>
           <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200">
+            <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               {["", "Đơn / Khách hàng", "Ngày", "BKS", "Lái xe", "Hành trình", "Cước xe", "Trạng thái", ""].map((label, i) => (
-                <th key={i} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3 pr-4 first:pl-5 last:pr-5">
+                <th key={i} className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider py-3 pr-4 first:pl-5 last:pr-5">
                   {label}
                 </th>
               ))}

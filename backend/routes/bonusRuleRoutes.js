@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const bonusRuleController = require('../controllers/bonusRuleController');
 
 // Configure Bonus Rules — Manager only (theo Permission Matrix)
-router.use(verifyToken, requireRole('manager'));
+router.use(verifyToken, requireRole('manager', 'accountant'));
 
 router.get('/',      bonusRuleController.getAll);
 router.get('/:id',   bonusRuleController.getOne);

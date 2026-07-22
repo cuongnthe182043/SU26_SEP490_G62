@@ -168,7 +168,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   return (
     <HeroUIProvider>
-      <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <div className="flex h-screen bg-gray-50 dark:bg-[#0e1016] overflow-hidden">
         <Sidebar
           navGroups={NAV_GROUPS}
           brandLabel="LogisCount"

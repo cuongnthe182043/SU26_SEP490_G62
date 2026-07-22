@@ -79,6 +79,25 @@ const VIEW_META = {
 };
 
 const VIEW_STORAGE_KEY = "manager_active_view";
+
+// entity_type (backend gắn vào thông báo) → view của Manager. Thực thể không có
+// trong bảng thì về dashboard (nơi có các hàng đợi tổng hợp).
+const NOTIFICATION_VIEW_BY_ENTITY = {
+  payroll: "payroll",
+  salary_advance: "dashboard",
+  salary_advances: "dashboard",
+  driver_bonuses: "bonus",
+  partner: "partners",
+  debts: "dashboard",
+  debt_payments: "dashboard",
+  expenses: "spending",
+  vehicle: "vehicles",
+  maintenance_record: "vehicles",
+  incidents: "dashboard",
+  orders: "dashboard",
+  shipments: "dashboard",
+  receipt: "dashboard",
+};
 const VALID_VIEWS = Object.keys(VIEW_META);
 
 const getInitialView = () => {
@@ -100,6 +119,12 @@ export default function ManagerPage({ user, onLogout }) {
     try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* ignore */ }
   };
 
+  // Bấm 1 thông báo → nhảy tới màn liên quan (theo entity_type backend gắn).
+  const handleNotificationSelect = (notification) => {
+    const view = NOTIFICATION_VIEW_BY_ENTITY[notification?.entity_type];
+    if (view) handleViewChange(view);
+  };
+
   const handleLogout = () => onLogout?.();
 
   const handleProfileUpdated = (nextProfile) => {
@@ -112,7 +137,7 @@ export default function ManagerPage({ user, onLogout }) {
 
   return (
     <HeroUIProvider>
-      <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <div className="flex h-screen bg-gray-50 dark:bg-[#0e1016] overflow-hidden">
         <Sidebar
           navGroups={NAV_GROUPS}
           brandLabel="LogisCount"
@@ -127,7 +152,7 @@ export default function ManagerPage({ user, onLogout }) {
         />
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <TopBar title={meta.title} subtitle={meta.subtitle} />
+          <TopBar title={meta.title} subtitle={meta.subtitle} onNotificationSelect={handleNotificationSelect} />
 
           <main className="flex-1 overflow-y-auto p-6">
             {activeView === "dashboard" && <DashboardView user={currentUser} />}
