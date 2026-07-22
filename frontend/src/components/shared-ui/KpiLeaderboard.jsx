@@ -39,7 +39,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [vehicleGroups, setVehicleGroups] = useState([]);
-  const [vehicleGroupId, setVehicleGroupId] = useState(null);
+  const [vehicleGroupId, setVehicleGroupId] = useState("all");
   const [editingDriver, setEditingDriver] = useState(null);
 
   const [kpiRows, setKpiRows] = useState([]);
@@ -60,7 +60,6 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
       .then((data) => {
         const groups = data.vehicleGroups || [];
         setVehicleGroups(groups);
-        if (groups.length) setVehicleGroupId(String(groups[0].id));
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,7 +68,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   useEffect(() => {
     if (tab === "kpi") {
       setKpiLoading(true);
-      getAllDriversKPI({ month: String(month), year: String(year), ...(vehicleGroupId ? { vehicleGroupId } : {}) })
+      getAllDriversKPI({ month: String(month), year: String(year), ...(vehicleGroupId && vehicleGroupId !== "all" ? { vehicleGroupId } : {}) })
         .then((data) => setKpiRows(data.kpi || []))
         .catch(() => {})
         .finally(() => setKpiLoading(false));
@@ -120,13 +119,14 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
           {YEARS.map((y) => <SelectItem key={String(y)}>{String(y)}</SelectItem>)}
         </Select>
         <Select
-          selectedKeys={vehicleGroupId ? [vehicleGroupId] : []}
-          onSelectionChange={(keys) => setVehicleGroupId([...keys][0] ?? null)}
+          selectedKeys={vehicleGroupId ? [vehicleGroupId] : ["all"]}
+          onSelectionChange={(keys) => setVehicleGroupId([...keys][0] ?? "all")}
           placeholder="Tất cả nhóm xe"
           variant="bordered"
           size="sm"
           className="w-56"
         >
+          <SelectItem key="all">Tất cả nhóm xe</SelectItem>
           {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{g.name}</SelectItem>)}
         </Select>
       </div>
