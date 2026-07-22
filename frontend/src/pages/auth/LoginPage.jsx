@@ -3,6 +3,7 @@ import { Button, Input, Modal, Space, message } from "antd";
 import { apiRequest } from "../../services/apiClient";
 import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
+import ThemeToggle from "../../theme/ThemeToggle";
 import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -335,6 +336,9 @@ export default function LoginPage({ onLoginSuccess }) {
   return (
     <>
       <main className="login-root" role="main">
+        <div style={{ position: "fixed", top: 16, right: 16, zIndex: 50 }}>
+          <ThemeToggle />
+        </div>
         <aside className="login-left" aria-hidden="true">
           <div className="login-hero">
             <div className="login-hero-orbit">
