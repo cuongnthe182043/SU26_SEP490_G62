@@ -5,9 +5,11 @@ import {
 } from "@heroui/react";
 import {
   RiBankCard2Line, RiHistoryLine, RiCheckboxCircleLine,
-  RiAlertLine, RiArrowRightLine,
+  RiAlertLine, RiArrowRightLine, RiMoneyDollarCircleLine, RiStickyNoteLine,
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 
 const PAYMENT_METHODS = [
@@ -283,6 +285,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               onValueChange={(v) => { setAmount(v); setError(null); setResult(null); }}
               type="number"
               min={0}
+              startContent={ic(RiMoneyDollarCircleLine)}
               description={
                 totalOutstanding > 0
                   ? `Tổng nợ khách: ${Math.round(totalOutstanding).toLocaleString("vi-VN")}đ${
@@ -299,6 +302,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               label="Hình thức thanh toán"
               selectedKeys={method}
               onSelectionChange={setMethod}
+              startContent={ic(RiBankCard2Line)}
             >
               {PAYMENT_METHODS.map(({ key, label }) => (
                 <SelectItem key={key}>{label}</SelectItem>
@@ -311,6 +315,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               onValueChange={setNotes}
               maxLength={500}
               classNames={{ inputWrapper: "bg-white" }}
+              startContent={ic(RiStickyNoteLine)}
             />
           </div>
 
