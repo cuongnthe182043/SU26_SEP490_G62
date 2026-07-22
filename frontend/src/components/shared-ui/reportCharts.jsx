@@ -44,10 +44,10 @@ export function RevenueChart({ data }) {
             <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" />
         <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
         <YAxis tickFormatter={VND} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={60} />
-        <RechartTooltip content={<ChartTooltip />} />
+        <RechartTooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(148,163,184,0.45)", strokeWidth: 1 }} />
         <Area
           type="monotone"
           dataKey="revenue"
@@ -120,10 +120,10 @@ export function VehicleRevenueChart({ data }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={chartData.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" horizontal={false} />
         <XAxis type="number" tickFormatter={VND} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#6b7280", fontWeight: 600 }} axisLine={false} tickLine={false} width={82} interval={0} />
-        <RechartTooltip content={<ChartTooltip />} />
+        <RechartTooltip content={<ChartTooltip />} cursor={{ fill: "rgba(148,163,184,0.12)" }} />
         <Bar dataKey="revenue" name="Doanh thu" radius={[0, 6, 6, 0]} barSize={16}>
           {chartData.slice(0, 8).map((entry, i) => (
             <Cell key={i} fill={entry.color} />
