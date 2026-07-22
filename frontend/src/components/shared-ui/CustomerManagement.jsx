@@ -159,7 +159,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
           >
             <SelectItem key="newest" textValue="Mới nhất">Mới nhất</SelectItem>
             <SelectItem key="name_asc" textValue="Tên A-Z">Tên A→Z</SelectItem>
-            <SelectItem key="orders_desc" textValue="Số đơn nhiều nhất">Số đơn nhiều nhất</SelectItem>
+            
           </Select>
         </div>
         <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate} className="h-9 font-medium px-4">
@@ -197,7 +197,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
             <TableColumn>SĐT</TableColumn>
             <TableColumn>EMAIL</TableColumn>
             <TableColumn>MST</TableColumn>
-            <TableColumn>SỐ ĐƠN</TableColumn>
+            
             <TableColumn> </TableColumn>
           </TableHeader>
           <TableBody
@@ -222,7 +222,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
                 <TableCell>{c.phone}</TableCell>
                 <TableCell>{c.email || "-"}</TableCell>
                 <TableCell>{c.tax_code || "-"}</TableCell>
-                <TableCell>{c.total_orders ?? 0}</TableCell>
+                
                 <TableCell>
                   <div className="flex gap-1 justify-end">
                     <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => openEdit(c)}>Sửa</Button>
