@@ -15,7 +15,7 @@ function ShipmentRow({ shipment }) {
     ?? (driverRemaining <= 0.01 ? "paid" : driverPaid > 0 ? "partial" : "unpaid");
 
   return (
-    <tr className="bg-blue-50/30 border-b border-blue-100/40 last:border-0">
+    <tr className="bg-blue-50/30 dark:bg-blue-500/10 border-b border-blue-100/40 last:border-0">
       {}
       <td className="py-3 pl-4" />
 
@@ -107,7 +107,7 @@ export function ShipmentRows({ shipments, isLoading }) {
   if (isLoading) {
     return (
       <tr>
-        <td colSpan={7} className="py-4 text-center bg-blue-50/20">
+        <td colSpan={7} className="py-4 text-center bg-blue-50/20 dark:bg-blue-500/10">
           <Spinner size="sm" color="primary" />
         </td>
       </tr>
@@ -117,7 +117,7 @@ export function ShipmentRows({ shipments, isLoading }) {
   if (!shipments || shipments.length === 0) {
     return (
       <tr>
-        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20">
+        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20 dark:bg-blue-500/10">
           Không có chuyến xe nào.
         </td>
       </tr>

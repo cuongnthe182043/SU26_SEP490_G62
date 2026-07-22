@@ -212,7 +212,7 @@ export default function OrderFormModal({
             <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-3">Chuyến xe</div>
             <div className="flex flex-col gap-3">
               {form.trips.map((trip, index) => (
-                <div key={index} className="rounded-2xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/40 p-4 flex flex-col gap-3">
+                <div key={index} className="rounded-2xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-500/10 p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-blue-900 dark:text-blue-200">Chuyến {index + 1}</span>
                     {form.trips.length > 1 && (

@@ -65,7 +65,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
   const totalExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
   return (
-    <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-white/10 rounded-2xl bg-gray-50/40">
+    <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-white/10 rounded-2xl bg-gray-50/40 dark:bg-white/5">
       {}
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Chuyến {index + 1}</span>

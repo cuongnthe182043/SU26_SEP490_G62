@@ -67,7 +67,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
                 {weeks.map((week, wi) => (
                   <div key={wi} className="grid grid-cols-7 divide-x divide-gray-50 dark:divide-white/10">
                     {week.map((day, di) => {
-                      if (!day) return <div key={di} className="h-16 bg-gray-50/40" />;
+                      if (!day) return <div key={di} className="h-16 bg-gray-50/40 dark:bg-white/5" />;
                       const style = STATUS_STYLE[day.status];
                       const dayNum = new Date(day.work_date).getDate();
                       return (

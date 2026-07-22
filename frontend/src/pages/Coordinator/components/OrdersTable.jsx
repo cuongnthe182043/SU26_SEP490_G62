@@ -11,7 +11,7 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
   return (
     <>
       <tr
-        className={`border-b border-gray-100 dark:border-white/10 transition-colors cursor-pointer ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
+        className={`border-b border-gray-100 dark:border-white/10 transition-colors cursor-pointer ${isExpanded ? "bg-blue-50/40 dark:bg-blue-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={onToggle}
       >
         <td className="py-3.5 pl-5">
@@ -116,7 +116,7 @@ export function OrdersTable({
             <col className="w-40" />
           </colgroup>
           <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200 dark:border-white/10">
+            <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               {["", "Đơn / Khách hàng", "Ngày", "BKS", "Lái xe", "Hành trình", "Cước xe", "Trạng thái", ""].map((label, i) => (
                 <th key={i} className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider py-3 pr-4 first:pl-5 last:pr-5">
                   {label}

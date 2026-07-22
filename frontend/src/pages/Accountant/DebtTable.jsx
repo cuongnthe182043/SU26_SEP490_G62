@@ -409,7 +409,7 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
               const dueDate   = debt.due_date ? new Date(debt.due_date).toLocaleDateString("vi-VN") : "—";
 
               return (
-                <tr key={debt.id} className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-white/5/50 transition-colors">
+                <tr key={debt.id} className="border-b border-gray-50 hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                   <td className={TD}><DebtBadge label={typeCfg.label} color={typeCfg.color} /></td>
                   <td className={`${TD} font-semibold max-w-[160px]`}>{name}</td>
                   <td className={`${TD} text-gray-400 dark:text-gray-400 text-[12px] max-w-[200px]`}>{contact}</td>
@@ -460,7 +460,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
             <div key={key} className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
               {}
               <div
-                className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50 dark:bg-white/5" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
+                className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50 dark:bg-white/5" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
                 onClick={() => toggleExpand(debt, key)}
               >
                 <span className="text-gray-400 dark:text-gray-400 w-4 flex-shrink-0 flex items-center">
@@ -522,7 +522,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                             const dRemaining = Number(d.remaining || 0);
                             const dStatusCfg = STATUS_CFG[d.computed_status || "unpaid"] || STATUS_CFG.unpaid;
                             return (
-                              <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-white/5/40 transition-colors">
+                              <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50/40 dark:hover:bg-white/5 transition-colors">
                                 <td className="px-2.5 py-2 font-semibold">{d.customer_name || d.driver_name || "—"}</td>
                                 <td className="px-2.5 py-2 font-mono text-[11px]">{d.customer_phone || d.driver_phone || "—"}</td>
                                 <td className="px-2.5 py-2 font-mono">#{d.order_id}</td>

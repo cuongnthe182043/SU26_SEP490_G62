@@ -93,7 +93,7 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
               )}
 
               {totalRemaining > 0.01 && (
-                <div className="rounded-xl border border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/50 p-4 flex flex-col gap-3">
+                <div className="rounded-xl border border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/10 p-4 flex flex-col gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200">
                     <RiMoneyDollarCircleLine size={16} /> Ghi nhận đối tác thanh toán
                   </div>

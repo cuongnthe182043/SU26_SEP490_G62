@@ -29,7 +29,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
     <>
       <tr
         className={`border-b border-gray-100 dark:border-white/10 transition-colors cursor-pointer
-                   ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
+                   ${isExpanded ? "bg-blue-50/40 dark:bg-blue-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={onToggle}
       >
         {}
@@ -214,7 +214,7 @@ export function OrdersTable({
             <col className="w-24" />
           </colgroup>
           <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200 dark:border-white/10">
+            <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               {[
                 { label: "" },
                 { label: "Đơn / Khách hàng" },

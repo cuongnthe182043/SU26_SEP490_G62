@@ -521,7 +521,7 @@ export default function UsersView({ user }) {
                   <p className="text-xs text-gray-400 dark:text-gray-400">Đã bỏ qua {importResult.skippedRows.length} dòng trống (dòng {importResult.skippedRows.map((s) => s.rowNumber).join(", ")}).</p>
                 )}
                 {importResult.failures.length > 0 && (
-                  <div className="rounded-xl border border-rose-100 dark:border-rose-500/20 bg-rose-50/40 p-3 max-h-60 overflow-y-auto">
+                  <div className="rounded-xl border border-rose-100 dark:border-rose-500/20 bg-rose-50/40 dark:bg-rose-500/10 p-3 max-h-60 overflow-y-auto">
                     <p className="text-xs font-bold text-rose-600 dark:text-rose-300 mb-2">Có {importResult.failures.length} dòng chưa import được:</p>
                     {importResult.failures.slice(0, 20).map((f) => (
                       <p key={`${f.row}-${f.message}`} className="text-xs text-rose-500">Dòng {f.row}: {f.message}</p>
