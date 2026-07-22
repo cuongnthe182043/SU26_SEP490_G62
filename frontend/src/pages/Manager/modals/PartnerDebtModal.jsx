@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip, Input, Select, SelectItem } from "@heroui/react";
-import { RiMoneyDollarCircleLine } from "react-icons/ri";
+import { RiMoneyDollarCircleLine, RiBankCardLine } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { managerService } from "../services/manager.service";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN") + " đ";
@@ -103,12 +105,14 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
                     <Input
                       type="number" min={0} label="Số tiền" size="sm" className="w-48"
                       value={amount} onValueChange={setAmount}
+                      startContent={ic(RiMoneyDollarCircleLine)}
                       endContent={<span className="text-xs text-gray-400">đ</span>}
                     />
                     <Select
                       label="Hình thức" size="sm" className="w-44"
                       selectedKeys={new Set([method])}
                       onChange={(e) => setMethod(e.target.value)}
+                      startContent={ic(RiBankCardLine)}
                     >
                       <SelectItem key="bank_transfer" textValue="Chuyển khoản">Chuyển khoản</SelectItem>
                       <SelectItem key="cash" textValue="Tiền mặt">Tiền mặt</SelectItem>
