@@ -10,6 +10,8 @@
     "test:unit": "jest --testPathIgnorePatterns integration .api.test.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.113.0",
+    "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.3",
     "compression": "^1.8.1",

@@ -551,7 +551,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 isFinalShipment:  String(t.is_final_shipment),
             },
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [completedTripData]);
     const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof(() => {
         showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });

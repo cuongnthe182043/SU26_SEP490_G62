@@ -8,11 +8,15 @@ import ManagerPage from "../pages/Manager/ManagerPage";
 import AccountantPage from "../pages/Accountant/AccountantPage";
 import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
+import ChatbotWidget from "../components/chatbot/ChatbotWidget";
 import { appTheme } from "../styles/theme";
 import "../styles/global.css";
 
 export default function App() {
   const { user, loading, setSession, refreshSession, logout } = useAuthSession();
+
+  // Chỉ hiện trợ lý AI khi đã đăng nhập xong (không ở màn login / đổi mật khẩu bắt buộc).
+  const showChatbot = Boolean(user) && !user?.must_change_password;
 
   const renderPage = () => {
     if (loading) return <LoadingScreen label="Đang tải..." />;
@@ -29,6 +33,7 @@ export default function App() {
   return (
     <ConfigProvider theme={appTheme} locale={viVN}>
       {renderPage()}
+      {showChatbot && <ChatbotWidget />}
     </ConfigProvider>
   );
 }

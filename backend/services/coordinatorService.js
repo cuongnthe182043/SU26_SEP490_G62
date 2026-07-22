@@ -457,7 +457,25 @@ const computeReceiptAmount = (pricingSnapshot) => {
     const shipmentBreakdown = shipments.map((shipment) => {
         const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
         const pricePerKm = Number(shipment.price_per_km || 0);
+        const isPriceManual = shipment.is_price_manual === true;
+        const estimatedPrice = Number(shipment.estimated_price);
 
+        // Đơn giá CỐ ĐỊNH do DN chốt tay → giữ nguyên estimated_price, KHÔNG tính lại
+        // theo km (tránh phá giá đã chốt khi driver nhập actual_km).
+        if (isPriceManual) {
+            if (!Number.isFinite(estimatedPrice) || estimatedPrice <= 0) {
+                throw new Error(`Chuyến #${shipment.id} là giá cố định nhưng chưa có giá cước hợp lệ`);
+            }
+            return {
+                shipment_id: shipment.id,
+                actual_km: Number.isFinite(Number(actualKm)) ? Number(actualKm) : 0,
+                price_per_km: pricePerKm,
+                actual_income: estimatedPrice,
+                is_price_manual: true,
+            };
+        }
+
+        // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe.
         if (actualKm === null || actualKm === undefined || Number.isNaN(Number(actualKm)) || Number(actualKm) <= 0) {
             throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế hợp lệ để tính thu nhập`);
         }
@@ -470,6 +488,7 @@ const computeReceiptAmount = (pricingSnapshot) => {
             actual_km: Number(actualKm),
             price_per_km: pricePerKm,
             actual_income: Number(actualKm) * pricePerKm,
+            is_price_manual: false,
         };
     });
 
@@ -820,7 +839,7 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
         throw new Error('Chuyến đã hoàn thành hoặc đã hủy, không thể hủy thêm');
     }
 
-    const updated = await tripRepository.updateTripStatus(shipmentId, SHIPMENT_STATUS.CANCELLED, reason.trim());
+    const updated = await tripRepository.updateTripStatus(shipmentId, SHIPMENT_STATUS.CANCELLED, reason.trim(), actorId);
     if (!updated) throw new Error('Không thể hủy chuyến');
 
     if (shipment.owner_driver_id) {
@@ -911,6 +930,7 @@ module.exports = {
   getReceiptRequests,
   getReceiptRequestDetail,
   approveReceiptRequest,
+  computeReceiptAmount,
     rejectReceiptRequest,
     cancelShipment,
     reassignShipment,

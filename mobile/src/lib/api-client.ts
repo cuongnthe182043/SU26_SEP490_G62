@@ -53,37 +53,50 @@ function isTokenExpiringSoon(token: string, skewSeconds = 10): boolean {
 // Chống gọi refresh nhiều lần cùng lúc khi có nhiều request 401 song song
 let _refreshPromise: Promise<string | null> | null = null;
 
+// Refresh access token.
+//   - Trả STRING  : thành công (đã lưu token mới).
+//   - Trả NULL    : refresh token THỰC SỰ vô hiệu (401/403 hoặc không có) → phải đăng nhập lại.
+//   - THROW       : lỗi TẠM THỜI (mạng chập chờn, 5xx, cold start Cloud Run...) → KHÔNG logout,
+//                   để request gốc lỗi tạm rồi thử lại sau, giữ nguyên phiên đăng nhập.
 async function attemptTokenRefresh(): Promise<string | null> {
   if (_refreshPromise) return _refreshPromise;
 
   _refreshPromise = (async () => {
-    try {
-      const refreshToken = await tokenStorage.getRefreshToken();
-      if (!refreshToken) return null;
+    const refreshToken = await tokenStorage.getRefreshToken();
+    if (!refreshToken) return null; // không có refresh token → logout
 
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       });
-
-      if (!response.ok) return null;
-
-      const data = await response.json().catch(() => null);
-      if (!data?.token) return null;
-
-      await tokenStorage.setToken(data.token);
-      if (data.refreshToken) await tokenStorage.setRefreshToken(data.refreshToken);
-
-      return data.token as string;
     } catch {
-      return null;
-    } finally {
-      _refreshPromise = null;
+      // Lỗi mạng — TẠM THỜI, không được logout.
+      throw new ApiError(ERROR_MESSAGES.network, 0);
     }
+
+    // Chỉ 401/403 mới là refresh token vô hiệu thật sự → cần đăng nhập lại.
+    if (response.status === 401 || response.status === 403) return null;
+
+    // 5xx / lỗi khác — TẠM THỜI (VD Cloud Run cold start), không được logout.
+    if (!response.ok) throw new ApiError(ERROR_MESSAGES.network, response.status);
+
+    const data = await response.json().catch(() => null);
+    if (!data?.token) return null;
+
+    await tokenStorage.setToken(data.token);
+    if (data.refreshToken) await tokenStorage.setRefreshToken(data.refreshToken);
+
+    return data.token as string;
   })();
 
-  return _refreshPromise;
+  try {
+    return await _refreshPromise;
+  } finally {
+    _refreshPromise = null;
+  }
 }
 
 let isHandlingUnauthorized = false;
@@ -125,7 +138,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
       body,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('[api-client] fetch failed', {
       url: `${API_BASE_URL}${path}`,
       method: options.method,
@@ -159,7 +172,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
 
   if (!response.ok) {
     if (payload === null) {
-      // eslint-disable-next-line no-console
+       
       console.error('[api-client] non-JSON error response', {
         url: `${API_BASE_URL}${path}`, method: options.method, status: response.status,
       });
@@ -177,7 +190,13 @@ export async function getValidAccessToken(): Promise<string | null> {
   const token = await tokenStorage.getToken();
   if (!token) return null;
   if (!isTokenExpiringSoon(token)) return token;
-  return attemptTokenRefresh();
+  try {
+    return await attemptTokenRefresh();
+  } catch {
+    // Lỗi tạm thời khi refresh — trả token hiện tại (WS cứ thử, lát nữa refresh lại),
+    // KHÔNG logout.
+    return token;
+  }
 }
 
 export const apiClient = {

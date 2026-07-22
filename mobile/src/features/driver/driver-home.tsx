@@ -1,16 +1,17 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     AlertOctagon, Banknote, Bell, CalendarOff,
     ChartBar, FileText, Gift, Package, PackageCheck,
     TriangleAlert, Truck, Wrench,
 } from 'lucide-react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
+import { GeminiSpark } from '@/components/gemini-spark';
 import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton';
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
@@ -199,12 +200,25 @@ function GridAction({ item }: { item: ActionItem }) {
 
 export function DriverHomeScreen() {
     const insets = useSafeAreaInsets();
-    const { profile, isLoading: profileLoading } = useProfile();
-    const { stats } = useTripStats();
+    const { profile, isLoading: profileLoading, refresh: refreshProfile } = useProfile();
+    const { stats, refresh: refreshStats } = useTripStats();
     const { unreadCount } = useNotifications();
     const { debt_remaining, open_incident_count, reload: reloadSummary } = useHomeSummary();
-    const { trip: activeTrip, isLoading: tripLoading } = useActiveTrip();
+    const { trip: activeTrip, isLoading: tripLoading, refresh: refreshActiveTrip } = useActiveTrip();
     const { order: pendingReceipt, load: loadPendingReceipt } = usePendingReceipt();
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await Promise.all([
+                reloadSummary(), refreshProfile(), refreshStats(),
+                refreshActiveTrip(), loadPendingReceipt(),
+            ]);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [reloadSummary, refreshProfile, refreshStats, refreshActiveTrip, loadPendingReceipt]);
 
     // Load on mount
     useEffect(() => { reloadSummary(); }, [reloadSummary]);
@@ -296,19 +310,28 @@ export function DriverHomeScreen() {
                         </Text>
                     </YStack>
 
-                    <Pressable
-                        onPress={() => router.push('/notifications')}
-                        style={s.bellBtn}
-                    >
-                        <Bell size={21} color={appTheme.colors.primary} />
-                        {unreadCount > 0 ? (
-                            <View style={s.badge}>
-                                <Text style={s.badgeText}>
-                                    {unreadCount > 99 ? '99+' : String(unreadCount)}
-                                </Text>
-                            </View>
-                        ) : null}
-                    </Pressable>
+                    <XStack alignItems="center" gap={10}>
+                        <Pressable
+                            onPress={() => router.push('/chatbot')}
+                            style={s.bellBtn}
+                        >
+                            <GeminiSpark size={21} />
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => router.push('/notifications')}
+                            style={s.bellBtn}
+                        >
+                            <Bell size={21} color={appTheme.colors.primary} />
+                            {unreadCount > 0 ? (
+                                <View style={s.badge}>
+                                    <Text style={s.badgeText}>
+                                        {unreadCount > 99 ? '99+' : String(unreadCount)}
+                                    </Text>
+                                </View>
+                            ) : null}
+                        </Pressable>
+                    </XStack>
                 </XStack>
             </View>
 
@@ -322,6 +345,14 @@ export function DriverHomeScreen() {
                     paddingBottom: appTheme.spacing.screenBottom,
                     gap: 20,
                 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={appTheme.colors.primary}
+                        colors={[appTheme.colors.primary]}
+                    />
+                }
             >
                 {/* Active trip */}
                 <ActiveTripBanner
