@@ -3,7 +3,12 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Select, SelectItem, Textarea, Chip, Spinner, Image,
 } from "@heroui/react";
-import { RiAddLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiImageLine, RiLoader4Line } from "react-icons/ri";
+import {
+  RiAddLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiImageLine, RiLoader4Line,
+  RiMoneyDollarCircleLine, RiTruckLine, RiPriceTag3Line, RiFileTextLine,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { coordinatorService } from "../services/coordinator.service";
 import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
