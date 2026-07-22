@@ -8,6 +8,7 @@ import {
   RiMoneyDollarCircleLine, RiBankLine,
   RiPhoneLine, RiBuildingLine, RiTruckLine,
   RiHistoryLine, RiArrowUpSLine, RiArrowDownSLine,
+  RiFileTextLine,
 } from 'react-icons/ri';
 import {
   previewDebtAllocation,
