@@ -4,7 +4,10 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiCheckLine, RiCloseLine, RiAddLine, RiMoneyDollarCircleLine, RiWalletLine } from "react-icons/ri";
+import {
+  RiRefreshLine, RiCheckLine, RiCloseLine, RiAddLine, RiMoneyDollarCircleLine, RiWalletLine,
+  RiCheckboxCircleLine, RiCloseCircleLine, RiHandCoinLine, RiTimeLine,
+} from "react-icons/ri";
 import { StatCard } from "./StatCard";
 import { PaginationBar } from "./PaginationBar";
 
@@ -285,9 +288,9 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
           <Tab key="expenses" title="Chi phí tài xế">
             <div className="grid grid-cols-4 gap-4 my-4">
               <StatCard label="Chờ duyệt" value={expenseStats?.pending_count || 0} icon={RiWalletLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
-              <StatCard label="Đã duyệt" value={expenseStats?.approved_count || 0} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
-              <StatCard label="Từ chối" value={expenseStats?.rejected_count || 0} border="border-rose-100 dark:border-rose-500/20" lightBg="bg-rose-50 dark:bg-rose-500/10" text="text-rose-600 dark:text-rose-300" gradient="from-rose-500 to-rose-600" />
-              <StatCard label="Tổng đã duyệt" value={fmt(expenseStats?.approved_total || 0)} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
+              <StatCard label="Đã duyệt" value={expenseStats?.approved_count || 0} icon={RiCheckboxCircleLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+              <StatCard label="Từ chối" value={expenseStats?.rejected_count || 0} icon={RiCloseCircleLine} border="border-rose-100 dark:border-rose-500/20" lightBg="bg-rose-50 dark:bg-rose-500/10" text="text-rose-600 dark:text-rose-300" gradient="from-rose-500 to-rose-600" />
+              <StatCard label="Tổng đã duyệt" value={fmt(expenseStats?.approved_total || 0)} icon={RiHandCoinLine} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
             </div>
 
             {Number(expenseStats?.reimbursable_total || 0) > 0 && (
@@ -400,8 +403,8 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
           <Tab key="vouchers" title="Phiếu chi">
             <div className="grid grid-cols-4 gap-4 my-4">
               <StatCard label="Chờ duyệt" value={voucherStats?.pending_count || 0} icon={RiMoneyDollarCircleLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
-              <StatCard label="Chờ chi" value={voucherStats?.approved_count || 0} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
-              <StatCard label="Đã chi" value={voucherStats?.paid_count || 0} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
+              <StatCard label="Chờ chi" value={voucherStats?.approved_count || 0} icon={RiTimeLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+              <StatCard label="Đã chi" value={voucherStats?.paid_count || 0} icon={RiCheckboxCircleLine} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
               <StatCard label="Tổng đã chi" value={fmt(voucherStats?.paid_total || 0)} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
             </div>
 
