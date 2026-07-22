@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -15,7 +15,7 @@ import { appTheme } from '@/theme/app-theme';
 import { useOrderDetail } from '@/hooks/use-order-detail';
 import type { ShipmentWithPhotos, TripStatus } from '@/types/trip';
 import { TRIP_STATUS_LABEL } from '@/types/trip';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 const fmtDate = (iso: string | null) => {
     if (!iso) return null;
@@ -226,8 +226,14 @@ function ShipmentCard({
 export default function OrderDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const orderId = Number(id);
-    const { data, isLoading, error } = useOrderDetail(orderId);
+    const { data, isLoading, error, refresh } = useOrderDetail(orderId);
     const [viewPhoto, setViewPhoto] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try { await refresh(); } finally { setRefreshing(false); }
+    }, [refresh]);
 
     const maxIndex = data ? Math.max(...data.shipments.map(s => s.shipment_index)) : 1;
 
@@ -272,6 +278,14 @@ export default function OrderDetailScreen() {
 
             <ScrollView
                 style={{ flex: 1 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={appTheme.colors.primary}
+                        colors={[appTheme.colors.primary]}
+                    />
+                }
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
                     paddingTop: 16,
