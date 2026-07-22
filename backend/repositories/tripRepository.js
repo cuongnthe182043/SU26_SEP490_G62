@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const activityLogRepository = require('./activityLogRepository');
 const {
     SHIPMENT_STATUS,
     ACTIVE_STATUSES,
@@ -444,7 +445,10 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
     }
 };
 
-const updateTripStatus = async (tripId, newStatus, cancelReason = null) => {
+const updateTripStatus = async (tripId, newStatus, cancelReason = null, actorId = null) => {
+    // Đọc trạng thái cũ để ghi audit "từ status → status" (mục 27 — Status Change History)
+    const { rows: [prev] } = await pool.query(`SELECT status FROM order_shipments WHERE id = $1`, [tripId]);
+
     const tsCol = STATUS_TIMESTAMP_COL[newStatus];
     let query, params;
     if (cancelReason && tsCol) {
@@ -496,6 +500,16 @@ const updateTripStatus = async (tripId, newStatus, cancelReason = null) => {
             [tripId],
         );
     }
+
+    // Audit: ai đổi trạng thái chuyến, từ status nào → status nào
+    activityLogRepository.logSafe({
+        userId: actorId,
+        action: 'trip_status_change',
+        entityType: 'shipment',
+        entityId: tripId,
+        oldData: { status: prev?.status ?? null },
+        newData: { status: newStatus, ...(cancelReason ? { cancel_reason: cancelReason } : {}) },
+    });
 
     return row;
 };
