@@ -122,6 +122,7 @@ export default function ReceiptDetailModal({
                             placeholder={`Gợi ý: ${formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}`}
                             value={form?.priceOverride ?? ""}
                             onValueChange={(v) => updateField("priceOverride", v)}
+                            startContent={ic(RiMoneyDollarCircleLine)}
                           />
                         </div>
                       ) : (
@@ -197,6 +198,7 @@ export default function ReceiptDetailModal({
                           onSelectionChange={(keys) => updateExpenseShipment(index, [...keys][0])}
                           variant="bordered"
                           size="sm"
+                          startContent={ic(RiTruckLine)}
                         >
                           {shipments.map((s) => (
                             <SelectItem key={String(s.id)}>{`Chuyến #${s.id} · ${s.plate_number || s.driver_name || "Chưa gán"}`}</SelectItem>
@@ -208,6 +210,7 @@ export default function ReceiptDetailModal({
                           onSelectionChange={(keys) => updateExpense(index, "expense_type", [...keys][0])}
                           variant="bordered"
                           size="sm"
+                          startContent={ic(RiPriceTag3Line)}
                         >
                           {expenseTypeOptions.map((o) => <SelectItem key={o.value}>{o.label}</SelectItem>)}
                         </Select>
@@ -220,6 +223,7 @@ export default function ReceiptDetailModal({
                           onValueChange={(v) => updateExpense(index, "amount", v)}
                           variant="bordered"
                           size="sm"
+                          startContent={ic(RiMoneyDollarCircleLine)}
                         />
                         <Input
                           label="Mô tả"
@@ -228,6 +232,7 @@ export default function ReceiptDetailModal({
                           onValueChange={(v) => updateExpense(index, "description", v)}
                           variant="bordered"
                           size="sm"
+                          startContent={ic(RiFileTextLine)}
                         />
                       </div>
                       <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => removeExpense(index)}>
@@ -252,6 +257,7 @@ export default function ReceiptDetailModal({
                     minRows={3}
                     placeholder="Ví dụ: đối soát theo km thực tế, thêm chi phí cầu đường..."
                     variant="bordered"
+                    startContent={ic(RiFileTextLine)}
                   />
                 </div>
 
