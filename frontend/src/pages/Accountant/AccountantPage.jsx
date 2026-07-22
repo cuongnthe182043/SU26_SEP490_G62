@@ -3,7 +3,7 @@ import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
   RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine,
-  RiCalendarCheckLine, RiTruckLine,
+  RiCalendarCheckLine, RiTruckLine, RiEqualizerLine, RiCalendarEventLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
 import "../../styles/accountant.css";
@@ -19,6 +19,8 @@ import { LedgerView } from "./views/LedgerView";
 import SpendingView from "./views/SpendingView";
 import AttendanceView from "./views/AttendanceView";
 import VehiclesView from "./views/VehiclesView";
+import BonusRulesView from "../Manager/views/BonusRulesView";
+import HolidaysView from "../Manager/views/HolidaysView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
@@ -46,7 +48,9 @@ const NAV_GROUPS = [
       { key: "salary",  label: "Bảng lương",        icon: RiMoneyDollarCircleLine },
       { key: "advance", label: "Ứng lương",          icon: RiHandCoinLine },
       { key: "bonus",   label: "Thưởng & Phúc lợi", icon: RiGiftLine },
+      { key: "bonus-rules", label: "Quy tắc thưởng", icon: RiEqualizerLine },
       { key: "attendance", label: "Chấm công", icon: RiCalendarCheckLine },
+      { key: "holidays", label: "Ngày lễ", icon: RiCalendarEventLine },
     ],
   },
   {
@@ -83,6 +87,16 @@ const VIEW_META = {
     subtitle: "Chi trả thưởng Tết, sinh nhật, kết hôn, tang gia và thưởng đặc biệt",
     searchPlaceholder: "Tìm tài xế...",
   },
+  "bonus-rules": {
+    title: "Quy tắc thưởng",
+    subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe.",
+    searchPlaceholder: "",
+  },
+  holidays: {
+    title: "Quản lý ngày lễ",
+    subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương.",
+    searchPlaceholder: "",
+  },
   report: {
     title: "Báo cáo tổng quan",
     subtitle: "Phân tích doanh thu, công nợ và lương theo kỳ",
@@ -111,7 +125,22 @@ const VIEW_META = {
 };
 
 const VIEW_STORAGE_KEY = "accountant_active_view";
-const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger", "spending", "attendance", "vehicles"];
+
+// entity_type (backend gắn vào thông báo) → view của Kế toán.
+const NOTIFICATION_VIEW_BY_ENTITY = {
+  payroll: "salary",
+  salary_advance: "advance",
+  salary_advances: "advance",
+  driver_bonuses: "bonus",
+  debts: "debt",
+  debt_payments: "debt",
+  partner: "debt",
+  expenses: "spending",
+  vehicle: "vehicles",
+  maintenance_record: "vehicles",
+  receipt: "revenue",
+};
+const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "attendance", "holidays", "vehicles"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -148,6 +177,12 @@ export default function AccountantPage({ user, onLogout }) {
     setActiveView(view);
     setSearch("");
     try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* ignore */ }
+  };
+
+  // Bấm 1 thông báo → nhảy tới màn liên quan (theo entity_type).
+  const handleNotificationSelect = (notification) => {
+    const view = NOTIFICATION_VIEW_BY_ENTITY[notification?.entity_type];
+    if (view) handleViewChange(view);
   };
 
   const meta = VIEW_META[activeView] ?? VIEW_META.revenue;
@@ -188,6 +223,7 @@ export default function AccountantPage({ user, onLogout }) {
             searchPlaceholder={meta.searchPlaceholder}
             primaryAction={primaryAction}
             secondaryAction={secondaryAction}
+            onNotificationSelect={handleNotificationSelect}
           />
 
           <main className="flex-1 overflow-y-auto p-6">
@@ -216,8 +252,14 @@ export default function AccountantPage({ user, onLogout }) {
             {activeView === "spending" && (
               <SpendingView />
             )}
+            {activeView === "bonus-rules" && (
+              <BonusRulesView />
+            )}
             {activeView === "attendance" && (
               <AttendanceView />
+            )}
+            {activeView === "holidays" && (
+              <HolidaysView />
             )}
             {activeView === "vehicles" && (
               <VehiclesView user={currentUser} />
