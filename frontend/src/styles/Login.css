@@ -235,3 +235,48 @@
   }
 }
 
+
+/* ──────────────────────────────────────────────
+   Dark mode overrides (đồng bộ với theme toàn app)
+   ────────────────────────────────────────────── */
+html.dark .login-root{
+  background:
+    radial-gradient(circle at top left, rgba(59,79,216,0.14), transparent 34%),
+    linear-gradient(135deg, #0b0d14 0%, #0e1016 48%, #12141d 100%);
+}
+html.dark .login-left{
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.05), transparent 26%),
+    radial-gradient(circle at 80% 28%, rgba(107,123,255,0.18), transparent 30%),
+    linear-gradient(145deg, #0e1016 0%, #12141d 52%, #171a26 100%);
+}
+html.dark .login-right{ background:#0e1016; }
+html.dark .login-card{
+  background:#161922;
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+html.dark .login-help{ color:#a9afc0; }
+html.dark .login-card h2{ color:#e6e8ef; }
+html.dark .google-login-label{ color:#c7ccd8; }
+html.dark .login-divider{ color:#8b93a5; }
+html.dark .login-divider::before,
+html.dark .login-divider::after{ background:rgba(255,255,255,0.12); }
+html.dark .login-form .label-text{ color:#c7ccd8; }
+html.dark .login-form input{
+  background:#1e2230;
+  border-color:rgba(255,255,255,0.12);
+  color:#e6e8ef;
+}
+html.dark .login-form input::placeholder{ color:#6b7280; }
+html.dark .login-form input:focus{
+  box-shadow:0 0 0 4px rgba(107,123,255,0.18);
+  border-color:#6B7BFF;
+}
+html.dark .remember{ color:#a9afc0; }
+html.dark .forgot{ color:#8b97ff; }
+html.dark .login-btn{ background:#4a5bd8; }
+html.dark .login-btn:hover{ background:#5c6ce0; }
+html.dark .login-error{ color:#ff6b6b; }
+html.dark .field-error{ color:#ff8080; }
+html.dark .input-error{ border-color:#ff6b6b !important; }
