@@ -46,13 +46,14 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
         </ModalHeader>
         <ModalBody className="gap-4">
           <div className="grid grid-cols-3 gap-3">
-            <Input label="Chuyến" value={incident.shipment_id ? `#${incident.shipment_id}` : "-"} isReadOnly variant="bordered" />
-            <Input label="Tài xế báo cáo" value={incident.reported_by_name || "-"} isReadOnly variant="bordered" />
+            <Input label="Chuyến" value={incident.shipment_id ? `#${incident.shipment_id}` : "-"} isReadOnly variant="bordered" startContent={ic(RiTruckLine)} />
+            <Input label="Tài xế báo cáo" value={incident.reported_by_name || "-"} isReadOnly variant="bordered" startContent={ic(RiUserLine)} />
             <Input
               label="Quy tắc doanh thu"
               value={incident.pickup_completed ? "Đã lấy hàng - chia 50/50" : "Chưa lấy hàng - tài xế thay thế nhận 100%"}
               isReadOnly
               variant="bordered"
+              startContent={ic(RiScales3Line)}
             />
           </div>
 
@@ -64,6 +65,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               isDisabled={statusLocked}
               description={statusLocked ? "Khóa tới khi Manager duyệt khoản đền bù" : undefined}
               variant="bordered"
+              startContent={ic(RiFlag2Line)}
             >
               <SelectItem key="open">Mới tiếp nhận</SelectItem>
               <SelectItem key="investigating">Đang xử lý</SelectItem>
@@ -76,12 +78,13 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               selectedKeys={incidentForm.replacement_driver_id ? [incidentForm.replacement_driver_id] : []}
               onSelectionChange={(keys) => setIncidentForm((prev) => ({ ...prev, replacement_driver_id: [...keys][0] ?? "" }))}
               variant="bordered"
+              startContent={ic(RiUserSharedLine)}
             >
               {replacementOptions.map((driver) => (
                 <SelectItem key={String(driver.id)}>{`${driver.full_name} - ${driver.plate_number || "Chưa có xe"}`}</SelectItem>
               ))}
             </Select>
-            <Input label="Đã thay thế" value={incident.replacement_driver_name || "-"} isReadOnly variant="bordered" />
+            <Input label="Đã thay thế" value={incident.replacement_driver_name || "-"} isReadOnly variant="bordered" startContent={ic(RiUserReceivedLine)} />
           </div>
 
           <Textarea
@@ -91,6 +94,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
             onValueChange={(v) => setIncidentForm((prev) => ({ ...prev, resolution: v }))}
             minRows={4}
             variant="bordered"
+            startContent={ic(RiFileTextLine)}
           />
 
           {COMPENSATION_BANNER && (
@@ -141,12 +145,14 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                       onValueChange={(v) => updateCompensation({ amount: v })}
                       variant="bordered"
                       isRequired
+                      startContent={ic(RiMoneyDollarCircleLine)}
                     />
                     <Select
                       label="Hình thức chi"
                       selectedKeys={[compensation.payment_method]}
                       onSelectionChange={(keys) => updateCompensation({ payment_method: [...keys][0] })}
                       variant="bordered"
+                      startContent={ic(RiBankCardLine)}
                     >
                       <SelectItem key="cash">Tiền mặt</SelectItem>
                       <SelectItem key="bank_transfer">Chuyển khoản</SelectItem>
@@ -159,6 +165,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                     onValueChange={(v) => updateCompensation({ payee: v })}
                     variant="bordered"
                     isRequired
+                    startContent={ic(RiUserReceivedLine)}
                   />
                   {incident.customer_name && (
                     <div className="flex items-center gap-2 flex-wrap text-xs -mt-1">
@@ -183,6 +190,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                     onValueChange={(v) => updateCompensation({ reason: v })}
                     minRows={2}
                     variant="bordered"
+                    startContent={ic(RiFileTextLine)}
                   />
                 </div>
               )}
