@@ -6,7 +6,7 @@ import {
 } from "react-icons/ri";
 import { managerService } from "../services/manager.service";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 const EMPTY_FORM = {
   plate_number: "", vehicle_group_id: "", brand: "", model: "",
@@ -68,7 +68,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           {editingVehicle && (
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 flex items-center gap-2 text-xs text-blue-700">
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-3 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
               <RiInformationLine size={16} />
               Trạng thái vòng đời xe (bảo trì, hỏng, thu hồi...) quản lý qua nút thao tác ở danh sách xe, không sửa ở đây.
             </div>

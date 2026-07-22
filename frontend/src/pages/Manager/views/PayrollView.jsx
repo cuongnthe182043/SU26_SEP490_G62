@@ -41,7 +41,7 @@ function PayslipDetailModal({ row, companyInfo, onRevert, onClose }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Chi tiết lương — {row.driver_name}</span>
-          <span className="text-sm font-normal text-gray-400">
+          <span className="text-sm font-normal text-gray-400 dark:text-gray-400">
             Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
             {row.vehicle_group ? ` · ${row.vehicle_group}` : ""}
           </span>
@@ -52,12 +52,12 @@ function PayslipDetailModal({ row, companyInfo, onRevert, onClose }) {
               <div
                 key={label}
                 className={`flex justify-between items-center p-2.5 rounded-lg text-xs
-                  ${highlight ? "bg-blue-100 col-span-2 sm:col-span-3" : "bg-gray-50"}`}
+                  ${highlight ? "bg-blue-100 dark:bg-blue-500/15 col-span-2 sm:col-span-3" : "bg-gray-50 dark:bg-white/5"}`}
               >
-                <span className="text-gray-500">{label}</span>
+                <span className="text-gray-500 dark:text-gray-400">{label}</span>
                 <span className={`font-${bold ? "bold" : "medium"} ${
-                  highlight ? "text-blue-700 text-sm" :
-                  neg ? "text-red-500" : "text-gray-800"
+                  highlight ? "text-blue-700 dark:text-blue-300 text-sm" :
+                  neg ? "text-red-500" : "text-gray-800 dark:text-gray-100"
                 }`}>
                   {value}
                 </span>
@@ -65,7 +65,7 @@ function PayslipDetailModal({ row, companyInfo, onRevert, onClose }) {
             ))}
           </div>
           {row.adjustment_note && (
-            <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            <div className="mt-3 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-lg px-3 py-2">
               <span className="font-semibold">Ghi chú điều chỉnh:</span> {row.adjustment_note}
             </div>
           )}
@@ -120,17 +120,17 @@ function ManagerRevertModal({ row, onClose, onDone }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Trả về tính lại — {row.driver_name}</span>
-          <span className="text-sm font-normal text-gray-400">
+          <span className="text-sm font-normal text-gray-400 dark:text-gray-400">
             Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
           </span>
         </ModalHeader>
         <ModalBody>
-          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 rounded-lg p-3">
             Phiếu sẽ quay về trạng thái <b>Chờ xác nhận</b> (huỷ dấu duyệt) để Kế toán tính lại /
             điều chỉnh. Chỉ áp dụng khi phiếu chưa trả lương.
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               {error}
             </div>
           )}
@@ -231,13 +231,13 @@ export default function PayrollView() {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Tổng bảng lương" value={payrolls.length} border="border-gray-100" lightBg="bg-gray-50" text="text-gray-700" gradient="from-gray-400 to-gray-500" />
-        <StatCard label="Chờ xác nhận" value={pending} border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600" />
-        <StatCard label="Đã xác nhận" value={reviewed} border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600" />
-        <StatCard label="Tổng thực lĩnh" value={fmt(totalNet)} border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600" />
+        <StatCard label="Tổng bảng lương" value={payrolls.length} border="border-gray-100 dark:border-white/10" lightBg="bg-gray-50 dark:bg-white/5" text="text-gray-700 dark:text-gray-200" gradient="from-gray-400 to-gray-500" />
+        <StatCard label="Chờ xác nhận" value={pending} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
+        <StatCard label="Đã xác nhận" value={reviewed} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+        <StatCard label="Tổng thực lĩnh" value={fmt(totalNet)} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <Select selectedKeys={[String(month)]} onSelectionChange={(k) => setMonth(Number([...k][0]))} variant="bordered" size="sm" className="w-28">
             {MONTHS.map((m) => <SelectItem key={String(m)}>{`Tháng ${m}`}</SelectItem>)}
@@ -262,7 +262,7 @@ export default function PayrollView() {
             placeholder="Tìm tài xế..."
             value={search}
             onValueChange={setSearch}
-            startContent={<RiSearchLine size={14} className="text-gray-400" />}
+            startContent={<RiSearchLine size={14} className="text-gray-400 dark:text-gray-400" />}
             variant="bordered"
             size="sm"
             className="w-56"
@@ -307,8 +307,8 @@ export default function PayrollView() {
               <TableRow key={r.id}>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-semibold text-gray-800 text-sm">{r.driver_name}</span>
-                    <span className="text-xs text-gray-400">{r.driver_phone}</span>
+                    <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.driver_name}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{r.driver_phone}</span>
                   </div>
                 </TableCell>
                 <TableCell>{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
@@ -316,12 +316,12 @@ export default function PayrollView() {
                 <TableCell>{fmt(sumBonus(r))}</TableCell>
                 <TableCell>
                   {/* Tiền công ty hoàn lại khoản tài đã ứng (chi hộ + chi phí) — không phải thưởng */}
-                  <span className={Number(r.expense_reimbursement || 0) > 0 ? "font-semibold text-teal-600" : "text-gray-400"}>
+                  <span className={Number(r.expense_reimbursement || 0) > 0 ? "font-semibold text-teal-600 dark:text-teal-300" : "text-gray-400 dark:text-gray-400"}>
                     {fmt(r.expense_reimbursement)}
                   </span>
                 </TableCell>
                 <TableCell>{fmt(sumDeduction(r))}</TableCell>
-                <TableCell><span className="font-bold text-blue-600">{fmt(net(r))}</span></TableCell>
+                <TableCell><span className="font-bold text-blue-600 dark:text-blue-300">{fmt(net(r))}</span></TableCell>
                 <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1.5">
