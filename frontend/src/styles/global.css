@@ -1,3 +1,29 @@
+/* ──────────────────────────────────────────────────────────────
+   Design tokens — biến CSS đổi theo theme.
+   Dùng cho phần layout/scaffolding tự vẽ (không phải HeroUI/AntD).
+   ────────────────────────────────────────────────────────────── */
+:root {
+  --app-bg: #F8F9FF;
+  --surface: #ffffff;
+  --surface-2: #F8F9FF;
+  --on-surface: #0B1C30;
+  --on-surface-muted: #6b7280;
+  --border-subtle: #eef1f6;
+  --scrollbar-thumb: #D3E4FE;
+  --scrollbar-thumb-hover: #BFCBF7;
+}
+
+html.dark {
+  --app-bg: #0e1016;
+  --surface: #161922;
+  --surface-2: #1e2230;
+  --on-surface: #e6e8ef;
+  --on-surface-muted: #a9afc0;
+  --border-subtle: rgba(255, 255, 255, 0.10);
+  --scrollbar-thumb: #2a2f42;
+  --scrollbar-thumb-hover: #3a4056;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -7,29 +33,27 @@ html, body, #root {
   padding: 0;
   height: 100%;
   font-family: 'Geist', 'Google Sans', 'Open Sans', system-ui, -apple-system, sans-serif;
-  background-color: #F8F9FF;
-  color: #0B1C30;
+  background-color: var(--app-bg);
+  color: var(--on-surface);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Thin scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D3E4FE; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #BFCBF7; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
-/* ── Sidebar light override — prevent any dark bleed ── */
+/* ── Sidebar nền theo theme (bỏ khoá sáng cứng cũ) ── */
 .g62-sidebar {
-  background-color: #F8F9FF !important;
-}
-.g62-sidebar * {
-  color-scheme: light;
+  background-color: var(--surface) !important;
 }
 
 /* AntD Menu item smooth transition */
-.ant-menu-light .ant-menu-item {
+.ant-menu-item {
   transition: background 0.18s ease, color 0.18s ease !important;
 }
-.ant-menu-light .ant-menu-item .anticon {
+.ant-menu-item .anticon {
   transition: color 0.18s ease !important;
 }
 .ant-menu-inline .ant-menu-item {
