@@ -67,6 +67,12 @@ const findByPhone = async (phone) => {
     return result.rows[0] ?? null;
 };
 
+const findByTaxCode = async (taxCode) => {
+    if (!taxCode) return null;
+    const result = await pool.query(`SELECT * FROM customers WHERE tax_code = $1 LIMIT 1`, [taxCode]);
+    return result.rows[0] ?? null;
+};
+
 const createCustomer = async ({ customerType, fullName, companyName, contactPerson, phone, email, address, taxCode, notes }) => {
     const result = await pool.query(
         `INSERT INTO customers
@@ -112,6 +118,7 @@ module.exports = {
     listCustomers,
     getCustomerById,
     findByPhone,
+    findByTaxCode,
     createCustomer,
     updateCustomer,
     countOrdersForCustomer,

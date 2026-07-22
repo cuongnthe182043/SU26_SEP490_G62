@@ -45,6 +45,11 @@ const createCustomer = async (payload) => {
     const existing = await customerRepository.findByPhone(normalized.phone);
     if (existing) throw new Error('Số điện thoại này đã được đăng ký cho khách hàng khác');
 
+    if (normalized.taxCode) {
+        const existingTax = await customerRepository.findByTaxCode(normalized.taxCode);
+        if (existingTax) throw new Error('Mã số thuế này đã được đăng ký cho khách hàng khác');
+    }
+
     return customerRepository.createCustomer(normalized);
 };
 
@@ -57,6 +62,13 @@ const updateCustomer = async (id, payload) => {
     if (normalized.phone !== existing.phone) {
         const dup = await customerRepository.findByPhone(normalized.phone);
         if (dup && dup.id !== existing.id) throw new Error('Số điện thoại này đã được đăng ký cho khách hàng khác');
+    }
+
+    if (normalized.taxCode) {
+        const dupTax = await customerRepository.findByTaxCode(normalized.taxCode);
+        if (dupTax && dupTax.id !== existing.id) {
+            throw new Error('Mã số thuế này đã được đăng ký cho khách hàng khác');
+        }
     }
 
     const updated = await customerRepository.updateCustomer(id, normalized);
