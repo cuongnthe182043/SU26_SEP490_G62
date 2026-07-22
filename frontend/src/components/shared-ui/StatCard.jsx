@@ -2,9 +2,11 @@ export function StatCard({ label, value, icon: Icon, sub, gradient = "from-blue-
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-white dark:bg-[#161922] border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
       <div className="flex items-start justify-between">
-        <div className={`w-10 h-10 rounded-xl ${lightBg} flex items-center justify-center`}>
-          {Icon && <Icon size={20} className={text} />}
-        </div>
+        {Icon && (
+          <div className={`w-10 h-10 rounded-xl ${lightBg} flex items-center justify-center`}>
+            <Icon size={20} className={text} />
+          </div>
+        )}
         <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
       </div>
       <div className="flex flex-col gap-0.5">

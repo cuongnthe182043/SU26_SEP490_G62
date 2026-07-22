@@ -78,7 +78,7 @@ export function Sidebar({
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
           <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 bg-gray-50 dark:bg-white/10 border border-gray-100 dark:border-white/10">
-            <img src="/logo.png" alt="LogisCount" className="w-full h-[125%] object-cover object-top" />
+            <img src="/logo.png" alt="LogisCount" className="w-full h-[100%] object-cover object-top" />
           </div>
         )}
         {!collapsed && (
@@ -173,7 +173,7 @@ export function Sidebar({
             <button
               onClick={onLogout}
               className="flex items-center gap-3 px-3 py-2 rounded-xl w-full text-left
-                         text-sm bg-red-100 text-red-700 hover:bg-red-700 hover:text-white
+                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white
                          transition-colors duration-150"
             >
               <RiLogoutBoxLine size={16} />

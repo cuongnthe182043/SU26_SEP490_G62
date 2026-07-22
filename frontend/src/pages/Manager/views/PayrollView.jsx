@@ -3,7 +3,10 @@ import {
   Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
 } from "@heroui/react";
-import { RiSearchLine, RiRefreshLine, RiCheckLine, RiEyeLine, RiFileDownloadLine, RiArrowGoBackLine } from "react-icons/ri";
+import {
+  RiSearchLine, RiRefreshLine, RiCheckLine, RiEyeLine, RiFileDownloadLine, RiArrowGoBackLine,
+  RiFileList3Line, RiTimeLine, RiCheckboxCircleLine, RiMoneyDollarCircleLine,
+} from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
@@ -231,10 +234,10 @@ export default function PayrollView() {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Tổng bảng lương" value={payrolls.length} border="border-gray-100 dark:border-white/10" lightBg="bg-gray-50 dark:bg-white/5" text="text-gray-700 dark:text-gray-200" gradient="from-gray-400 to-gray-500" />
-        <StatCard label="Chờ xác nhận" value={pending} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
-        <StatCard label="Đã xác nhận" value={reviewed} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
-        <StatCard label="Tổng thực lĩnh" value={fmt(totalNet)} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
+        <StatCard label="Tổng bảng lương" value={payrolls.length} icon={RiFileList3Line} border="border-gray-100 dark:border-white/10" lightBg="bg-gray-50 dark:bg-white/5" text="text-gray-700 dark:text-gray-200" gradient="from-gray-400 to-gray-500" />
+        <StatCard label="Chờ xác nhận" value={pending} icon={RiTimeLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
+        <StatCard label="Đã xác nhận" value={reviewed} icon={RiCheckboxCircleLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
+        <StatCard label="Tổng thực lĩnh" value={fmt(totalNet)} icon={RiMoneyDollarCircleLine} border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600" />
       </div>
 
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
