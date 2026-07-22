@@ -189,9 +189,16 @@ const listAllExpenses = async ({ status, expenseType, reimbursementStatus, month
     const safePage    = Math.max(1, Number(page) || 1);
     const offset      = (safePage - 1) * safeLimit;
 
+    // Cột "Tài xế" phải là người THỰC SỰ chịu/ứng chi phí, không phải người tạo phiếu:
+    //   - chi phí theo chuyến  → tài xế giữ chuyến (v_shipment_current.owner_driver_id)
+    //   - chi phí bảo dưỡng    → tài xế thực hiện (maintenance_records.performed_by)
+    //   - còn lại              → người tạo (e.created_by)
+    // Khớp đúng cách hoàn ứng quy chủ trong bảng lương (accountantPayrollRepository).
     const baseFrom = `
         FROM expenses e
-        JOIN profiles p        ON p.id = e.created_by
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+        LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+        JOIN profiles p        ON p.id = COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by)
         LEFT JOIN vehicles v   ON v.id = e.vehicle_id
         LEFT JOIN profiles rev ON rev.id = e.reviewed_by
     `;

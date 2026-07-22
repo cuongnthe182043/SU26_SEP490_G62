@@ -2,6 +2,7 @@ const driverRepository = require('../repositories/driverRepository');
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
+const { scanMaintenanceReceipt } = require('./expenseAiValidator');
 
 const createError = (message, statusCode) => {
     const error = new Error(message);
@@ -113,6 +114,19 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     );
     if (!record) {
         throw createError('Open maintenance record for this driver and vehicle was not found', 404);
+    }
+
+    // Quét tự động NGAY khi upload — chỉ với ảnh hóa đơn ở bước bảo dưỡng (open),
+    // không quét ảnh chứng từ/báo giá lúc còn chờ duyệt (requested). Ảnh không hợp lệ
+    // bị từ chối ngay (422) và KHÔNG được lưu → tài xế phải upload ảnh khác.
+    if (record.status === 'open') {
+        const scan = await scanMaintenanceReceipt(billUrl, { amount: record.cost });
+        if (!scan.valid) {
+            const err = createError(scan.reject_reason || 'Ảnh hóa đơn không hợp lệ', 422);
+            err.reject_reason = scan.reject_reason;
+            err.invalidBill = true;
+            throw err;
+        }
     }
 
     const currentBillPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];

@@ -1,5 +1,6 @@
 ﻿const managerRepository = require('../repositories/managerRepository');
 const accountantReportRepository = require('../repositories/accountantReportRepository');
+const managerReportRepository = require('../repositories/managerReportRepository');
 const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
@@ -46,6 +47,74 @@ const getDashboard = async () => {
 // revenue by vehicle, driver holdings) — Manager xem cùng dữ liệu với Accountant's ReportView.
 const getReportsOverview = async ({ months, granularity } = {}) => {
     return accountantReportRepository.getReportOverview({ months, granularity });
+};
+
+// Báo cáo kinh doanh theo kỳ (tháng) cho Manager: P&L (doanh thu − chi phí − lương),
+// hiệu suất đội xe, dòng tiền/công nợ, năng suất tài xế, khách hàng — kèm so kỳ trước.
+//
+// Nếu kỳ ĐÃ CHỐT → trả nguyên bản snapshot đã đóng băng (số không đổi). Nếu chưa chốt
+// → tính động thời gian thực. Trường `meta` cho biết trạng thái chốt để UI hiển thị.
+const getBusinessReport = async ({ year, month } = {}) => {
+    const closed = await managerReportRepository.getClosedPeriod(year, month);
+    if (closed) {
+        return {
+            ...closed.snapshot,
+            meta: {
+                status: closed.status, // 'closed' | 'signed_off'
+                closed_by_name: closed.closed_by_name,
+                closed_at: closed.closed_at,
+                signed_off_by_name: closed.signed_off_by_name,
+                signed_off_at: closed.signed_off_at,
+                note: closed.note,
+            },
+        };
+    }
+    const live = await managerReportRepository.getBusinessReport({ year, month });
+    return { ...live, meta: { status: 'open' } };
+};
+
+// Chốt (hoặc chốt lại) kỳ báo cáo: tính báo cáo tại thời điểm này rồi đóng băng vào
+// snapshot. Không cho chốt lại kỳ đã ký duyệt (phải mở lại trước — nhưng kỳ đã ký thì
+// bị khoá cứng, đây là chủ đích: số đã ký không được đổi).
+const closeReportPeriod = async ({ year, month, actorId, note } = {}) => {
+    const existing = await managerReportRepository.getClosedPeriod(year, month);
+    if (existing && existing.status === 'signed_off') {
+        const err = new Error('Kỳ đã được ký duyệt, không thể chốt lại');
+        err.statusCode = 409;
+        throw err;
+    }
+    const snapshot = await managerReportRepository.getBusinessReport({ year, month });
+    await managerReportRepository.upsertClosedPeriod({ year, month, snapshot, actorId, note });
+    broadcastWorkflowChange('reports', 'period_closed', { year, month });
+    return getBusinessReport({ year, month });
+};
+
+// Manager ký duyệt kỳ đã chốt → khoá cứng.
+const signOffReportPeriod = async ({ year, month, actorId } = {}) => {
+    const done = await managerReportRepository.signOffClosedPeriod({ year, month, actorId });
+    if (!done) {
+        const err = new Error('Kỳ chưa được chốt hoặc đã ký duyệt, không thể ký');
+        err.statusCode = 409;
+        throw err;
+    }
+    broadcastWorkflowChange('reports', 'period_signed_off', { year, month });
+    return getBusinessReport({ year, month });
+};
+
+// Mở lại kỳ đã chốt (chưa ký) → số quay về tính động.
+const reopenReportPeriod = async ({ year, month } = {}) => {
+    const done = await managerReportRepository.reopenClosedPeriod({ year, month });
+    if (!done) {
+        const err = new Error('Không có kỳ đã chốt (chưa ký duyệt) để mở lại');
+        err.statusCode = 409;
+        throw err;
+    }
+    broadcastWorkflowChange('reports', 'period_reopened', { year, month });
+    return getBusinessReport({ year, month });
+};
+
+const listReportPeriods = async ({ limit } = {}) => {
+    return managerReportRepository.listClosedPeriods(limit);
 };
 
 const listSalaryAdvances = async ({ status, limit } = {}) => {
@@ -251,6 +320,11 @@ const recordPartnerPayment = async (partnerId, { amount, paymentMethod, notes },
 module.exports = {
     getDashboard,
     getReportsOverview,
+    getBusinessReport,
+    closeReportPeriod,
+    signOffReportPeriod,
+    reopenReportPeriod,
+    listReportPeriods,
     listSalaryAdvances,
     approveSalaryAdvance,
     rejectSalaryAdvance,

@@ -52,6 +52,82 @@ const getReportsOverview = async (req, res) => {
     }
 };
 
+// Báo cáo kinh doanh theo kỳ (tháng). Mặc định = tháng hiện tại theo giờ VN.
+const getBusinessReport = async (req, res) => {
+    try {
+        const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000); // UTC+7
+        const year  = parseInt(req.query.year, 10)  || vnNow.getUTCFullYear();
+        const month = parseInt(req.query.month, 10) || (vnNow.getUTCMonth() + 1);
+
+        if (Number.isNaN(year) || year < 2000 || year > 2100) {
+            const error = new Error('Năm không hợp lệ'); error.statusCode = 400; throw error;
+        }
+        if (Number.isNaN(month) || month < 1 || month > 12) {
+            const error = new Error('Tháng không hợp lệ (1–12)'); error.statusCode = 400; throw error;
+        }
+
+        const data = await managerService.getBusinessReport({ year, month });
+        res.json(data);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// Đọc + validate (year, month) từ body cho các thao tác chốt kỳ.
+const parsePeriodBody = (body = {}) => {
+    const year = parseInt(body.year, 10);
+    const month = parseInt(body.month, 10);
+    if (Number.isNaN(year) || year < 2000 || year > 2100) {
+        const err = new Error('Năm không hợp lệ'); err.statusCode = 400; throw err;
+    }
+    if (Number.isNaN(month) || month < 1 || month > 12) {
+        const err = new Error('Tháng không hợp lệ (1–12)'); err.statusCode = 400; throw err;
+    }
+    return { year, month };
+};
+
+const closeReportPeriod = async (req, res) => {
+    try {
+        const { year, month } = parsePeriodBody(req.body);
+        const data = await managerService.closeReportPeriod({
+            year, month, actorId: req.user.userId, note: req.body?.note?.trim() || null,
+        });
+        res.json({ message: 'Đã chốt kỳ báo cáo', report: data });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const signOffReportPeriod = async (req, res) => {
+    try {
+        const { year, month } = parsePeriodBody(req.body);
+        const data = await managerService.signOffReportPeriod({ year, month, actorId: req.user.userId });
+        res.json({ message: 'Đã ký duyệt kỳ báo cáo', report: data });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const reopenReportPeriod = async (req, res) => {
+    try {
+        const { year, month } = parsePeriodBody(req.body);
+        const data = await managerService.reopenReportPeriod({ year, month });
+        res.json({ message: 'Đã mở lại kỳ báo cáo', report: data });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const listReportPeriods = async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || 24, 60);
+        const periods = await managerService.listReportPeriods({ limit });
+        res.json({ periods });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const getSalaryAdvances = async (req, res) => {
     try {
         const advances = await managerService.listSalaryAdvances(req.query);
@@ -307,6 +383,11 @@ const reassignShipment = async (req, res) => {
 module.exports = {
     getDashboard,
     getReportsOverview,
+    getBusinessReport,
+    closeReportPeriod,
+    signOffReportPeriod,
+    reopenReportPeriod,
+    listReportPeriods,
     getSalaryAdvances,
     approveSalaryAdvance,
     rejectSalaryAdvance,
