@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image } from "@heroui/react";
+import {
+  RiToolsLine, RiFileTextLine, RiCalendarEventLine, RiUserLine,
+  RiErrorWarningFill, RiAlertLine,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 const MAINTENANCE_TYPES = [
   { value: "scheduled", label: "Định kỳ" },
@@ -52,11 +58,11 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
         <ModalHeader>Gửi xe {vehicle?.plate_number} đi bảo dưỡng</ModalHeader>
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
-          <Select label="Loại bảo dưỡng *" selectedKeys={[form.maintenance_type]} onSelectionChange={(k) => setForm((p) => ({ ...p, maintenance_type: [...k][0] }))} variant="bordered">
+          <Select label="Loại bảo dưỡng *" selectedKeys={[form.maintenance_type]} onSelectionChange={(k) => setForm((p) => ({ ...p, maintenance_type: [...k][0] }))} variant="bordered" startContent={ic(RiToolsLine)}>
             {MAINTENANCE_TYPES.map((t) => <SelectItem key={t.value}>{t.label}</SelectItem>)}
           </Select>
-          <Textarea label="Mô tả" placeholder="Không bắt buộc" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" />
-          <Input type="date" label="Ngày bảo dưỡng *" value={form.maintenance_date} onValueChange={(v) => setForm((p) => ({ ...p, maintenance_date: v }))} variant="bordered" />
+          <Textarea label="Mô tả" placeholder="Không bắt buộc" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
+          <Input type="date" label="Ngày bảo dưỡng *" value={form.maintenance_date} onValueChange={(v) => setForm((p) => ({ ...p, maintenance_date: v }))} variant="bordered" startContent={ic(RiCalendarEventLine)} />
           <Select
             label="Người thực hiện *"
             placeholder="Chọn tài xế"
@@ -64,6 +70,7 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
             onSelectionChange={(k) => setForm((p) => ({ ...p, performed_by: [...k][0] ?? "" }))}
             isLoading={loadingDrivers}
             variant="bordered"
+            startContent={ic(RiUserLine)}
           >
             {driverOptions.map((d) => (
               <SelectItem key={String(d.id)} isDisabled={!d.is_maintenance_eligible}>
@@ -118,7 +125,7 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
               <p className="text-xs text-gray-400">Chưa có ảnh hóa đơn.</p>
             )}
           </div>
-          <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" />
+          <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
           {!pending && <p className="text-xs text-amber-600">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất.</p>}
         </ModalBody>
         <ModalFooter>
@@ -156,12 +163,12 @@ export function MarkBrokenModal({ open, vehicle, onClose, onSubmit }) {
         <ModalHeader>Đánh dấu {vehicle?.plate_number} bị hỏng</ModalHeader>
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
-          <Input label="Loại hỏng hóc *" placeholder="engine_failure" value={form.failure_type} onValueChange={(v) => setForm((p) => ({ ...p, failure_type: v }))} variant="bordered" />
-          <Select label="Mức độ *" selectedKeys={[form.severity_level]} onSelectionChange={(k) => setForm((p) => ({ ...p, severity_level: [...k][0] }))} variant="bordered">
+          <Input label="Loại hỏng hóc *" placeholder="engine_failure" value={form.failure_type} onValueChange={(v) => setForm((p) => ({ ...p, failure_type: v }))} variant="bordered" startContent={ic(RiErrorWarningFill)} />
+          <Select label="Mức độ *" selectedKeys={[form.severity_level]} onSelectionChange={(k) => setForm((p) => ({ ...p, severity_level: [...k][0] }))} variant="bordered" startContent={ic(RiAlertLine)}>
             {SEVERITY_LEVELS.map((s) => <SelectItem key={s.value}>{s.label}</SelectItem>)}
           </Select>
-          <Textarea label="Mô tả *" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" />
-          <Textarea label="Ghi chú" value={form.note} onValueChange={(v) => setForm((p) => ({ ...p, note: v }))} minRows={2} variant="bordered" />
+          <Textarea label="Mô tả *" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
+          <Textarea label="Ghi chú" value={form.note} onValueChange={(v) => setForm((p) => ({ ...p, note: v }))} minRows={2} variant="bordered" startContent={ic(RiFileTextLine)} />
         </ModalBody>
         <ModalFooter>
           <Button variant="flat" onPress={onClose}>Hủy</Button>
@@ -197,7 +204,7 @@ export function RestoreVehicleModal({ open, vehicle, onClose, onSubmit }) {
         <ModalHeader>Khôi phục xe {vehicle?.plate_number}</ModalHeader>
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
-          <Textarea label="Ghi chú xử lý *" value={note} onValueChange={setNote} minRows={3} variant="bordered" />
+          <Textarea label="Ghi chú xử lý *" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
         </ModalBody>
         <ModalFooter>
           <Button variant="flat" onPress={onClose}>Hủy</Button>
@@ -233,7 +240,7 @@ export function RetireVehicleModal({ open, vehicle, onClose, onSubmit }) {
         <ModalHeader>Thu hồi xe {vehicle?.plate_number}</ModalHeader>
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
-          <Textarea label="Ghi chú thu hồi *" value={note} onValueChange={setNote} minRows={3} variant="bordered" />
+          <Textarea label="Ghi chú thu hồi *" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
         </ModalBody>
         <ModalFooter>
           <Button variant="flat" onPress={onClose}>Hủy</Button>
