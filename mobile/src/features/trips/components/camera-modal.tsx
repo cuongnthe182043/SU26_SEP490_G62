@@ -2,7 +2,8 @@ import { useRef } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView } from 'expo-camera';
-import { Camera, X } from 'lucide-react-native';
+import { launchImageLibraryAsync, MediaTypeOptions, requestMediaLibraryPermissionsAsync } from 'expo-image-picker';
+import { Camera, Images, X } from 'lucide-react-native';
 import { Text, XStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
@@ -30,6 +31,21 @@ export function CameraModal({ visible, label, onCapture, onClose }: Props) {
         }
     };
 
+    // Chọn ảnh có sẵn từ thư viện — cùng đi qua onCapture như ảnh chụp.
+    const handlePickFromGallery = async () => {
+        try {
+            const perm = await requestMediaLibraryPermissionsAsync();
+            if (!perm.granted) {
+                Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh để chọn hóa đơn.');
+                return;
+            }
+            const result = await launchImageLibraryAsync({ mediaTypes: MediaTypeOptions.Images, quality: 0.85 });
+            if (!result.canceled && result.assets?.[0]?.uri) onCapture(result.assets[0].uri);
+        } catch {
+            Alert.alert('Lỗi', 'Không thể mở thư viện ảnh, vui lòng thử lại.');
+        }
+    };
+
     return (
         <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
             <View style={s.container}>
@@ -52,14 +68,21 @@ export function CameraModal({ visible, label, onCapture, onClose }: Props) {
                     </XStack>
                 </View>
 
-                {/* Shutter */}
+                {/* Shutter + chọn từ thư viện */}
                 <View style={s.shutterBar}>
-                    <Text style={s.guide}>Đảm bảo ảnh rõ nét trước khi chụp</Text>
-                    <Pressable onPress={handleShutter} style={s.shutter}>
-                        <View style={s.shutterInner}>
-                            <Camera size={28} color={appTheme.colors.primary} />
-                        </View>
-                    </Pressable>
+                    <Text style={s.guide}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                    <XStack alignItems="center" justifyContent="center" gap={28}>
+                        <Pressable onPress={handlePickFromGallery} style={s.galleryBtn} hitSlop={12}>
+                            <Images size={24} color="#fff" />
+                        </Pressable>
+                        <Pressable onPress={handleShutter} style={s.shutter}>
+                            <View style={s.shutterInner}>
+                                <Camera size={28} color={appTheme.colors.primary} />
+                            </View>
+                        </Pressable>
+                        {/* giữ nút chụp cân giữa */}
+                        <View style={s.galleryBtn} />
+                    </XStack>
                 </View>
             </View>
         </Modal>
@@ -99,5 +122,10 @@ const s = StyleSheet.create({
         width: 62, height: 62, borderRadius: 31, backgroundColor: '#fff',
         alignItems: 'center', justifyContent: 'center',
         borderWidth: 2, borderColor: appTheme.colors.primaryMuted,
+    },
+    galleryBtn: {
+        width: 52, height: 52, borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        alignItems: 'center', justifyContent: 'center',
     },
 });
