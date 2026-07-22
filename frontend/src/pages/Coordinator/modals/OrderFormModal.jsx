@@ -3,11 +3,18 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Select, SelectItem, Textarea, Spinner,
 } from "@heroui/react";
-import { RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine } from "react-icons/ri";
+import {
+  RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine,
+  RiCalendarEventLine, RiPhoneLine, RiUserLine, RiArchiveLine, RiScales3Line,
+  RiMoneyDollarCircleLine, RiRoadMapLine, RiTruckLine, RiRoadsterLine,
+  RiMapPinLine, RiFileTextLine,
+} from "react-icons/ri";
 import { coordinatorService } from "../services/coordinator.service";
 import { useCustomerPhoneSuggest } from "../../../hooks/useCustomerPhoneSuggest";
 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 export default function OrderFormModal({
   open,
@@ -70,6 +77,7 @@ export default function OrderFormModal({
                 isInvalid={!!formErrors.date}
                 errorMessage={formErrors.date}
                 variant="bordered"
+                startContent={ic(RiCalendarEventLine)}
               />
               <div className="relative">
                 <Input
@@ -83,6 +91,7 @@ export default function OrderFormModal({
                   errorMessage={formErrors.customer_phone}
                   variant="bordered"
                   autoComplete="off"
+                  startContent={ic(RiPhoneLine)}
                 />
                 {suggestOpen && (
                   <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
@@ -122,6 +131,7 @@ export default function OrderFormModal({
                 isInvalid={!!formErrors.customer_name}
                 errorMessage={formErrors.customer_name}
                 variant="bordered"
+                startContent={ic(RiUserLine)}
               />
             </div>
           </div>
@@ -133,6 +143,7 @@ export default function OrderFormModal({
               value={form.cargo_name}
               onValueChange={(v) => updateField("cargo_name", v)}
               variant="bordered"
+              startContent={ic(RiArchiveLine)}
             />
             <Input
               label="Khối lượng (kg)"
@@ -144,6 +155,7 @@ export default function OrderFormModal({
               isInvalid={!!formErrors.cargo_weight_kg}
               errorMessage={formErrors.cargo_weight_kg}
               variant="bordered"
+              startContent={ic(RiScales3Line)}
             />
           </div>
 
@@ -158,6 +170,7 @@ export default function OrderFormModal({
             isInvalid={!!formErrors.prepaid_amount}
             errorMessage={formErrors.prepaid_amount}
             variant="bordered"
+            startContent={ic(RiMoneyDollarCircleLine)}
           />
 
           <div className="flex items-center gap-3">
@@ -185,6 +198,7 @@ export default function OrderFormModal({
               isInvalid={!!formErrors.partner_name}
               errorMessage={formErrors.partner_name}
               variant="bordered"
+              startContent={ic(RiUserFollowLine)}
             >
               {partners.map((partner) => (
                 <SelectItem key={String(partner.id)} textValue={partner.company_name}>
@@ -221,6 +235,7 @@ export default function OrderFormModal({
                       isInvalid={!!formErrors[`trip_${index}_vehicle_group_id`]}
                       errorMessage={formErrors[`trip_${index}_vehicle_group_id`]}
                       variant="bordered"
+                      startContent={ic(RiRoadMapLine)}
                     >
                       {vehicleGroups.map((group) => <SelectItem key={String(group.id)}>{group.name}</SelectItem>)}
                     </Select>
@@ -234,6 +249,7 @@ export default function OrderFormModal({
                       isInvalid={!!formErrors[`trip_${index}_plate`]}
                       errorMessage={formErrors[`trip_${index}_plate`]}
                       variant="bordered"
+                      startContent={ic(RiTruckLine)}
                     >
                       {[
                         ...(trip.plate && !getAvailablePlates(trip.vehicle_group_id).some((v) => v.plate_number === trip.plate)
@@ -258,6 +274,7 @@ export default function OrderFormModal({
                       isInvalid={!!formErrors[`trip_${index}_distance`]}
                       errorMessage={formErrors[`trip_${index}_distance`]}
                       variant="bordered"
+                      startContent={ic(RiRoadsterLine)}
                     />
                   </div>
 
@@ -271,6 +288,7 @@ export default function OrderFormModal({
                         isInvalid={!!formErrors[`trip_${index}_pickup_address`]}
                         errorMessage={formErrors[`trip_${index}_pickup_address`]}
                         variant="bordered"
+                        startContent={ic(RiMapPinLine)}
                       />
                       {(trip.pickup_addresses || [trip.pickup_address]).slice(1).map((address, extraIndex) => {
                         const stopIndex = extraIndex + 1;
@@ -302,6 +320,7 @@ export default function OrderFormModal({
                         isInvalid={!!formErrors[`trip_${index}_delivery_address`]}
                         errorMessage={formErrors[`trip_${index}_delivery_address`]}
                         variant="bordered"
+                        startContent={ic(RiMapPinLine)}
                       />
                       {(trip.delivery_addresses || [trip.delivery_address]).slice(1).map((address, extraIndex) => {
                         const stopIndex = extraIndex + 1;
@@ -336,6 +355,7 @@ export default function OrderFormModal({
                       onValueChange={(v) => updateTripField(index, "price", v)}
                       variant="bordered"
                       className="max-w-xs"
+                      startContent={ic(RiMoneyDollarCircleLine)}
                       description={
                         trip.price
                           ? `Đơn giá gợi ý theo km × đơn giá nhóm xe: ${Number(getSuggestedFare(trip) || 0).toLocaleString("vi-VN")} đ`
@@ -365,6 +385,7 @@ export default function OrderFormModal({
             onValueChange={(v) => updateField("note", v)}
             minRows={3}
             variant="bordered"
+            startContent={ic(RiFileTextLine)}
           />
         </ModalBody>
         <ModalFooter>

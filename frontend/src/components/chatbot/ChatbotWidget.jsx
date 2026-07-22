@@ -98,10 +98,11 @@ export default function ChatbotWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-[9999] flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3.5 text-gray-800 shadow-lg shadow-black/10 transition-all hover:scale-105 hover:shadow-xl"
+          className="fixed bottom-20 right-6 z-[9999] flex items-center gap-2 rounded-full px-5 py-3.5 text-white shadow-lg shadow-black/20 transition-all hover:scale-105 hover:shadow-xl"
+          style={{ background: "linear-gradient(90deg, #1BA1E3 0%, #5C7CFA 40%, #9B72CB 72%, #D96570 100%)" }}
           aria-label="Mở trợ lý AI"
         >
-          <GeminiSpark size={22} />
+          <GeminiSpark size={22} gradient={false} color="#fff" />
           <span className="text-sm font-semibold">Trợ lý AI</span>
         </button>
       )}
