@@ -7,8 +7,10 @@ import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
   RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
-  RiFileDownloadLine, RiArrowGoBackLine,
+  RiFileDownloadLine, RiArrowGoBackLine, RiSearchLine, RiFilter3Line, RiSortDesc,
 } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
@@ -673,6 +675,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               value={payrollSearch}
               onValueChange={(v) => { setPayrollSearch(v); setPayPage(1); }}
               className="w-56"
+              startContent={ic(RiSearchLine)}
             />
             <Select
               size="sm"
@@ -681,6 +684,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               className="w-52"
               selectedKeys={new Set([payrollStatusFilter])}
               onChange={(e) => { setPayrollStatusFilter(e.target.value); setPayPage(1); }}
+              startContent={ic(RiFilter3Line)}
             >
               {PAYROLL_STATUS_OPTIONS.map(({ key, label }) => (
                 <SelectItem key={key} textValue={label}>{label}</SelectItem>
@@ -693,6 +697,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               className="w-48"
               selectedKeys={new Set([payrollSort])}
               onChange={(e) => { setPayrollSort(e.target.value); setPayPage(1); }}
+              startContent={ic(RiSortDesc)}
             >
               {PAYROLL_SORT_OPTIONS.map(({ key, label }) => (
                 <SelectItem key={key} textValue={label}>{label}</SelectItem>

@@ -57,9 +57,9 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead,
         ) : (
           <div className="flex flex-col divide-y divide-gray-50">
             {notifications.map((n) => {
-              // Chỉ những thông báo có entity_type mới biết đường điều hướng;
-              // số còn lại giữ nguyên dạng tĩnh thay vì bấm vào rồi không xảy ra gì.
-              const clickable = Boolean(onSelect && n.entity_type);
+              // Bấm bất kỳ thông báo nào cũng đánh dấu ĐÃ ĐỌC; nếu có entity_type
+              // thì điều hướng thêm tới màn liên quan.
+              const clickable = Boolean(onSelect);
               const Wrapper = clickable ? "button" : "div";
               return (
                 <Wrapper
@@ -112,22 +112,20 @@ export function TopBar({
   onNotificationSelect,
 }) {
   const [open, setOpen] = useState(false);
-  const { notifications, unreadCount, loading, markAllRead } = useNotifications();
+  const { notifications, unreadCount, loading, markAllRead, markAsRead } = useNotifications();
 
-  // Đóng popover trước khi chuyển màn, nếu không nó che mất chỗ vừa điều hướng tới.
-  const handleNotificationSelect = onNotificationSelect
-    ? (notification) => {
-        setOpen(false);
-        onNotificationSelect(notification);
-      }
-    : undefined;
-
-  const handleOpenChange = async (isOpen) => {
-    setOpen(isOpen);
-    if (isOpen && unreadCount > 0) {
-      await markAllRead();
-    }
+  // Bấm 1 thông báo: chỉ đánh dấu ĐÚNG thông báo đó đã đọc, rồi điều hướng tới màn
+  // hình liên quan (nếu page có cung cấp onNotificationSelect). Đóng popover trước
+  // khi chuyển màn để không che chỗ vừa điều hướng tới.
+  const handleNotificationSelect = (notification) => {
+    markAsRead(notification.id);
+    setOpen(false);
+    onNotificationSelect?.(notification);
   };
+
+  // KHÔNG còn tự đánh dấu đọc tất cả khi mở chuông — chỉ đọc từng cái khi bấm vào,
+  // hoặc bấm nút "Đọc tất cả" nếu muốn.
+  const handleOpenChange = (isOpen) => setOpen(isOpen);
 
   return (
     <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-gray-100 flex-shrink-0 gap-4">

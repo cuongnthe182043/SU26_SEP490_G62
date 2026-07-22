@@ -2,6 +2,9 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Select, SelectItem, Input, Textarea,
 } from "@heroui/react";
+import { RiAlertLine, RiErrorWarningLine, RiTruckLine, RiFileTextLine, RiMapPinLine } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 const INCIDENT_TYPES = [
   { value: "vehicle_breakdown", label: "Sự cố xe" },
@@ -36,6 +39,7 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
               selectedKeys={form.incidentType ? [form.incidentType] : []}
               onSelectionChange={(keys) => setForm((prev) => ({ ...prev, incidentType: [...keys][0] }))}
               variant="bordered"
+              startContent={ic(RiAlertLine)}
             >
               {INCIDENT_TYPES.map((t) => <SelectItem key={t.value}>{t.label}</SelectItem>)}
             </Select>
@@ -44,6 +48,7 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
               selectedKeys={[form.severityLevel || "medium"]}
               onSelectionChange={(keys) => setForm((prev) => ({ ...prev, severityLevel: [...keys][0] }))}
               variant="bordered"
+              startContent={ic(RiErrorWarningLine)}
             >
               {SEVERITY_LEVELS.map((s) => <SelectItem key={s.value}>{s.label}</SelectItem>)}
             </Select>
@@ -53,6 +58,7 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
               value={form.shipmentId || ""}
               onValueChange={(v) => setForm((prev) => ({ ...prev, shipmentId: v }))}
               variant="bordered"
+              startContent={ic(RiTruckLine)}
             />
           </div>
 
@@ -62,6 +68,7 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
             onValueChange={(v) => setForm((prev) => ({ ...prev, description: v }))}
             minRows={4}
             variant="bordered"
+            startContent={ic(RiFileTextLine)}
           />
 
           <Input
@@ -70,6 +77,7 @@ export default function CreateIncidentModal({ open, form, setForm, saving, onClo
             value={form.location || ""}
             onValueChange={(v) => setForm((prev) => ({ ...prev, location: v }))}
             variant="bordered"
+            startContent={ic(RiMapPinLine)}
           />
         </ModalBody>
         <ModalFooter>

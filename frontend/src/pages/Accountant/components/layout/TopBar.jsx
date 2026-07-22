@@ -19,7 +19,7 @@ function formatTime(value) {
   return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }
 
-function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead }) {
+function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead, onSelect }) {
   return (
     <div className="w-80 flex flex-col overflow-hidden">
       {}
@@ -58,10 +58,15 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead 
           </div>
         ) : (
           <div className="flex flex-col divide-y divide-gray-50">
-            {notifications.map((n) => (
-              <div
+            {notifications.map((n) => {
+              const clickable = Boolean(onSelect);
+              const Wrapper = clickable ? "button" : "div";
+              return (
+              <Wrapper
                 key={n.id}
-                className={`px-4 py-3 transition-colors ${
+                type={clickable ? "button" : undefined}
+                onClick={clickable ? () => onSelect(n) : undefined}
+                className={`px-4 py-3 transition-colors ${clickable ? "w-full text-left cursor-pointer" : ""} ${
                   !n.is_read ? "bg-blue-50/50" : "hover:bg-gray-50"
                 }`}
               >
@@ -87,8 +92,9 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead 
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              </Wrapper>
+              );
+            })}
           </div>
         )}
       </div>
@@ -104,15 +110,19 @@ export function TopBar({
   searchPlaceholder = "Tìm kiếm...",
   primaryAction,
   secondaryAction,
+  onNotificationSelect,
 }) {
   const [open, setOpen] = useState(false);
-  const { notifications, unreadCount, loading, markAllRead } = useNotifications();
+  const { notifications, unreadCount, loading, markAllRead, markAsRead } = useNotifications();
 
-  const handleOpenChange = async (isOpen) => {
-    setOpen(isOpen);
-    if (isOpen && unreadCount > 0) {
-      await markAllRead();
-    }
+  // KHÔNG tự đánh dấu đọc tất cả khi mở chuông.
+  const handleOpenChange = (isOpen) => setOpen(isOpen);
+
+  // Bấm 1 thông báo: đánh dấu ĐÚNG cái đó đã đọc + điều hướng tới màn liên quan.
+  const handleNotificationSelect = (notification) => {
+    markAsRead(notification.id);
+    setOpen(false);
+    onNotificationSelect?.(notification);
   };
 
   return (
@@ -197,6 +207,7 @@ export function TopBar({
               loading={loading}
               unreadCount={unreadCount}
               onMarkAllRead={markAllRead}
+              onSelect={handleNotificationSelect}
             />
           </PopoverContent>
         </Popover>

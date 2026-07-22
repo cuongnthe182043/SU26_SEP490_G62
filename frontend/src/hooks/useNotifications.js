@@ -37,6 +37,23 @@ export function useNotifications() {
     }
   }, []);
 
+  // Đánh dấu ĐÚNG 1 thông báo đã đọc (dùng khi user bấm vào 1 thông báo cụ thể).
+  const markAsRead = useCallback(async (id) => {
+    // Optimistic: cập nhật UI ngay.
+    setNotifications((prev) => {
+      const target = prev.find((n) => String(n.id) === String(id));
+      if (target && !target.is_read) setUnreadCount((c) => Math.max(0, c - 1));
+      return prev.map((n) => (String(n.id) === String(id) ? { ...n, is_read: true } : n));
+    });
+    // Thông báo broadcast (id null) không lưu DB → chỉ cập nhật UI, không gọi API.
+    if (id == null) return;
+    try {
+      await apiRequest(`/api/notifications/${id}/read`, { method: "PATCH" });
+    } catch {
+      /* lỗi thì refetch để đồng bộ lại */ fetch();
+    }
+  }, [fetch]);
+
   useEffect(() => {
     fetch();
   }, [fetch]);
@@ -98,5 +115,5 @@ export function useNotifications() {
     };
   }, []);
 
-  return { notifications, unreadCount, loading, markAllRead, refetch: fetch };
+  return { notifications, unreadCount, loading, markAllRead, markAsRead, refetch: fetch };
 }
