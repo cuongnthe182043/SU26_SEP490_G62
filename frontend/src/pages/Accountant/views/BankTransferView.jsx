@@ -23,7 +23,7 @@ function ProofImages({ urls }) {
           <button
             key={i}
             onClick={() => setLightbox(url)}
-            className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 hover:ring-2 hover:ring-blue-400 transition-all flex-shrink-0"
+            className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 hover:ring-2 hover:ring-blue-400 transition-all shrink-0"
           >
             <img src={url} alt={`Biên lai ${i + 1}`} className="w-full h-full object-cover" />
           </button>
@@ -235,12 +235,12 @@ export function BankTransferView({ search = "" }) {
                     {r.proof_urls?.length > 0 ? (
                       <div className="flex gap-1">
                         {r.proof_urls.slice(0, 2).map((url, i) => (
-                          <div key={i} className="w-9 h-9 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 flex-shrink-0">
+                          <div key={i} className="w-9 h-9 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 shrink-0">
                             <img src={url} alt="proof" className="w-full h-full object-cover" />
                           </div>
                         ))}
                         {r.proof_urls.length > 2 && (
-                          <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 font-medium flex-shrink-0">
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 font-medium shrink-0">
                             +{r.proof_urls.length - 2}
                           </div>
                         )}

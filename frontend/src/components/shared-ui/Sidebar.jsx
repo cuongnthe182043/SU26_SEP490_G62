@@ -29,8 +29,8 @@ function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onVie
           disabled
             ? "text-gray-300 dark:text-gray-600"
             : active
-              ? "text-white flex-shrink-0"
-              : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 flex-shrink-0"
+              ? "text-white shrink-0"
+              : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0"
         }
       />
       {!collapsed && <span className="flex-1 truncate">{label}</span>}
@@ -71,14 +71,14 @@ export function Sidebar({
 
   return (
     <aside
-      className={`g62-sidebar flex flex-col min-h-screen bg-white dark:bg-[#161922] border-r border-gray-200 dark:border-white/10 flex-shrink-0
-                  transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[220px]"}`}
+      className={`g62-sidebar flex flex-col min-h-screen bg-white dark:bg-[#161922] border-r border-gray-200 dark:border-white/10 shrink-0
+                  transition-all duration-200 ${collapsed ? "w-15" : "w-55"}`}
     >
       <div className={`flex items-center h-16 border-b border-gray-100 dark:border-white/10
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
-          <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 bg-gray-50 dark:bg-white/10 border border-gray-100 dark:border-white/10">
-            <img src="/logo.png" alt="LogisCount" className="w-full h-[100%] object-cover object-top" />
+          <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 bg-gray-50 dark:bg-white/10 border border-gray-100 dark:border-white/10">
+            <img src="/logo.png" alt="LogisCount" className="w-full h-full object-cover object-top" />
           </div>
         )}
         {!collapsed && (
@@ -90,7 +90,7 @@ export function Sidebar({
         <button
           onClick={onToggle}
           className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 dark:text-gray-400
-                     hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0"
+                     hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-200 transition-colors shrink-0"
           title={collapsed ? "Mở sidebar" : "Thu sidebar"}
         >
           {collapsed ? <RiMenuUnfoldLine size={17} /> : <RiMenuFoldLine size={17} />}
@@ -157,7 +157,7 @@ export function Sidebar({
                          transition-colors duration-150"
             >
               <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center
-                              text-white font-bold text-xs flex-shrink-0">
+                              text-white font-bold text-xs shrink-0">
                 {avatar}
               </div>
               <div className="flex flex-col min-w-0">

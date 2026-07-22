@@ -3,7 +3,7 @@ import {
   Button, Input, Tabs, Tab,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem, Textarea,
 } from "@heroui/react";
-import { RiRefreshLine, RiCalendarLine, RiCalendarCheckLine, RiUserLine, RiSortDesc } from "react-icons/ri";
+import { RiRefreshLine, RiUserLine, RiSortDesc } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import OrderFormModal from "../modals/OrderFormModal";
@@ -422,8 +422,8 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 flex flex-wrap items-end gap-3">
-        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarLine)} />
-        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarCheckLine)} />
+        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
+        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
         <Input label="Khách hàng" placeholder="Lọc theo khách hàng" value={customerFilter} onValueChange={setCustomerFilter} variant="bordered" size="sm" className="w-56" startContent={ic(RiUserLine)} />
         <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48" startContent={ic(RiSortDesc)}>
           <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>

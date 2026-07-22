@@ -311,7 +311,7 @@ export default function DashboardView({ user }) {
                       <span className="text-xs text-gray-400 dark:text-gray-400">{r.request_month}/{r.request_year} · {fmt(r.amount)}</span>
                     </div>
                     {r.status === "pending" ? (
-                      <div className="flex gap-1 flex-shrink-0">
+                      <div className="flex gap-1 shrink-0">
                         <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={actingId === `advance-approve-${r.id}`} onPress={() => handleApproveAdvance(r)}>Duyệt</Button>
                         <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setRejectAdvanceTarget(r); setRejectReason(""); }}>Từ chối</Button>
                       </div>
@@ -335,7 +335,7 @@ export default function DashboardView({ user }) {
                       <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.driver_name}</span>
                       <span className="text-xs text-gray-400 dark:text-gray-400">{r.cargo_name || "Công nợ nội bộ"} · {fmt(r.amount)} / {fmt(r.total_amount)}</span>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex gap-1 shrink-0">
                       <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={actingId === `repayment-confirm-${r.id}`} onPress={() => handleConfirmRepayment(r)}>Xác nhận</Button>
                       <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setRejectRepaymentTarget(r); setRejectReason(""); }}>Từ chối</Button>
                     </div>

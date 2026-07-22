@@ -81,7 +81,7 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
                         <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Đơn #{d.order_id || "-"} · Chuyến #{d.shipment_id || "-"}</span>
                         <span className="text-xs text-gray-400 dark:text-gray-400">{d.customer_company || d.customer_name || "Không có"} · {d.cargo_name || "Không có hàng hóa"}</span>
                       </div>
-                      <div className="flex items-center gap-4 flex-shrink-0 text-right">
+                      <div className="flex items-center gap-4 shrink-0 text-right">
                         <div><div className="text-[10px] text-gray-400 dark:text-gray-400">Tổng nợ</div><div className="text-sm font-semibold">{fmt(d.total_amount)}</div></div>
                         <div><div className="text-[10px] text-gray-400 dark:text-gray-400">Đã thu</div><div className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">{fmt(d.paid_amount)}</div></div>
                         <div><div className="text-[10px] text-gray-400 dark:text-gray-400">Còn lại</div><div className="text-sm font-bold text-rose-600 dark:text-rose-300">{fmt(d.remaining)}</div></div>

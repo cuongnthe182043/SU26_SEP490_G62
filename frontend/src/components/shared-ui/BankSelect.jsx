@@ -60,14 +60,14 @@ export function BankSelect({ value, onChange, label = "Ngân hàng", size = "sm"
       listboxProps={{ emptyContent: loading ? "Đang tải danh sách ngân hàng..." : "Không tìm thấy ngân hàng." }}
       inputProps={{
         startContent: selectedBank?.logo ? (
-          <img src={selectedBank.logo} alt={selectedBank.shortName} className="w-5 h-5 object-contain flex-shrink-0" />
+          <img src={selectedBank.logo} alt={selectedBank.shortName} className="w-5 h-5 object-contain shrink-0" />
         ) : null,
       }}
     >
       {(bank) => (
         <AutocompleteItem key={String(bank.id)} textValue={bank.shortName}>
           <div className="flex items-center gap-2">
-            {bank.logo && <img src={bank.logo} alt={bank.shortName} className="w-6 h-6 object-contain flex-shrink-0" />}
+            {bank.logo && <img src={bank.logo} alt={bank.shortName} className="w-6 h-6 object-contain shrink-0" />}
             <div className="flex flex-col min-w-0">
               <span className="text-sm font-medium truncate">{bank.shortName}</span>
               <span className="text-xs text-gray-400 dark:text-gray-400 truncate">{bank.name}</span>

@@ -154,11 +154,11 @@ export function DriverHoldingsList({ data }) {
         <div key={i} className="py-2 border-b border-gray-50 last:border-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{d.driver_name}</span>
-            <span className="text-xs font-bold text-amber-600 dark:text-amber-300 flex-shrink-0 ml-2">{VND(d.holding)}</span>
+            <span className="text-xs font-bold text-amber-600 dark:text-amber-300 shrink-0 ml-2">{VND(d.holding)}</span>
           </div>
           <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
+              className="h-full bg-linear-to-r from-amber-400 to-amber-600 rounded-full"
               style={{ width: `${(Number(d.holding) / max) * 100}%` }}
             />
           </div>
@@ -182,7 +182,7 @@ export function TopCustomersTable({ data }) {
     <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
       {data.map((c, i) => (
         <div key={i} className="flex items-center gap-3 py-3">
-          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
+          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
             ${i === 0 ? "bg-yellow-100 dark:bg-yellow-500/15 text-yellow-600 dark:text-yellow-300"
             : i === 1 ? "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400"
             : i === 2 ? "bg-orange-100 dark:bg-orange-500/15 text-orange-500"
@@ -192,11 +192,11 @@ export function TopCustomersTable({ data }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{c.name}</span>
-              <span className="text-xs font-bold text-blue-600 dark:text-blue-300 flex-shrink-0 ml-2">{VND(c.total_revenue)}</span>
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-300 shrink-0 ml-2">{VND(c.total_revenue)}</span>
             </div>
             <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+                className="h-full bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
                 style={{ width: `${(Number(c.total_revenue) / maxRevenue) * 100}%` }}
               />
             </div>

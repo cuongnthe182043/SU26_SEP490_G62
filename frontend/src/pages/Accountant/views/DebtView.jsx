@@ -152,12 +152,12 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
               {item.receipt_url ? (
                 <button
                   onClick={() => setLightboxUrl(item.receipt_url)}
-                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 flex-shrink-0 hover:ring-2 hover:ring-blue-400"
+                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 shrink-0 hover:ring-2 hover:ring-blue-400"
                 >
                   <img src={item.receipt_url} alt="Chứng từ" className="w-full h-full object-cover" />
                 </button>
               ) : (
-                <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+                <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center shrink-0">
                   <RiFileList3Line size={18} className="text-gray-300" />
                 </div>
               )}
@@ -180,10 +180,10 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
                 {item.notes && <span className="text-[11px] text-gray-400 dark:text-gray-400 italic truncate">{item.notes}</span>}
               </div>
 
-              <MoneyText amount={item.amount} className="text-sm font-bold text-gray-800 dark:text-gray-100 flex-shrink-0" />
+              <MoneyText amount={item.amount} className="text-sm font-bold text-gray-800 dark:text-gray-100 shrink-0" />
 
               {/* Thao tác */}
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex gap-2 shrink-0">
                 <Button size="sm" color="success" variant="flat"
                   isLoading={actingId === item.id}
                   onPress={() => handleConfirm(item)}
@@ -445,7 +445,7 @@ function DebtStatCard({ label, value, sub, icon: Icon, gradient, lightBg, text, 
         <div className={`w-10 h-10 rounded-xl ${lightBg} flex items-center justify-center`}>
           <Icon size={20} className={text} />
         </div>
-        <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
+        <div className={`w-14 h-14 rounded-full bg-linear-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{label}</span>

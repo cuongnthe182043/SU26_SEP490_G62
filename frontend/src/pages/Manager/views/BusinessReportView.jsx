@@ -340,7 +340,7 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
 
   return (
     <div className={`rounded-2xl border ${config.wrap} px-4 py-3 flex items-center gap-3 flex-wrap`}>
-      <div className="w-9 h-9 rounded-xl bg-white/70 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-xl bg-white/70 dark:bg-white/10 flex items-center justify-center shrink-0">
         <Icon size={18} className={config.iconTone} />
       </div>
       <div className="flex-1 min-w-[180px]">
@@ -444,10 +444,10 @@ function DriverProductivity({ data }) {
         <div key={i} className="py-2 border-b border-gray-50 last:border-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{d.driver_name}</span>
-            <span className="text-xs font-bold text-blue-600 dark:text-blue-300 flex-shrink-0 ml-2">{VND(d.revenue)}</span>
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-300 shrink-0 ml-2">{VND(d.revenue)}</span>
           </div>
           <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+            <div className="h-full bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               style={{ width: `${(Number(d.revenue) / max) * 100}%` }} />
           </div>
           <span className="text-[10px] text-gray-400 dark:text-gray-400">{d.trip_count} chuyến</span>

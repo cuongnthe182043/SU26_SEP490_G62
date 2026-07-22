@@ -5,7 +5,7 @@ import {
 } from "@heroui/react";
 import {
   RiDownloadLine, RiBookOpenLine,
-  RiPriceTag3Line, RiCalendarLine, RiCalendarCheckLine, RiFileTransferLine, RiSortDesc,
+  RiPriceTag3Line, RiFileTransferLine, RiSortDesc,
 } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
@@ -159,13 +159,11 @@ export function LedgerView() {
         </Select>
         <Input
           type="date" label="Từ ngày" size="sm" className="w-40"
-          startContent={ic(RiCalendarLine)}
           value={filterFrom}
           onChange={(e) => resetPageAnd(setFilterFrom)(e.target.value)}
         />
         <Input
           type="date" label="Đến ngày" size="sm" className="w-40"
-          startContent={ic(RiCalendarCheckLine)}
           value={filterTo}
           onChange={(e) => resetPageAnd(setFilterTo)(e.target.value)}
         />
