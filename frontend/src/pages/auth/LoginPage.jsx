@@ -4,6 +4,7 @@ import { apiRequest } from "../../services/apiClient";
 import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
 import ThemeToggle from "../../theme/ThemeToggle";
+import Logo from "../../theme/Logo";
 import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -349,14 +350,14 @@ export default function LoginPage({ onLoginSuccess }) {
               ))}
             </div>
             <div className="login-hero-center">
-              <img src="/logo.png" alt="" aria-hidden="true" />
+              <Logo alt="" aria-hidden="true" />
             </div>
           </div>
         </aside>
 
         <section className="login-right" aria-labelledby="signin-heading">
           <div className="login-card" role="region" aria-label="Sign in">
-            <img src="/logo.png" alt="LogisCount" className="login-logo" />
+            <Logo className="login-logo" />
             <h2 id="signin-heading">Staff sign in</h2>
             <p className="login-help">
               Use a pre-provisioned account only. New users cannot register themselves.
