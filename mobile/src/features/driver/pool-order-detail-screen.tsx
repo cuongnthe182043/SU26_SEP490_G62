@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Layers, MapPin, Package, Weight, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -53,6 +53,20 @@ export default function PoolOrderDetailScreen() {
     }, [shipmentId]);
 
     useEffect(() => { void load(); }, [load]);
+
+    // Kéo-xuống làm mới (không bật skeleton như load).
+    const [refreshing, setRefreshing] = useState(false);
+    const onRefresh = useCallback(async () => {
+        if (!shipmentId) return;
+        setRefreshing(true);
+        try {
+            const detail = await tripService.getPoolShipmentDetail(shipmentId);
+            setData(detail);
+            setError(null);
+        } catch { /* giữ data cũ nếu lỗi */ } finally {
+            setRefreshing(false);
+        }
+    }, [shipmentId]);
 
     const handleClaim = async () => {
         if (!data) return;
@@ -120,6 +134,14 @@ export default function PoolOrderDetailScreen() {
 
             <ScrollView
                 style={{ flex: 1 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={appTheme.colors.primary}
+                        colors={[appTheme.colors.primary]}
+                    />
+                }
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
                     paddingTop: 16,

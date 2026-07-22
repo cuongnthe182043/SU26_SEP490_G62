@@ -1,4 +1,5 @@
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Camera, Car, ChevronRight, LogOut, Settings, Shield, User } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -57,6 +58,12 @@ export function ProfileScreen() {
     const { profile, isLoading, refresh } = useProfile();
     const { confirmLogout, isLoggingOut } = useLogout();
     const { isLoading: avatarLoading, updateAvatar } = useUpdateProfile(() => refresh());
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try { await refresh(); } finally { setRefreshing(false); }
+    }, [refresh]);
 
     const handlePickAvatar = async () => {
         Alert.alert('Cập nhật ảnh đại diện', 'Chọn nguồn ảnh', [
@@ -86,7 +93,17 @@ export function ProfileScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <ScreenHeader title="Hồ sơ & Cài đặt" />
-            <ScrollView contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}>
+            <ScrollView
+                contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={appTheme.colors.primary}
+                        colors={[appTheme.colors.primary]}
+                    />
+                }
+            >
 
                 {isLoading ? <ProfileSkeleton /> : <>
                     {/* Avatar + tên */}

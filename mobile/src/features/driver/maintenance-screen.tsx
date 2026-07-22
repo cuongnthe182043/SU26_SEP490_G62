@@ -73,7 +73,17 @@ function MaintenanceCard({
         try {
             await onBillUploaded(record.vehicle_id, uri);
         } catch (err) {
-            Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể tải hóa đơn');
+            const status = (err as { status?: number })?.status;
+            const msg = err instanceof Error ? err.message : 'Không thể tải hóa đơn';
+            // Ảnh bị quét từ chối (422) → yêu cầu tài xế chụp/chọn ảnh khác ngay.
+            if (status === 422) {
+                Alert.alert('Ảnh hóa đơn không hợp lệ', `${msg}\n\nVui lòng chụp hoặc chọn ảnh khác.`, [
+                    { text: 'Chụp/chọn lại', onPress: () => setShowCamera(true) },
+                    { text: 'Để sau', style: 'cancel' },
+                ]);
+            } else {
+                Alert.alert('Lỗi', msg);
+            }
         } finally {
             setUploading(false);
         }
@@ -224,7 +234,7 @@ function MaintenanceCard({
                                             ? <ActivityIndicator size="small" color={appTheme.colors.primary} />
                                             : <ImagePlus size={14} color={appTheme.colors.primary} />}
                                         <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>
-                                            {uploading ? 'Đang tải...' : 'Thêm ảnh'}
+                                            {uploading ? 'Đang kiểm tra...' : 'Thêm ảnh'}
                                         </Text>
                                     </Pressable>
                                 )}
