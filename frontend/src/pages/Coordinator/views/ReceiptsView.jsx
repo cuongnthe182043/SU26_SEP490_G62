@@ -3,7 +3,12 @@ import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine } from "react-icons/ri";
+import {
+  RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine,
+  RiPriceTag3Line, RiFlag2Line, RiCalendarLine, RiCalendarCheckLine, RiSortDesc,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
@@ -153,22 +158,22 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-end gap-3">
-        <Select label="Loại" selectedKeys={[kindFilter]} onSelectionChange={(keys) => setKindFilter([...keys][0])} variant="bordered" size="sm" className="w-48">
+        <Select label="Loại" selectedKeys={[kindFilter]} onSelectionChange={(keys) => setKindFilter([...keys][0])} variant="bordered" size="sm" className="w-48" startContent={ic(RiPriceTag3Line)}>
           <SelectItem key="all">Tất cả</SelectItem>
           <SelectItem key="requests">Yêu cầu chờ xử lý</SelectItem>
           <SelectItem key="receipts">Phiếu thu đã tạo</SelectItem>
           <SelectItem key="rejected">Đã từ chối</SelectItem>
         </Select>
-        <Select label="Trạng thái" selectedKeys={[statusFilter]} onSelectionChange={(keys) => setStatusFilter([...keys][0])} variant="bordered" size="sm" className="w-44">
+        <Select label="Trạng thái" selectedKeys={[statusFilter]} onSelectionChange={(keys) => setStatusFilter([...keys][0])} variant="bordered" size="sm" className="w-44" startContent={ic(RiFlag2Line)}>
           <SelectItem key="all">Tất cả</SelectItem>
           <SelectItem key="pending">Chờ duyệt</SelectItem>
           <SelectItem key="processing">Đang xử lý</SelectItem>
           <SelectItem key="approved">Đã duyệt</SelectItem>
           <SelectItem key="rejected">Đã từ chối</SelectItem>
         </Select>
-        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
-        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
-        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48">
+        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarLine)} />
+        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarCheckLine)} />
+        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48" startContent={ic(RiSortDesc)}>
           <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
           <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
           <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
