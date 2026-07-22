@@ -170,6 +170,7 @@ export function BonusView({ search }) {
           size="sm"
           label="Năm"
           className="w-28"
+          startContent={ic(RiCalendarLine)}
           selectedKeys={filterYear ? new Set([filterYear]) : new Set()}
           onSelectionChange={(keys) => setFilterYear([...keys][0] ?? "")}
         >
@@ -182,6 +183,7 @@ export function BonusView({ search }) {
           size="sm"
           label="Loại"
           className="w-44"
+          startContent={ic(RiPriceTag3Line)}
           selectedKeys={new Set([filterType])}
           onSelectionChange={(keys) => setFilterType([...keys][0] ?? "")}
         >
@@ -195,6 +197,7 @@ export function BonusView({ search }) {
           size="sm"
           label="Trạng thái"
           className="w-36"
+          startContent={ic(RiFlag2Line)}
           selectedKeys={new Set([filterStatus])}
           onSelectionChange={(keys) => setFilterStatus([...keys][0] ?? "")}
         >
@@ -208,6 +211,7 @@ export function BonusView({ search }) {
           size="sm"
           label="Nhân viên"
           className="w-56"
+          startContent={ic(RiUserLine)}
           selectedKeys={new Set([filterDriver])}
           onSelectionChange={(keys) => setFilterDriver([...keys][0] ?? "")}
         >
@@ -221,6 +225,7 @@ export function BonusView({ search }) {
           size="sm"
           label="Sắp xếp"
           className="w-48"
+          startContent={ic(RiSortDesc)}
           selectedKeys={new Set([sortBy])}
           onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")}
         >
