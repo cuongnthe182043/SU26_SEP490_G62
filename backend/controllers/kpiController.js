@@ -55,11 +55,8 @@ const getDriverKPIById = async (req, res) => {
 
 const getLeaderboardByGroup = async (req, res) => {
     try {
-        const isAll = req.params.vehicleGroupId === 'all';
-        const vehicleGroupId = isAll ? null : Number(req.params.vehicleGroupId);
-        if (!isAll && isNaN(vehicleGroupId)) {
-            return res.status(400).json({ error: 'Vehicle group ID không hợp lệ' });
-        }
+        const vehicleGroupId = Number(req.params.vehicleGroupId);
+        if (!vehicleGroupId) return res.status(400).json({ error: 'Vehicle group ID không hợp lệ' });
         const { month, year } = req.query;
         const data = await kpiService.getLeaderboardByGroup(vehicleGroupId, { month, year });
         res.json(data);

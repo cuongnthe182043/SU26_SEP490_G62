@@ -107,57 +107,6 @@ const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
 // Thêm total_in_group: tổng số driver có KPI trong nhóm tháng đó
 
 const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
-    if (!vehicleGroupId) {
-        // Global leaderboard across all vehicle groups
-        const result = await pool.query(
-            `WITH board AS (
-                SELECT
-                    k.driver_id,
-                    p.full_name AS driver_name,
-                    k.completed_shipments,
-                    k.total_revenue::text,
-                    k.incident_count,
-                    RANK() OVER (ORDER BY k.total_revenue DESC) AS revenue_rank,
-                    RANK() OVER (ORDER BY k.completed_shipments DESC) AS trips_rank,
-                    COUNT(*) OVER () AS total_in_group
-                FROM kpi_records k
-                JOIN profiles p ON p.id = k.driver_id
-                WHERE k.year = $1 AND k.month = $2
-             )
-             SELECT *, (driver_id = $3) AS is_me
-             FROM board
-             ORDER BY revenue_rank ASC
-             LIMIT 20`,
-            [year, month, driverId],
-        );
-
-        const rows = result.rows;
-        const alreadyInTop = rows.some((r) => r.driver_id === driverId);
-        if (!alreadyInTop && driverId) {
-            const myRank = await pool.query(
-                `WITH board AS (
-                    SELECT
-                        k.driver_id,
-                        p.full_name AS driver_name,
-                        k.completed_shipments,
-                        k.total_revenue::text,
-                        k.incident_count,
-                        RANK() OVER (ORDER BY k.total_revenue DESC) AS revenue_rank,
-                        RANK() OVER (ORDER BY k.completed_shipments DESC) AS trips_rank,
-                        COUNT(*) OVER () AS total_in_group
-                    FROM kpi_records k
-                    JOIN profiles p ON p.id = k.driver_id
-                    WHERE k.year = $1 AND k.month = $2
-                 )
-                 SELECT *, TRUE AS is_me
-                 FROM board
-                 WHERE driver_id = $3`,
-                [year, month, driverId],
-            );
-            if (myRank.rows[0]) rows.push(myRank.rows[0]);
-        }
-        return rows;
-    }
 
     const result = await pool.query(
         `WITH board AS (
