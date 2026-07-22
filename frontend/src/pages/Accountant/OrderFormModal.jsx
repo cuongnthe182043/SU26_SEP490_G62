@@ -454,6 +454,7 @@ const ShipmentCard = ({
                 onChange={(e) => onUpdate({ ...shipment, cargo_name: e.target.value })}
                 placeholder="Có thể bỏ trống"
                 size="middle"
+                prefix={<InboxOutlined style={{ color: "#94a3b8" }} />}
               />
             </Form.Item>
           </Col>
@@ -1065,6 +1066,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
                   placeholder="Ví dụ: Nguyễn Văn A"
                   status={fieldErrors.customerName ? "error" : undefined}
                   size="middle"
+                  prefix={<UserOutlined style={{ color: "#94a3b8" }} />}
                 />
               </Form.Item>
             </Col>
@@ -1084,6 +1086,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
                   status={fieldErrors.customerPhone ? "error" : undefined}
                   maxLength={15}
                   size="middle"
+                  prefix={<PhoneOutlined style={{ color: "#94a3b8" }} />}
                 />
               </Form.Item>
             </Col>
@@ -1094,6 +1097,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
                   onChange={(e) => setCustomerCompany(e.target.value)}
                   placeholder="Tên công ty khách hàng (không bắt buộc)"
                   size="middle"
+                  prefix={<ShopOutlined style={{ color: "#94a3b8" }} />}
                 />
               </Form.Item>
             </Col>
