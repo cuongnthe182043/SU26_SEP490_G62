@@ -10,6 +10,11 @@ router.use(requireRole('manager'));
 
 router.get('/dashboard', managerController.getDashboard);
 router.get('/reports/overview', managerController.getReportsOverview);
+router.get('/reports/business', managerController.getBusinessReport);
+router.get('/reports/periods', managerController.listReportPeriods);
+router.post('/reports/periods/close', managerController.closeReportPeriod);
+router.post('/reports/periods/sign-off', managerController.signOffReportPeriod);
+router.post('/reports/periods/reopen', managerController.reopenReportPeriod);
 
 // Xem Trip Pool (read-only, không claim được)
 router.get('/trip-pool', tripController.getTripPool);

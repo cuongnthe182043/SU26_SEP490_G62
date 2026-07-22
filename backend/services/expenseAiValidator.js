@@ -198,6 +198,64 @@ const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
     return { valid: true, reject_reason: null };
 };
 
+// ─── Maintenance bill scan (quét ngay khi tài xế upload) ──────────────────────
+
+/**
+ * Quét nhanh ảnh hóa đơn bảo dưỡng ngay tại thời điểm tài xế chụp/chọn ảnh.
+ *
+ * Khác validateExpenseReceipt: chi phí bảo dưỡng có thể CHƯA nhập lúc upload, nên
+ * khi không biết số tiền → chỉ kiểm tra ảnh có phải hóa đơn đọc được (có tổng tiền).
+ * Nếu đã biết chi phí (amount > 0) thì kiểm tra thêm khớp tổng.
+ *
+ * Fail-open khi OCR lỗi/timeout để không chặn oan tài xế vì sự cố hạ tầng.
+ *
+ * @param {string} imageUrl
+ * @param {{ amount?: number|string|null }} opts
+ * @returns {{ valid: boolean, receiptTotal: number|null, reject_reason: string|null }}
+ */
+const scanMaintenanceReceipt = async (imageUrl, { amount } = {}) => {
+    let ocrText;
+    try {
+        const result = await withTimeout(
+            Tesseract.recognize(imageUrl, 'vie+eng', { logger: () => {} }),
+            OCR_TIMEOUT_MS,
+        );
+        ocrText = result.data.text || '';
+    } catch (err) {
+        console.warn('[OCR] maintenance scan failed / timed out — allowing through:', err.message);
+        return { valid: true, receiptTotal: null, reject_reason: null };
+    }
+
+    const allAmounts = extractAmounts(ocrText);
+    if (allAmounts.length === 0) {
+        return {
+            valid: false,
+            receiptTotal: null,
+            reject_reason: 'Không đọc được số tiền trên ảnh. Vui lòng chụp/chọn ảnh hóa đơn rõ nét, đủ ánh sáng.',
+        };
+    }
+
+    const receiptTotal = resolveReceiptTotal(ocrText, allAmounts);
+    if (!receiptTotal) {
+        return {
+            valid: false,
+            receiptTotal: null,
+            reject_reason: 'Không xác định được tổng tiền trên hóa đơn. Vui lòng chụp rõ toàn bộ hóa đơn.',
+        };
+    }
+
+    const claimed = Number(amount);
+    if (Number.isFinite(claimed) && claimed > 0 && !matchesTotal(claimed, receiptTotal)) {
+        return {
+            valid: false,
+            receiptTotal,
+            reject_reason: `Tổng hóa đơn (${fmtVND(receiptTotal)}) không khớp chi phí đã nhập (${fmtVND(claimed)}). Vui lòng chụp đúng hóa đơn bảo dưỡng.`,
+        };
+    }
+
+    return { valid: true, receiptTotal, reject_reason: null };
+};
+
 // ─── Cloudinary cleanup ───────────────────────────────────────────────────────
 
 const deleteUploadedFile = async (publicId) => {
@@ -209,4 +267,4 @@ const deleteUploadedFile = async (publicId) => {
     }
 };
 
-module.exports = { validateExpenseReceipt, deleteUploadedFile };
+module.exports = { validateExpenseReceipt, scanMaintenanceReceipt, deleteUploadedFile };
