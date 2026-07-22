@@ -27,6 +27,9 @@ import {
   UserOutlined,
   DollarOutlined,
   ExclamationCircleOutlined,
+  PhoneOutlined,
+  ShopOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
 import "../../styles/OrderFormModal.css";
 import { apiRequest } from "../../services/apiClient";
