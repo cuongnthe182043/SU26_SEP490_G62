@@ -36,10 +36,10 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Sửa nhóm xe KPI</span>
-          <span className="text-xs font-normal text-gray-400">{driver.driver_name}</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">{driver.driver_name}</span>
         </ModalHeader>
         <ModalBody className="gap-3">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Nhóm xe này dùng để tính KPI/doanh thu/xếp hạng cố định cho tài xế — không tự đổi
             dù tài chạy tạm xe nhóm khác (điều chuyển sự cố...). Chỉ đổi khi tài chuyển hẳn sang nhóm xe khác lâu dài.
           </p>
