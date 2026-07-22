@@ -275,6 +275,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                         size="sm" variant="bordered" type="number"
                         label="Số tiền muốn thu" placeholder="Nhập tổng số tiền..."
                         value={amount} onValueChange={handleAmountChange}
+                        startContent={<RiMoneyDollarCircleLine size={16} className="text-gray-400 shrink-0" />}
                         endContent={<span className="text-gray-400 text-sm">đ</span>}
                         isInvalid={amountInput > totalRemaining}
                         className="flex-1 min-w-[180px]"
@@ -359,6 +360,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                               placeholder={`Tối đa ${fmt(debtRemaining)}`}
                               value={String(selectedDebts[debt.id] || '')}
                               onValueChange={(v) => handleDebtAmountChange(debt.id, v)}
+                              startContent={<RiMoneyDollarCircleLine size={16} className="text-gray-400 shrink-0" />}
                               endContent={<span className="text-gray-400 text-sm">đ</span>}
                               isInvalid={(selectedDebts[debt.id] || 0) > debtRemaining}
                               className="mb-2"
@@ -397,6 +399,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                       label="Ghi chú (không bắt buộc)"
                       placeholder="Nhập ghi chú..."
                       value={notes} onValueChange={setNotes}
+                      startContent={<RiFileTextLine size={16} className="text-gray-400 shrink-0" />}
                     />
 
                     {}
