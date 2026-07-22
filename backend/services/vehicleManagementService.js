@@ -416,10 +416,8 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         throw createError(`maintenance_type must be one of: ${MAINTENANCE_TYPES.join(', ')}`, 400);
     }
 
-    const description = String(payload.description || '').trim();
-    if (!description) {
-        throw createError('description is required', 400);
-    }
+    // Nội dung bảo dưỡng không còn bắt buộc — để trống thì dùng mặc định theo loại.
+    const description = String(payload.description || '').trim() || `Bảo dưỡng (${maintenanceType})`;
 
     const maintenanceDate = parseNullableDate(payload.maintenance_date, 'maintenance_date') || new Date().toISOString().slice(0, 10);
     const nextDueDate = parseNullableDate(payload.next_due_date, 'next_due_date');

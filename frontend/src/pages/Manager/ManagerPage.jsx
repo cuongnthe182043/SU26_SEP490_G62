@@ -11,6 +11,7 @@ import {
   RiEqualizerLine,
   RiTrophyLine,
   RiCalendarLine,
+  RiBarChart2Line,
 } from "react-icons/ri";
 import "../../styles/shared-ui.css";
 
@@ -30,12 +31,14 @@ import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
 import SpendingView from "./views/SpendingView";
+import BusinessReportView from "./views/BusinessReportView";
 
 const NAV_GROUPS = [
   {
     label: "Tổng quan",
     items: [
       { key: "dashboard", label: "Tổng quan", icon: RiDashboardLine },
+      { key: "business-report", label: "Báo cáo kinh doanh", icon: RiBarChart2Line },
     ],
   },
   {
@@ -62,6 +65,7 @@ const NAV_GROUPS = [
 
 const VIEW_META = {
   dashboard: { title: "Tổng quan quản lý", subtitle: "Phê duyệt, công nợ, phiếu thu và thông tin công ty trên cùng một luồng vận hành." },
+  "business-report": { title: "Báo cáo kinh doanh", subtitle: "Lợi nhuận, hiệu suất đội xe, dòng tiền và năng suất tài xế theo từng kỳ — so sánh với kỳ liền trước." },
   partners: { title: "Quản lý đối tác", subtitle: "Quản lý thông tin đối tác và theo dõi công nợ nếu đối tác đang tồn đọng thanh toán." },
   customers: { title: "Quản lý khách hàng", subtitle: "Quản lý thông tin khách hàng thuê vận chuyển." },
   users: { title: "Quản lý người dùng", subtitle: "Quản lý tài khoản, vai trò và trạng thái truy cập." },
@@ -127,6 +131,7 @@ export default function ManagerPage({ user, onLogout }) {
 
           <main className="flex-1 overflow-y-auto p-6">
             {activeView === "dashboard" && <DashboardView user={currentUser} />}
+            {activeView === "business-report" && <BusinessReportView />}
             {activeView === "partners" && <PartnersView user={currentUser} />}
             {activeView === "customers" && <CustomersView />}
             {activeView === "users" && <UsersView user={currentUser} />}
