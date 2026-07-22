@@ -3,7 +3,8 @@ import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine } from "react-icons/ri";
+import { RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine, RiDownloadLine } from "react-icons/ri";
+import { exportCoordinatorReceiptsToExcel } from "../utils/exportExcel";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
@@ -185,6 +186,16 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
             <div className="text-sm font-bold text-gray-800">Yêu cầu & phiếu thu</div>
             <div className="text-xs text-gray-400">Tài xế gửi yêu cầu, coordinator xử lý và xem lại các phiếu thu đã tạo ngay tại đây.</div>
           </div>
+          <Button
+            size="sm"
+            variant="flat"
+            color="success"
+            startContent={<RiDownloadLine size={16} />}
+            onPress={() => exportCoordinatorReceiptsToExcel(receiptRequests)}
+            isDisabled={!receiptRequests.length}
+          >
+            Xuất Excel
+          </Button>
         </div>
 
         <div className="overflow-x-auto">

@@ -3,7 +3,8 @@ import {
   Button, Input, Select, SelectItem, Spinner, Chip,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
 } from "@heroui/react";
-import { RiCalendarCheckLine, RiSearchLine } from "react-icons/ri";
+import { RiCalendarCheckLine, RiSearchLine, RiDownloadLine } from "react-icons/ri";
+import { exportAttendanceToExcel } from "../../pages/coordinator/utils/exportExcel";
 import { PaginationBar } from "./PaginationBar";
 
 const now = new Date();
@@ -267,9 +268,21 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <div className="text-sm font-bold text-gray-800">Chấm công tài xế</div>
-          <div className="text-xs text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm).</div>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-bold text-gray-800">Chấm công tài xế</div>
+            <div className="text-xs text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm).</div>
+          </div>
+          <Button
+            size="sm"
+            variant="flat"
+            color="success"
+            startContent={<RiDownloadLine size={16} />}
+            onPress={() => exportAttendanceToExcel(filtered, month, year, statusLabels)}
+            isDisabled={!filtered.length}
+          >
+            Xuất Excel
+          </Button>
         </div>
 
         {loading ? (
