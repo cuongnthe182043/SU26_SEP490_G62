@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, NumberInput } from "@heroui/react";
-import { RiInformationLine } from "react-icons/ri";
+import {
+  RiInformationLine, RiTruckLine, RiRoadMapLine, RiCarLine, RiRoadsterLine,
+  RiScales3Line, RiCalendarLine, RiCalendarEventLine, RiUserLine,
+} from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 const EMPTY_FORM = {
   plate_number: "", vehicle_group_id: "", brand: "", model: "",
@@ -69,25 +74,26 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Biển số *" placeholder="51H-12345" value={form.plate_number} onValueChange={(v) => setForm((p) => ({ ...p, plate_number: v }))} variant="bordered" />
+            <Input label="Biển số *" placeholder="51H-12345" value={form.plate_number} onValueChange={(v) => setForm((p) => ({ ...p, plate_number: v }))} variant="bordered" startContent={ic(RiTruckLine)} />
             <Select
               label="Nhóm xe *"
               selectedKeys={form.vehicle_group_id ? [form.vehicle_group_id] : []}
               onSelectionChange={(k) => setForm((p) => ({ ...p, vehicle_group_id: [...k][0] ?? "" }))}
               variant="bordered"
+              startContent={ic(RiRoadMapLine)}
             >
               {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{`${g.name} (#${g.id})`}</SelectItem>)}
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Hãng xe" placeholder="Hyundai" value={form.brand} onValueChange={(v) => setForm((p) => ({ ...p, brand: v }))} variant="bordered" />
-            <Input label="Dòng xe" placeholder="Porter" value={form.model} onValueChange={(v) => setForm((p) => ({ ...p, model: v }))} variant="bordered" />
+            <Input label="Hãng xe" placeholder="Hyundai" value={form.brand} onValueChange={(v) => setForm((p) => ({ ...p, brand: v }))} variant="bordered" startContent={ic(RiCarLine)} />
+            <Input label="Dòng xe" placeholder="Porter" value={form.model} onValueChange={(v) => setForm((p) => ({ ...p, model: v }))} variant="bordered" startContent={ic(RiRoadsterLine)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <NumberInput label="Tải trọng (kg)" minValue={0.01} value={form.load_capacity_kg} onValueChange={(v) => setForm((p) => ({ ...p, load_capacity_kg: v }))} variant="bordered" />
-            <NumberInput label="Năm sản xuất" minValue={1900} formatOptions={{ useGrouping: false }} value={form.manufacture_year} onValueChange={(v) => setForm((p) => ({ ...p, manufacture_year: v }))} variant="bordered" />
+            <NumberInput label="Tải trọng (kg)" minValue={0.01} value={form.load_capacity_kg} onValueChange={(v) => setForm((p) => ({ ...p, load_capacity_kg: v }))} variant="bordered" startContent={ic(RiScales3Line)} />
+            <NumberInput label="Năm sản xuất" minValue={1900} formatOptions={{ useGrouping: false }} value={form.manufacture_year} onValueChange={(v) => setForm((p) => ({ ...p, manufacture_year: v }))} variant="bordered" startContent={ic(RiCalendarLine)} />
           </div>
-          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" />
+          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" startContent={ic(RiCalendarEventLine)} />
           <Select
             label="Tài xế được gán"
             placeholder="Chọn tài xế"
@@ -96,6 +102,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
             isDisabled={!canEditDriverAssignment}
             isLoading={loadingDrivers}
             variant="bordered"
+            startContent={ic(RiUserLine)}
           >
             {driverOptions.map((d) => (
               <SelectItem key={String(d.id)} isDisabled={!d.is_assignable}>
