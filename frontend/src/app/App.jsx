@@ -1,5 +1,5 @@
 import React from "react";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, theme as antdTheme } from "antd";
 import viVN from "antd/locale/vi_VN";
 import LoadingScreen from "../components/LoadingScreen";
 import ForceChangePasswordScreen from "../components/ForceChangePasswordScreen";
@@ -9,11 +9,13 @@ import AccountantPage from "../pages/Accountant/AccountantPage";
 import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
 import ChatbotWidget from "../components/chatbot/ChatbotWidget";
-import { appTheme } from "../styles/theme";
+import { appTheme, appThemeDark } from "../styles/theme";
+import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
 import "../styles/global.css";
 
-export default function App() {
+function AppShell() {
   const { user, loading, setSession, refreshSession, logout } = useAuthSession();
+  const { isDark } = useTheme();
 
   // Chỉ hiện trợ lý AI khi đã đăng nhập xong (không ở màn login / đổi mật khẩu bắt buộc).
   const showChatbot = Boolean(user) && !user?.must_change_password;
@@ -31,9 +33,23 @@ export default function App() {
   };
 
   return (
-    <ConfigProvider theme={appTheme} locale={viVN}>
+    <ConfigProvider
+      theme={{
+        ...(isDark ? appThemeDark : appTheme),
+        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+      }}
+      locale={viVN}
+    >
       {renderPage()}
       {showChatbot && <ChatbotWidget />}
     </ConfigProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
   );
 }

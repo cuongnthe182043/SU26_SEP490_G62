@@ -81,3 +81,68 @@ export const appTheme = {
     Card: { borderRadiusLG: 14 },
   },
 };
+
+// Bảng màu nền tối — hơi ngả xanh cho khớp brand, chữ sáng nổi bật.
+export const D = {
+  bg: '#0e1016',
+  surface: '#161922',
+  surfaceElevated: '#1e2230',
+  onSurface: '#e6e8ef',
+  onSurfaceVariant: '#a9afc0',
+  border: 'rgba(255,255,255,0.14)',
+  borderSubtle: 'rgba(255,255,255,0.08)',
+  primary: '#6B7BFF',
+  primaryHover: '#8b97ff',
+};
+
+// Token AntD cho chế độ tối. Kết hợp với theme.darkAlgorithm ở App.
+export const appThemeDark = {
+  token: {
+    colorPrimary: C.primary,
+    borderRadius: 8,
+    borderRadiusLG: 12,
+    fontFamily: "'Geist', 'Google Sans', 'Open Sans', system-ui, sans-serif",
+    colorLink: D.primaryHover,
+    colorLinkHover: '#aab3ff',
+    colorBgLayout: D.bg,
+    colorBgContainer: D.surface,
+    colorBgElevated: D.surfaceElevated,
+    colorBorder: D.border,
+    colorBorderSecondary: D.borderSubtle,
+    colorText: D.onSurface,
+    colorTextSecondary: D.onSurfaceVariant,
+  },
+  components: {
+    Layout: {
+      siderBg: D.bg,
+      headerBg: D.bg,
+      bodyBg: D.bg,
+    },
+    Menu: {
+      itemSelectedBg: 'rgba(107,123,255,0.16)',
+      itemSelectedColor: D.primaryHover,
+      itemHoverBg: 'rgba(255,255,255,0.06)',
+      itemHoverColor: '#c7ccff',
+      itemActiveBg: 'rgba(107,123,255,0.16)',
+      itemBorderRadius: 8,
+      itemMarginInline: 0,
+      itemPaddingInline: 12,
+      activeBarBorderWidth: 0,
+      itemHeight: 42,
+      iconSize: 18,
+    },
+    Table: {
+      headerBg: D.surfaceElevated,
+      headerColor: D.onSurfaceVariant,
+      rowHoverBg: 'rgba(255,255,255,0.04)',
+      borderColor: 'rgba(255,255,255,0.10)',
+      fontSize: 14,
+    },
+    Button: { borderRadius: 8, fontWeight: 500 },
+    Input: { borderRadius: 8 },
+    Select: { borderRadius: 8 },
+    Modal: { borderRadiusLG: 14 },
+    Tag: { borderRadius: 6 },
+    Card: { borderRadiusLG: 14 },
+  },
+};
