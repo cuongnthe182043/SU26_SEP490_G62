@@ -190,7 +190,7 @@ export default function ReceiptDetailModal({
                   })}
 
                   {!readonly && (form?.expenses || []).map((expense, index) => (
-                    <div key={`expense-${index}`} className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/40 p-3 flex items-start gap-3">
+                    <div key={`expense-${index}`} className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-500/10 p-3 flex items-start gap-3">
                       <div className="grid grid-cols-4 gap-3 flex-1">
                         <Select
                           label="Chuyến"

@@ -207,7 +207,7 @@ export function BankTransferView({ search = "" }) {
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-white/10">
               {receipts.map((r) => (
-                <tr key={r.receipt_id} className="hover:bg-gray-50 dark:hover:bg-white/5/60 transition-colors">
+                <tr key={r.receipt_id} className="hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-mono text-xs text-gray-600 dark:text-gray-300">
                       #{String(r.receipt_id).padStart(6, "0")}

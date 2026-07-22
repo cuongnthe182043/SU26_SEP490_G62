@@ -234,7 +234,7 @@ export function LedgerView() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {rows.map((r) => (
-                  <tr key={r.id} className={`hover:bg-gray-50 dark:hover:bg-white/5 ${r.reversal_of_id || r.reversed_by_id ? "bg-orange-50/40" : ""}`}>
+                  <tr key={r.id} className={`hover:bg-gray-50 dark:hover:bg-white/5 ${r.reversal_of_id || r.reversed_by_id ? "bg-orange-50/40 dark:bg-orange-500/10" : ""}`}>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{fmtDateTime(r.occurred_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">

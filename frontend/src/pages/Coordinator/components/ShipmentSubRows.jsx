@@ -11,7 +11,7 @@ function ShipmentSubRow({ shipment, onReassign, onCancel }) {
   const deliveries = shipment.delivery_addresses?.length ? shipment.delivery_addresses : [shipment.delivery_address];
 
   return (
-    <tr className="bg-blue-50/30 border-b border-blue-100/40 last:border-0">
+    <tr className="bg-blue-50/30 dark:bg-blue-500/10 border-b border-blue-100/40 last:border-0">
       <td className="py-3 pl-5" />
       <td className="py-3 pr-4 overflow-hidden">
         <div className="flex items-center gap-2 min-w-0">
@@ -73,7 +73,7 @@ export function ShipmentSubRows({ shipments, onReassign, onCancel }) {
   if (!shipments || shipments.length === 0) {
     return (
       <tr>
-        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20">
+        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20 dark:bg-blue-500/10">
           Không có chuyến xe nào.
         </td>
       </tr>

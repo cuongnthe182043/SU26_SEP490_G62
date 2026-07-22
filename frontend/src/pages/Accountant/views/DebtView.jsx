@@ -124,7 +124,7 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
   };
 
   return (
-    <div className="rounded-2xl border border-amber-200 dark:border-amber-500/25 bg-amber-50/50 p-4 flex flex-col gap-3">
+    <div className="rounded-2xl border border-amber-200 dark:border-amber-500/25 bg-amber-50/50 dark:bg-amber-500/10 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <RiTimeLine size={16} className="text-amber-500" />
         <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
@@ -378,7 +378,7 @@ function PaymentHistoryPanel() {
           <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: 980 }}>
             <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200 dark:border-white/10">
+              <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {["Thời điểm", "Người thanh toán", "Khoản nợ", "Số tiền", "Hình thức", "Trạng thái", "Người xác nhận", "Ghi chú"].map((h, idx) => (
                   <th key={idx} className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider py-3 px-4">{h}</th>
                 ))}
@@ -388,7 +388,7 @@ function PaymentHistoryPanel() {
               {rows.map((r) => {
                 const chip = PAY_STATUS_CHIP[r.status] ?? { label: r.status, color: "default" };
                 return (
-                  <tr key={r.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5/60">
+                  <tr key={r.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50/60 dark:hover:bg-white/5">
                     <td className="py-3 px-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtDateTime(r.paid_at)}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
@@ -661,7 +661,7 @@ function DebtDetailRow({ d, onTransfer }) {
   const status  = d.computed_status;
 
   return (
-    <tr className="bg-orange-50/20 border-b border-orange-100/30">
+    <tr className="bg-orange-50/20 dark:bg-orange-500/10 border-b border-orange-100/30">
       {}
       <td className="py-2.5 pl-4" />
 
@@ -769,7 +769,7 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
     <>
       <tr
         className={`border-b border-gray-100 dark:border-white/10 cursor-pointer transition-colors
-                   ${expanded ? "bg-orange-50/40" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
+                   ${expanded ? "bg-orange-50/40 dark:bg-orange-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={toggle}
       >
         {}
@@ -835,13 +835,13 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
       {expanded && (
         loading ? (
           <tr>
-            <td colSpan={6} className="py-4 text-center bg-orange-50/20">
+            <td colSpan={6} className="py-4 text-center bg-orange-50/20 dark:bg-orange-500/10">
               <Spinner size="sm" color="warning" />
             </td>
           </tr>
         ) : (debts ?? []).length === 0 ? (
           <tr>
-            <td colSpan={6} className="py-3 pl-10 text-xs text-gray-400 dark:text-gray-400 italic bg-orange-50/10">
+            <td colSpan={6} className="py-3 pl-10 text-xs text-gray-400 dark:text-gray-400 italic bg-orange-50/10 dark:bg-orange-500/10">
               Không có khoản nợ nào.
             </td>
           </tr>
@@ -992,7 +992,7 @@ export function DebtView({ search = "" }) {
       {}
       <div className="flex items-center justify-between flex-wrap gap-3">
         {}
-        <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/80 dark:bg-white/5 p-1 rounded-xl">
           {[
             { key: "customer", label: "Khách hàng", icon: RiUserLine,  count: customerDebts.length },
             { key: "driver",   label: "Tài xế",     icon: RiTruckLine, count: driverDebts.length },
@@ -1009,7 +1009,7 @@ export function DebtView({ search = "" }) {
                 <Icon size={14} className={active ? "text-blue-500" : "text-gray-400 dark:text-gray-400"} />
                 {label}
                 <span className={`ml-1 text-[11px] px-1.5 py-0.5 rounded-full font-bold
-                  ${active ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300" : "bg-gray-200 text-gray-500 dark:text-gray-400"}`}>
+                  ${active ? "bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300" : "bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400"}`}>
                   {count}
                 </span>
               </button>
@@ -1018,7 +1018,7 @@ export function DebtView({ search = "" }) {
         </div>
 
         {}
-        <div className="flex gap-1 bg-gray-100/60 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/60 dark:bg-white/5 p-1 rounded-xl">
           {STATUS_OPTIONS.map(({ key, label }) => {
             const active = statusFilter === key;
             return (
@@ -1079,7 +1079,7 @@ export function DebtView({ search = "" }) {
               <col style={{ width: 44 }} />
             </colgroup>
             <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200 dark:border-white/10">
+              <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {[
                   { label: "",              cls: "pl-4" },
                   { label: "Tên / Liên hệ" },

@@ -283,7 +283,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
           <Divider className="my-0" />
 
           {/* Change email */}
-          <div className="flex flex-col gap-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100 dark:border-blue-500/20">
+          <div className="flex flex-col gap-3 p-3 bg-blue-50/40 dark:bg-blue-500/10 rounded-xl border border-blue-100 dark:border-blue-500/20">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-1.5">

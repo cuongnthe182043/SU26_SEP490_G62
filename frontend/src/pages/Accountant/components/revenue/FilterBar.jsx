@@ -26,7 +26,7 @@ export function FilterBar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/80 dark:bg-white/5 p-1 rounded-xl">
           {DEBT_FILTERS.map(({ key, label, icon: Icon }) => {
             const active = activeFilter === key;
             return (

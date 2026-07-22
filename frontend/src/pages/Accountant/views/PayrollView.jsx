@@ -93,7 +93,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
     <>
       <tr
         className={`border-b border-gray-100 dark:border-white/10 cursor-pointer transition-colors
-                   ${expanded ? "bg-violet-50/40" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
+                   ${expanded ? "bg-violet-50/40 dark:bg-violet-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={() => setExpanded((v) => !v)}
       >
         <td className="py-3.5 pl-4 w-9">
@@ -166,7 +166,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
       </tr>
 
       {expanded && (
-        <tr className="bg-violet-50/30 border-b border-violet-100/50">
+        <tr className="bg-violet-50/30 dark:bg-violet-500/10 border-b border-violet-100/50">
           <td colSpan={7} className="px-10 py-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {detail.map(({ label, value, raw, neg, bold, highlight }) => (
@@ -227,7 +227,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
 function AdvanceRow({ row, onDisburse, disbursing }) {
   const isApproved = row.status === "approved";
   return (
-    <tr className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5/60 transition-colors">
+    <tr className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
       <td className="py-3.5 pl-4 pr-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>

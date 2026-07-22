@@ -298,7 +298,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
               <>
                 <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 mt-3">
                   {pagedLeaderboard.map((row) => (
-                    <div key={row.driver_id} className={`py-3 ${row.is_me ? "bg-blue-50/40 -mx-5 px-5 rounded-lg" : ""}`}>
+                    <div key={row.driver_id} className={`py-3 ${row.is_me ? "bg-blue-50/40 dark:bg-blue-500/10 -mx-5 px-5 rounded-lg" : ""}`}>
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
                           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${rankBadge(row.revenue_rank)}`}>

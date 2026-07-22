@@ -215,7 +215,7 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
   return (
     <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
       {}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-b border-gray-100 dark:border-white/10">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full
                            bg-blue-100 dark:bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">

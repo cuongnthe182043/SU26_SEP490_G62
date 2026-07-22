@@ -22,7 +22,7 @@ function HistoryTimeline({ items, emptyText }) {
         <div key={idx} className="flex gap-3">
           <div className="flex flex-col items-center pt-1">
             <span className="w-2 h-2 rounded-full bg-blue-500" />
-            {idx < items.length - 1 && <span className="w-px flex-1 bg-gray-200 mt-1" />}
+            {idx < items.length - 1 && <span className="w-px flex-1 bg-gray-200 dark:bg-white/15 mt-1" />}
           </div>
           <div className="pb-3">
             <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{item.action_type}</div>
@@ -44,7 +44,7 @@ function AssignmentTimeline({ items }) {
         <div key={idx} className="flex gap-3">
           <div className="flex flex-col items-center pt-1">
             <span className={`w-2 h-2 rounded-full ${item.action === "assign" ? "bg-emerald-500" : "bg-rose-500"}`} />
-            {idx < items.length - 1 && <span className="w-px flex-1 bg-gray-200 mt-1" />}
+            {idx < items.length - 1 && <span className="w-px flex-1 bg-gray-200 dark:bg-white/15 mt-1" />}
           </div>
           <div className="pb-3">
             <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
