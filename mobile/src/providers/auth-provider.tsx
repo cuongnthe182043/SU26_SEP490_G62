@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, useSegments } from 'expo-router';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
+import { ApiError } from '@/lib/api-error';
 import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
 import { tokenStorage } from '@/services/token-storage';
@@ -56,9 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus('authenticated');
       return nextProfile;
     } catch (error) {
-      await tokenStorage.clearAll();
-      setProfile(null);
-      setStatus('unauthenticated');
+      // Chỉ đăng xuất khi phiên THỰC SỰ hết hạn (401/403). Lỗi tạm thời (mạng
+      // chập chờn, 5xx, cold start Cloud Run) → GIỮ token, KHÔNG xoá phiên —
+      // tránh bị đá ra đăng nhập lại oan.
+      const httpStatus = error instanceof ApiError ? error.status : undefined;
+      if (httpStatus === 401 || httpStatus === 403) {
+        await tokenStorage.clearAll();
+        setProfile(null);
+        setStatus('unauthenticated');
+      } else {
+        // Giữ token. Nếu đang có phiên thì ở nguyên; nếu chưa (mở app lần đầu bị
+        // lỗi mạng) thì để unauthenticated nhưng KHÔNG xoá token — mở lại sẽ vào.
+        setStatus((prev) => (prev === 'authenticated' ? 'authenticated' : 'unauthenticated'));
+      }
       throw error;
     }
   }, []);

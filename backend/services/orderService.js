@@ -203,7 +203,8 @@ const createOrder = async (userId, payload) => {
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             // Đơn giá/km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho từng chuyến
             const manualPrice = normalizeNumber(trip.price);
-            const finalPrice = (manualPrice !== null && manualPrice > 0) ? manualPrice : normalizedPrice;
+            const isPriceManual = manualPrice !== null && manualPrice > 0;
+            const finalPrice = isPriceManual ? manualPrice : normalizedPrice;
 
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
@@ -231,6 +232,7 @@ const createOrder = async (userId, payload) => {
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: finalPrice,
+                is_price_manual: isPriceManual,
                 estimated_distance_km: normalizedDistance,
                 arrived_at: normalizedDate,
                 plate_number: vehicle?.plate_number || null,
@@ -465,7 +467,8 @@ const updateOrder = async (orderId, payload) => {
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             // Đơn giá/km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho từng chuyến
             const manualPrice = normalizeNumber(trip.price);
-            const finalPrice = (manualPrice !== null && manualPrice > 0) ? manualPrice : normalizedPrice;
+            const isPriceManual = manualPrice !== null && manualPrice > 0;
+            const finalPrice = isPriceManual ? manualPrice : normalizedPrice;
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
 
@@ -489,6 +492,7 @@ const updateOrder = async (orderId, payload) => {
                 vehicle_id: finalVehicleId,
                 vehicle_group_id: finalVehicleGroupId,
                 estimated_price: finalPrice,
+                is_price_manual: isPriceManual,
                 estimated_distance_km: normalizedDistance,
                 plate_number: vehicle?.plate_number,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
