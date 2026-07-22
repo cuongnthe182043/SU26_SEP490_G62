@@ -139,7 +139,7 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
         throw new Error('Lý do giao thất bại là bắt buộc');
     }
 
-    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null);
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null, driverId);
 
     fireStatusNotif(driverId, tripId, newStatus);
 
@@ -188,7 +188,7 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
 
     if (proofFileUrl) await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
-    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
+    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
 
     // Lấy full trip (có order_payment_type, is_final_shipment) để mobile điều hướng đúng
     const completedTrip = await tripRepository.getFullTripById(tripId);
@@ -241,7 +241,7 @@ const startTransit = async (tripId, driverId, proofFileUrl) => {
 
     if (proofFileUrl) await tripRepository.saveLoadingProof(tripId, driverId, proofFileUrl);
 
-    const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.TRANSIT);
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.TRANSIT, null, driverId);
 
     notificationService.createForUser(driverId, {
         title: 'Đang vận chuyển',
@@ -312,7 +312,7 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
         await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
     }
 
-    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
+    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
 
     const isFinal = await tripRepository.isFinalShipment(tripId);
     if (isFinal) {
