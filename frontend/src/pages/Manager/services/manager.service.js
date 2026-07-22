@@ -40,10 +40,13 @@ export const managerService = {
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),
   updatePartner: (id, payload) => apiRequest(`${BASE}/partners/${id}`, { method: "PUT", body: payload }),
   getPartnerDebts: (id) => apiRequest(`${BASE}/partners/${id}/debts`),
+  recordPartnerPayment: (id, { amount, payment_method, notes }) =>
+    apiRequest(`${BASE}/partners/${id}/payments`, { method: "POST", body: { amount, payment_method, notes } }),
 
   // ─── Payroll ──────────────────────────────────────────────────────────────
   getPayrolls: (params = {}) => apiRequest(`${BASE}/payrolls?${new URLSearchParams(params)}`),
   reviewPayroll: (id) => apiRequest(`${BASE}/payrolls/${id}/review`, { method: "PATCH" }),
+  revertPayroll: (id, reason) => apiRequest(`${BASE}/payrolls/${id}/revert`, { method: "PATCH", body: { reason: reason || undefined } }),
 
   // ─── Bonus ────────────────────────────────────────────────────────────────
   getBonuses: (params = {}) => apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),
@@ -106,6 +109,7 @@ export const managerService = {
   // Vehicle lifecycle
   sendVehicleToMaintenance: (id, payload) => apiRequest(`/api/admin/vehicles/${id}/send-to-maintenance`, { method: "POST", body: payload }),
   verifyVehicleMaintenance: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
+  scanMaintenanceBill: (id) => apiRequest(`/api/admin/vehicles/${id}/scan-maintenance-bill`),
   markVehicleBroken: (id, payload) => apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),
   restoreVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/restore`, { method: "POST", body: payload }),
   retireVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/retire`, { method: "POST", body: payload }),

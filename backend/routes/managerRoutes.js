@@ -36,6 +36,7 @@ router.patch('/debt-repayments/:paymentId/reject', managerController.rejectDebtR
 
 router.get('/payrolls',              managerController.getPayrolls);
 router.patch('/payrolls/:id/review', managerController.reviewPayroll);
+router.patch('/payrolls/:id/revert', managerController.revertPayroll);
 
 router.get('/receipt-requests', managerController.getReceiptRequests);
 
@@ -53,5 +54,6 @@ router.get('/partners', managerController.getPartners);
 router.post('/partners', managerController.createPartner);
 router.put('/partners/:id', managerController.updatePartner);
 router.get('/partners/:id/debts', managerController.getPartnerDebtDetails);
+router.post('/partners/:id/payments', managerController.recordPartnerPayment);
 
 module.exports = router;

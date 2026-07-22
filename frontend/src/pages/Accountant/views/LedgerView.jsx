@@ -112,27 +112,6 @@ export function LedgerView() {
   const [sortBy, setSortBy]                 = useState("");
   const [showExport, setShowExport]         = useState(false);
 
-  const [reverseTarget, setReverseTarget]   = useState(null);
-  const [reverseReason, setReverseReason]   = useState("");
-  const [reversing, setReversing]           = useState(false);
-  const [reverseError, setReverseError]     = useState(null);
-
-  const handleReverse = async () => {
-    if (!reverseTarget || !reverseReason.trim()) return;
-    setReversing(true);
-    setReverseError(null);
-    try {
-      await accountantService.reverseLedgerEntry(reverseTarget.id, reverseReason.trim());
-      setReverseTarget(null);
-      setReverseReason("");
-      load();
-    } catch (err) {
-      setReverseError(err.message ?? "Đảo bút toán thất bại");
-    } finally {
-      setReversing(false);
-    }
-  };
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -241,7 +220,6 @@ export function LedgerView() {
                   <th className="px-4 py-3 font-semibold text-right">Số tiền</th>
                   <th className="px-4 py-3 font-semibold">Người thực hiện</th>
                   <th className="px-4 py-3 font-semibold text-center">Xuất kỳ</th>
-                  <th className="px-4 py-3 font-semibold text-center" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -282,14 +260,6 @@ export function LedgerView() {
                         <Chip size="sm" variant="flat" color="warning">Chưa xuất</Chip>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {!r.reversal_of_id && !r.reversed_by_id && (
-                        <Button size="sm" variant="light" color="danger"
-                          onPress={() => setReverseTarget(r)}>
-                          Đảo
-                        </Button>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -314,39 +284,6 @@ export function LedgerView() {
         />
       )}
 
-      {/* Modal đảo bút toán */}
-      <Modal isOpen={Boolean(reverseTarget)} onClose={() => { setReverseTarget(null); setReverseReason(""); }} size="md">
-        <ModalContent>
-          <ModalHeader className="text-base">
-            Đảo bút toán #{reverseTarget?.id}
-          </ModalHeader>
-          <ModalBody className="gap-3">
-            <p className="text-xs text-gray-500">
-              Sổ append-only — dòng gốc KHÔNG bị sửa/xóa. Hệ thống ghi thêm 1 dòng ngược chiều
-              ({reverseTarget?.credit_account} / {reverseTarget?.debit_account}) cùng số tiền để triệt tiêu.
-              Nếu dòng gốc chưa xuất MISA, cả cặp sẽ được loại khỏi file xuất kỳ; nếu đã xuất,
-              dòng đảo sẽ nằm trong file kỳ sau như bút toán điều chỉnh.
-            </p>
-            <div className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
-              {reverseTarget?.event_label} · <MoneyText amount={reverseTarget?.amount} /> · {reverseTarget?.description}
-            </div>
-            <Input
-              label="Lý do đảo (bắt buộc)"
-              value={reverseReason}
-              onValueChange={setReverseReason}
-              placeholder="VD: ghi nhầm số tiền, xác nhận sai người..."
-              isRequired
-            />
-            {reverseError && <p className="text-xs text-red-500">{reverseError}</p>}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={() => { setReverseTarget(null); setReverseReason(""); }}>Huỷ</Button>
-            <Button color="danger" onPress={handleReverse} isLoading={reversing} isDisabled={!reverseReason.trim()}>
-              Đảo bút toán
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
     </div>
   );
 }

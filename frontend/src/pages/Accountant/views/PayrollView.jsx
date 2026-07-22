@@ -7,12 +7,14 @@ import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
   RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
+  RiFileDownloadLine, RiArrowGoBackLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
 import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
+import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -61,7 +63,7 @@ function StatCard({ label, value, icon: Icon, bg, text, border }) {
   );
 }
 
-function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
+function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPdf, onAdjust, onRevert }) {
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
 
@@ -73,6 +75,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
     { label: "Thưởng KPI",           value: row.kpi_bonus },
     { label: "Thưởng xuất sắc",     value: row.top_driver_bonus },
     { label: "Thưởng & Phúc lợi",  value: row.overtime_bonus },
+    ...(Number(row.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: row.manual_bonus }] : []),
     { label: "Lương gộp",           value: row.gross_salary,  bold: true },
     // Tiền hoàn khoản tài đã ứng (chi hộ khách + chi phí công ty) — không phải thu nhập
     { label: "Hoàn chi phí đã ứng", value: row.expense_reimbursement },
@@ -80,6 +83,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
     { label: "Nghỉ không lương",value: `-${VND(row.absence_penalty)}`,    raw: true, neg: true },
     { label: "Trừ ứng lương",   value: `-${VND(row.advance_deduction)}`,  raw: true, neg: true },
     { label: "Trừ công nợ",     value: `-${VND(row.driver_debt_deduction)}`, raw: true, neg: true },
+    ...(Number(row.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${VND(row.manual_deduction)}`, raw: true, neg: true }] : []),
     { label: "Lương thực nhận", value: row.net_salary,   bold: true, highlight: true },
   ];
 
@@ -125,8 +129,8 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
             {chip.label}
           </Chip>
         </td>
-        <td className="py-3.5 pr-4 w-36" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-1.5">
+        <td className="py-3.5 pr-4 w-44" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5 items-center">
             {row.status === "reviewed" && (
               <Button
                 size="sm" color="primary" variant="flat"
@@ -147,6 +151,14 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
                 Đã trả
               </Button>
             )}
+            <Button
+              size="sm" variant="flat" isIconOnly
+              className="h-7 w-7 min-w-7 text-gray-500"
+              title="Xuất phiếu lương PDF"
+              onPress={() => onExportPdf(row)}
+            >
+              <RiFileDownloadLine size={14} />
+            </Button>
           </div>
         </td>
       </tr>
@@ -170,6 +182,38 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
                   </span>
                 </div>
               ))}
+            </div>
+            {row.adjustment_note && (
+              <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                <span className="font-semibold">Ghi chú điều chỉnh:</span> {row.adjustment_note}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-3 flex-wrap">
+              {row.status !== "paid" && (
+                <Button
+                  size="sm" color="warning" variant="flat"
+                  startContent={<RiPencilLine size={15} />}
+                  onPress={() => onAdjust(row)}
+                >
+                  Điều chỉnh / Tính lại
+                </Button>
+              )}
+              {(row.status === "reviewed" || row.status === "approved") && (
+                <Button
+                  size="sm" color="danger" variant="flat"
+                  startContent={<RiArrowGoBackLine size={15} />}
+                  onPress={() => onRevert(row)}
+                >
+                  Trả về tính lại
+                </Button>
+              )}
+              <Button
+                size="sm" color="secondary" variant="flat"
+                startContent={<RiFileDownloadLine size={15} />}
+                onPress={() => onExportPdf(row)}
+              >
+                Xuất phiếu lương PDF
+              </Button>
             </div>
           </td>
         </tr>
@@ -286,6 +330,132 @@ function DisburseModal({ advance, onClose, onDone }) {
   );
 }
 
+function AdjustModal({ row, onClose, onDone }) {
+  const [bonus, setBonus]       = useState(String(Number(row.manual_bonus || 0)));
+  const [deduction, setDeduction] = useState(String(Number(row.manual_deduction || 0)));
+  const [note, setNote]         = useState(row.adjustment_note || "");
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState(null);
+
+  const handleSubmit = async () => {
+    const b = Number(bonus), d = Number(deduction);
+    if (!Number.isFinite(b) || b < 0 || !Number.isFinite(d) || d < 0) {
+      setError("Số tiền điều chỉnh phải là số không âm.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await accountantService.adjustPayroll(row.id, { manual_bonus: b, manual_deduction: d, note: note.trim() });
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err.message ?? "Lỗi khi điều chỉnh.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} size="md">
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-0.5">
+          <span>Điều chỉnh lương — {row.driver_name}</span>
+          <span className="text-sm font-normal text-gray-400">
+            Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+            Nhập khoản điều chỉnh thêm ngoài số hệ thống tự tính. Sau khi lưu, phiếu quay về
+            trạng thái <b>Chờ duyệt</b> để duyệt lại từ đầu. Các số hệ thống (lương cứng, thưởng DT/KPI,
+            BHXH…) giữ nguyên.
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+              <RiAlertLine size={13} /> {error}
+            </div>
+          )}
+          <Input
+            type="number" min={0} label="Thưởng thêm (+)" placeholder="0"
+            value={bonus} onValueChange={setBonus}
+            endContent={<span className="text-xs text-gray-400">đ</span>}
+          />
+          <Input
+            type="number" min={0} label="Khấu trừ thêm (−)" placeholder="0"
+            value={deduction} onValueChange={setDeduction}
+            endContent={<span className="text-xs text-gray-400">đ</span>}
+          />
+          <Input
+            label="Lý do / ghi chú" placeholder="Ví dụ: bù thưởng chuyên cần còn thiếu"
+            value={note} onValueChange={setNote}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onClose} isDisabled={saving}>Huỷ</Button>
+          <Button color="warning" onPress={handleSubmit} isLoading={saving}>
+            Lưu &amp; tính lại
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function RevertModal({ row, onClose, onDone }) {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState(null);
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await accountantService.revertPayroll(row.id, reason.trim() || undefined);
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err.message ?? "Lỗi khi trả về.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} size="sm">
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-0.5">
+          <span>Trả về tính lại — {row.driver_name}</span>
+          <span className="text-sm font-normal text-gray-400">
+            Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+            Phiếu sẽ quay về trạng thái <b>Chờ duyệt</b> (huỷ mọi dấu duyệt trước đó) để tính lại
+            hoặc điều chỉnh. Chỉ áp dụng khi phiếu chưa trả lương.
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+              <RiAlertLine size={13} /> {error}
+            </div>
+          )}
+          <Input
+            label="Lý do trả về (tuỳ chọn)" placeholder="Ví dụ: sai ngày công tháng này"
+            value={reason} onValueChange={setReason}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onClose} isDisabled={saving}>Huỷ</Button>
+          <Button color="danger" onPress={handleSubmit} isLoading={saving}>
+            Trả về tính lại
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 export function PayrollView({ defaultTab = "payroll" }) {
   const {
     period, setPeriod,
@@ -303,15 +473,25 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [confirming, setConfirming] = useState(null);
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [editingDriver, setEditingDriver] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
 
   useEffect(() => {
     accountantService.getVehicleGroupsForKpi()
       .then((data) => setVehicleGroups(data.vehicleGroups || []))
       .catch(() => {});
+    accountantService.getCompanyInfo()
+      .then((data) => setCompanyInfo(data?.info || null))
+      .catch(() => {});
   }, []);
+
+  const handleExportPdf = (row) => {
+    exportPayslipToPDF(row, { month: period.month, year: period.year, companyInfo });
+  };
   const [generating, setGenerating] = useState(false);
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
+  const [adjustTarget, setAdjustTarget] = useState(null);
+  const [revertTarget, setRevertTarget] = useState(null);
 
   const [payPage, setPayPage]         = useState(1);
   const [payPageSize, setPayPageSize] = useState(10);
@@ -567,7 +747,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       { label: "Lương gộp" },
                       { label: "Thực nhận" },
                       { label: "Trạng thái" },
-                      { label: "", cls: "w-36" },
+                      { label: "", cls: "w-44" },
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
@@ -588,6 +768,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       onPay={handlePay}
                       confirming={confirming}
                       onEditGroup={setEditingDriver}
+                      onExportPdf={handleExportPdf}
+                      onAdjust={setAdjustTarget}
+                      onRevert={setRevertTarget}
                     />
                   ))}
                 </tbody>
@@ -706,6 +889,22 @@ export function PayrollView({ defaultTab = "payroll" }) {
           advance={disburseTarget}
           onClose={() => setDisburseTarget(null)}
           onDone={refetchAdvances}
+        />
+      )}
+
+      {adjustTarget && (
+        <AdjustModal
+          row={adjustTarget}
+          onClose={() => setAdjustTarget(null)}
+          onDone={refetch}
+        />
+      )}
+
+      {revertTarget && (
+        <RevertModal
+          row={revertTarget}
+          onClose={() => setRevertTarget(null)}
+          onDone={refetch}
         />
       )}
 

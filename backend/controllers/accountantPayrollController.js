@@ -87,6 +87,45 @@ const markPayrollPaid = async (req, res) => {
     }
 };
 
+const revertPayroll = async (req, res) => {
+    try {
+        const payrollId = posInt(req.params.id, 'Mã bảng lương');
+        const reason = req.body?.reason?.trim() || null;
+        if (reason && reason.length > 500)
+            throw err400('Lý do không được vượt quá 500 ký tự.');
+
+        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason);
+        res.json({ message: 'Đã trả phiếu lương về để tính lại.', payroll: row });
+    } catch (err) {
+        if (!err.status) err.status = err.message.includes('không tồn tại') ? 404 : 400;
+        sendError(res, err);
+    }
+};
+
+const adjustPayroll = async (req, res) => {
+    try {
+        const payrollId = posInt(req.params.id, 'Mã bảng lương');
+        const manualBonus = Number(req.body?.manual_bonus ?? 0);
+        const manualDeduction = Number(req.body?.manual_deduction ?? 0);
+        const note = req.body?.note?.trim() || null;
+
+        if (!Number.isFinite(manualBonus) || manualBonus < 0)
+            throw err400('Thưởng điều chỉnh phải là số không âm.');
+        if (!Number.isFinite(manualDeduction) || manualDeduction < 0)
+            throw err400('Khấu trừ điều chỉnh phải là số không âm.');
+        if (note && note.length > 500)
+            throw err400('Ghi chú không được vượt quá 500 ký tự.');
+
+        const row = await accountantPayrollRepository.adjustPayroll(
+            payrollId, { manualBonus, manualDeduction, note }, req.user.userId,
+        );
+        res.json({ message: 'Đã điều chỉnh và tính lại phiếu lương.', payroll: row });
+    } catch (err) {
+        if (!err.status) err.status = err.message.includes('không tồn tại') ? 404 : 400;
+        sendError(res, err);
+    }
+};
+
 const getSalaryAdvances = async (req, res) => {
     try {
         const { status, search } = req.query;
@@ -146,6 +185,8 @@ module.exports = {
     generatePayrolls,
     confirmPayroll,
     markPayrollPaid,
+    revertPayroll,
+    adjustPayroll,
     getSalaryAdvances,
     disburseAdvance,
 };

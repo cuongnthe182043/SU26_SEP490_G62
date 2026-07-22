@@ -1,5 +1,6 @@
 ﻿const managerRepository = require('../repositories/managerRepository');
 const accountantReportRepository = require('../repositories/accountantReportRepository');
+const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
 const coordinatorService = require('./coordinatorService');
@@ -224,6 +225,29 @@ const getPartnerDebtDetails = async (partnerId) => {
     };
 };
 
+// Ghi nhận đối tác thanh toán công nợ — phân bổ FIFO vào các khoản nợ đối tác còn dư
+// (tái dùng engine phân bổ chung với công nợ khách: Nợ 1121/1111, Có 131).
+const recordPartnerPayment = async (partnerId, { amount, paymentMethod, notes }, actorId) => {
+    const existing = await managerRepository.getPartnerById(partnerId);
+    if (!existing) throw new Error('Đối tác không tồn tại');
+
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        throw new Error('Số tiền thanh toán phải lớn hơn 0');
+    }
+    const method = paymentMethod === 'bank_transfer' ? 'bank_transfer' : 'cash';
+
+    const result = await accountantPaymentRepository.allocatePayment('partner', partnerId, {
+        amount: numericAmount,
+        paymentMethod: method,
+        notes: notes?.trim() || 'Đối tác thanh toán công nợ',
+        createdBy: actorId,
+    });
+
+    broadcastPartnerChange('payment', { partnerId });
+    return result;
+};
+
 module.exports = {
     getDashboard,
     getReportsOverview,
@@ -238,4 +262,5 @@ module.exports = {
     createPartner,
     updatePartner,
     getPartnerDebtDetails,
+    recordPartnerPayment,
 };

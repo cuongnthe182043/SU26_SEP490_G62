@@ -4,6 +4,9 @@ const router = express.Router();
 const accountantOrderController = require('../controllers/accountantOrderController');
 
 router.get('/lookup', accountantOrderController.getVehicleDriverLookup);
+router.get('/partners', accountantOrderController.getPartners);
+router.get('/customer-by-phone', accountantOrderController.findCustomerByPhone);
+router.get('/export', accountantOrderController.exportOrdersReport);
 router.get('/', accountantOrderController.getOrders);
 router.post('/', accountantOrderController.createOrder);
 router.post('/import', accountantOrderController.importOrders);

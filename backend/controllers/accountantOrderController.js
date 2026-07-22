@@ -27,10 +27,49 @@ const getOrders = async (req, res) => {
     }
 };
 
+// GET /accountant/orders/export — báo cáo chi tiết từng chuyến khớp bộ lọc hiện tại của
+// màn Quản lý doanh thu (cùng filter với getOrders), kèm chi phí + trạng thái thanh toán.
+const exportOrdersReport = async (req, res) => {
+    try {
+        const filters = {
+            search:      req.query.search?.trim()      || null,
+            debt_status: req.query.debt_status?.trim() || null,
+            customer:    req.query.customer?.trim()    || null,
+            dateFrom:    req.query.dateFrom?.trim()     || null,
+            dateTo:      req.query.dateTo?.trim()       || null,
+        };
+        const rows = await accountantOrderService.exportOrdersReport(filters);
+        res.json({ rows });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const getVehicleDriverLookup = async (_req, res) => {
     try {
         const lookup = await accountantOrderService.getVehicleDriverLookup();
         res.json(lookup);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const getPartners = async (_req, res) => {
+    try {
+        const partners = await accountantOrderService.listPartners();
+        res.json({ partners });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) ở màn Nhập đơn ngoài.
+const findCustomerByPhone = async (req, res) => {
+    try {
+        const phone = req.query.phone?.trim();
+        if (!phone) return res.json({ customers: [] });
+        const customers = await accountantOrderService.searchCustomersByPhone(phone);
+        res.json({ customers });
     } catch (err) {
         sendError(res, err);
     }
@@ -41,6 +80,7 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
     const {
         customer_name, customer_phone, customer_company,
         customer_id, order_date, notes, prepaid_amount,
+        partner_id, partner_name,
         shipments,
     } = body;
 
@@ -132,6 +172,8 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
         completed_at:     body.completed_at || null,
         notes:            notes?.trim() || null,
         prepaid_amount:   Number(prepaid_amount ?? 0),
+        partner_id:       partner_id ? Number(partner_id) : null,
+        partner_name:     partner_name?.trim() || null,
         shipments,
     };
 };
@@ -334,4 +376,7 @@ module.exports = {
     createPayment,
     confirmDriverPayment,
     updateOrder,
+    exportOrdersReport,
+    findCustomerByPhone,
+    getPartners,
 };

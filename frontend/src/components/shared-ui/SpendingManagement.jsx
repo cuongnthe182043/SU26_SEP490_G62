@@ -22,7 +22,7 @@ const EXPENSE_TYPE_LABEL = {
 
 const VOUCHER_TYPE_LABEL = {
   office: "Văn phòng phẩm", rent: "Thuê mặt bằng/kho", utilities: "Điện nước/Internet",
-  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", other: "Khác",
+  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", compensation: "Đền bù hàng hóa", other: "Khác",
 };
 
 const EVENT_LABEL = {
@@ -34,7 +34,7 @@ const EVENT_LABEL = {
   prepaid_refunded: "Hoàn tiền trả trước",
 };
 
-const STATUS_COLOR = { pending: "warning", approved: "primary", rejected: "danger", paid: "success" };
+const STATUS_COLOR = { pending: "warning", approved: "primary", rejected: "danger", paid: "success", cancelled: "default" };
 const EXPENSE_STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối" };
 
 // Trạng thái hoàn tiền cho tài (khoản tài đã ứng túi)
@@ -44,7 +44,7 @@ const REIMB_CHIP = {
   paid_via_payroll: { label: "Đã hoàn qua lương", color: "success" },
   settled:          { label: "Đã tất toán",       color: "default" },
 };
-const VOUCHER_STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt — chờ chi", rejected: "Từ chối", paid: "Đã chi" };
+const VOUCHER_STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt — chờ chi", rejected: "Từ chối", paid: "Đã chi", cancelled: "Đã huỷ" };
 
 const EMPTY_VOUCHER_FORM = { voucher_type: "", amount: "", payee: "", reason: "", payment_method: "cash" };
 
@@ -54,10 +54,12 @@ const EMPTY_VOUCHER_FORM = { voucher_type: "", amount: "", payee: "", reason: ""
  *  - canModerateVoucher: duyệt/từ chối phiếu chi     (Manager)
  *  - canCreateVoucher:   tạo phiếu chi               (Accountant)
  *  - canPayVoucher:      xác nhận đã chi tiền        (Accountant)
+ *  - canCancelVoucher:   huỷ phiếu đã duyệt chưa chi (Accountant)
  * api: { listExpenses, approveExpense?, rejectExpense?, listVouchers,
- *        createVoucher?, approveVoucher?, rejectVoucher?, payVoucher?, getSummary }
+ *        createVoucher?, approveVoucher?, rejectVoucher?, payVoucher?,
+ *        cancelVoucher?, getSummary }
  */
-export function SpendingManagement({ api, canModerateExpense, canModerateVoucher, canCreateVoucher, canPayVoucher }) {
+export function SpendingManagement({ api, canModerateExpense, canModerateVoucher, canCreateVoucher, canPayVoucher, canCancelVoucher }) {
   const [tab, setTab] = useState("expenses");
   const [month, setMonth] = useState(NOW.getMonth() + 1);
   const [year, setYear] = useState(NOW.getFullYear());
@@ -89,6 +91,8 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   const [voucherRejectTarget, setVoucherRejectTarget] = useState(null);
   const [voucherRejectReason, setVoucherRejectReason] = useState("");
   const [payTarget, setPayTarget] = useState(null);
+  const [voucherCancelTarget, setVoucherCancelTarget] = useState(null);
+  const [voucherCancelReason, setVoucherCancelReason] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [voucherForm, setVoucherForm] = useState(EMPTY_VOUCHER_FORM);
   const [proofFile, setProofFile] = useState(null);
@@ -229,6 +233,21 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       loadVouchers();
     } catch (e) {
       alert(e.message || "Lỗi từ chối phiếu chi");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleCancelVoucher = async () => {
+    if (!voucherCancelReason.trim()) { alert("Vui lòng nhập lý do huỷ"); return; }
+    setActing(true);
+    try {
+      await api.cancelVoucher(voucherCancelTarget.id, voucherCancelReason.trim());
+      setVoucherCancelTarget(null);
+      setVoucherCancelReason("");
+      loadVouchers();
+    } catch (e) {
+      alert(e.message || "Lỗi huỷ phiếu chi");
     } finally {
       setActing(false);
     }
@@ -393,6 +412,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                 <SelectItem key="approved">Đã duyệt — chờ chi</SelectItem>
                 <SelectItem key="paid">Đã chi</SelectItem>
                 <SelectItem key="rejected">Từ chối</SelectItem>
+                <SelectItem key="cancelled">Đã huỷ</SelectItem>
               </Select>
               <Select selectedKeys={new Set([voucherType])} onSelectionChange={(k) => setVoucherType([...k][0] ?? "")} variant="bordered" size="sm" className="w-52" aria-label="Loại chi">
                 <SelectItem key="" textValue="Tất cả loại">Tất cả loại</SelectItem>
@@ -450,6 +470,10 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                         )}
                         {canPayVoucher && r.status === "approved" && (
                           <Button size="sm" color="success" className="text-white" startContent={<RiMoneyDollarCircleLine size={13} />} onPress={() => setPayTarget(r)}>Chi tiền</Button>
+                        )}
+                        {/* Huỷ chỉ áp dụng cho phiếu đã duyệt mà chưa chi — chưa có bút toán nào để đảo. */}
+                        {canCancelVoucher && r.status === "approved" && (
+                          <Button size="sm" variant="light" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setVoucherCancelTarget(r); setVoucherCancelReason(""); }}>Huỷ</Button>
                         )}
                       </div>
                     </TableCell>
@@ -594,6 +618,37 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
           <ModalFooter>
             <Button variant="flat" onPress={() => setVoucherRejectTarget(null)}>Hủy</Button>
             <Button color="danger" isLoading={acting} onPress={handleRejectVoucher}>Xác nhận từ chối</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modal: huỷ phiếu chi đã duyệt (Accountant) */}
+      <Modal isOpen={!!voucherCancelTarget} onOpenChange={(open) => !open && setVoucherCancelTarget(null)} size="sm">
+        <ModalContent>
+          <ModalHeader>Huỷ phiếu chi đã duyệt</ModalHeader>
+          <ModalBody className="gap-3">
+            {voucherCancelTarget && (
+              <>
+                <div className="text-sm text-gray-600">
+                  <div>Phiếu chi: <strong>#{voucherCancelTarget.id}</strong> — <strong>{fmt(voucherCancelTarget.amount)}</strong></div>
+                  <div>Người nhận: <strong>{voucherCancelTarget.payee}</strong></div>
+                  {voucherCancelTarget.approved_by_name && (
+                    <div>Người duyệt: <strong>{voucherCancelTarget.approved_by_name}</strong></div>
+                  )}
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                  Phiếu không bị xoá — hệ thống lưu lại người huỷ và lý do. Người tạo phiếu và người duyệt đều được thông báo.
+                  {voucherCancelTarget.incident_id
+                    ? ` Sự cố #${voucherCancelTarget.incident_id} sẽ quay lại trạng thái “đang xử lý” để lập lại khoản đền bù.`
+                    : ""}
+                </div>
+              </>
+            )}
+            <Textarea label="Lý do huỷ *" value={voucherCancelReason} onValueChange={setVoucherCancelReason} minRows={3} variant="bordered" />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={() => setVoucherCancelTarget(null)}>Đóng</Button>
+            <Button color="danger" isLoading={acting} onPress={handleCancelVoucher}>Xác nhận huỷ</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

@@ -1,12 +1,155 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
-import { RiSearchLine, RiRefreshLine, RiCheckLine } from "react-icons/ri";
+import {
+  Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
+} from "@heroui/react";
+import { RiSearchLine, RiRefreshLine, RiCheckLine, RiEyeLine, RiFileDownloadLine, RiArrowGoBackLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
+import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+
+// Chi tiết từng khoản của phiếu lương — bám sát đúng bảng chi tiết bên Kế toán
+const buildDetail = (r) => [
+  { label: "Lương cứng",         value: fmt(r.base_salary) },
+  { label: "Doanh thu",          value: fmt(r.total_revenue) },
+  { label: "Thưởng DT (15%)",    value: fmt(r.revenue_bonus) },
+  { label: "Phụ cấp ĐT",         value: "200.000đ" },
+  { label: "Thưởng KPI",         value: fmt(r.kpi_bonus) },
+  { label: "Thưởng xuất sắc",    value: fmt(r.top_driver_bonus) },
+  { label: "Thưởng & Phúc lợi",  value: fmt(r.overtime_bonus) },
+  ...(Number(r.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: fmt(r.manual_bonus) }] : []),
+  { label: "Lương gộp",          value: fmt(r.gross_salary), bold: true },
+  { label: "Hoàn chi phí đã ứng", value: fmt(r.expense_reimbursement) },
+  { label: "BHXH (10.5%)",       value: `-${fmt(r.insurance_employee)}`, neg: true },
+  { label: "Nghỉ không lương",   value: `-${fmt(r.absence_penalty)}`, neg: true },
+  { label: "Trừ ứng lương",      value: `-${fmt(r.advance_deduction)}`, neg: true },
+  { label: "Trừ công nợ",        value: `-${fmt(r.driver_debt_deduction)}`, neg: true },
+  ...(Number(r.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${fmt(r.manual_deduction)}`, neg: true }] : []),
+  { label: "Lương thực nhận",    value: fmt(r.net_salary), bold: true, highlight: true },
+];
+
+function PayslipDetailModal({ row, companyInfo, onRevert, onClose }) {
+  if (!row) return null;
+  const detail = buildDetail(row);
+  const canRevert = row.status === "reviewed" || row.status === "approved";
+  return (
+    <Modal isOpen onClose={onClose} size="lg" scrollBehavior="inside">
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-0.5">
+          <span>Chi tiết lương — {row.driver_name}</span>
+          <span className="text-sm font-normal text-gray-400">
+            Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
+            {row.vehicle_group ? ` · ${row.vehicle_group}` : ""}
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {detail.map(({ label, value, neg, bold, highlight }) => (
+              <div
+                key={label}
+                className={`flex justify-between items-center p-2.5 rounded-lg text-xs
+                  ${highlight ? "bg-blue-100 col-span-2 sm:col-span-3" : "bg-gray-50"}`}
+              >
+                <span className="text-gray-500">{label}</span>
+                <span className={`font-${bold ? "bold" : "medium"} ${
+                  highlight ? "text-blue-700 text-sm" :
+                  neg ? "text-red-500" : "text-gray-800"
+                }`}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+          {row.adjustment_note && (
+            <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              <span className="font-semibold">Ghi chú điều chỉnh:</span> {row.adjustment_note}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onClose}>Đóng</Button>
+          {canRevert && onRevert && (
+            <Button
+              color="danger" variant="flat"
+              startContent={<RiArrowGoBackLine size={15} />}
+              onPress={() => { onRevert(row); onClose(); }}
+            >
+              Trả về tính lại
+            </Button>
+          )}
+          <Button
+            color="secondary" variant="flat"
+            startContent={<RiFileDownloadLine size={15} />}
+            onPress={() => exportPayslipToPDF(row, {
+              month: row.payroll_month, year: row.payroll_year, companyInfo,
+            })}
+          >
+            Xuất phiếu lương PDF
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function ManagerRevertModal({ row, onClose, onDone }) {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState(null);
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await managerService.revertPayroll(row.id, reason.trim() || undefined);
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err.message ?? "Lỗi khi trả về.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} size="sm">
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-0.5">
+          <span>Trả về tính lại — {row.driver_name}</span>
+          <span className="text-sm font-normal text-gray-400">
+            Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+            Phiếu sẽ quay về trạng thái <b>Chờ xác nhận</b> (huỷ dấu duyệt) để Kế toán tính lại /
+            điều chỉnh. Chỉ áp dụng khi phiếu chưa trả lương.
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+              {error}
+            </div>
+          )}
+          <Input
+            label="Lý do trả về (tuỳ chọn)" placeholder="Ví dụ: sai ngày công tháng này"
+            value={reason} onValueChange={setReason}
+            variant="bordered"
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onClose} isDisabled={saving}>Huỷ</Button>
+          <Button color="danger" onPress={handleSubmit} isLoading={saving}>
+            Trả về tính lại
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
 
 // Các trường số từ backend là chuỗi (::text, vd "9000000.00") để giữ chính xác thập
 // phân — backend đã tính sẵn net_salary đúng, dùng lại trực tiếp thay vì cộng trừ lại
@@ -37,6 +180,15 @@ export default function PayrollView() {
   const [reviewing, setReviewing] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [companyInfo, setCompanyInfo] = useState(null);
+  const [detailRow, setDetailRow] = useState(null);
+  const [revertRow, setRevertRow] = useState(null);
+
+  useEffect(() => {
+    managerService.getCompanyInfo()
+      .then((data) => setCompanyInfo(data?.info || null))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,11 +324,20 @@ export default function PayrollView() {
                 <TableCell><span className="font-bold text-blue-600">{fmt(net(r))}</span></TableCell>
                 <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
                 <TableCell>
-                  {r.status === "pending" && (
-                    <Button size="sm" color="primary" startContent={<RiCheckLine size={14} />} isLoading={reviewing === r.id} onPress={() => handleReview(r)}>
-                      Xác nhận
+                  <div className="flex items-center gap-1.5">
+                    {r.status === "pending" && (
+                      <Button size="sm" color="primary" startContent={<RiCheckLine size={14} />} isLoading={reviewing === r.id} onPress={() => handleReview(r)}>
+                        Xác nhận
+                      </Button>
+                    )}
+                    <Button
+                      size="sm" variant="flat"
+                      startContent={<RiEyeLine size={14} />}
+                      onPress={() => setDetailRow(r)}
+                    >
+                      Chi tiết
                     </Button>
-                  )}
+                  </div>
                 </TableCell>
               </TableRow>
             )}
@@ -197,6 +358,23 @@ export default function PayrollView() {
           </div>
         )}
       </div>
+
+      {detailRow && (
+        <PayslipDetailModal
+          row={detailRow}
+          companyInfo={companyInfo}
+          onRevert={setRevertRow}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
+
+      {revertRow && (
+        <ManagerRevertModal
+          row={revertRow}
+          onClose={() => setRevertRow(null)}
+          onDone={load}
+        />
+      )}
     </div>
   );
 }

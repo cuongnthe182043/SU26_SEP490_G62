@@ -53,12 +53,12 @@ router.get  ('/expenses',          spendingController.listExpenses);
 router.get  ('/vouchers',          spendingController.listVouchers);
 router.post ('/vouchers',          handleUpload(uploadPaymentVoucher.single('proof')), spendingController.createVoucher);
 router.patch('/vouchers/:id/pay',  spendingController.payVoucher);
+router.patch('/vouchers/:id/cancel', spendingController.cancelVoucher);
 router.get  ('/spending-summary',  spendingController.getSpendingSummary);
 
 // Nhật ký tài chính (append-only ledger) + xuất kỳ kế toán
 router.get ('/ledger',        accountantLedgerController.getJournal);
 router.get ('/ledger/stats',  accountantLedgerController.getJournalStats);
 router.post('/ledger/export', accountantLedgerController.exportPeriod);
-router.post('/ledger/:id/reverse', accountantLedgerController.reverseEntry);
 
 module.exports = router;
