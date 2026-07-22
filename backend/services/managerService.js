@@ -1,6 +1,7 @@
 ﻿const managerRepository = require('../repositories/managerRepository');
 const accountantReportRepository = require('../repositories/accountantReportRepository');
 const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
+const activityLogRepository = require('../repositories/activityLogRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
 const coordinatorService = require('./coordinatorService');
@@ -197,19 +198,30 @@ const listPartners = async ({ search, page, limit, hasDebt, sort } = {}) => {
     };
 };
 
-const createPartner = async (payload) => {
+const createPartner = async (payload, actorId = null) => {
     const partner = await managerRepository.createPartner(normalizePartnerPayload(payload));
+    activityLogRepository.logSafe({
+        userId: actorId, action: 'partner_create', entityType: 'partner', entityId: partner.id,
+        oldData: null, newData: { company_name: partner.company_name, tax_code: partner.tax_code },
+    });
     broadcastPartnerChange('created', { partnerId: partner.id });
     return partner;
 };
 
-const updatePartner = async (partnerId, payload) => {
+const updatePartner = async (partnerId, payload, actorId = null) => {
     const existing = await managerRepository.getPartnerById(partnerId);
     if (!existing) throw new Error('Đối tác không tồn tại');
 
     const partner = await managerRepository.updatePartner(partnerId, normalizePartnerPayload(payload));
     if (!partner) throw new Error('Không thể cập nhật đối tác');
 
+    activityLogRepository.logSafe({
+        userId: actorId, action: 'partner_update', entityType: 'partner', entityId: partnerId,
+        oldData: { company_name: existing.company_name, phone: existing.phone, tax_code: existing.tax_code,
+                   payment_term_days: existing.payment_term_days },
+        newData: { company_name: partner.company_name, phone: partner.phone, tax_code: partner.tax_code,
+                   payment_term_days: partner.payment_term_days },
+    });
     broadcastPartnerChange('updated', { partnerId: partner.id });
     return partner;
 };

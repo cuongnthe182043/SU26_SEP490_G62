@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
     Alert, Animated, Modal, Platform,
     Pressable, ScrollView, StyleSheet, TextInput, View,
-} from 'react-native';
-import { KeyboardAvoidingView } from 'react-native';
+ KeyboardAvoidingView } from 'react-native';
+
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';

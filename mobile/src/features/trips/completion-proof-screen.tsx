@@ -1,9 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View , Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
-import { Alert } from 'react-native';
 import { Camera, CheckCircle, ChevronLeft } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 

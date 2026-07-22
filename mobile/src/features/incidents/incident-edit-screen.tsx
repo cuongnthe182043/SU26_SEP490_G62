@@ -157,7 +157,7 @@ export function IncidentEditScreen() {
                     <AlertTriangle size={32} color={appTheme.colors.warning} />
                     <AppText variant="bodyStrong" tone="muted">Không thể chỉnh sửa</AppText>
                     <AppText variant="caption" tone="muted">
-                        Sự cố đang ở trạng thái "{INCIDENT_SEVERITY_LABEL[incident.severity_level]}" và không thể thay đổi.
+                        Sự cố đang ở trạng thái &quot;{INCIDENT_SEVERITY_LABEL[incident.severity_level]}&quot; và không thể thay đổi.
                     </AppText>
                 </YStack>
             </View>

@@ -125,7 +125,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
       body,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('[api-client] fetch failed', {
       url: `${API_BASE_URL}${path}`,
       method: options.method,
@@ -159,7 +159,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
 
   if (!response.ok) {
     if (payload === null) {
-      // eslint-disable-next-line no-console
+       
       console.error('[api-client] non-JSON error response', {
         url: `${API_BASE_URL}${path}`, method: options.method, status: response.status,
       });

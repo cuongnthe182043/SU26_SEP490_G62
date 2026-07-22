@@ -130,7 +130,7 @@ const getPartners = async (req, res) => {
 
 const createPartner = async (req, res) => {
     try {
-        const partner = await managerService.createPartner(req.body);
+        const partner = await managerService.createPartner(req.body, req.user.userId);
         res.status(201).json({ message: 'Đã tạo đối tác mới', partner });
     } catch (err) {
         sendError(res, err);
@@ -140,7 +140,7 @@ const createPartner = async (req, res) => {
 const updatePartner = async (req, res) => {
     try {
         const partnerId = parseId(req.params.id, 'Partner ID');
-        const partner = await managerService.updatePartner(partnerId, req.body);
+        const partner = await managerService.updatePartner(partnerId, req.body, req.user.userId);
         res.json({ message: 'Đã cập nhật đối tác', partner });
     } catch (err) {
         sendError(res, err);
