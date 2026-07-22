@@ -172,12 +172,12 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
     >
       <ModalContent>
         <ModalHeader className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-            <RiFileAddLine size={16} className="text-blue-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+            <RiFileAddLine size={16} className="text-blue-600 dark:text-blue-300" />
           </div>
           <div>
             <p className="text-base font-bold">Nhập đơn ngoài hệ thống</p>
-            <p className="text-xs font-normal text-gray-400">Tạo đơn và ghi nhận doanh thu thủ công</p>
+            <p className="text-xs font-normal text-gray-400 dark:text-gray-400">Tạo đơn và ghi nhận doanh thu thủ công</p>
           </div>
         </ModalHeader>
 
@@ -202,7 +202,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
             >
               Đơn từ đối tác liên kết
             </Button>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-400 dark:text-gray-400">
               Đơn đối tác: đối tác thuê công ty chở, đối tác là bên trả cước / chịu công nợ (khách chỉ là điểm giao).
             </p>
             {isPartner && (
@@ -243,7 +243,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
           {}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 Danh sách chuyến ({shipments.length})
               </span>
               <Button
@@ -272,7 +272,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
           </div>
 
           {apiError && (
-            <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{apiError}</p>
+            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">{apiError}</p>
           )}
         </ModalBody>
 

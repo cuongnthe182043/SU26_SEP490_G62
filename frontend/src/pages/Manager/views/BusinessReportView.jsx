@@ -33,16 +33,16 @@ function buildPeriodOptions() {
 // Chênh lệch tương đối so kỳ trước cho các chỉ số tiền/số lượng.
 function Delta({ cur, prev, goodWhenUp = true }) {
   if (prev === null || prev === undefined || Number(prev) === 0) {
-    return <span className="text-[11px] text-gray-400">chưa có kỳ trước</span>;
+    return <span className="text-[11px] text-gray-400 dark:text-gray-400">chưa có kỳ trước</span>;
   }
   const pct = ((Number(cur) - Number(prev)) / Math.abs(Number(prev))) * 100;
   const up = pct >= 0;
   const good = up === goodWhenUp;
   const Icon = up ? RiArrowUpLine : RiArrowDownLine;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${good ? "text-emerald-600" : "text-red-500"}`}>
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${good ? "text-emerald-600 dark:text-emerald-300" : "text-red-500"}`}>
       <Icon size={12} />
-      {Math.abs(pct).toFixed(1)}% <span className="text-gray-400 font-normal">so kỳ trước</span>
+      {Math.abs(pct).toFixed(1)}% <span className="text-gray-400 dark:text-gray-400 font-normal">so kỳ trước</span>
     </span>
   );
 }
@@ -114,10 +114,10 @@ export default function BusinessReportView() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
           <RiAlertLine size={22} className="text-red-400" />
         </div>
-        <p className="text-sm text-gray-500">{error}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{error}</p>
       </div>
     );
   }
@@ -136,7 +136,7 @@ export default function BusinessReportView() {
 
       {/* Kỳ báo cáo */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-gray-400 dark:text-gray-400">
           Kết quả kinh doanh · Doanh thu cước hoàn thành trừ chi phí vận hành và lương
         </p>
         <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export default function BusinessReportView() {
             size="sm"
             selectedKeys={new Set([periodKey])}
             onSelectionChange={(keys) => setPeriodKey([...keys][0])}
-            classNames={{ base: "w-44", trigger: "h-8 bg-white border border-gray-200 rounded-lg text-xs" }}
+            classNames={{ base: "w-44", trigger: "h-8 bg-white dark:bg-[#161922] border border-gray-200 dark:border-white/10 rounded-lg text-xs" }}
             aria-label="Kỳ báo cáo"
           >
             {periodOptions.map(({ key, label }) => (
@@ -186,7 +186,7 @@ export default function BusinessReportView() {
             icon={RiLineChartLine}
             sub={`${pnl.completed_trips ?? 0} chuyến hoàn thành`}
             gradient="from-blue-500 to-blue-600"
-            lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+            lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
           />
           <div className="px-1"><Delta cur={pnl.revenue} prev={prev.revenue} /></div>
         </div>
@@ -197,7 +197,7 @@ export default function BusinessReportView() {
             icon={RiWallet3Line}
             sub="Vận hành + lương"
             gradient="from-orange-500 to-orange-600"
-            lightBg="bg-orange-50" text="text-orange-600" border="border-orange-100"
+            lightBg="bg-orange-50 dark:bg-orange-500/10" text="text-orange-600 dark:text-orange-300" border="border-orange-100 dark:border-orange-500/20"
           />
           <div className="px-1"><Delta cur={totalCost} prev={prevCost} goodWhenUp={false} /></div>
         </div>
@@ -208,9 +208,9 @@ export default function BusinessReportView() {
             icon={RiFundsLine}
             sub={Number(pnl.gross_profit) >= 0 ? "Doanh thu − chi phí" : "Đang lỗ trong kỳ"}
             gradient={Number(pnl.gross_profit) >= 0 ? "from-emerald-500 to-emerald-600" : "from-red-500 to-rose-600"}
-            lightBg={Number(pnl.gross_profit) >= 0 ? "bg-emerald-50" : "bg-red-50"}
-            text={Number(pnl.gross_profit) >= 0 ? "text-emerald-600" : "text-red-600"}
-            border={Number(pnl.gross_profit) >= 0 ? "border-emerald-100" : "border-red-100"}
+            lightBg={Number(pnl.gross_profit) >= 0 ? "bg-emerald-50 dark:bg-emerald-500/10" : "bg-red-50 dark:bg-red-500/10"}
+            text={Number(pnl.gross_profit) >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300"}
+            border={Number(pnl.gross_profit) >= 0 ? "border-emerald-100 dark:border-emerald-500/20" : "border-red-100 dark:border-red-500/20"}
           />
           <div className="px-1"><Delta cur={pnl.gross_profit} prev={prev.gross_profit} /></div>
         </div>
@@ -221,11 +221,11 @@ export default function BusinessReportView() {
             icon={RiPercentLine}
             sub="Lợi nhuận / doanh thu"
             gradient="from-indigo-500 to-indigo-600"
-            lightBg="bg-indigo-50" text="text-indigo-600" border="border-indigo-100"
+            lightBg="bg-indigo-50 dark:bg-indigo-500/10" text="text-indigo-600 dark:text-indigo-300" border="border-indigo-100 dark:border-indigo-500/20"
           />
           <div className="px-1">
-            <span className={`text-[11px] font-semibold ${marginPP >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {marginPP >= 0 ? "+" : ""}{marginPP.toFixed(1)} điểm <span className="text-gray-400 font-normal">so kỳ trước</span>
+            <span className={`text-[11px] font-semibold ${marginPP >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-red-500"}`}>
+              {marginPP >= 0 ? "+" : ""}{marginPP.toFixed(1)} điểm <span className="text-gray-400 dark:text-gray-400 font-normal">so kỳ trước</span>
             </span>
           </div>
         </div>
@@ -244,8 +244,8 @@ export default function BusinessReportView() {
             icon={RiTruckLine}
             action={
               <div className="flex items-center gap-3 text-[11px]">
-                <span className="text-gray-400">{ops.completed ?? 0} hoàn thành</span>
-                <span className={`font-semibold ${Number(ops.failed_rate) > 10 ? "text-red-500" : "text-gray-500"}`}>
+                <span className="text-gray-400 dark:text-gray-400">{ops.completed ?? 0} hoàn thành</span>
+                <span className={`font-semibold ${Number(ops.failed_rate) > 10 ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
                   {Number(ops.failed_rate || 0).toFixed(1)}% hỏng
                 </span>
               </div>
@@ -271,12 +271,12 @@ export default function BusinessReportView() {
         <div className="col-span-2">
           <Section title="Phân tích nợ khách theo tuổi" icon={RiTimeLine}>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              <MiniStat label="Nợ phải thu" value={VND(cash.receivable_total)} tone="text-orange-600" />
-              <MiniStat label="DSO (ngày thu tiền)" value={`${Number(cash.dso || 0).toFixed(0)} ngày`} tone="text-gray-700" />
+              <MiniStat label="Nợ phải thu" value={VND(cash.receivable_total)} tone="text-orange-600 dark:text-orange-300" />
+              <MiniStat label="DSO (ngày thu tiền)" value={`${Number(cash.dso || 0).toFixed(0)} ngày`} tone="text-gray-700 dark:text-gray-200" />
               <MiniStat
                 label="Tỷ lệ thu hồi kỳ"
                 value={`${Number(cash.collection_rate || 0).toFixed(0)}%`}
-                tone={Number(cash.collection_rate) >= 80 ? "text-emerald-600" : "text-amber-600"}
+                tone={Number(cash.collection_rate) >= 80 ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300"}
               />
             </div>
             <DebtAgingBars data={cash.debt_aging} />
@@ -317,19 +317,19 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
 
   const config = {
     open: {
-      wrap: "bg-gray-50 border-gray-200",
-      icon: RiTimeLine, iconTone: "text-gray-400",
+      wrap: "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10",
+      icon: RiTimeLine, iconTone: "text-gray-400 dark:text-gray-400",
       title: "Kỳ đang mở",
       desc: "Số liệu tính động theo thời gian thực, sẽ đổi khi có giao dịch phát sinh.",
     },
     closed: {
-      wrap: "bg-amber-50 border-amber-200",
+      wrap: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25",
       icon: RiLockLine, iconTone: "text-amber-500",
       title: "Đã chốt — số liệu đóng băng",
       desc: `Chốt bởi ${meta?.closed_by_name ?? "—"} · ${fmtDateTime(meta?.closed_at)}`,
     },
     signed_off: {
-      wrap: "bg-emerald-50 border-emerald-200",
+      wrap: "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25",
       icon: RiShieldCheckLine, iconTone: "text-emerald-500",
       title: "Đã ký duyệt — khoá cứng",
       desc: `Ký bởi ${meta?.signed_off_by_name ?? "—"} · ${fmtDateTime(meta?.signed_off_at)}`,
@@ -340,13 +340,13 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
 
   return (
     <div className={`rounded-2xl border ${config.wrap} px-4 py-3 flex items-center gap-3 flex-wrap`}>
-      <div className="w-9 h-9 rounded-xl bg-white/70 flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-xl bg-white/70 dark:bg-white/10 flex items-center justify-center shrink-0">
         <Icon size={18} className={config.iconTone} />
       </div>
       <div className="flex-1 min-w-[180px]">
-        <p className="text-sm font-bold text-gray-800">{config.title}</p>
-        <p className="text-[11px] text-gray-500">{config.desc}</p>
-        {meta?.note && <p className="text-[11px] text-gray-400 italic mt-0.5">Ghi chú: {meta.note}</p>}
+        <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{config.title}</p>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">{config.desc}</p>
+        {meta?.note && <p className="text-[11px] text-gray-400 dark:text-gray-400 italic mt-0.5">Ghi chú: {meta.note}</p>}
         {actionErr && <p className="text-[11px] text-red-500 mt-0.5">{actionErr}</p>}
       </div>
 
@@ -374,7 +374,7 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
           </>
         )}
         {status === "signed_off" && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
             <RiLockLine size={14} /> Đã khoá
           </span>
         )}
@@ -383,24 +383,24 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
   );
 }
 
-function MiniStat({ label, value, tone = "text-gray-700" }) {
+function MiniStat({ label, value, tone = "text-gray-700 dark:text-gray-200" }) {
   return (
-    <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{label}</p>
+    <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
+      <p className="text-[10px] text-gray-400 dark:text-gray-400 uppercase tracking-wider font-semibold">{label}</p>
       <p className={`text-base font-bold ${tone}`}>{value}</p>
     </div>
   );
 }
 
 const COST_COLORS = {
-  payroll: { bar: "bg-violet-500", dot: "bg-violet-500", text: "text-violet-600" },
-  vehicle: { bar: "bg-sky-500", dot: "bg-sky-500", text: "text-sky-600" },
-  office: { bar: "bg-amber-500", dot: "bg-amber-500", text: "text-amber-600" },
+  payroll: { bar: "bg-violet-500", dot: "bg-violet-500", text: "text-violet-600 dark:text-violet-300" },
+  vehicle: { bar: "bg-sky-500", dot: "bg-sky-500", text: "text-sky-600 dark:text-sky-300" },
+  office: { bar: "bg-amber-500", dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-300" },
 };
 
 function CostBreakdown({ items, total }) {
   if (!items?.length || total <= 0) {
-    return <p className="text-xs text-gray-400 text-center py-8">Chưa có chi phí trong kỳ.</p>;
+    return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có chi phí trong kỳ.</p>;
   }
   return (
     <div className="flex flex-col gap-3">
@@ -416,10 +416,10 @@ function CostBreakdown({ items, total }) {
           const c = COST_COLORS[it.key] ?? COST_COLORS.office;
           const pct = total > 0 ? (Number(it.amount || 0) / total) * 100 : 0;
           return (
-            <div key={it.key} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+            <div key={it.key} className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2">
               <div className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                <span className="text-[11px] text-gray-500">{it.label}</span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400">{it.label}</span>
                 <span className="text-[10px] text-gray-300">{pct.toFixed(0)}%</span>
               </div>
               <span className={`text-xs font-bold ${c.text}`}>{VND(it.amount)}</span>
@@ -427,30 +427,30 @@ function CostBreakdown({ items, total }) {
           );
         })}
       </div>
-      <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100">
-        <span className="text-xs text-gray-400 font-medium">Tổng chi phí kỳ</span>
-        <span className="text-sm font-bold text-orange-600">{VND_FULL(total)}</span>
+      <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100 dark:border-white/10">
+        <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng chi phí kỳ</span>
+        <span className="text-sm font-bold text-orange-600 dark:text-orange-300">{VND_FULL(total)}</span>
       </div>
     </div>
   );
 }
 
 function DriverProductivity({ data }) {
-  if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
+  if (!data?.length) return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
   const max = Math.max(...data.map((d) => Number(d.revenue || 0)), 1);
   return (
     <div className="flex flex-col gap-1">
       {data.map((d, i) => (
         <div key={i} className="py-2 border-b border-gray-50 last:border-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-gray-800 truncate">{d.driver_name}</span>
-            <span className="text-xs font-bold text-blue-600 flex-shrink-0 ml-2">{VND(d.revenue)}</span>
+            <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{d.driver_name}</span>
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-300 shrink-0 ml-2">{VND(d.revenue)}</span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+          <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+            <div className="h-full bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               style={{ width: `${(Number(d.revenue) / max) * 100}%` }} />
           </div>
-          <span className="text-[10px] text-gray-400">{d.trip_count} chuyến</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">{d.trip_count} chuyến</span>
         </div>
       ))}
     </div>
@@ -459,7 +459,7 @@ function DriverProductivity({ data }) {
 
 function CustomerDebtTable({ data }) {
   if (!data?.length) {
-    return <p className="text-xs text-gray-400 text-center py-8">Không có khách hàng còn dư nợ.</p>;
+    return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Không có khách hàng còn dư nợ.</p>;
   }
   const sum = (k) => data.reduce((s, c) => s + Number(c[k] || 0), 0);
   const cell = "py-2.5 px-2 text-right tabular-nums";
@@ -468,7 +468,7 @@ function CustomerDebtTable({ data }) {
     <div className="overflow-x-auto">
       <table className="w-full text-xs min-w-[640px]">
         <thead>
-          <tr className="text-gray-400 border-b border-gray-100">
+          <tr className="text-gray-400 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
             <th className="text-left font-semibold py-2 px-2">Khách hàng</th>
             <th className="text-right font-semibold py-2 px-2">Dư nợ</th>
             <th className="text-right font-semibold py-2 px-2">0–30</th>
@@ -481,18 +481,18 @@ function CustomerDebtTable({ data }) {
         <tbody>
           {data.map((c, i) => (
             <tr key={i} className="border-b border-gray-50 last:border-0">
-              <td className="py-2.5 px-2 font-medium text-gray-700 truncate max-w-[200px]">{c.name}</td>
-              <td className={`${cell} font-bold text-gray-800`}>{VND_FULL(c.outstanding)}</td>
-              <td className={`${cell} text-gray-500`}>{Number(c.d0_30) > 0 ? VND(c.d0_30) : "—"}</td>
-              <td className={`${cell} text-yellow-600`}>{Number(c.d30_60) > 0 ? VND(c.d30_60) : "—"}</td>
-              <td className={`${cell} text-orange-600`}>{Number(c.d60_90) > 0 ? VND(c.d60_90) : "—"}</td>
+              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[200px]">{c.name}</td>
+              <td className={`${cell} font-bold text-gray-800 dark:text-gray-100`}>{VND_FULL(c.outstanding)}</td>
+              <td className={`${cell} text-gray-500 dark:text-gray-400`}>{Number(c.d0_30) > 0 ? VND(c.d0_30) : "—"}</td>
+              <td className={`${cell} text-yellow-600 dark:text-yellow-300`}>{Number(c.d30_60) > 0 ? VND(c.d30_60) : "—"}</td>
+              <td className={`${cell} text-orange-600 dark:text-orange-300`}>{Number(c.d60_90) > 0 ? VND(c.d60_90) : "—"}</td>
               <td className={`${cell} font-semibold ${Number(c.d90_plus) > 0 ? "text-red-500" : "text-gray-300"}`}>
                 {Number(c.d90_plus) > 0 ? VND(c.d90_plus) : "—"}
               </td>
-              <td className={`${cell} text-gray-500`}>{c.unpaid_orders}</td>
+              <td className={`${cell} text-gray-500 dark:text-gray-400`}>{c.unpaid_orders}</td>
             </tr>
           ))}
-          <tr className="border-t-2 border-gray-100 font-bold text-gray-700">
+          <tr className="border-t-2 border-gray-100 dark:border-white/10 font-bold text-gray-700 dark:text-gray-200">
             <td className="py-2.5 px-2">TỔNG CỘNG</td>
             <td className={cell}>{VND_FULL(sum("outstanding"))}</td>
             <td className={cell}>{VND(sum("d0_30"))}</td>
@@ -509,13 +509,13 @@ function CustomerDebtTable({ data }) {
 
 function RiskyCustomers({ data }) {
   if (!data?.length) {
-    return <p className="text-xs text-gray-400 text-center py-8">Không có khách hàng tồn đọng công nợ.</p>;
+    return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Không có khách hàng tồn đọng công nợ.</p>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs min-w-[420px]">
         <thead>
-          <tr className="text-gray-400 border-b border-gray-100">
+          <tr className="text-gray-400 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
             <th className="text-left font-semibold py-2 px-2">Khách hàng</th>
             <th className="text-right font-semibold py-2 px-2">Dư nợ</th>
             <th className="text-right font-semibold py-2 px-2">Quá hạn</th>
@@ -524,8 +524,8 @@ function RiskyCustomers({ data }) {
         <tbody>
           {data.map((c, i) => (
             <tr key={i} className="border-b border-gray-50 last:border-0">
-              <td className="py-2.5 px-2 font-medium text-gray-700 truncate max-w-[220px]">{c.name}</td>
-              <td className="py-2.5 px-2 text-right font-semibold text-gray-700">{VND_FULL(c.outstanding)}</td>
+              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[220px]">{c.name}</td>
+              <td className="py-2.5 px-2 text-right font-semibold text-gray-700 dark:text-gray-200">{VND_FULL(c.outstanding)}</td>
               <td className="py-2.5 px-2 text-right font-bold">
                 {Number(c.overdue) > 0
                   ? <span className="text-red-500">{VND_FULL(c.overdue)}</span>

@@ -7,8 +7,10 @@ import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
   RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
-  RiFileDownloadLine, RiArrowGoBackLine,
+  RiFileDownloadLine, RiArrowGoBackLine, RiSearchLine, RiFilter3Line, RiSortDesc,
 } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
@@ -51,12 +53,12 @@ const PAYROLL_SORT_OPTIONS = [
 
 function StatCard({ label, value, icon: Icon, bg, text, border }) {
   return (
-    <div className={`relative overflow-hidden rounded-xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm`}>
+    <div className={`relative overflow-hidden rounded-xl bg-white dark:bg-[#161922] border ${border} p-5 flex flex-col gap-3 shadow-sm`}>
       <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
         <Icon size={18} className={text} />
       </div>
       <div className="flex flex-col gap-0.5">
-        <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</span>
+        <span className="text-xs font-medium text-gray-400 dark:text-gray-400 uppercase tracking-wide">{label}</span>
         <span className={`text-2xl font-bold ${text}`}>{value}</span>
       </div>
     </div>
@@ -90,39 +92,39 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
   return (
     <>
       <tr
-        className={`border-b border-gray-100 cursor-pointer transition-colors
-                   ${expanded ? "bg-violet-50/40" : "hover:bg-gray-50/60"}`}
+        className={`border-b border-gray-100 dark:border-white/10 cursor-pointer transition-colors
+                   ${expanded ? "bg-violet-50/40 dark:bg-violet-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={() => setExpanded((v) => !v)}
       >
         <td className="py-3.5 pl-4 w-9">
-          <span className="text-gray-400">
+          <span className="text-gray-400 dark:text-gray-400">
             {expanded ? <RiArrowUpSLine size={17} /> : <RiArrowDownSLine size={17} />}
           </span>
         </td>
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800">{row.driver_name}</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
             {row.driver_phone && (
-              <span className="text-xs text-gray-400 font-mono">{row.driver_phone}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{row.driver_phone}</span>
             )}
           </div>
         </td>
         <td className="py-3.5 pr-4 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500">{row.vehicle_group || "—"}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{row.vehicle_group || "—"}</span>
             <Button
               isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
               onPress={() => onEditGroup(row)}
             >
-              <RiPencilLine size={12} className="text-gray-400" />
+              <RiPencilLine size={12} className="text-gray-400 dark:text-gray-400" />
             </Button>
           </div>
         </td>
         <td className="py-3.5 pr-4">
-          <MoneyText amount={row.gross_salary} className="text-sm font-semibold text-gray-700" />
+          <MoneyText amount={row.gross_salary} className="text-sm font-semibold text-gray-700 dark:text-gray-200" />
         </td>
         <td className="py-3.5 pr-4">
-          <MoneyText amount={row.net_salary} className="text-sm font-bold text-violet-700" />
+          <MoneyText amount={row.net_salary} className="text-sm font-bold text-violet-700 dark:text-violet-300" />
         </td>
         <td className="py-3.5 pr-4">
           <Chip size="sm" color={chip.color} variant="flat" className="text-[11px]">
@@ -153,7 +155,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
             )}
             <Button
               size="sm" variant="flat" isIconOnly
-              className="h-7 w-7 min-w-7 text-gray-500"
+              className="h-7 w-7 min-w-7 text-gray-500 dark:text-gray-400"
               title="Xuất phiếu lương PDF"
               onPress={() => onExportPdf(row)}
             >
@@ -164,19 +166,19 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
       </tr>
 
       {expanded && (
-        <tr className="bg-violet-50/30 border-b border-violet-100/50">
+        <tr className="bg-violet-50/30 dark:bg-violet-500/10 border-b border-violet-100/50">
           <td colSpan={7} className="px-10 py-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {detail.map(({ label, value, raw, neg, bold, highlight }) => (
                 <div
                   key={label}
                   className={`flex justify-between items-center p-2.5 rounded-lg text-xs
-                    ${highlight ? "bg-violet-100 col-span-2 sm:col-span-3" : "bg-white"}`}
+                    ${highlight ? "bg-violet-100 dark:bg-violet-500/15 col-span-2 sm:col-span-3" : "bg-white dark:bg-[#161922]"}`}
                 >
-                  <span className="text-gray-500">{label}</span>
+                  <span className="text-gray-500 dark:text-gray-400">{label}</span>
                   <span className={`font-${bold ? "bold" : "medium"} ${
-                    highlight ? "text-violet-700 text-sm" :
-                    neg ? "text-red-500" : "text-gray-800"
+                    highlight ? "text-violet-700 dark:text-violet-300 text-sm" :
+                    neg ? "text-red-500" : "text-gray-800 dark:text-gray-100"
                   }`}>
                     {raw ? value : <MoneyText amount={value} />}
                   </span>
@@ -184,7 +186,7 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
               ))}
             </div>
             {row.adjustment_note && (
-              <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              <div className="mt-3 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-lg px-3 py-2">
                 <span className="font-semibold">Ghi chú điều chỉnh:</span> {row.adjustment_note}
               </div>
             )}
@@ -225,25 +227,25 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
 function AdvanceRow({ row, onDisburse, disbursing }) {
   const isApproved = row.status === "approved";
   return (
-    <tr className="border-b border-gray-100 hover:bg-gray-50/60 transition-colors">
+    <tr className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
       <td className="py-3.5 pl-4 pr-4">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold text-gray-800">{row.driver_name}</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
           {row.driver_phone && (
-            <span className="text-xs text-gray-400 font-mono">{row.driver_phone}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{row.driver_phone}</span>
           )}
         </div>
       </td>
       <td className="py-3.5 pr-4">
-        <MoneyText amount={row.amount} className="text-sm font-bold text-amber-700" />
+        <MoneyText amount={row.amount} className="text-sm font-bold text-amber-700 dark:text-amber-300" />
       </td>
       <td className="py-3.5 pr-4 hidden sm:table-cell">
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           Tháng {row.request_month}/{row.request_year}
         </span>
       </td>
       <td className="py-3.5 pr-4 hidden sm:table-cell">
-        <span className="text-xs text-gray-400 line-clamp-1">{row.reason || "—"}</span>
+        <span className="text-xs text-gray-400 dark:text-gray-400 line-clamp-1">{row.reason || "—"}</span>
       </td>
       <td className="py-3.5 pr-4">
         <Chip
@@ -295,19 +297,19 @@ function DisburseModal({ advance, onClose, onDone }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Giải ngân ứng lương</span>
-          <span className="text-sm font-normal text-gray-400">{advance.driver_name}</span>
+          <span className="text-sm font-normal text-gray-400 dark:text-gray-400">{advance.driver_name}</span>
         </ModalHeader>
         <ModalBody>
-          <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg mb-1 text-sm border border-amber-100">
-            <span className="text-gray-600">Số tiền ứng</span>
-            <MoneyText amount={advance.amount} className="font-bold text-amber-700" />
+          <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-500/10 rounded-lg mb-1 text-sm border border-amber-100 dark:border-amber-500/20">
+            <span className="text-gray-600 dark:text-gray-300">Số tiền ứng</span>
+            <MoneyText amount={advance.amount} className="font-bold text-amber-700 dark:text-amber-300" />
           </div>
-          <div className="text-xs text-gray-500 px-1">
+          <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
             Tháng {advance.request_month}/{advance.request_year}
             {advance.reason && ` · ${advance.reason}`}
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               <RiAlertLine size={13} />
               {error}
             </div>
@@ -361,30 +363,30 @@ function AdjustModal({ row, onClose, onDone }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Điều chỉnh lương — {row.driver_name}</span>
-          <span className="text-sm font-normal text-gray-400">
+          <span className="text-sm font-normal text-gray-400 dark:text-gray-400">
             Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
           </span>
         </ModalHeader>
         <ModalBody>
-          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 rounded-lg p-3">
             Nhập khoản điều chỉnh thêm ngoài số hệ thống tự tính. Sau khi lưu, phiếu quay về
             trạng thái <b>Chờ duyệt</b> để duyệt lại từ đầu. Các số hệ thống (lương cứng, thưởng DT/KPI,
             BHXH…) giữ nguyên.
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               <RiAlertLine size={13} /> {error}
             </div>
           )}
           <Input
             type="number" min={0} label="Thưởng thêm (+)" placeholder="0"
             value={bonus} onValueChange={setBonus}
-            endContent={<span className="text-xs text-gray-400">đ</span>}
+            endContent={<span className="text-xs text-gray-400 dark:text-gray-400">đ</span>}
           />
           <Input
             type="number" min={0} label="Khấu trừ thêm (−)" placeholder="0"
             value={deduction} onValueChange={setDeduction}
-            endContent={<span className="text-xs text-gray-400">đ</span>}
+            endContent={<span className="text-xs text-gray-400 dark:text-gray-400">đ</span>}
           />
           <Input
             label="Lý do / ghi chú" placeholder="Ví dụ: bù thưởng chuyên cần còn thiếu"
@@ -426,17 +428,17 @@ function RevertModal({ row, onClose, onDone }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
           <span>Trả về tính lại — {row.driver_name}</span>
-          <span className="text-sm font-normal text-gray-400">
+          <span className="text-sm font-normal text-gray-400 dark:text-gray-400">
             Kỳ lương tháng {row.payroll_month}/{row.payroll_year}
           </span>
         </ModalHeader>
         <ModalBody>
-          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 rounded-lg p-3">
             Phiếu sẽ quay về trạng thái <b>Chờ duyệt</b> (huỷ mọi dấu duyệt trước đó) để tính lại
             hoặc điều chỉnh. Chỉ áp dụng khi phiếu chưa trả lương.
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
               <RiAlertLine size={13} /> {error}
             </div>
           )}
@@ -572,7 +574,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
   return (
     <div className="flex flex-col gap-5">
       {}
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/10 p-1 rounded-lg w-fit">
         {[
           { key: "payroll", label: "Bảng lương" },
           { key: "advance", label: `Ứng lương${pendingAdvances.length ? ` (${pendingAdvances.length})` : ""}` },
@@ -581,7 +583,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             key={key}
             onClick={() => setTab(key)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-150
-              ${tab === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+              ${tab === key ? "bg-white dark:bg-[#161922] text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
           >
             {label}
           </button>
@@ -598,25 +600,25 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 label="Tổng tài xế"
                 value={stats.total_drivers ?? 0}
                 icon={RiGroupLine}
-                bg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+                bg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
               />
               <StatCard
                 label="Chờ xác nhận"
                 value={stats.reviewed_count ?? 0}
                 icon={RiTimeLine}
-                bg="bg-amber-50" text="text-amber-600" border="border-amber-100"
+                bg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" border="border-amber-100 dark:border-amber-500/20"
               />
               <StatCard
                 label="Tổng lương gộp"
                 value={VND(stats.total_gross)}
                 icon={RiLineChartLine}
-                bg="bg-violet-50" text="text-violet-600" border="border-violet-100"
+                bg="bg-violet-50 dark:bg-violet-500/10" text="text-violet-600 dark:text-violet-300" border="border-violet-100 dark:border-violet-500/20"
               />
               <StatCard
                 label="Tổng thực nhận"
                 value={VND(stats.total_net)}
                 icon={RiMoneyDollarCircleLine}
-                bg="bg-emerald-50" text="text-emerald-600" border="border-emerald-100"
+                bg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" border="border-emerald-100 dark:border-emerald-500/20"
               />
             </div>
           )}
@@ -673,6 +675,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               value={payrollSearch}
               onValueChange={(v) => { setPayrollSearch(v); setPayPage(1); }}
               className="w-56"
+              startContent={ic(RiSearchLine)}
             />
             <Select
               size="sm"
@@ -681,6 +684,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               className="w-52"
               selectedKeys={new Set([payrollStatusFilter])}
               onChange={(e) => { setPayrollStatusFilter(e.target.value); setPayPage(1); }}
+              startContent={ic(RiFilter3Line)}
             >
               {PAYROLL_STATUS_OPTIONS.map(({ key, label }) => (
                 <SelectItem key={key} textValue={label}>{label}</SelectItem>
@@ -693,6 +697,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               className="w-48"
               selectedKeys={new Set([payrollSort])}
               onChange={(e) => { setPayrollSort(e.target.value); setPayPage(1); }}
+              startContent={ic(RiSortDesc)}
             >
               {PAYROLL_SORT_OPTIONS.map(({ key, label }) => (
                 <SelectItem key={key} textValue={label}>{label}</SelectItem>
@@ -701,14 +706,14 @@ export function PayrollView({ defaultTab = "payroll" }) {
           </div>
 
           {generateErr && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
+            <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-100 dark:border-red-500/20">
               <RiAlertLine size={15} />
               {generateErr}
             </div>
           )}
 
           {}
-          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner color="secondary" label="Đang tải..." size="lg" />
@@ -720,26 +725,26 @@ export function PayrollView({ defaultTab = "payroll" }) {
               </div>
             ) : payrolls.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
                   <RiWalletLine size={20} className="text-violet-400" />
                 </div>
-                <p className="text-gray-500 text-sm">Chưa có bảng lương tháng này.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Chưa có bảng lương tháng này.</p>
                 <Button size="sm" color="primary" variant="flat" onPress={handleGenerate} isLoading={generating}>
                   Tạo bảng lương ngay
                 </Button>
               </div>
             ) : filteredPayrolls.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
                   <RiWalletLine size={20} className="text-violet-400" />
                 </div>
-                <p className="text-gray-500 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {[
                       { label: "", cls: "w-9" },
                       { label: "Tài xế" },
@@ -751,7 +756,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
-                        className={`text-left text-[11px] font-semibold text-gray-400 uppercase
+                        className={`text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                                    tracking-wider py-3 pr-4 first:pl-4 ${cls ?? ""}`}
                       >
                         {label}
@@ -798,7 +803,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
         <>
           {}
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <div className="flex gap-1 bg-gray-100 dark:bg-white/10 p-1 rounded-lg">
               {[
                 { key: "approved", label: "Chờ giải ngân" },
                 { key: "paid",     label: "Đã giải ngân" },
@@ -808,7 +813,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   key={key}
                   onClick={() => { setStatusFilter(key); setAdvPage(1); }}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150
-                    ${statusFilter === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                    ${statusFilter === key ? "bg-white dark:bg-[#161922] text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
                 >
                   {label}
                 </button>
@@ -820,23 +825,23 @@ export function PayrollView({ defaultTab = "payroll" }) {
           </div>
 
           {}
-          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
             {advLoading ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner color="warning" label="Đang tải..." size="lg" />
               </div>
             ) : advances.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                   <RiCheckboxCircleLine size={20} className="text-amber-400" />
                 </div>
-                <p className="text-gray-500 text-sm">Không có yêu cầu ứng lương nào.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Không có yêu cầu ứng lương nào.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {[
                       { label: "Tài xế" },
                       { label: "Số tiền" },
@@ -847,7 +852,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
-                        className={`text-left text-[11px] font-semibold text-gray-400 uppercase
+                        className={`text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                                    tracking-wider py-3 pr-4 first:pl-4 ${cls ?? ""}`}
                       >
                         {label}

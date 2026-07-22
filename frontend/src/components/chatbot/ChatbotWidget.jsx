@@ -98,17 +98,18 @@ export default function ChatbotWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-[9999] flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3.5 text-gray-800 shadow-lg shadow-black/10 transition-all hover:scale-105 hover:shadow-xl"
+          className="fixed bottom-20 right-6 z-[9999] flex items-center gap-2 rounded-full px-5 py-3.5 text-white shadow-lg shadow-black/20 transition-all hover:scale-105 hover:shadow-xl"
+          style={{ background: "linear-gradient(90deg, #1BA1E3 0%, #5C7CFA 40%, #9B72CB 72%, #D96570 100%)" }}
           aria-label="Mở trợ lý AI"
         >
-          <GeminiSpark size={22} />
+          <GeminiSpark size={22} gradient={false} color="#fff" />
           <span className="text-sm font-semibold">Trợ lý AI</span>
         </button>
       )}
 
       {/* Panel chat */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-[9999] flex h-[560px] max-h-[calc(100vh-3rem)] w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed bottom-6 right-6 z-[9999] flex h-[560px] max-h-[calc(100vh-3rem)] w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#161922] shadow-2xl">
           {/* Header */}
           <div
             className="flex items-center justify-between px-4 py-3 text-white"
@@ -129,14 +130,14 @@ export default function ChatbotWidget() {
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-4">
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 dark:bg-white/5 px-3 py-4">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                     m.role === "user"
                       ? "rounded-br-sm bg-blue-600 text-white"
-                      : "rounded-bl-sm border border-gray-100 bg-white text-gray-800 shadow-sm"
+                      : "rounded-bl-sm border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] text-gray-800 dark:text-gray-100 shadow-sm"
                   }`}
                 >
                   {m.content}
@@ -151,7 +152,7 @@ export default function ChatbotWidget() {
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-[12px] text-blue-700 transition-colors hover:bg-blue-100"
+                    className="rounded-lg border border-blue-100 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 px-3 py-2 text-left text-[12px] text-blue-700 dark:text-blue-300 transition-colors hover:bg-blue-100"
                   >
                     {s}
                   </button>
@@ -161,9 +162,9 @@ export default function ChatbotWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-gray-100 bg-white px-3.5 py-2.5 shadow-sm">
+                <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-3.5 py-2.5 shadow-sm">
                   <Spinner size="sm" />
-                  <span className="text-[12px] text-gray-500">Đang phân tích...</span>
+                  <span className="text-[12px] text-gray-500 dark:text-gray-400">Đang phân tích...</span>
                 </div>
               </div>
             )}
@@ -175,7 +176,7 @@ export default function ChatbotWidget() {
               e.preventDefault();
               send();
             }}
-            className="flex items-center gap-2 border-t border-gray-100 bg-white px-3 py-2.5"
+            className="flex items-center gap-2 border-t border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-3 py-2.5"
           >
             <Input
               value={input}
@@ -185,7 +186,7 @@ export default function ChatbotWidget() {
               radius="lg"
               variant="bordered"
               isDisabled={loading}
-              classNames={{ inputWrapper: "bg-gray-50" }}
+              classNames={{ inputWrapper: "bg-gray-50 dark:bg-white/5" }}
             />
             <Button
               type="submit"

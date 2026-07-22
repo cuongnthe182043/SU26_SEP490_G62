@@ -20,7 +20,7 @@ export function CustomerSection({ name, onNameChange, phone, onPhoneChange, comp
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
         Thông tin khách hàng
       </span>
       <div className="grid grid-cols-2 gap-3">
@@ -47,9 +47,9 @@ export function CustomerSection({ name, onNameChange, phone, onPhoneChange, comp
             autoComplete="off"
           />
           {open && (
-            <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+            <div className="absolute z-50 mt-1 w-full bg-white dark:bg-[#161922] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg max-h-56 overflow-auto">
               {loading && suggestions.length === 0 ? (
-                <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400">
+                <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 dark:text-gray-400">
                   <Spinner size="sm" /> Đang tìm khách cũ...
                 </div>
               ) : (
@@ -62,13 +62,13 @@ export function CustomerSection({ name, onNameChange, phone, onPhoneChange, comp
                     className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-2 text-xs border-b border-gray-50 last:border-0"
                   >
                     <span className="flex flex-col min-w-0">
-                      <span className="font-semibold text-gray-800 truncate">
+                      <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">
                         {c.full_name?.trim() || "(chưa có tên)"}
                         {c.company_name ? ` · ${c.company_name}` : ""}
                       </span>
-                      <span className="text-gray-400 font-mono">{c.phone}</span>
+                      <span className="text-gray-400 dark:text-gray-400 font-mono">{c.phone}</span>
                     </span>
-                    <span className="shrink-0 flex items-center gap-1 text-emerald-600 font-semibold">
+                    <span className="shrink-0 flex items-center gap-1 text-emerald-600 dark:text-emerald-300 font-semibold">
                       <RiUserFollowLine size={12} />{c.order_count} đơn
                     </span>
                   </button>
