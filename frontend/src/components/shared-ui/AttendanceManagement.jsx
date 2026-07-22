@@ -199,20 +199,10 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
     return filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   }, [filtered, page, totalPages]);
 
-  // Định dạng Date sang chuỗi "YYYY-MM-DD" chuẩn UTC để gửi lên server
-  // const toYmdString = (dateInput) => {
-  //   const dateObj = new Date(dateInput);
-  //   const y = dateObj.getFullYear();
-  //   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-  //   const d = String(dateObj.getDate()).padStart(2, '0');
-  //   return `${y}-${m}-${d}`;
-  // };
 
   const handleMark = async (driverId, workDate, status) => {
     setMarking(true);
     try {
-      // const formattedDate = toYmdString(workDate);
-      // await markAttendance({ driver_id: driverId, work_date: formattedDate, status });
       await markAttendance({ driver_id: driverId, work_date: workDate, status });
       await load();
       setSelectedDriver((prev) => {
@@ -231,8 +221,6 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
     setMarking(true);
     try {
       await clearAttendance(driverId, workDate);
-      // const formattedDate = toYmdString(workDate);
-      // await clearAttendance(driverId, formattedDate);
       await load();
     } catch (error) {
       alert(error.message || "Không thể xoá đánh dấu.");
