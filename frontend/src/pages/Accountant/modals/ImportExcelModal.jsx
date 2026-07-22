@@ -430,12 +430,12 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} size="4xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex items-center gap-2">
-          <RiFileExcel2Line size={20} className="text-emerald-600" />
+          <RiFileExcel2Line size={20} className="text-emerald-600 dark:text-emerald-300" />
           Import đơn ngoài từ Excel
         </ModalHeader>
 
         <ModalBody className="gap-4">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Dùng file theo mẫu <span className="font-semibold">Template Import Don Ngoai.xlsx</span> —
             mỗi dòng là 1 chuyến đã hoàn thành. Cột Thanh toán bắt buộc; dòng lỗi sẽ bị từ chối và liệt kê bên dưới.
           </p>
@@ -460,15 +460,15 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
           </div>
 
           {fatalError && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+            <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 px-4 py-3 text-sm text-red-600 dark:text-red-300">
               {fatalError}
             </div>
           )}
 
           {/* Lỗi parse theo dòng */}
           {parsed && parsed.errors.length > 0 && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3">
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-red-600 mb-1">
+            <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-300 mb-1">
                 <RiErrorWarningLine size={15} />
                 {parsed.errors.length} dòng lỗi — sửa file rồi chọn lại (không dòng nào được import khi còn lỗi)
               </div>
@@ -480,13 +480,13 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
 
           {/* Preview */}
           {parsed && parsed.rows.length > 0 && !result && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500">
+            <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+              <div className="px-4 py-2 bg-gray-50 dark:bg-white/5 text-xs font-semibold text-gray-500 dark:text-gray-400">
                 Xem trước {parsed.rows.length} chuyến hợp lệ
               </div>
               <div className="max-h-72 overflow-y-auto">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-50 text-gray-400 sticky top-0">
+                  <thead className="bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-400 sticky top-0">
                     <tr>
                       <th className="px-3 py-1.5 text-left">Dòng</th>
                       <th className="px-3 py-1.5 text-left">Ngày</th>
@@ -499,14 +499,14 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                   </thead>
                   <tbody>
                     {parsed.rows.map(({ rowIndex, display }) => (
-                      <tr key={rowIndex} className="border-t border-gray-100">
-                        <td className="px-3 py-1.5 text-gray-400">{rowIndex}</td>
+                      <tr key={rowIndex} className="border-t border-gray-100 dark:border-white/10">
+                        <td className="px-3 py-1.5 text-gray-400 dark:text-gray-400">{rowIndex}</td>
                         <td className="px-3 py-1.5">{display.date}</td>
                         <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
                         <td className="px-3 py-1.5">{display.customer}</td>
                         <td className="px-3 py-1.5 max-w-[220px]">
                           <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
-                          {display.runs > 1 ? <span className="text-gray-400"> (x{display.runs})</span> : null}
+                          {display.runs > 1 ? <span className="text-gray-400 dark:text-gray-400"> (x{display.runs})</span> : null}
                         </td>
                         <td className="px-3 py-1.5 text-right font-semibold"><MoneyText amount={display.cargoFee} /></td>
                         <td className="px-3 py-1.5">{display.paymentRaw}</td>
@@ -520,13 +520,13 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
 
           {/* Kết quả import */}
           {result && (
-            <div className={`rounded-xl border px-4 py-3 ${result.error_count > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+            <div className={`rounded-xl border px-4 py-3 ${result.error_count > 0 ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25"}`}>
               <div className="flex items-center gap-2 text-sm font-semibold mb-1">
-                <RiCheckboxCircleLine size={16} className="text-emerald-600" />
+                <RiCheckboxCircleLine size={16} className="text-emerald-600 dark:text-emerald-300" />
                 {result.message}
               </div>
               {result.errors?.length > 0 && (
-                <ul className="text-xs text-amber-700 list-disc pl-5 max-h-40 overflow-y-auto">
+                <ul className="text-xs text-amber-700 dark:text-amber-300 list-disc pl-5 max-h-40 overflow-y-auto">
                   {result.errors.map((e, i) => <li key={i}>{e.error}</li>)}
                 </ul>
               )}
@@ -534,7 +534,7 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
           )}
 
           {submitting && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <Spinner size="sm" /> Đang import {parsed?.rows.length} chuyến...
             </div>
           )}

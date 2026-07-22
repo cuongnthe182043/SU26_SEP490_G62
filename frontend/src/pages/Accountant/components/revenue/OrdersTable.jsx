@@ -28,13 +28,13 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
   return (
     <>
       <tr
-        className={`border-b border-gray-100 transition-colors cursor-pointer
-                   ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50/60"}`}
+        className={`border-b border-gray-100 dark:border-white/10 transition-colors cursor-pointer
+                   ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
         onClick={onToggle}
       >
         {}
         <td className="py-3.5 pl-4">
-          <span className="text-gray-400">
+          <span className="text-gray-400 dark:text-gray-400">
             {isExpanded
               ? <RiArrowDownSLine size={17} />
               : <RiArrowRightSLine size={17} />
@@ -46,27 +46,27 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-gray-800">#{order.id}</span>
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">#{order.id}</span>
               {order.cargo_name && (
-                <span className="text-xs text-gray-400 font-normal">{order.cargo_name}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-400 font-normal">{order.cargo_name}</span>
               )}
             </div>
-            <span className="text-xs font-medium text-gray-600">{order.customer_name ?? "—"}</span>
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{order.customer_name ?? "—"}</span>
             {order.customer_phone && (
-              <span className="text-[11px] text-gray-400 font-mono">{order.customer_phone}</span>
+              <span className="text-[11px] text-gray-400 dark:text-gray-400 font-mono">{order.customer_phone}</span>
             )}
           </div>
         </td>
 
         {}
         <td className="py-3.5 pr-4">
-          <span className="text-xs text-gray-500">{date}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{date}</span>
         </td>
 
         {}
         <td className="py-3.5 pr-4">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
-            <RiShipLine size={12} className="text-gray-400" />
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+            <RiShipLine size={12} className="text-gray-400 dark:text-gray-400" />
             {order.shipment_count ?? 0}
           </span>
         </td>
@@ -76,15 +76,15 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           <div className="flex flex-col gap-0.5">
             <MoneyText
               amount={order.final_price ?? (order.actual_price || order.estimated_price)}
-              className="text-sm font-bold text-gray-800"
+              className="text-sm font-bold text-gray-800 dark:text-gray-100"
             />
             {Number(order.pass_through_total) > 0 && order.final_price != null && (
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-gray-400 dark:text-gray-400">
                 gồm chi hộ <MoneyText amount={order.pass_through_total} />
               </span>
             )}
             {order.final_price == null && Number(order.estimated_price) > 0 && (
-              <span className="text-[10px] text-gray-400 italic">ước tính</span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-400 italic">ước tính</span>
             )}
           </div>
         </td>
@@ -98,12 +98,12 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
               </Chip>
             )}
             {Number(order.driver_debt_remaining) > 0 && (
-              <span className="text-[10px] text-amber-600 font-medium">
+              <span className="text-[10px] text-amber-600 dark:text-amber-300 font-medium">
                 TX giữ: <MoneyText amount={order.driver_debt_remaining} />
               </span>
             )}
             {pendingReceiptAmount > 0 && (
-              <span className="text-[10px] text-blue-600 font-medium">
+              <span className="text-[10px] text-blue-600 dark:text-blue-300 font-medium">
                 Cho TX xac nhan: <MoneyText amount={pendingReceiptAmount} />
               </span>
             )}
@@ -118,7 +118,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
               variant="flat"
               isIconOnly
               title="Xem chi tiết"
-              className="h-7 w-7 min-w-7 bg-gray-100 text-gray-500 hover:bg-gray-200"
+              className="h-7 w-7 min-w-7 bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/15"
               onPress={() => onDetail(order)}
             >
               <RiEyeLine size={14} />
@@ -191,17 +191,17 @@ export function OrdersTable({
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
-          <RiInboxLine size={26} className="text-gray-400" />
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/10 flex items-center justify-center">
+          <RiInboxLine size={26} className="text-gray-400 dark:text-gray-400" />
         </div>
-        <p className="text-gray-500 text-sm">Không có đơn hàng nào.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Không có đơn hàng nào.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+      <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
         <div className="overflow-x-auto">
         <table className="w-full table-fixed min-w-[900px]">
           <colgroup>
@@ -214,7 +214,7 @@ export function OrdersTable({
             <col className="w-24" />
           </colgroup>
           <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-200">
+            <tr className="bg-gray-50/80 border-b border-gray-200 dark:border-white/10">
               {[
                 { label: "" },
                 { label: "Đơn / Khách hàng" },
@@ -226,7 +226,7 @@ export function OrdersTable({
               ].map(({ label }, i) => (
                 <th
                   key={i}
-                  className="text-left text-[11px] font-semibold text-gray-400 uppercase
+                  className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                              tracking-wider py-3 pr-4 first:pl-4"
                 >
                   {label}

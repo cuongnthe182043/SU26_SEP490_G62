@@ -28,18 +28,18 @@ const DEBT_STATUS = {
 };
 
 const DRIVER_STATE = {
-  paid:    { label: "Đã nộp về công ty", color: "text-emerald-600", bg: "bg-emerald-50", icon: RiCheckboxCircleLine },
-  partial: { label: "Nộp 1 phần",        color: "text-orange-600",  bg: "bg-orange-50",  icon: RiTimeLine           },
-  unpaid:  { label: "TX đang giữ tiền",  color: "text-amber-600",   bg: "bg-amber-50",   icon: RiTimeLine           },
+  paid:    { label: "Đã nộp về công ty", color: "text-emerald-600 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-500/10", icon: RiCheckboxCircleLine },
+  partial: { label: "Nộp 1 phần",        color: "text-orange-600 dark:text-orange-300",  bg: "bg-orange-50 dark:bg-orange-500/10",  icon: RiTimeLine           },
+  unpaid:  { label: "TX đang giữ tiền",  color: "text-amber-600 dark:text-amber-300",   bg: "bg-amber-50 dark:bg-amber-500/10",   icon: RiTimeLine           },
 };
 
 function InfoRow({ icon: Icon, label, value, mono }) {
   if (!value) return null;
   return (
     <div className="flex items-center gap-2.5">
-      <Icon size={14} className="text-gray-400 flex-shrink-0" />
-      <span className="text-xs text-gray-400 w-24 flex-shrink-0">{label}</span>
-      <span className={`text-sm font-medium text-gray-800 ${mono ? "font-mono" : ""}`}>{value}</span>
+      <Icon size={14} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />
+      <span className="text-xs text-gray-400 dark:text-gray-400 w-24 flex-shrink-0">{label}</span>
+      <span className={`text-sm font-medium text-gray-800 dark:text-gray-100 ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
@@ -98,24 +98,24 @@ function BankTransferPanel({ s, onConfirmed }) {
   };
 
   return (
-    <div className={`mt-2 rounded-xl border p-3 ${confirmed ? "bg-emerald-50 border-emerald-200" : "bg-orange-50 border-orange-200"}`}>
+    <div className={`mt-2 rounded-xl border p-3 ${confirmed ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25" : "bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/25"}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <RiBankCardLine size={13} className={confirmed ? "text-emerald-600" : "text-orange-500"} />
-          <span className={`text-xs font-semibold ${confirmed ? "text-emerald-700" : "text-orange-700"}`}>
+          <RiBankCardLine size={13} className={confirmed ? "text-emerald-600 dark:text-emerald-300" : "text-orange-500"} />
+          <span className={`text-xs font-semibold ${confirmed ? "text-emerald-700 dark:text-emerald-300" : "text-orange-700 dark:text-orange-300"}`}>
             Chuyển khoản về công ty
           </span>
           {s.receipt_amount && (
-            <span className="text-[11px] text-gray-500 font-mono">· {fmtVND(s.receipt_amount)}</span>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">· {fmtVND(s.receipt_amount)}</span>
           )}
         </div>
         {confirmed ? (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-300">
             <RiCheckLine size={12} /> Đã xác nhận
           </span>
         ) : (
-          <span className="text-[11px] font-semibold text-orange-600">Chờ xác nhận</span>
+          <span className="text-[11px] font-semibold text-orange-600 dark:text-orange-300">Chờ xác nhận</span>
         )}
       </div>
 
@@ -130,7 +130,7 @@ function BankTransferPanel({ s, onConfirmed }) {
           ))}
         </div>
       ) : (
-        <div className="flex items-center gap-1 text-gray-400 text-xs mb-2">
+        <div className="flex items-center gap-1 text-gray-400 dark:text-gray-400 text-xs mb-2">
           <RiImageLine size={12} /> Không có ảnh biên lai
         </div>
       )}
@@ -138,9 +138,9 @@ function BankTransferPanel({ s, onConfirmed }) {
       {/* Result after confirm */}
       {confirmed && confirmResult && (
         <div className={`rounded-lg px-3 py-2 text-xs mt-1 ${
-          confirmResult.action === "short"  ? "bg-red-50 text-red-700" :
-          confirmResult.action === "excess" ? "bg-blue-50 text-blue-700" :
-          "bg-emerald-100 text-emerald-700"
+          confirmResult.action === "short"  ? "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300" :
+          confirmResult.action === "excess" ? "bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300" :
+          "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
         }`}>
           {confirmResult.action === "short"  && `Khách trả thiếu ${fmtVND(Math.abs(confirmResult.diff))} — đã tạo công nợ khách hàng`}
           {confirmResult.action === "excess" && `Khách trả thừa ${fmtVND(confirmResult.diff)} — đã phân bổ vào nợ cũ`}
@@ -153,7 +153,7 @@ function BankTransferPanel({ s, onConfirmed }) {
         <div className="flex flex-col gap-2">
           {/* Amount input */}
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+            <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
               Số tiền thực nhận được
             </label>
             <input
@@ -162,13 +162,13 @@ function BankTransferPanel({ s, onConfirmed }) {
               value={actualAmount}
               onChange={e => setActualAmount(e.target.value)}
               placeholder={String(receiptAmt)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-mono
+              className="w-full border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm font-mono
                          focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
             {/* Diff hint */}
             {amountValid && actualNum !== receiptAmt && (
               <div className={`flex items-center gap-1 text-[11px] mt-1 font-semibold
-                ${isShort ? "text-red-600" : "text-blue-600"}`}>
+                ${isShort ? "text-red-600 dark:text-red-300" : "text-blue-600 dark:text-blue-300"}`}>
                 {isShort
                   ? <><RiArrowDownLine size={12} /> Thiếu {fmtVND(Math.abs(diff))} — sẽ tạo công nợ khách</>
                   : <><RiArrowUpLine   size={12} /> Thừa {fmtVND(diff)} — sẽ phân bổ vào nợ cũ của khách</>
@@ -176,7 +176,7 @@ function BankTransferPanel({ s, onConfirmed }) {
               </div>
             )}
             {amountValid && Math.abs(diff) <= 0.01 && (
-              <p className="text-[11px] mt-1 text-emerald-600 font-semibold">Khớp đúng số tiền phiếu thu</p>
+              <p className="text-[11px] mt-1 text-emerald-600 dark:text-emerald-300 font-semibold">Khớp đúng số tiền phiếu thu</p>
             )}
           </div>
 
@@ -209,34 +209,34 @@ function BankTransferPanel({ s, onConfirmed }) {
 function ShipmentCard({ s, index, onBankConfirmed }) {
   const pickups   = s.pickup_addresses?.length ? s.pickup_addresses : (s.pickup_address ? [s.pickup_address] : []);
   const deliveries = s.delivery_addresses?.length ? s.delivery_addresses : (s.delivery_address ? [s.delivery_address] : []);
-  const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400", bg: "bg-gray-50", icon: RiTimeLine };
+  const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400 dark:text-gray-400", bg: "bg-gray-50 dark:bg-white/5", icon: RiTimeLine };
   const StateIcon = state.icon;
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
       {}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-b border-gray-100">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full
-                           bg-blue-100 text-[10px] font-bold text-blue-600">
+                           bg-blue-100 dark:bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">
             {index}
           </span>
-          <span className="text-xs font-semibold text-gray-600">Chuyến {index}</span>
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Chuyến {index}</span>
         </div>
         <div className="flex items-center gap-2">
           {s.actual_price != null ? (
             <span className="flex flex-col items-end">
-              <MoneyText amount={s.total_customer_due || s.actual_price} className="text-sm font-bold text-gray-800" />
+              <MoneyText amount={s.total_customer_due || s.actual_price} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
               {Number(s.pass_through_total) > 0 && (
-                <span className="text-[10px] text-gray-400">
+                <span className="text-[10px] text-gray-400 dark:text-gray-400">
                   cước {Number(s.actual_price).toLocaleString("vi-VN")} + PT {Number(s.pass_through_total).toLocaleString("vi-VN")}
                 </span>
               )}
             </span>
           ) : s.cargo_fee != null ? (
             <span className="flex flex-col items-end">
-              <MoneyText amount={s.cargo_fee} className="text-sm font-bold text-gray-800" />
-              <span className="text-[9px] text-gray-400">ước tính</span>
+              <MoneyText amount={s.cargo_fee} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
+              <span className="text-[9px] text-gray-400 dark:text-gray-400">ước tính</span>
             </span>
           ) : null}
         </div>
@@ -245,7 +245,7 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
       {}
       <div className="px-4 py-3 flex flex-col gap-2.5">
         {}
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-gray-600 dark:text-gray-300">
           <RouteStops pickups={pickups} deliveries={deliveries} />
         </div>
 
@@ -254,11 +254,11 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
         {}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <RiTruckLine size={13} className="text-gray-400" />
+            <RiTruckLine size={13} className="text-gray-400 dark:text-gray-400" />
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-gray-700">{s.driver_name ?? "Chưa có tài xế"}</span>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{s.driver_name ?? "Chưa có tài xế"}</span>
               {s.vehicle_plate && (
-                <span className="text-[10px] text-gray-400 font-mono">{s.vehicle_plate}</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-400 font-mono">{s.vehicle_plate}</span>
               )}
             </div>
           </div>
@@ -280,7 +280,7 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
 
         {}
         {(s.cargo_name || s.cargo_weight) && (
-          <div className="flex items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5">
+          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-1.5">
             {s.cargo_name && (
               <span className="flex items-center gap-1">
                 <RiBox2Line size={12} className="shrink-0" />
@@ -298,23 +298,23 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
 
         {}
         {Number(s.pass_through_total) > 0 && (
-          <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
-            <span className="text-[11px] text-blue-600 font-medium">BOT / Parking / Phà (khách chịu)</span>
-            <MoneyText amount={s.pass_through_total} className="text-[11px] font-bold text-blue-700" />
+          <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-blue-600 dark:text-blue-300 font-medium">BOT / Parking / Phà (khách chịu)</span>
+            <MoneyText amount={s.pass_through_total} className="text-[11px] font-bold text-blue-700 dark:text-blue-300" />
           </div>
         )}
         {Number(s.expenses?.fuel) > 0 && (
-          <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-1.5">
+          <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-500/10 rounded-lg px-3 py-1.5">
             <span className="text-[11px] text-orange-500 font-medium">Xăng dầu (công ty chịu)</span>
-            <MoneyText amount={s.expenses.fuel} className="text-[11px] font-bold text-orange-600" />
+            <MoneyText amount={s.expenses.fuel} className="text-[11px] font-bold text-orange-600 dark:text-orange-300" />
           </div>
         )}
         {(Number(s.total_expenses) - Number(s.pass_through_total) - Number(s.expenses?.fuel)) > 0.5 && (
-          <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-1.5">
+          <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-500/10 rounded-lg px-3 py-1.5">
             <span className="text-[11px] text-orange-500 font-medium">Chi phí khác (công ty chịu)</span>
             <MoneyText
               amount={Number(s.total_expenses) - Number(s.pass_through_total) - Number(s.expenses?.fuel)}
-              className="text-[11px] font-bold text-orange-600"
+              className="text-[11px] font-bold text-orange-600 dark:text-orange-300"
             />
           </div>
         )}
@@ -361,12 +361,12 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
     <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex items-center gap-3 pb-2">
-          <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
-            <RiFileList3Line size={18} className="text-blue-600" />
+          <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+            <RiFileList3Line size={18} className="text-blue-600 dark:text-blue-300" />
           </div>
           <div>
             <p className="text-base font-bold">Chi tiết đơn #{order.id}</p>
-            <p className="text-xs font-normal text-gray-400">
+            <p className="text-xs font-normal text-gray-400 dark:text-gray-400">
               {order.cargo_name ?? "Đơn hàng"}
               {date ? ` · ${date}` : ""}
             </p>
@@ -377,8 +377,8 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
           {}
           <div className="grid grid-cols-2 gap-4">
             {}
-            <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+            <div className="flex flex-col gap-2 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10">
+              <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wide mb-0.5">
                 Khách hàng
               </span>
               <InfoRow icon={RiUserLine}     label="Tên"     value={order.customer_name} />
@@ -388,18 +388,18 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
             </div>
 
             {}
-            <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+            <div className="flex flex-col gap-2 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10">
+              <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wide mb-0.5">
                 Tài chính
               </span>
               <div className="flex items-center gap-2">
-                <RiMoneyDollarCircleLine size={14} className="text-gray-400" />
-                <span className="text-xs text-gray-400 w-24">Thực thu khách</span>
+                <RiMoneyDollarCircleLine size={14} className="text-gray-400 dark:text-gray-400" />
+                <span className="text-xs text-gray-400 dark:text-gray-400 w-24">Thực thu khách</span>
                 <div className="flex flex-col">
-                  <MoneyText amount={totalCustomerDue} className="text-sm font-bold text-gray-800" />
-                  {order.actual_price == null && <span className="text-[9px] text-gray-400">ước tính</span>}
+                  <MoneyText amount={totalCustomerDue} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
+                  {order.actual_price == null && <span className="text-[9px] text-gray-400 dark:text-gray-400">ước tính</span>}
                   {totalPassThrough > 0 && (
-                    <span className="text-[9px] text-gray-400">
+                    <span className="text-[9px] text-gray-400 dark:text-gray-400">
                       cước {Number(totalRevenue).toLocaleString("vi-VN")} + PT {totalPassThrough.toLocaleString("vi-VN")}
                     </span>
                   )}
@@ -421,15 +421,15 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               {Number(order.driver_debt_remaining) > 0 && (
                 <div className="flex items-center gap-2.5">
                   <RiTimeLine size={14} className="text-amber-400" />
-                  <span className="text-xs text-amber-600 font-medium">
+                  <span className="text-xs text-amber-600 dark:text-amber-300 font-medium">
                     TX đang giữ: <MoneyText amount={order.driver_debt_remaining} className="font-bold" />
                   </span>
                 </div>
               )}
               <div className="flex items-center gap-2 pt-1">
-                <RiTruckLine size={14} className="text-gray-400" />
-                <span className="text-xs text-gray-400 w-24">Số chuyến</span>
-                <span className="text-sm font-semibold text-gray-700">{order.shipment_count ?? 0} chuyến</span>
+                <RiTruckLine size={14} className="text-gray-400 dark:text-gray-400" />
+                <span className="text-xs text-gray-400 dark:text-gray-400 w-24">Số chuyến</span>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{order.shipment_count ?? 0} chuyến</span>
               </div>
             </div>
           </div>
@@ -438,7 +438,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
 
           {}
           <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">
+            <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wide">
               Danh sách chuyến ({order.shipment_count ?? 0})
             </span>
 
@@ -447,7 +447,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
                 <Spinner size="md" color="primary" label="Đang tải..." />
               </div>
             ) : shipments.length === 0 ? (
-              <p className="text-sm text-gray-400 italic text-center py-4">Không có chuyến xe nào.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-400 italic text-center py-4">Không có chuyến xe nào.</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {shipments.map((s, i) => (

@@ -10,9 +10,9 @@ const CARDS = [
     label: "Tổng doanh thu",
     icon: RiLineChartLine,
     gradient: "from-blue-500 to-blue-600",
-    lightBg: "bg-blue-50",
-    text: "text-blue-600",
-    border: "border-blue-100",
+    lightBg: "bg-blue-50 dark:bg-blue-500/10",
+    text: "text-blue-600 dark:text-blue-300",
+    border: "border-blue-100 dark:border-blue-500/20",
     isMoney: true,
   },
   {
@@ -20,9 +20,9 @@ const CARDS = [
     label: "Đã thu về",
     icon: RiCheckboxCircleLine,
     gradient: "from-emerald-500 to-emerald-600",
-    lightBg: "bg-emerald-50",
-    text: "text-emerald-600",
-    border: "border-emerald-100",
+    lightBg: "bg-emerald-50 dark:bg-emerald-500/10",
+    text: "text-emerald-600 dark:text-emerald-300",
+    border: "border-emerald-100 dark:border-emerald-500/20",
     isMoney: true,
   },
   {
@@ -30,9 +30,9 @@ const CARDS = [
     label: "Còn phải thu",
     icon: RiAlertLine,
     gradient: "from-rose-500 to-rose-600",
-    lightBg: "bg-rose-50",
-    text: "text-rose-600",
-    border: "border-rose-100",
+    lightBg: "bg-rose-50 dark:bg-rose-500/10",
+    text: "text-rose-600 dark:text-rose-300",
+    border: "border-rose-100 dark:border-rose-500/20",
     isMoney: true,
   },
   {
@@ -40,9 +40,9 @@ const CARDS = [
     label: "Đơn chưa thu đủ",
     icon: RiTimeLine,
     gradient: "from-amber-500 to-amber-600",
-    lightBg: "bg-amber-50",
-    text: "text-amber-600",
-    border: "border-amber-100",
+    lightBg: "bg-amber-50 dark:bg-amber-500/10",
+    text: "text-amber-600 dark:text-amber-300",
+    border: "border-amber-100 dark:border-amber-500/20",
     isMoney: false,
     suffix: " đơn",
   },
@@ -53,9 +53,9 @@ const CARDS = [
     label: "Cần hoàn trả tài xế",
     icon: RiHandCoinLine,
     gradient: "from-teal-500 to-teal-600",
-    lightBg: "bg-teal-50",
-    text: "text-teal-600",
-    border: "border-teal-100",
+    lightBg: "bg-teal-50 dark:bg-teal-500/10",
+    text: "text-teal-600 dark:text-teal-300",
+    border: "border-teal-100 dark:border-teal-500/20",
     isMoney: true,
   },
 ];
@@ -66,7 +66,7 @@ export function StatsGrid({ stats, loading }) {
       {CARDS.map(({ key, label, icon: Icon, gradient, lightBg, text, border, isMoney, suffix }) => (
         <div
           key={key}
-          className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow`}
+          className={`relative overflow-hidden rounded-2xl bg-white dark:bg-[#161922] border ${border} p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow`}
         >
           {}
           <div className="flex items-start justify-between">
@@ -79,7 +79,7 @@ export function StatsGrid({ stats, loading }) {
 
           {}
           <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+            <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{label}</span>
             {loading ? (
               <Skeleton className="h-7 w-28 rounded-lg mt-1" />
             ) : (
