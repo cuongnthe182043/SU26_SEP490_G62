@@ -27,7 +27,7 @@ const PAYMENT_METHOD_OPTIONS = [
   { key: "offset",        label: "Bù trừ"      },
 ];
 
-const TH = "px-3.5 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap";
+const TH = "px-3.5 py-3 text-left text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap";
 const TD = "px-3.5 py-3 text-sm";
 
 export default function DebtTable({ onDebtPayment }) {
@@ -188,16 +188,16 @@ export default function DebtTable({ onDebtPayment }) {
     <div className="flex flex-col gap-5">
       {}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Tổng nợ khách"    amount={customerStats?.total_remaining || 0} count={customerStats?.count || 0} color="text-violet-600" />
+        <StatCard label="Tổng nợ khách"    amount={customerStats?.total_remaining || 0} count={customerStats?.count || 0} color="text-violet-600 dark:text-violet-300" />
         <StatCard label="Tổng nợ tài xế"   amount={driverStats?.total_remaining   || 0} count={driverStats?.count   || 0} color="text-orange-500" />
         <StatCard label="Tổng còn phải thu" amount={stats.totalRemaining || 0} count={(customerStats?.count || 0) + (driverStats?.count || 0)} color="text-red-500" />
       </div>
 
       {}
-      <div className="flex flex-wrap gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl items-end">
+      <div className="flex flex-wrap gap-3 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl items-end">
         {}
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Chế độ xem</span>
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Chế độ xem</span>
           <div className="flex gap-1">
             {[["grouped", "Nhóm theo người"], ["detail", "Chi tiết"]].map(([mode, lbl]) => (
               <Button
@@ -213,7 +213,7 @@ export default function DebtTable({ onDebtPayment }) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Loại nợ</span>
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Loại nợ</span>
           <Select
             size="sm" variant="bordered"
             selectedKeys={[debtTypeFilter]}
@@ -225,7 +225,7 @@ export default function DebtTable({ onDebtPayment }) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Trạng thái</span>
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Trạng thái</span>
           <Select
             size="sm" variant="bordered"
             selectedKeys={[statusFilter]}
@@ -237,7 +237,7 @@ export default function DebtTable({ onDebtPayment }) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Tìm khách hàng</span>
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Tìm khách hàng</span>
           <Input
             size="sm" variant="bordered"
             value={customerSearch}
@@ -249,7 +249,7 @@ export default function DebtTable({ onDebtPayment }) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Tìm tài xế</span>
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Tìm tài xế</span>
           <Input
             size="sm" variant="bordered"
             value={driverSearch}
@@ -295,17 +295,17 @@ export default function DebtTable({ onDebtPayment }) {
               <>
                 <ModalHeader className="flex flex-col gap-0.5">
                   <span className="text-base font-extrabold">Thu tiền chuyến</span>
-                  <span className="text-[12px] font-normal text-gray-400">
+                  <span className="text-[12px] font-normal text-gray-400 dark:text-gray-400">
                     Debt #{itemPayment?.id} · Chuyến #{itemPayment?.shipment_id || "—"} · {debtorName}
                   </span>
                 </ModalHeader>
 
                 <ModalBody>
                   {}
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    {[["Tổng nợ", itemPayment?.total_amount, "text-gray-800"], ["Đã trả", itemPayment?.paid_amount, "text-green-600"], ["Còn nợ", remaining, "text-red-500"]].map(([lbl, val, cls]) => (
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
+                    {[["Tổng nợ", itemPayment?.total_amount, "text-gray-800 dark:text-gray-100"], ["Đã trả", itemPayment?.paid_amount, "text-green-600 dark:text-green-300"], ["Còn nợ", remaining, "text-red-500"]].map(([lbl, val, cls]) => (
                       <div key={lbl} className="text-center">
-                        <div className="text-[11px] font-bold text-gray-400 uppercase">{lbl}</div>
+                        <div className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase">{lbl}</div>
                         <div className={`text-[15px] font-extrabold ${cls}`}>{fmt(val)}đ</div>
                       </div>
                     ))}
@@ -357,10 +357,10 @@ export default function DebtTable({ onDebtPayment }) {
 
 function StatCard({ label, amount, count, color }) {
   return (
-    <div className="border border-gray-200 rounded-2xl p-4 bg-gray-50">
-      <div className="text-[11px] text-gray-400 font-bold uppercase tracking-wider mb-1.5">{label}</div>
+    <div className="border border-gray-200 dark:border-white/10 rounded-2xl p-4 bg-gray-50 dark:bg-white/5">
+      <div className="text-[11px] text-gray-400 dark:text-gray-400 font-bold uppercase tracking-wider mb-1.5">{label}</div>
       <div className={`text-[22px] font-extrabold ${color}`}>{fmt(amount)}đ</div>
-      <div className="text-[12px] text-gray-400 mt-0.5">{count} khoản nợ</div>
+      <div className="text-[12px] text-gray-400 dark:text-gray-400 mt-0.5">{count} khoản nợ</div>
     </div>
   );
 }
@@ -371,10 +371,10 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
   }
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
         <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <tr className="bg-gray-50 dark:bg-white/5 border-b-2 border-gray-200 dark:border-white/10">
               {["Loại","Người nợ","Thông tin liên hệ","Đơn / Chuyến","Tổng nợ","Đã trả","Còn nợ","Hạn","Trạng thái","Ghi chú",""].map((h) => (
                 <th key={h} className={TH}>{h}</th>
               ))}
@@ -399,7 +399,7 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
                   <span className="flex flex-col gap-0.5">
                     {contactItems.map(({ icon: Icon, text }, i) => (
                       <span key={i} className="flex items-center gap-1">
-                        <Icon size={11} className="shrink-0 text-gray-400" />{text}
+                        <Icon size={11} className="shrink-0 text-gray-400 dark:text-gray-400" />{text}
                       </span>
                     ))}
                   </span>
@@ -409,17 +409,17 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
               const dueDate   = debt.due_date ? new Date(debt.due_date).toLocaleDateString("vi-VN") : "—";
 
               return (
-                <tr key={debt.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                <tr key={debt.id} className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-white/5/50 transition-colors">
                   <td className={TD}><DebtBadge label={typeCfg.label} color={typeCfg.color} /></td>
                   <td className={`${TD} font-semibold max-w-[160px]`}>{name}</td>
-                  <td className={`${TD} text-gray-400 text-[12px] max-w-[200px]`}>{contact}</td>
-                  <td className={`${TD} font-mono text-[12px] text-gray-400`}>{orderRef}</td>
+                  <td className={`${TD} text-gray-400 dark:text-gray-400 text-[12px] max-w-[200px]`}>{contact}</td>
+                  <td className={`${TD} font-mono text-[12px] text-gray-400 dark:text-gray-400`}>{orderRef}</td>
                   <td className={`${TD} font-bold text-right`}>{fmt(total)}đ</td>
-                  <td className={`${TD} font-bold text-green-600 text-right`}>{fmt(paid)}đ</td>
-                  <td className={`${TD} font-bold text-right ${remaining > 0 ? "text-red-500" : "text-green-600"}`}>{fmt(remaining)}đ</td>
-                  <td className={`${TD} text-gray-400 text-[12px]`}>{dueDate}</td>
+                  <td className={`${TD} font-bold text-green-600 dark:text-green-300 text-right`}>{fmt(paid)}đ</td>
+                  <td className={`${TD} font-bold text-right ${remaining > 0 ? "text-red-500" : "text-green-600 dark:text-green-300"}`}>{fmt(remaining)}đ</td>
+                  <td className={`${TD} text-gray-400 dark:text-gray-400 text-[12px]`}>{dueDate}</td>
                   <td className={TD}><DebtBadge label={statusCfg.label} color={statusCfg.color} /></td>
-                  <td className={`${TD} text-gray-400 text-[12px] max-w-[180px] truncate`}>{debt.notes || "—"}</td>
+                  <td className={`${TD} text-gray-400 dark:text-gray-400 text-[12px] max-w-[180px] truncate`}>{debt.notes || "—"}</td>
                   <td className={`${TD} text-center`}>
                     {remaining > 0 && (
                       <Button size="sm" color="success" variant="flat" onPress={() => onDebtItemPayment?.(debt)} className="text-[11px] h-6 min-w-0 px-2.5">Thu</Button>
@@ -457,13 +457,13 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
           const totalRemaining = Number(debt.total_remaining || 0);
 
           return (
-            <div key={key} className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+            <div key={key} className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
               {}
               <div
-                className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50" : "hover:bg-gray-50/60"}`}
+                className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50 dark:bg-white/5" : "hover:bg-gray-50 dark:hover:bg-white/5/60"}`}
                 onClick={() => toggleExpand(debt, key)}
               >
-                <span className="text-gray-400 w-4 flex-shrink-0 flex items-center">
+                <span className="text-gray-400 dark:text-gray-400 w-4 flex-shrink-0 flex items-center">
                   {isExpanded
                     ? <RiArrowDownSLine size={16} />
                     : <RiArrowRightSLine size={16} />}
@@ -473,19 +473,19 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-800">{personName}</span>
-                    <span className="text-[12px] text-gray-400">({debt.debt_count} chuyến)</span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{personName}</span>
+                    <span className="text-[12px] text-gray-400 dark:text-gray-400">({debt.debt_count} chuyến)</span>
                   </div>
                   {personPhone && (
-                    <div className="text-[12px] text-gray-400 mt-0.5 font-mono flex items-center gap-1">
+                    <div className="text-[12px] text-gray-400 dark:text-gray-400 mt-0.5 font-mono flex items-center gap-1">
                       <RiPhoneLine size={11} className="shrink-0" />{personPhone}
                     </div>
                   )}
                 </div>
 
                 <div className="text-right min-w-[160px]">
-                  <div className="text-[11px] text-gray-400">Còn nợ</div>
-                  <div className={`text-base font-bold ${totalRemaining > 0 ? "text-red-500" : "text-green-600"}`}>{fmt(totalRemaining)}đ</div>
+                  <div className="text-[11px] text-gray-400 dark:text-gray-400">Còn nợ</div>
+                  <div className={`text-base font-bold ${totalRemaining > 0 ? "text-red-500" : "text-green-600 dark:text-green-300"}`}>{fmt(totalRemaining)}đ</div>
                   <div className="text-[11px] text-gray-300">Tổng: {fmt(debt.total_amount)}đ · Đã trả: {fmt(debt.total_paid)}đ</div>
                 </div>
 
@@ -502,7 +502,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
               {}
               {isExpanded && (
-                <div className="border-t border-gray-200">
+                <div className="border-t border-gray-200 dark:border-white/10">
                   {loadingPersonDebts[key] ? (
                     <div className="flex justify-center py-5">
                       <Spinner size="sm" color="primary" label="Đang tải chi tiết..." />
@@ -511,9 +511,9 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                     <div className="p-3 overflow-x-auto">
                       <table className="w-full border-collapse text-[12px]">
                         <thead>
-                          <tr className="bg-gray-50">
+                          <tr className="bg-gray-50 dark:bg-white/5">
                             {["Khách hàng","SĐT","Đơn","Chuyến","Hàng hóa","Tổng nợ","Đã trả","Còn nợ","Trạng thái","Ghi chú",""].map((h) => (
-                              <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                              <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -522,17 +522,17 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                             const dRemaining = Number(d.remaining || 0);
                             const dStatusCfg = STATUS_CFG[d.computed_status || "unpaid"] || STATUS_CFG.unpaid;
                             return (
-                              <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50/40 transition-colors">
+                              <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-white/5/40 transition-colors">
                                 <td className="px-2.5 py-2 font-semibold">{d.customer_name || d.driver_name || "—"}</td>
                                 <td className="px-2.5 py-2 font-mono text-[11px]">{d.customer_phone || d.driver_phone || "—"}</td>
                                 <td className="px-2.5 py-2 font-mono">#{d.order_id}</td>
                                 <td className="px-2.5 py-2 font-mono">#{d.shipment_id}</td>
-                                <td className="px-2.5 py-2 max-w-[150px] truncate text-gray-500" title={d.order_cargo_name}>{d.order_cargo_name || "—"}</td>
+                                <td className="px-2.5 py-2 max-w-[150px] truncate text-gray-500 dark:text-gray-400" title={d.order_cargo_name}>{d.order_cargo_name || "—"}</td>
                                 <td className="px-2.5 py-2 font-semibold text-right">{fmt(d.total_amount)}đ</td>
-                                <td className="px-2.5 py-2 text-green-600 text-right">{fmt(d.paid_amount)}đ</td>
-                                <td className={`px-2.5 py-2 font-bold text-right ${dRemaining > 0 ? "text-red-500" : "text-green-600"}`}>{fmt(Math.max(dRemaining, 0))}đ</td>
+                                <td className="px-2.5 py-2 text-green-600 dark:text-green-300 text-right">{fmt(d.paid_amount)}đ</td>
+                                <td className={`px-2.5 py-2 font-bold text-right ${dRemaining > 0 ? "text-red-500" : "text-green-600 dark:text-green-300"}`}>{fmt(Math.max(dRemaining, 0))}đ</td>
                                 <td className="px-2.5 py-2"><DebtBadge label={dStatusCfg.label} color={dStatusCfg.color} /></td>
-                                <td className="px-2.5 py-2 text-gray-400 max-w-[150px] truncate" title={d.notes}>{d.notes || "—"}</td>
+                                <td className="px-2.5 py-2 text-gray-400 dark:text-gray-400 max-w-[150px] truncate" title={d.notes}>{d.notes || "—"}</td>
                                 <td className="px-2.5 py-2">
                                   {dRemaining > 0 && (
                                     <Button size="sm" color="success" variant="flat" className="text-[11px] h-6 min-w-0 px-2.5"
@@ -556,7 +556,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
       {pagination.totalPages > 1 && (
         <div className="flex justify-between items-center">
-          <span className="text-[12px] text-gray-400">Trang {pagination.currentPage} / {pagination.totalPages} — {pagination.totalItems} người</span>
+          <span className="text-[12px] text-gray-400 dark:text-gray-400">Trang {pagination.currentPage} / {pagination.totalPages} — {pagination.totalItems} người</span>
           <Pagination total={pagination.totalPages} page={pagination.currentPage} onChange={onPageChange} color="primary" size="sm" showControls />
         </div>
       )}
@@ -566,7 +566,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
 function EmptyState({ text }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-16 text-gray-400">
+    <div className="flex flex-col items-center gap-3 py-16 text-gray-400 dark:text-gray-400">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>
       </svg>
