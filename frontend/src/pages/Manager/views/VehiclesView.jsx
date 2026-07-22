@@ -273,11 +273,11 @@ export default function VehiclesView({ user }) {
   return (
     <div className="flex flex-col gap-5">
       {/* Vehicle groups */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-sm font-bold text-gray-800">Nhóm xe</div>
-            <div className="text-xs text-gray-400">{vehicleGroups.length} nhóm xe</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Nhóm xe</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">{vehicleGroups.length} nhóm xe</div>
           </div>
           <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingGroup(null); setGroupModalOpen(true); }}>
             Thêm nhóm xe
@@ -285,12 +285,12 @@ export default function VehiclesView({ user }) {
         </div>
         <div className="grid grid-cols-3 gap-3">
           {vehicleGroups.map((g) => (
-            <div key={g.id} className="rounded-xl border border-gray-100 p-4 flex flex-col gap-2">
+            <div key={g.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-4 flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-800">{g.name}</span>
-                <span className="text-xs text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{g.name}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
               </div>
-              <p className="text-xs text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
               <div className="flex flex-wrap gap-1">
                 <Chip size="sm" variant="flat" color="primary">{g.vehicle_count} tổng</Chip>
                 <Chip size="sm" variant="flat" color="success">{g.active_vehicle_count} hoạt động</Chip>
@@ -308,12 +308,12 @@ export default function VehiclesView({ user }) {
 
       {/* Maintenance requests */}
       {maintenanceRequests.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-1">
-            <RiToolsLine size={16} className="text-blue-600" />
-            <span className="text-sm font-bold text-gray-800">Yêu cầu bảo dưỡng chờ duyệt</span>
+            <RiToolsLine size={16} className="text-blue-600 dark:text-blue-300" />
+            <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Yêu cầu bảo dưỡng chờ duyệt</span>
           </div>
-          <p className="text-xs text-gray-400 mb-3">{maintenanceRequests.length} yêu cầu từ tài xế</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400 mb-3">{maintenanceRequests.length} yêu cầu từ tài xế</p>
           <div className="overflow-x-auto">
           <Table removeWrapper aria-label="Yêu cầu bảo dưỡng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
             <TableHeader>
@@ -330,7 +330,7 @@ export default function VehiclesView({ user }) {
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm">{r.plate_number}</span>
-                      <span className="text-xs text-gray-400">{[r.brand, r.model].filter(Boolean).join(" ")}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-400">{[r.brand, r.model].filter(Boolean).join(" ")}</span>
                     </div>
                   </TableCell>
                   <TableCell>{r.requested_by_name || "—"}</TableCell>
@@ -352,11 +352,11 @@ export default function VehiclesView({ user }) {
       )}
 
       {/* Vehicles */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-sm font-bold text-gray-800">Danh sách xe</div>
-            <div className="text-xs text-gray-400">{pagination.total} xe</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Danh sách xe</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">{pagination.total} xe</div>
           </div>
           <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingVehicle(null); setVehicleModalOpen(true); }}>
             Thêm xe
@@ -364,7 +364,7 @@ export default function VehiclesView({ user }) {
         </div>
 
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <Input placeholder="Tìm theo biển số" value={search} onValueChange={setSearch} onKeyDown={(e) => e.key === "Enter" && loadVehicles({ page: 1 })} startContent={<RiSearchLine size={14} className="text-gray-400" />} variant="bordered" size="sm" isClearable />
+          <Input placeholder="Tìm theo biển số" value={search} onValueChange={setSearch} onKeyDown={(e) => e.key === "Enter" && loadVehicles({ page: 1 })} startContent={<RiSearchLine size={14} className="text-gray-400 dark:text-gray-400" />} variant="bordered" size="sm" isClearable />
           <Select selectedKeys={statusFilter ? [statusFilter] : []} onSelectionChange={(k) => setStatusFilter([...k][0] ?? "")} placeholder="Tất cả trạng thái" variant="bordered" size="sm">
             <SelectItem key="active">Hoạt động</SelectItem>
             <SelectItem key="maintenance">Bảo trì</SelectItem>
@@ -392,7 +392,7 @@ export default function VehiclesView({ user }) {
               <div className="flex justify-center py-3">
                 <div className="flex gap-1">
                   {Array.from({ length: Math.ceil(pagination.total / pagination.limit) }, (_, i) => i + 1).map((p) => (
-                    <button key={p} onClick={() => loadVehicles({ page: p })} className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}>{p}</button>
+                    <button key={p} onClick={() => loadVehicles({ page: p })} className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"}`}>{p}</button>
                   ))}
                 </div>
               </div>
@@ -414,20 +414,20 @@ export default function VehiclesView({ user }) {
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="text-sm">{v.vehicle_group_name}</span>
-                    <span className="text-xs text-gray-400">#{v.vehicle_group_id}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">#{v.vehicle_group_id}</span>
                   </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="text-sm">{[v.brand, v.model].filter(Boolean).join(" ") || "Chưa cập nhật"}</span>
-                    <span className="text-xs text-gray-400">{v.load_capacity_kg ? `${v.load_capacity_kg} kg` : "Chưa có tải trọng"}{v.manufacture_year ? ` · ${v.manufacture_year}` : ""}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{v.load_capacity_kg ? `${v.load_capacity_kg} kg` : "Chưa có tải trọng"}{v.manufacture_year ? ` · ${v.manufacture_year}` : ""}</span>
                   </div>
                 </TableCell>
                 <TableCell>
                   {v.assigned_driver_id ? (
                     <div className="flex flex-col">
                       <span className="text-sm">{v.assigned_driver_name}</span>
-                      <span className="text-xs text-gray-400">{v.assigned_driver_email}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-400">{v.assigned_driver_email}</span>
                     </div>
                   ) : <span className="text-xs text-gray-300">Chưa gán</span>}
                 </TableCell>
@@ -465,7 +465,7 @@ export default function VehiclesView({ user }) {
       <Modal isOpen={!!groupDeleteTarget} onOpenChange={(open) => !open && setGroupDeleteTarget(null)} size="sm">
         <ModalContent>
           <ModalHeader>Ẩn nhóm xe {groupDeleteTarget?.name}</ModalHeader>
-          <ModalBody><p className="text-sm text-gray-500">Nhóm xe sẽ bị ẩn khỏi danh sách hoạt động và không dùng được để gán xe mới.</p></ModalBody>
+          <ModalBody><p className="text-sm text-gray-500 dark:text-gray-400">Nhóm xe sẽ bị ẩn khỏi danh sách hoạt động và không dùng được để gán xe mới.</p></ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setGroupDeleteTarget(null)}>Hủy</Button>
             <Button color="danger" onPress={handleGroupDelete}>Ẩn</Button>
@@ -486,7 +486,7 @@ export default function VehiclesView({ user }) {
       <Modal isOpen={!!unassignTarget} onOpenChange={(open) => !open && setUnassignTarget(null)} size="sm">
         <ModalContent>
           <ModalHeader>Bỏ gán tài xế</ModalHeader>
-          <ModalBody><p className="text-sm text-gray-500">Bỏ gán tài xế khỏi xe {unassignTarget?.plate_number}?</p></ModalBody>
+          <ModalBody><p className="text-sm text-gray-500 dark:text-gray-400">Bỏ gán tài xế khỏi xe {unassignTarget?.plate_number}?</p></ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setUnassignTarget(null)}>Hủy</Button>
             <Button color="primary" onPress={confirmUnassign}>Xác nhận</Button>

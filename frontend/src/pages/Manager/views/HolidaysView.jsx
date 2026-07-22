@@ -82,11 +82,11 @@ export default function HolidaysView() {
   for (let y = currentYear - 1; y <= currentYear + 2; y += 1) yearOptions.push(y);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+    <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
         <div className="flex items-center gap-3">
-          <RiCalendarLine size={18} className="text-blue-600" />
-          <span className="text-sm font-bold text-gray-800">Ngày lễ trong năm</span>
+          <RiCalendarLine size={18} className="text-blue-600 dark:text-blue-300" />
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Ngày lễ trong năm</span>
           <Select
             selectedKeys={[String(year)]}
             onSelectionChange={(keys) => setYear(Number([...keys][0]))}
@@ -102,7 +102,7 @@ export default function HolidaysView() {
         </Button>
       </div>
 
-      <p className="text-xs text-gray-400 mb-4">
+      <p className="text-xs text-gray-400 dark:text-gray-400 mb-4">
         Ngày lễ được nghỉ hưởng nguyên lương. Tài xế có chuyến hoàn thành trong ngày lễ được tự động
         cộng thêm 100% lương ngày (tổng 200%) vào bảng lương tháng đó. Ngày âm lịch (Tết, Giỗ Tổ)
         thay đổi hằng năm — nhớ cập nhật khi sang năm mới.
@@ -111,16 +111,16 @@ export default function HolidaysView() {
       {loading ? (
         <div className="flex justify-center py-10"><Spinner color="primary" /></div>
       ) : holidays.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-8">Chưa có ngày lễ nào cho năm {year}.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có ngày lễ nào cho năm {year}.</p>
       ) : (
         <>
-          <div className="flex flex-col divide-y divide-gray-50">
+          <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
             {pagedHolidays.map((h) => (
               <div key={h.holiday_date} className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-gray-800 w-24">{fmtDate(h.holiday_date)}</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 w-24">{fmtDate(h.holiday_date)}</span>
                   <Chip size="sm" variant="flat">{WEEKDAYS[new Date(h.holiday_date).getDay()]}</Chip>
-                  <span className="text-sm text-gray-600">{h.name}</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">{h.name}</span>
                 </div>
                 <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => setDeleteTarget(h)}>
                   <RiDeleteBinLine size={15} />
@@ -148,7 +148,7 @@ export default function HolidaysView() {
           <ModalBody className="gap-3">
             <Input type="date" label="Ngày" value={newDate} onValueChange={setNewDate} variant="bordered" />
             <Input label="Tên ngày lễ" placeholder="VD: Tết Âm lịch (mùng 1)" value={newName} onValueChange={setNewName} variant="bordered" />
-            <p className="text-xs text-gray-400">Chọn trùng ngày đã có sẽ cập nhật tên ngày lễ đó.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-400">Chọn trùng ngày đã có sẽ cập nhật tên ngày lễ đó.</p>
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setModalOpen(false)}>Đóng</Button>
@@ -161,7 +161,7 @@ export default function HolidaysView() {
         <ModalContent>
           <ModalHeader>Xóa ngày lễ</ModalHeader>
           <ModalBody>
-            <p className="text-sm text-gray-500">Xóa ngày lễ {deleteTarget ? fmtDate(deleteTarget.holiday_date) : ""}?</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Xóa ngày lễ {deleteTarget ? fmtDate(deleteTarget.holiday_date) : ""}?</p>
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setDeleteTarget(null)}>Đóng</Button>

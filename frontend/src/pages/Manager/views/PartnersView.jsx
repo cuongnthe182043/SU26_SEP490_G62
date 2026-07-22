@@ -126,16 +126,16 @@ export default function PartnersView({ user }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Tổng đối tác" value={summary.total_partners || 0} icon={RiBuilding2Line} border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600" sub="Danh bạ đối tác đang theo dõi" />
-        <StatCard label="Đối tác có công nợ" value={summary.partners_with_debt || 0} icon={RiFileSearchLine} border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600" sub="Chỉ tính đối tác thực sự còn nợ" />
-        <StatCard label="Tổng còn phải thu" value={fmt(totalRemaining)} icon={RiWalletLine} border="border-rose-100" lightBg="bg-rose-50" text="text-rose-600" gradient="from-rose-500 to-rose-600" sub="Tổng giá trị công nợ đối tác" />
+        <StatCard label="Tổng đối tác" value={summary.total_partners || 0} icon={RiBuilding2Line} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" sub="Danh bạ đối tác đang theo dõi" />
+        <StatCard label="Đối tác có công nợ" value={summary.partners_with_debt || 0} icon={RiFileSearchLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" sub="Chỉ tính đối tác thực sự còn nợ" />
+        <StatCard label="Tổng còn phải thu" value={fmt(totalRemaining)} icon={RiWalletLine} border="border-rose-100 dark:border-rose-500/20" lightBg="bg-rose-50 dark:bg-rose-500/10" text="text-rose-600 dark:text-rose-300" gradient="from-rose-500 to-rose-600" sub="Tổng giá trị công nợ đối tác" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10 gap-3 flex-wrap">
           <div>
-            <div className="text-sm font-bold text-gray-800">Danh sách đối tác</div>
-            <div className="text-xs text-gray-400">Quản lý thông tin đối tác và xem công nợ nếu còn tồn đọng.</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Danh sách đối tác</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">Quản lý thông tin đối tác và xem công nợ nếu còn tồn đọng.</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Input
@@ -143,7 +143,7 @@ export default function PartnersView({ user }) {
               value={search}
               onValueChange={setSearch}
               onKeyDown={(e) => e.key === "Enter" && load(search, 1, pageSize)}
-              startContent={<RiSearchLine size={14} className="text-gray-400" />}
+              startContent={<RiSearchLine size={14} className="text-gray-400 dark:text-gray-400" />}
               variant="bordered"
               size="sm"
               className="w-72"
@@ -198,21 +198,21 @@ export default function PartnersView({ user }) {
               <TableRow key={p.id}>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-semibold text-gray-800 text-sm">{p.company_name}</span>
-                    <span className="text-xs text-gray-400">{p.short_name || `#${p.id}`}</span>
+                    <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{p.company_name}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{p.short_name || `#${p.id}`}</span>
                   </div>
                 </TableCell>
                 <TableCell>{p.contact_person || "Chưa cập nhật"}</TableCell>
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="text-sm">{p.phone || "-"}</span>
-                    <span className="text-xs text-gray-400">{p.email || "Không có email"}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{p.email || "Không có email"}</span>
                   </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className={`text-sm font-semibold ${Number(p.total_remaining || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>{fmt(p.total_remaining)}</span>
-                    <span className="text-xs text-gray-400">{p.debt_count || 0} khoản nợ</span>
+                    <span className={`text-sm font-semibold ${Number(p.total_remaining || 0) > 0 ? "text-rose-600 dark:text-rose-300" : "text-emerald-600 dark:text-emerald-300"}`}>{fmt(p.total_remaining)}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{p.debt_count || 0} khoản nợ</span>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -233,7 +233,7 @@ export default function PartnersView({ user }) {
         </div>
 
         {partners.length > 0 && (
-          <div className="px-5 py-4 border-t border-gray-100">
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-white/10">
             <PaginationBar
               page={page}
               pageSize={pageSize}

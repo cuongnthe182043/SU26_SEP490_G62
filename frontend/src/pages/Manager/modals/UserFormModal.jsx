@@ -6,7 +6,7 @@ import {
   RiPriceTag3Line, RiContactsLine, RiStickyNoteLine,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 const EMPTY_FORM = {
   email: "", role: "driver", full_name: "", phone: "", gender: "", dob: "",
