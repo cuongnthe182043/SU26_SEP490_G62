@@ -172,12 +172,12 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5 pb-2">
           <span className="text-base font-bold">Hồ sơ cá nhân</span>
-          <span className="text-xs font-normal text-gray-400">Cập nhật thông tin và ảnh đại diện</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">Cập nhật thông tin và ảnh đại diện</span>
         </ModalHeader>
 
         <ModalBody className="gap-4 py-3">
           {/* Avatar */}
-          <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+          <div className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10">
             <Avatar
               src={profile?.avatar_url}
               name={profile?.full_name}
@@ -185,10 +185,10 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               className="shrink-0"
             />
             <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-sm font-semibold text-gray-800 truncate">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                 {profile?.full_name || '—'}
               </span>
-              <span className="text-xs text-gray-400 truncate">{profile?.email || '—'}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-400 truncate">{profile?.email || '—'}</span>
               <Upload
                 accept="image/*"
                 showUploadList={false}
@@ -220,8 +220,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               errorMessage={errors.full_name}
               isDisabled={loading}
               isRequired
-              startContent={<RiUser3Line className="text-gray-400 shrink-0" size={15} />}
-              classNames={{ inputWrapper: 'bg-white' }}
+              startContent={<RiUser3Line className="text-gray-400 dark:text-gray-400 shrink-0" size={15} />}
+              classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
             />
 
             <Input
@@ -232,8 +232,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               isInvalid={!!errors.phone}
               errorMessage={errors.phone}
               isDisabled={loading}
-              startContent={<RiPhoneLine className="text-gray-400 shrink-0" size={15} />}
-              classNames={{ inputWrapper: 'bg-white' }}
+              startContent={<RiPhoneLine className="text-gray-400 dark:text-gray-400 shrink-0" size={15} />}
+              classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
             />
 
             <Select
@@ -242,7 +242,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               selectedKeys={gender}
               onSelectionChange={setGender}
               isDisabled={loading}
-              classNames={{ trigger: 'bg-white' }}
+              classNames={{ trigger: 'bg-white dark:bg-[#161922]' }}
             >
               {GENDER_OPTIONS.map(({ key, label }) => (
                 <SelectItem key={key}>{label}</SelectItem>
@@ -250,7 +250,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
             </Select>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-700">Ngày sinh</label>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-200">Ngày sinh</label>
               <DatePicker
                 value={dob}
                 onChange={setDob}
@@ -267,30 +267,30 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               value={city}
               onValueChange={setCity}
               isDisabled={loading}
-              startContent={<RiMapPinLine className="text-gray-400 shrink-0" size={15} />}
-              classNames={{ inputWrapper: 'bg-white' }}
+              startContent={<RiMapPinLine className="text-gray-400 dark:text-gray-400 shrink-0" size={15} />}
+              classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
             />
 
             <Input
               label="Email hiện tại"
               value={profile?.email || ''}
               isReadOnly
-              startContent={<RiMailLine className="text-gray-400 shrink-0" size={15} />}
-              classNames={{ inputWrapper: 'bg-gray-50' }}
+              startContent={<RiMailLine className="text-gray-400 dark:text-gray-400 shrink-0" size={15} />}
+              classNames={{ inputWrapper: 'bg-gray-50 dark:bg-white/5' }}
             />
           </div>
 
           <Divider className="my-0" />
 
           {/* Change email */}
-          <div className="flex flex-col gap-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100">
+          <div className="flex flex-col gap-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100 dark:border-blue-500/20">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-1.5">
-                  <RiShieldCheckLine size={14} className="text-blue-600" />
-                  <span className="text-sm font-semibold text-gray-800">Đổi email</span>
+                  <RiShieldCheckLine size={14} className="text-blue-600 dark:text-blue-300" />
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Đổi email</span>
                 </div>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   Gửi mã 6 ký tự về email hiện tại, nhập đúng mã để chuyển sang email mới.
                 </span>
               </div>
@@ -318,7 +318,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
                 isInvalid={!!errors.verCode}
                 errorMessage={errors.verCode}
                 isDisabled={loading}
-                classNames={{ inputWrapper: 'bg-white' }}
+                classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
               />
               <Input
                 label="Email mới"
@@ -328,8 +328,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
                 isInvalid={!!errors.newEmail}
                 errorMessage={errors.newEmail}
                 isDisabled={loading}
-                startContent={<RiMailLine className="text-gray-400 shrink-0" size={15} />}
-                classNames={{ inputWrapper: 'bg-white' }}
+                startContent={<RiMailLine className="text-gray-400 dark:text-gray-400 shrink-0" size={15} />}
+                classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
               />
             </div>
 

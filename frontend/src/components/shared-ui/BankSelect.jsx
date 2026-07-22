@@ -70,7 +70,7 @@ export function BankSelect({ value, onChange, label = "Ngân hàng", size = "sm"
             {bank.logo && <img src={bank.logo} alt={bank.shortName} className="w-6 h-6 object-contain flex-shrink-0" />}
             <div className="flex flex-col min-w-0">
               <span className="text-sm font-medium truncate">{bank.shortName}</span>
-              <span className="text-xs text-gray-400 truncate">{bank.name}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-400 truncate">{bank.name}</span>
             </div>
           </div>
         </AutocompleteItem>

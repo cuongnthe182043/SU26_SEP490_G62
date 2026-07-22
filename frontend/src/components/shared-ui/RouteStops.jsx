@@ -33,14 +33,14 @@ export function RouteStops({ pickups = [], deliveries = [], className = "" }) {
           <div key={i} className="flex items-center gap-1.5 min-w-0">
             <span
               className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold flex-shrink-0 ${
-                isPickup ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                isPickup ? "bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300" : "bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300"
               }`}
             >
               {i + 1}
             </span>
             <span
               className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
-                isPickup ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
+                isPickup ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300" : "bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300"
               }`}
             >
               {isPickup ? "Lấy" : "Trả"}

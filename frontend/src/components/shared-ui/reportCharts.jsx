@@ -19,11 +19,11 @@ export const VEHICLE_BAR_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#0ea5e9", "
 export function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-gray-100 rounded-xl shadow-lg px-3 py-2.5 text-xs min-w-[130px]">
-      <p className="font-bold text-gray-700 mb-1.5">{label}</p>
+    <div className="bg-white dark:bg-[#161922] border border-gray-100 dark:border-white/10 rounded-xl shadow-lg px-3 py-2.5 text-xs min-w-[130px]">
+      <p className="font-bold text-gray-700 dark:text-gray-200 mb-1.5">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-3">
-          <span className="text-gray-500">{p.name ?? p.dataKey}</span>
+          <span className="text-gray-500 dark:text-gray-400">{p.name ?? p.dataKey}</span>
           <span className="font-semibold" style={{ color: p.color }}>
             {p.dataKey === "order_count" ? `${p.value} đơn` : VND_FULL(p.value)}
           </span>
@@ -34,7 +34,7 @@ export function ChartTooltip({ active, payload, label }) {
 }
 
 export function RevenueChart({ data }) {
-  if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
+  if (!data?.length) return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -67,10 +67,10 @@ export function DebtAgingBars({ data }) {
   if (!data) return null;
 
   const groups = [
-    { key: "d0_30",   label: "0–30 ngày",   color: "bg-green-400",  text: "text-green-600" },
-    { key: "d30_60",  label: "31–60 ngày",  color: "bg-yellow-400", text: "text-yellow-600" },
-    { key: "d60_90",  label: "61–90 ngày",  color: "bg-orange-400", text: "text-orange-600" },
-    { key: "d90_plus",label: "> 90 ngày",   color: "bg-red-500",    text: "text-red-600" },
+    { key: "d0_30",   label: "0–30 ngày",   color: "bg-green-400",  text: "text-green-600 dark:text-green-300" },
+    { key: "d30_60",  label: "31–60 ngày",  color: "bg-yellow-400", text: "text-yellow-600 dark:text-yellow-300" },
+    { key: "d60_90",  label: "61–90 ngày",  color: "bg-orange-400", text: "text-orange-600 dark:text-orange-300" },
+    { key: "d90_plus",label: "> 90 ngày",   color: "bg-red-500",    text: "text-red-600 dark:text-red-300" },
   ];
 
   const total = groups.reduce((s, g) => s + Number(data[g.key] || 0), 0);
@@ -84,22 +84,22 @@ export function DebtAgingBars({ data }) {
             <div key={g.key} className={`${g.color} transition-all`} style={{ width: `${pct}%` }} />
           ) : null;
         })}
-        {total === 0 && <div className="bg-gray-100 w-full" />}
+        {total === 0 && <div className="bg-gray-100 dark:bg-white/10 w-full" />}
       </div>
       <div className="grid grid-cols-2 gap-2">
         {groups.map((g) => (
-          <div key={g.key} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+          <div key={g.key} className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2">
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${g.color}`} />
-              <span className="text-[11px] text-gray-500">{g.label}</span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">{g.label}</span>
             </div>
             <span className={`text-xs font-bold ${g.text}`}>{VND(data[g.key])}</span>
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100">
-        <span className="text-xs text-gray-400 font-medium">Tổng nợ khách chưa thu</span>
-        <span className="text-sm font-bold text-red-600">{VND_FULL(total)}</span>
+      <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100 dark:border-white/10">
+        <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng nợ khách chưa thu</span>
+        <span className="text-sm font-bold text-red-600 dark:text-red-300">{VND_FULL(total)}</span>
       </div>
     </div>
   );
@@ -107,7 +107,7 @@ export function DebtAgingBars({ data }) {
 
 // Doanh thu theo từng xe (cước thuần trong kỳ báo cáo)
 export function VehicleRevenueChart({ data }) {
-  if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
+  if (!data?.length) return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
 
   const chartData = data.map((d, i) => ({
     name: d.plate_number,
@@ -140,7 +140,7 @@ export function DriverHoldingsList({ data }) {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-2">
         <RiCheckboxCircleLine size={24} className="text-emerald-400" />
-        <p className="text-xs text-gray-400">Không có tài xế nào đang giữ tiền.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-400">Không có tài xế nào đang giữ tiền.</p>
       </div>
     );
   }
@@ -153,55 +153,55 @@ export function DriverHoldingsList({ data }) {
       {data.map((d, i) => (
         <div key={i} className="py-2 border-b border-gray-50 last:border-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-gray-800 truncate">{d.driver_name}</span>
-            <span className="text-xs font-bold text-amber-600 flex-shrink-0 ml-2">{VND(d.holding)}</span>
+            <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{d.driver_name}</span>
+            <span className="text-xs font-bold text-amber-600 dark:text-amber-300 flex-shrink-0 ml-2">{VND(d.holding)}</span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
               style={{ width: `${(Number(d.holding) / max) * 100}%` }}
             />
           </div>
-          <span className="text-[10px] text-gray-400">{d.debt_count} khoản nợ</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">{d.debt_count} khoản nợ</span>
         </div>
       ))}
-      <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100">
-        <span className="text-xs text-gray-400 font-medium">Tổng tiền tài xế đang cầm</span>
-        <span className="text-sm font-bold text-amber-600">{VND_FULL(total)}</span>
+      <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100 dark:border-white/10">
+        <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng tiền tài xế đang cầm</span>
+        <span className="text-sm font-bold text-amber-600 dark:text-amber-300">{VND_FULL(total)}</span>
       </div>
     </div>
   );
 }
 
 export function TopCustomersTable({ data }) {
-  if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
+  if (!data?.length) return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
 
   const maxRevenue = Math.max(...data.map((d) => Number(d.total_revenue || 0)), 1);
 
   return (
-    <div className="flex flex-col divide-y divide-gray-50">
+    <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
       {data.map((c, i) => (
         <div key={i} className="flex items-center gap-3 py-3">
           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
-            ${i === 0 ? "bg-yellow-100 text-yellow-600"
-            : i === 1 ? "bg-gray-100 text-gray-500"
-            : i === 2 ? "bg-orange-100 text-orange-500"
-            : "bg-gray-50 text-gray-400"}`}>
+            ${i === 0 ? "bg-yellow-100 dark:bg-yellow-500/15 text-yellow-600 dark:text-yellow-300"
+            : i === 1 ? "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400"
+            : i === 2 ? "bg-orange-100 dark:bg-orange-500/15 text-orange-500"
+            : "bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-400"}`}>
             {i + 1}
           </span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold text-gray-800 truncate">{c.name}</span>
-              <span className="text-xs font-bold text-blue-600 flex-shrink-0 ml-2">{VND(c.total_revenue)}</span>
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{c.name}</span>
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-300 flex-shrink-0 ml-2">{VND(c.total_revenue)}</span>
             </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
                 style={{ width: `${(Number(c.total_revenue) / maxRevenue) * 100}%` }}
               />
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[10px] text-gray-400">{c.total_orders} đơn</span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-400">{c.total_orders} đơn</span>
               {Number(c.outstanding_debt) > 0 && (
                 <span className="text-[10px] text-red-400 font-medium">
                   Nợ: {VND(c.outstanding_debt)}
@@ -219,10 +219,10 @@ export function PayrollQuickStats({ data }) {
   if (!data) return null;
 
   const statuses = [
-    { key: "pending",  label: "Chờ duyệt",      color: "text-gray-500",   bg: "bg-gray-100" },
-    { key: "reviewed", label: "Manager đã duyệt", color: "text-blue-600",   bg: "bg-blue-50" },
-    { key: "approved", label: "KT xác nhận",     color: "text-green-600",  bg: "bg-green-50" },
-    { key: "paid",     label: "Đã chi trả",      color: "text-emerald-600",bg: "bg-emerald-50" },
+    { key: "pending",  label: "Chờ duyệt",      color: "text-gray-500 dark:text-gray-400",   bg: "bg-gray-100 dark:bg-white/10" },
+    { key: "reviewed", label: "Manager đã duyệt", color: "text-blue-600 dark:text-blue-300",   bg: "bg-blue-50 dark:bg-blue-500/10" },
+    { key: "approved", label: "KT xác nhận",     color: "text-green-600 dark:text-green-300",  bg: "bg-green-50 dark:bg-green-500/10" },
+    { key: "paid",     label: "Đã chi trả",      color: "text-emerald-600 dark:text-emerald-300",bg: "bg-emerald-50 dark:bg-emerald-500/10" },
   ];
 
   const total = statuses.reduce((s, st) => s + Number(data[st.key] || 0), 0);
@@ -230,8 +230,8 @@ export function PayrollQuickStats({ data }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between px-1">
-        <span className="text-xs text-gray-400">Tháng {data.month}/{data.year}</span>
-        <span className="text-xs font-bold text-gray-700">{total} tài xế</span>
+        <span className="text-xs text-gray-400 dark:text-gray-400">Tháng {data.month}/{data.year}</span>
+        <span className="text-xs font-bold text-gray-700 dark:text-gray-200">{total} tài xế</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {statuses.map(({ key, label, color, bg }) => (
@@ -242,9 +242,9 @@ export function PayrollQuickStats({ data }) {
         ))}
       </div>
       {Number(data.total_net) > 0 && (
-        <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3 mt-1">
-          <span className="text-xs text-blue-600 font-medium">Tổng lương net tháng này</span>
-          <span className="text-sm font-bold text-blue-700">{VND_FULL(data.total_net)}</span>
+        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 rounded-xl px-4 py-3 mt-1">
+          <span className="text-xs text-blue-600 dark:text-blue-300 font-medium">Tổng lương net tháng này</span>
+          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{VND_FULL(data.total_net)}</span>
         </div>
       )}
     </div>

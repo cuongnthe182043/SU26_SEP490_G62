@@ -12,11 +12,11 @@ const YEARS = Array.from({ length: 3 }, (_, i) => now.getFullYear() - i);
 const PAGE_SIZE = 10;
 
 const STATUS_STYLE = {
-  present:          { bg: "bg-green-100",  text: "text-green-700",  dot: "bg-green-500" },
-  leave_paid:       { bg: "bg-blue-100",   text: "text-blue-700",   dot: "bg-blue-500" },
-  leave_unpaid:     { bg: "bg-amber-100",  text: "text-amber-700",  dot: "bg-amber-500" },
-  absent_unexcused: { bg: "bg-rose-100",   text: "text-rose-700",   dot: "bg-rose-500" },
-  half_day:         { bg: "bg-orange-100", text: "text-orange-700", dot: "bg-orange-500" },
+  present:          { bg: "bg-green-100 dark:bg-green-500/15",  text: "text-green-700 dark:text-green-300",  dot: "bg-green-500" },
+  leave_paid:       { bg: "bg-blue-100 dark:bg-blue-500/15",   text: "text-blue-700 dark:text-blue-300",   dot: "bg-blue-500" },
+  leave_unpaid:     { bg: "bg-amber-100 dark:bg-amber-500/15",  text: "text-amber-700 dark:text-amber-300",  dot: "bg-amber-500" },
+  absent_unexcused: { bg: "bg-rose-100 dark:bg-rose-500/15",   text: "text-rose-700 dark:text-rose-300",   dot: "bg-rose-500" },
+  half_day:         { bg: "bg-orange-100 dark:bg-orange-500/15", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-500" },
 };
 
 const WEEKDAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -44,7 +44,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
         <ModalContent>
           <ModalHeader className="flex flex-col items-start gap-0.5">
             <span>{driver.full_name}</span>
-            <span className="text-xs font-normal text-gray-400">
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-400">
               {driver.plate_number || "Chưa gán xe"} · {driver.vehicle_group_name || "—"}
             </span>
           </ModalHeader>
@@ -57,15 +57,15 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
               ))}
             </div>
 
-            <div className="rounded-xl border border-gray-100 overflow-hidden">
-              <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">
+            <div className="rounded-xl border border-gray-100 dark:border-white/10 overflow-hidden">
+              <div className="grid grid-cols-7 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
                 {WEEKDAY_LABELS.map((w) => (
-                  <div key={w} className="text-center text-[11px] font-semibold text-gray-400 py-2">{w}</div>
+                  <div key={w} className="text-center text-[11px] font-semibold text-gray-400 dark:text-gray-400 py-2">{w}</div>
                 ))}
               </div>
-              <div className="flex flex-col divide-y divide-gray-50">
+              <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
                 {weeks.map((week, wi) => (
-                  <div key={wi} className="grid grid-cols-7 divide-x divide-gray-50">
+                  <div key={wi} className="grid grid-cols-7 divide-x divide-gray-50 dark:divide-white/10">
                     {week.map((day, di) => {
                       if (!day) return <div key={di} className="h-16 bg-gray-50/40" />;
                       const style = STATUS_STYLE[day.status];
@@ -86,7 +86,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+            <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
               {Object.entries(statusLabels).map(([status, label]) => (
                 <div key={status} className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${STATUS_STYLE[status].dot}`} /> {label}
@@ -106,10 +106,10 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
             Ngày {dayModal ? new Date(dayModal.work_date).toLocaleDateString("vi-VN") : ""}
           </ModalHeader>
           <ModalBody className="gap-2">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Trạng thái hiện tại: <strong>{dayModal ? statusLabels[dayModal.status] : ""}</strong>
               {dayModal?.leave_request_id && !dayModal?.override_id && (
-                <span className="block text-xs text-gray-400 mt-1">Tự động từ đơn nghỉ tài xế đã gửi.</span>
+                <span className="block text-xs text-gray-400 dark:text-gray-400 mt-1">Tự động từ đơn nghỉ tài xế đã gửi.</span>
               )}
             </p>
           </ModalBody>
@@ -130,7 +130,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
               Đánh dấu Có mặt
             </Button>
             <Button
-              variant="flat" className="bg-orange-100 text-orange-700" size="sm" isLoading={marking}
+              variant="flat" className="bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300" size="sm" isLoading={marking}
               isDisabled={dayModal?.status === "half_day" || !!dayModal?.leave_request_id}
               onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "half_day"); setDayModal(null); }}
             >
@@ -257,7 +257,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
           placeholder="Tìm theo tên tài xế, biển số..."
           value={search}
           onValueChange={setSearch}
-          startContent={<RiSearchLine size={14} className="text-gray-400" />}
+          startContent={<RiSearchLine size={14} className="text-gray-400 dark:text-gray-400" />}
           variant="bordered"
           size="sm"
           className="w-72"
@@ -265,23 +265,23 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
         />
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <div className="text-sm font-bold text-gray-800">Chấm công tài xế</div>
-          <div className="text-xs text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm).</div>
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/10">
+          <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Chấm công tài xế</div>
+          <div className="text-xs text-gray-400 dark:text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm).</div>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-14"><Spinner color="primary" /></div>
         ) : paged.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-10">Không có tài xế nào phù hợp.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-10">Không có tài xế nào phù hợp.</p>
         ) : (
-          <div className="flex flex-col divide-y divide-gray-50">
+          <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
             {paged.map((d) => (
               <div key={d.driver_id} className="flex items-center justify-between px-5 py-3.5 gap-4 flex-wrap">
                 <div className="flex flex-col min-w-0">
-                  <span className="font-semibold text-sm text-gray-800">{d.full_name}</span>
-                  <span className="text-xs text-gray-400">{d.plate_number || "Chưa gán xe"} · {d.vehicle_group_name || "—"}</span>
+                  <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">{d.full_name}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-400">{d.plate_number || "Chưa gán xe"} · {d.vehicle_group_name || "—"}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {Object.entries(d.summary).filter(([, c]) => c > 0).map(([status, count]) => (
@@ -299,7 +299,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
         )}
 
         {filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-100">
+          <div className="px-5 py-3 border-t border-gray-100 dark:border-white/10">
             <PaginationBar page={page} pageSize={PAGE_SIZE} totalItems={filtered.length} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}

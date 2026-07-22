@@ -130,12 +130,12 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
             value={search}
             onValueChange={setSearch}
             placeholder="Tìm tên, SĐT, MST khách hàng..."
-            startContent={<RiSearchLine size={15} className="text-gray-400" />}
+            startContent={<RiSearchLine size={15} className="text-gray-400 dark:text-gray-400" />}
             variant="bordered"
             size="sm"
             isClearable
             onClear={() => setSearch("")}
-            classNames={{ base: "w-80", inputWrapper: "bg-white h-9 rounded-lg" }}
+            classNames={{ base: "w-80", inputWrapper: "bg-white dark:bg-[#161922] h-9 rounded-lg" }}
           />
           <Select
             placeholder="Loại khách hàng"
@@ -167,7 +167,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
         </Button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
         <Table
           removeWrapper
@@ -181,7 +181,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
                     <button
                       key={p}
                       onClick={() => load(p)}
-                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"}`}
                     >
                       {p}
                     </button>
@@ -210,7 +210,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
               <TableRow key={c.id}>
                 <TableCell>
                   <div className="flex flex-col gap-1">
-                    <span className="font-semibold text-gray-800 text-sm">
+                    <span className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
                       {c.customer_type === "business" ? c.company_name : c.full_name}
                     </span>
                     <Chip size="sm" variant="flat" color={c.customer_type === "business" ? "primary" : "default"} className="w-fit">
@@ -282,7 +282,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
         <ModalContent>
           <ModalHeader>Xóa khách hàng</ModalHeader>
           <ModalBody>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               Xóa khách hàng "{deleteTarget?.full_name || deleteTarget?.company_name}"? Hành động này không thể hoàn tác.
             </p>
           </ModalBody>
