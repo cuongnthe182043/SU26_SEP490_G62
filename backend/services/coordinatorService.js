@@ -820,7 +820,7 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
         throw new Error('Chuyến đã hoàn thành hoặc đã hủy, không thể hủy thêm');
     }
 
-    const updated = await tripRepository.updateTripStatus(shipmentId, SHIPMENT_STATUS.CANCELLED, reason.trim());
+    const updated = await tripRepository.updateTripStatus(shipmentId, SHIPMENT_STATUS.CANCELLED, reason.trim(), actorId);
     if (!updated) throw new Error('Không thể hủy chuyến');
 
     if (shipment.owner_driver_id) {
