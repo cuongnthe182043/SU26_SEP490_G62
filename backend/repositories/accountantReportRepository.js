@@ -41,11 +41,12 @@ const _getRevenueTrend = async (granularity, months) => {
     };
     const cfg = CONFIG[granularity] ?? CONFIG.month;
 
+    // Gom nhóm theo giờ VN để không lệch bucket khi DB chạy ở UTC.
     const { rows } = await pool.query(`
         WITH bucket_series AS (
             SELECT generate_series(
-                DATE_TRUNC('${cfg.trunc}', NOW() - INTERVAL '${cfg.span}'),
-                DATE_TRUNC('${cfg.trunc}', NOW()),
+                DATE_TRUNC('${cfg.trunc}', (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '${cfg.span}'),
+                DATE_TRUNC('${cfg.trunc}', (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')),
                 INTERVAL '${cfg.step}'
             )::DATE AS bucket
         )
@@ -55,7 +56,7 @@ const _getRevenueTrend = async (granularity, months) => {
             COUNT(DISTINCT os.order_id)::int            AS order_count
         FROM bucket_series bs
         LEFT JOIN order_shipments os
-            ON DATE_TRUNC('${cfg.trunc}', os.completed_at) = bs.bucket
+            ON DATE_TRUNC('${cfg.trunc}', (os.completed_at AT TIME ZONE 'Asia/Ho_Chi_Minh'))::DATE = bs.bucket
             AND os.status = 'completed'
         GROUP BY bs.bucket
         ORDER BY bs.bucket
