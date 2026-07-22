@@ -1,6 +1,8 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useState } from "react";
 import { Button, Spinner, Select, SelectItem, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
-import { RiEyeLine } from "react-icons/ri";
+import { RiEyeLine, RiFlag2Line, RiAlertLine, RiSortDesc } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import IncidentDetailModal from "../modals/IncidentDetailModal";
 import CreateIncidentModal from "../modals/CreateIncidentModal";
@@ -186,6 +188,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               size="sm"
               variant="bordered"
               className="w-44"
+              startContent={ic(RiFlag2Line)}
               selectedKeys={new Set([statusFilter])}
               onSelectionChange={(keys) => setStatusFilter([...keys][0] ?? "")}
             >
@@ -197,6 +200,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               size="sm"
               variant="bordered"
               className="w-40"
+              startContent={ic(RiAlertLine)}
               selectedKeys={new Set([severityFilter])}
               onSelectionChange={(keys) => setSeverityFilter([...keys][0] ?? "")}
             >
@@ -209,6 +213,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               variant="bordered"
               className="w-44"
               placeholder="Sắp xếp"
+              startContent={ic(RiSortDesc)}
               selectedKeys={new Set([sortBy])}
               onSelectionChange={(keys) => setSortBy([...keys][0] ?? "newest")}
             >
