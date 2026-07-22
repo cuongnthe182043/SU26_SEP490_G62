@@ -8,7 +8,7 @@ import {
   RiPriceTag3Line, RiFlag2Line, RiCalendarLine, RiCalendarCheckLine, RiSortDesc,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
@@ -157,7 +157,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-end gap-3">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 flex flex-wrap items-end gap-3">
         <Select label="Loại" selectedKeys={[kindFilter]} onSelectionChange={(keys) => setKindFilter([...keys][0])} variant="bordered" size="sm" className="w-48" startContent={ic(RiPriceTag3Line)}>
           <SelectItem key="all">Tất cả</SelectItem>
           <SelectItem key="requests">Yêu cầu chờ xử lý</SelectItem>
@@ -179,16 +179,16 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
           <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
         </Select>
         <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={resetFilters}>Xóa lọc</Button>
-        <div className="ml-auto text-xs text-gray-400">
+        <div className="ml-auto text-xs text-gray-400 dark:text-gray-400">
           {summary.total} bản ghi · {summary.approved} đã tạo · {summary.pending} chờ xử lý
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
           <div>
-            <div className="text-sm font-bold text-gray-800">Yêu cầu & phiếu thu</div>
-            <div className="text-xs text-gray-400">Tài xế gửi yêu cầu, coordinator xử lý và xem lại các phiếu thu đã tạo ngay tại đây.</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Yêu cầu & phiếu thu</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">Tài xế gửi yêu cầu, coordinator xử lý và xem lại các phiếu thu đã tạo ngay tại đây.</div>
           </div>
         </div>
 
@@ -205,7 +205,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                     <button
                       key={p}
                       onClick={() => loadReceiptRequests(p)}
-                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"}`}
                     >
                       {p}
                     </button>
