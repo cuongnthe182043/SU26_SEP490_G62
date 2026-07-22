@@ -740,8 +740,8 @@ const createOrderWithShipment = async ({
     });
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), CASE WHEN $8 = 'claimed' THEN NOW() ELSE NULL END)
+            (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, is_price_manual, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $11, $6, $7, $8, $9, COALESCE($10, NOW()), CASE WHEN $8 = 'claimed' THEN NOW() ELSE NULL END)
          RETURNING *`,
         [
             order.id,
@@ -754,6 +754,7 @@ const createOrderWithShipment = async ({
             shipmentData.status,
             shipmentData.notes,
             shipmentData.created_at || null,
+            shipmentData.is_price_manual === true,
         ],
     );
 
@@ -841,8 +842,8 @@ const createOrderWithMultipleShipments = async ({
 
         const shipmentResult = await client.query(// ghi 1 lần và lấy bản ghi ordershipment vừa tạo
             `INSERT INTO order_shipments
-                (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, NOW()), CASE WHEN $9 = 'claimed' THEN NOW() ELSE NULL END)
+                (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, is_price_manual, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, COALESCE($11, NOW()), CASE WHEN $9 = 'claimed' THEN NOW() ELSE NULL END)
              RETURNING *`,
             [
                 order.id,
@@ -856,6 +857,7 @@ const createOrderWithMultipleShipments = async ({
                 shipmentData.status,
                 shipmentData.notes,
                 shipmentData.created_at || null,
+                shipmentData.is_price_manual === true,
             ],
         );
 
@@ -1041,6 +1043,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                              actual_price = COALESCE($5, actual_price),
                              vehicle_group_id = COALESCE($6, vehicle_group_id),
                              status = $7,
+                             is_price_manual = COALESCE($8, is_price_manual),
                              claimed_at = CASE WHEN $7 = 'claimed' AND claimed_at IS NULL THEN NOW() ELSE claimed_at END,
                              updated_at = NOW()
                          WHERE id = $1`,
@@ -1052,6 +1055,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.actual_price ?? null,
                             shipmentData.vehicle_group_id ?? null,
                             nextStatus,
+                            typeof shipmentData.is_price_manual === 'boolean' ? shipmentData.is_price_manual : null,
                         ],
                     );
 
@@ -1090,8 +1094,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 } else if (!existing && shipmentData) {
                     const shipmentResult = await client.query(
                         `INSERT INTO order_shipments
-                            (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), CASE WHEN $9 = 'claimed' THEN NOW() ELSE NULL END)
+                            (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, is_price_manual, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+                         VALUES ($1, $2, $3, $4, $5, $6, $11, $7, $8, $9, $10, NOW(), CASE WHEN $9 = 'claimed' THEN NOW() ELSE NULL END)
                          RETURNING id`,
                         [
                             orderId,
@@ -1104,6 +1108,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             arrivedAt,
                             shipmentData.status || SHIPMENT_STATUS.AVAILABLE,
                             orderNotes,
+                            shipmentData.is_price_manual === true,
                         ],
                     );
                     const newShipmentId = shipmentResult.rows[0].id;
