@@ -463,7 +463,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                 className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50 dark:bg-white/5" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
                 onClick={() => toggleExpand(debt, key)}
               >
-                <span className="text-gray-400 dark:text-gray-400 w-4 flex-shrink-0 flex items-center">
+                <span className="text-gray-400 dark:text-gray-400 w-4 shrink-0 flex items-center">
                   {isExpanded
                     ? <RiArrowDownSLine size={16} />
                     : <RiArrowRightSLine size={16} />}

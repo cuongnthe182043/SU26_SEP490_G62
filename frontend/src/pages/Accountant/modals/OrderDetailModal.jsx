@@ -37,8 +37,8 @@ function InfoRow({ icon: Icon, label, value, mono }) {
   if (!value) return null;
   return (
     <div className="flex items-center gap-2.5">
-      <Icon size={14} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />
-      <span className="text-xs text-gray-400 dark:text-gray-400 w-24 flex-shrink-0">{label}</span>
+      <Icon size={14} className="text-gray-400 dark:text-gray-400 shrink-0" />
+      <span className="text-xs text-gray-400 dark:text-gray-400 w-24 shrink-0">{label}</span>
       <span className={`text-sm font-medium text-gray-800 dark:text-gray-100 ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
@@ -124,7 +124,7 @@ function BankTransferPanel({ s, onConfirmed }) {
         <div className="flex gap-1.5 mb-2 flex-wrap">
           {s.proof_urls.map((url, i) => (
             <button key={i} onClick={() => setLightboxUrl(url)}
-              className="w-14 h-14 rounded-lg overflow-hidden border border-white shadow-sm hover:ring-2 hover:ring-blue-400 flex-shrink-0">
+              className="w-14 h-14 rounded-lg overflow-hidden border border-white shadow-sm hover:ring-2 hover:ring-blue-400 shrink-0">
               <img src={url} alt={`Biên lai ${i + 1}`} className="w-full h-full object-cover" />
             </button>
           ))}

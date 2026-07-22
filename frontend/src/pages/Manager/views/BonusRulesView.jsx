@@ -201,7 +201,7 @@ export default function BonusRulesView() {
                     {BONUS_TYPES.find((t) => t.value === rule.bonus_type)?.label || rule.bonus_type} · {rule.vehicle_group_name || "Tất cả nhóm xe"}
                   </span>
                 </div>
-                <div className="flex items-center gap-6 flex-shrink-0">
+                <div className="flex items-center gap-6 shrink-0">
                   <div className="text-right">
                     <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Số tiền thưởng</div>
                     <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(rule.reward_amount)}</div>

@@ -74,7 +74,7 @@ export function StatsGrid({ stats, loading }) {
               <Icon size={20} className={text} />
             </div>
             {}
-            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${gradient} opacity-10`} />
+            <div className={`w-12 h-12 rounded-full bg-linear-to-br ${gradient} opacity-10`} />
           </div>
 
           {}

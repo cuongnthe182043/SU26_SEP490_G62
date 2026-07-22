@@ -22,7 +22,7 @@ function ShipmentRow({ shipment }) {
       {}
       <td className="py-3 pr-4">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="inline-flex items-center justify-center w-5 h-5 flex-shrink-0
+          <span className="inline-flex items-center justify-center w-5 h-5 shrink-0
                            rounded-full bg-blue-100 dark:bg-blue-500/15 text-[10px] font-bold text-blue-500">
             {shipment.shipment_index}
           </span>
@@ -38,7 +38,7 @@ function ShipmentRow({ shipment }) {
       {}
       <td className="py-3 pr-4">
         <div className="flex items-center gap-1.5">
-          <RiTruckLine size={12} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />
+          <RiTruckLine size={12} className="text-gray-400 dark:text-gray-400 shrink-0" />
           <div className="flex flex-col min-w-0">
             <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300 truncate">
               {shipment.driver_name ?? "—"}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea } from "@heroui/react";
 import {
   RiMailLine, RiShieldUserLine, RiUserLine, RiPhoneLine, RiUserSmileLine,
-  RiCake2Line, RiMapPin2Line, RiFlag2Line, RiMapPinLine, RiIdCardLine,
+  RiMapPin2Line, RiFlag2Line, RiMapPinLine, RiIdCardLine,
   RiPriceTag3Line, RiContactsLine, RiStickyNoteLine,
 } from "react-icons/ri";
 
@@ -74,7 +74,7 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
               <SelectItem key="female">Nữ</SelectItem>
               <SelectItem key="other">Khác</SelectItem>
             </Select>
-            <Input type="date" label="Ngày sinh" value={form.dob} onValueChange={update("dob")} variant="bordered" startContent={ic(RiCake2Line)} />
+            <Input type="date" label="Ngày sinh" value={form.dob} onValueChange={update("dob")} variant="bordered" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Quê quán" value={form.city} onValueChange={update("city")} variant="bordered" startContent={ic(RiMapPin2Line)} />

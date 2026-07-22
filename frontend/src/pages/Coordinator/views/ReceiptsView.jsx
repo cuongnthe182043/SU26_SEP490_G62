@@ -5,7 +5,7 @@ import {
 } from "@heroui/react";
 import {
   RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine,
-  RiPriceTag3Line, RiFlag2Line, RiCalendarLine, RiCalendarCheckLine, RiSortDesc,
+  RiPriceTag3Line, RiFlag2Line, RiSortDesc,
 } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
@@ -171,8 +171,8 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
           <SelectItem key="approved">Đã duyệt</SelectItem>
           <SelectItem key="rejected">Đã từ chối</SelectItem>
         </Select>
-        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarLine)} />
-        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" startContent={ic(RiCalendarCheckLine)} />
+        <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
+        <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
         <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48" startContent={ic(RiSortDesc)}>
           <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
           <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>

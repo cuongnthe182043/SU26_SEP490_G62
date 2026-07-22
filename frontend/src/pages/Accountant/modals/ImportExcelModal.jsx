@@ -504,7 +504,7 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                         <td className="px-3 py-1.5">{display.date}</td>
                         <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
                         <td className="px-3 py-1.5">{display.customer}</td>
-                        <td className="px-3 py-1.5 max-w-[220px]">
+                        <td className="px-3 py-1.5 max-w-55">
                           <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
                           {display.runs > 1 ? <span className="text-gray-400 dark:text-gray-400"> (x{display.runs})</span> : null}
                         </td>

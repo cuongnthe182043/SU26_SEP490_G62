@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image, Chip } from "@heroui/react";
 import {
   RiCheckLine, RiErrorWarningLine, RiLoader4Line,
-  RiToolsLine, RiFileTextLine, RiCalendarEventLine, RiUserLine,
+  RiToolsLine, RiFileTextLine, RiUserLine,
   RiErrorWarningFill, RiAlertLine,
 } from "react-icons/ri";
 import { managerService } from "../services/manager.service";
@@ -64,7 +64,7 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
             {MAINTENANCE_TYPES.map((t) => <SelectItem key={t.value}>{t.label}</SelectItem>)}
           </Select>
           <Textarea label="Mô tả" placeholder="Không bắt buộc" value={form.description} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
-          <Input type="date" label="Ngày bảo dưỡng *" value={form.maintenance_date} onValueChange={(v) => setForm((p) => ({ ...p, maintenance_date: v }))} variant="bordered" startContent={ic(RiCalendarEventLine)} />
+          <Input type="date" label="Ngày bảo dưỡng *" value={form.maintenance_date} onValueChange={(v) => setForm((p) => ({ ...p, maintenance_date: v }))} variant="bordered" />
           <Select
             label="Người thực hiện *"
             placeholder="Chọn tài xế"

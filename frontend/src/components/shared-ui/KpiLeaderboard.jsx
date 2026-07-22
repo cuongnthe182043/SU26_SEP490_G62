@@ -27,9 +27,9 @@ const SORT_LABELS = {
 
 // Huy chương top 3: vàng - bạc - đồng.
 const RANK_STYLE = {
-  1: "bg-gradient-to-br from-amber-300 to-yellow-500 text-white shadow-sm",
-  2: "bg-gradient-to-br from-slate-200 to-slate-400 text-white",
-  3: "bg-gradient-to-br from-orange-300 to-orange-500 text-white",
+  1: "bg-linear-to-br from-amber-300 to-yellow-500 text-white shadow-sm",
+  2: "bg-linear-to-br from-slate-200 to-slate-400 text-white",
+  3: "bg-linear-to-br from-orange-300 to-orange-500 text-white",
 };
 const rankBadge = (rank) => RANK_STYLE[rank] || "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400";
 
@@ -42,7 +42,7 @@ function StatChip({ label, value, tone = "gray" }) {
     rose: "text-rose-500",
   }[tone];
   return (
-    <div className="flex-1 min-w-[120px] rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-4 py-3">
+    <div className="flex-1 min-w-30 rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-4 py-3">
       <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400">{label}</div>
       <div className={`mt-0.5 text-lg font-bold ${toneCls}`}>{value}</div>
     </div>
@@ -54,7 +54,7 @@ function RevenueBar({ value, max }) {
   const pct = Math.max(2, Math.min(100, (Number(value || 0) / (max || 1)) * 100));
   return (
     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-      <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
+      <div className="h-full rounded-full bg-linear-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
     </div>
   );
 }

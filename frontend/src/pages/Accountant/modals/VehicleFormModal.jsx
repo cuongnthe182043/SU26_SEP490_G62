@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, NumberInput } from "@heroui/react";
 import {
   RiInformationLine, RiTruckLine, RiRoadMapLine, RiCarLine, RiRoadsterLine,
-  RiScales3Line, RiCalendarLine, RiCalendarEventLine, RiUserLine,
+  RiScales3Line, RiCalendarLine, RiUserLine,
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 
@@ -93,7 +93,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
             <NumberInput label="Tải trọng (kg)" minValue={0.01} value={form.load_capacity_kg} onValueChange={(v) => setForm((p) => ({ ...p, load_capacity_kg: v }))} variant="bordered" startContent={ic(RiScales3Line)} />
             <NumberInput label="Năm sản xuất" minValue={1900} formatOptions={{ useGrouping: false }} value={form.manufacture_year} onValueChange={(v) => setForm((p) => ({ ...p, manufacture_year: v }))} variant="bordered" startContent={ic(RiCalendarLine)} />
           </div>
-          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" startContent={ic(RiCalendarEventLine)} />
+          <Input type="date" label="Ngày mua" value={form.purchase_date} onValueChange={(v) => setForm((p) => ({ ...p, purchase_date: v }))} variant="bordered" />
           <Select
             label="Tài xế được gán"
             placeholder="Chọn tài xế"

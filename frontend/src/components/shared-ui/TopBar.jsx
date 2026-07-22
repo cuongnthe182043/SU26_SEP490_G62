@@ -73,7 +73,7 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead,
                 >
                   <div className="flex items-start gap-2.5">
                     <span
-                      className={`mt-[5px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                      className={`mt-[5px] w-1.5 h-1.5 rounded-full shrink-0 ${
                         !n.is_read ? "bg-blue-500" : "bg-transparent"
                       }`}
                     />
@@ -129,13 +129,13 @@ export function TopBar({
   const handleOpenChange = (isOpen) => setOpen(isOpen);
 
   return (
-    <header className="flex items-center justify-between px-6 h-16 bg-white dark:bg-[#161922] border-b border-gray-100 dark:border-white/10 flex-shrink-0 gap-4">
+    <header className="flex items-center justify-between px-6 h-16 bg-white dark:bg-[#161922] border-b border-gray-100 dark:border-white/10 shrink-0 gap-4">
       <div className="flex flex-col min-w-0">
         <h1 className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{title}</h1>
         {subtitle && <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5 truncate">{subtitle}</p>}
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         {search !== undefined && onSearchChange && (
           <Input
             value={search}

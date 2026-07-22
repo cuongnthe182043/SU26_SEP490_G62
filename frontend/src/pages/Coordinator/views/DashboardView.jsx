@@ -97,7 +97,7 @@ export default function DashboardView({ refreshKey }) {
                   </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{incident.reported_by_name}</span>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <StatusBadge status={incident.severity_level} />
                   <StatusBadge status={incident.status} />
                 </div>

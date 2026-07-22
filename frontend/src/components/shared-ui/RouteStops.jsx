@@ -17,7 +17,7 @@ export function RouteStops({ pickups = [], deliveries = [], className = "" }) {
     return (
       <span className={`inline-flex items-center gap-1 min-w-0 ${className}`}>
         <span className="truncate">{stops[0].address}</span>
-        <RiArrowRightLine className="text-gray-300 flex-shrink-0" size={12} />
+        <RiArrowRightLine className="text-gray-300 shrink-0" size={12} />
         <span className="truncate">{stops[1].address}</span>
       </span>
     );
@@ -32,14 +32,14 @@ export function RouteStops({ pickups = [], deliveries = [], className = "" }) {
         return (
           <div key={i} className="flex items-center gap-1.5 min-w-0">
             <span
-              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold flex-shrink-0 ${
+              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0 ${
                 isPickup ? "bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300" : "bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300"
               }`}
             >
               {i + 1}
             </span>
             <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
                 isPickup ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300" : "bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300"
               }`}
             >

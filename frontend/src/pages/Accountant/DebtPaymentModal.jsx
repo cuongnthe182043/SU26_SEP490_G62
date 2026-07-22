@@ -224,7 +224,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
         onClose={onClose}
         size="2xl"
         scrollBehavior="inside"
-        classNames={{ header: "border-b border-gray-100 dark:border-white/10 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-t-xl", footer: "border-t border-gray-100 dark:border-white/10" }}
+        classNames={{ header: "border-b border-gray-100 dark:border-white/10 bg-linear-to-r from-emerald-500 to-emerald-600 text-white rounded-t-xl", footer: "border-t border-gray-100 dark:border-white/10" }}
       >
         <ModalContent>
           {(onClose) => (

@@ -7,7 +7,7 @@ export function StatCard({ label, value, icon: Icon, sub, gradient = "from-blue-
             <Icon size={20} className={text} />
           </div>
         )}
-        <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
+        <div className={`w-14 h-14 rounded-full bg-linear-to-br ${gradient} opacity-10 absolute top-2 right-2`} />
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{label}</span>

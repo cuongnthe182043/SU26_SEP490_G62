@@ -5,7 +5,7 @@ import {
 } from "@heroui/react";
 import {
   RiCloseLine, RiAddLine, RiDeleteBinLine, RiUserFollowLine,
-  RiCalendarEventLine, RiPhoneLine, RiUserLine, RiArchiveLine, RiScales3Line,
+  RiPhoneLine, RiUserLine, RiArchiveLine, RiScales3Line,
   RiMoneyDollarCircleLine, RiRoadMapLine, RiTruckLine, RiRoadsterLine,
   RiMapPinLine, RiFileTextLine,
 } from "react-icons/ri";
@@ -77,7 +77,6 @@ export default function OrderFormModal({
                 isInvalid={!!formErrors.date}
                 errorMessage={formErrors.date}
                 variant="bordered"
-                startContent={ic(RiCalendarEventLine)}
               />
               <div className="relative">
                 <Input
