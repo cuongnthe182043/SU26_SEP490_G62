@@ -12,7 +12,10 @@ import {
   RiFileList3Line, RiListCheck2,
   RiHistoryLine, RiRefreshLine,
   RiArrowLeftRightLine,
+  RiSearchLine, RiFilter3Line, RiFlag2Line, RiBankCardLine, RiCalendarLine, RiCalendarEventLine,
 } from "react-icons/ri";
+
+const fic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { useDebts } from "../hooks/useDebts";
@@ -320,12 +323,14 @@ function PaymentHistoryPanel() {
       {/* Bộ lọc */}
       <div className="flex flex-wrap items-center gap-2">
         <Select aria-label="Đối tượng" placeholder="Tất cả đối tượng" size="sm" className="w-40"
+          startContent={fic(RiFilter3Line)}
           selectedKeys={new Set([personType])} onChange={(e) => setPersonType(e.target.value)}>
           <SelectItem key="" textValue="Tất cả đối tượng">Tất cả đối tượng</SelectItem>
           <SelectItem key="customer" textValue="Khách hàng">Khách hàng</SelectItem>
           <SelectItem key="driver" textValue="Tài xế">Tài xế</SelectItem>
         </Select>
         <Select aria-label="Trạng thái" placeholder="Tất cả trạng thái" size="sm" className="w-40"
+          startContent={fic(RiFlag2Line)}
           selectedKeys={new Set([status])} onChange={(e) => setStatus(e.target.value)}>
           <SelectItem key="" textValue="Tất cả trạng thái">Tất cả trạng thái</SelectItem>
           <SelectItem key="confirmed" textValue="Đã xác nhận">Đã xác nhận</SelectItem>
@@ -334,6 +339,7 @@ function PaymentHistoryPanel() {
           <SelectItem key="voided" textValue="Đã hủy">Đã hủy</SelectItem>
         </Select>
         <Select aria-label="Hình thức" placeholder="Mọi hình thức" size="sm" className="w-40"
+          startContent={fic(RiBankCardLine)}
           selectedKeys={new Set([method])} onChange={(e) => setMethod(e.target.value)}>
           <SelectItem key="" textValue="Mọi hình thức">Mọi hình thức</SelectItem>
           <SelectItem key="cash" textValue="Tiền mặt">Tiền mặt</SelectItem>
@@ -341,15 +347,18 @@ function PaymentHistoryPanel() {
           <SelectItem key="offset" textValue="Cấn trừ lương">Cấn trừ lương</SelectItem>
         </Select>
         <Select aria-label="Tháng" placeholder="Cả năm" size="sm" className="w-32"
+          startContent={fic(RiCalendarLine)}
           selectedKeys={new Set([month])} onChange={(e) => setMonth(e.target.value)}>
           <SelectItem key="" textValue="Cả năm">Cả năm</SelectItem>
           {HIST_MONTHS.map((m) => <SelectItem key={String(m)} textValue={`Tháng ${m}`}>{`Tháng ${m}`}</SelectItem>)}
         </Select>
         <Select aria-label="Năm" size="sm" className="w-28"
+          startContent={fic(RiCalendarEventLine)}
           selectedKeys={new Set([year])} onChange={(e) => setYear(e.target.value)}>
           {HIST_YEARS.map((y) => <SelectItem key={String(y)} textValue={String(y)}>{String(y)}</SelectItem>)}
         </Select>
         <Input aria-label="Tìm kiếm" placeholder="Tìm tên khách / tài xế..." size="sm" className="w-52"
+          startContent={fic(RiSearchLine)}
           value={histSearch} onValueChange={setHistSearch} isClearable />
         <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={load}>Làm mới</Button>
       </div>
