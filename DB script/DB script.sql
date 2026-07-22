@@ -163,6 +163,9 @@ CREATE TABLE order_shipments (
     shipment_index        SMALLINT NOT NULL,
     vehicle_group_id      INT REFERENCES vehicle_groups(id),
     estimated_price       NUMERIC(12,2),
+    -- TRUE = giá cố định do DN chốt tay (không tính lại theo km khi duyệt phiếu thu);
+    -- FALSE = giá tự tính theo actual_km × đơn giá nhóm xe.
+    is_price_manual       BOOLEAN NOT NULL DEFAULT FALSE,
     estimated_distance_km NUMERIC(10,2),
     actual_distance_km    NUMERIC(10,2),
     actual_price          NUMERIC(12,2),

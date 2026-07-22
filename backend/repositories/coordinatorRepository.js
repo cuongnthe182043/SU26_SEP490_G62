@@ -15,6 +15,7 @@ const getOrderShipments = async (db, orderId) => {
             os.actual_distance_km,
             os.estimated_price,
             os.actual_price,
+            os.is_price_manual,
             os.notes,
             v.plate_number,
             p.full_name AS driver_name,
