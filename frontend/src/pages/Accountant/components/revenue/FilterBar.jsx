@@ -26,7 +26,7 @@ export function FilterBar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100/80 dark:bg-white/5 p-1 rounded-xl">
           {DEBT_FILTERS.map(({ key, label, icon: Icon }) => {
             const active = activeFilter === key;
             return (
@@ -36,17 +36,17 @@ export function FilterBar({
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium
                             transition-all duration-150
                   ${active
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-800"
+                    ? "bg-white dark:bg-[#161922] text-gray-900 dark:text-gray-100 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100"
                   }`}
               >
-                <Icon size={14} className={active ? "text-blue-500" : "text-gray-400"} />
+                <Icon size={14} className={active ? "text-blue-500" : "text-gray-400 dark:text-gray-400"} />
                 {label}
               </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-gray-400 font-medium">
+        <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-400 font-medium">
           <RiFileList3Line size={13} className="text-gray-300" />
           {totalItems ?? 0} đơn hàng
         </div>

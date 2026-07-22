@@ -25,8 +25,8 @@ const EMPTY_EXPENSE = () => ({ expense_type: "toll", amount: "", description: ""
 function SectionLabel({ icon: Icon, children }) {
   return (
     <div className="flex items-center gap-1.5 mb-2">
-      <Icon size={13} className="text-gray-400" />
-      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">{children}</span>
+      <Icon size={13} className="text-gray-400 dark:text-gray-400" />
+      <span className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">{children}</span>
     </div>
   );
 }
@@ -65,10 +65,10 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
   const totalExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
   return (
-    <div className="flex flex-col gap-4 p-4 border border-gray-200 rounded-2xl bg-gray-50/40">
+    <div className="flex flex-col gap-4 p-4 border border-gray-200 dark:border-white/10 rounded-2xl bg-gray-50/40 dark:bg-white/5">
       {}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-bold text-gray-700">Chuyến {index + 1}</span>
+        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Chuyến {index + 1}</span>
         {canRemove && (
           <Button size="sm" variant="light" color="danger" isIconOnly onPress={onRemove}>
             <RiDeleteBinLine size={15} />
@@ -81,7 +81,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
         <SectionLabel icon={RiMapPin2Line}>Tuyến đường</SectionLabel>
 
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-gray-500 font-medium">Điểm lấy hàng</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Điểm lấy hàng</span>
           {(shipment.pickup_addresses ?? [""]).map((addr, i) => (
             <div key={i} className="flex gap-2">
               <Input
@@ -89,7 +89,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
                 value={addr}
                 onValueChange={(v) => handlePickupChange(i, v)}
                 size="sm"
-                classNames={{ inputWrapper: "bg-white" }}
+                classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
               />
               {(shipment.pickup_addresses?.length ?? 1) > 1 && (
                 <Button size="sm" variant="light" isIconOnly onPress={() => handleRemovePickup(i)}>
@@ -102,7 +102,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             size="sm" variant="light"
             startContent={<RiAddLine size={14} />}
             onPress={handleAddPickup}
-            className="self-start text-xs text-gray-500"
+            className="self-start text-xs text-gray-500 dark:text-gray-400"
           >
             Thêm điểm lấy
           </Button>
@@ -120,7 +120,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
           isRequired
           isInvalid={!!e("delivery")}
           errorMessage={e("delivery")}
-          classNames={{ inputWrapper: "bg-white" }}
+          classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
         />
       </div>
 
@@ -136,7 +136,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             value={shipment.cargo_name ?? ""}
             onValueChange={(v) => onChange("cargo_name", v)}
             size="sm"
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
           <Input
             label="Khối lượng (kg)"
@@ -145,7 +145,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             value={shipment.cargo_weight ?? ""}
             onValueChange={(v) => onChange("cargo_weight", v)}
             size="sm"
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
           <Input
             label="Cước xe (đ)"
@@ -157,7 +157,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             isRequired
             isInvalid={!!e("fee")}
             errorMessage={e("fee")}
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
         </div>
       </div>
@@ -173,7 +173,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             selectedKeys={new Set([shipment.payment_type ?? "cash"])}
             onSelectionChange={(keys) => onChange("payment_type", [...keys][0])}
             size="sm"
-            classNames={{ trigger: "bg-white" }}
+            classNames={{ trigger: "bg-white dark:bg-[#161922]" }}
           >
             {PAYMENT_TYPES.map(({ key, label }) => (
               <SelectItem key={key}>{label}</SelectItem>
@@ -186,7 +186,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
               selectedKeys={new Set([shipment.driver_payment_state ?? "company_received"])}
               onSelectionChange={(keys) => onChange("driver_payment_state", [...keys][0])}
               size="sm"
-              classNames={{ trigger: "bg-white" }}
+              classNames={{ trigger: "bg-white dark:bg-[#161922]" }}
             >
               {DRIVER_PAYMENT_STATES.map(({ key, label }) => (
                 <SelectItem key={key}>{label}</SelectItem>
@@ -227,14 +227,14 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             }}
             allowsCustomValue
             defaultItems={drivers}
-            classNames={{ base: "bg-white" }}
+            classNames={{ base: "bg-white dark:bg-[#161922]" }}
             listboxProps={{ emptyContent: "Không tìm thấy tài xế — sẽ lưu dạng tên tự do (ngoài hệ thống)." }}
           >
             {(driver) => (
               <AutocompleteItem key={String(driver.id)} textValue={driver.full_name}>
                 <div className="flex flex-col">
                   <span className="text-sm">{driver.full_name}</span>
-                  {driver.plate_number && <span className="text-xs text-gray-400">{driver.plate_number}</span>}
+                  {driver.plate_number && <span className="text-xs text-gray-400 dark:text-gray-400">{driver.plate_number}</span>}
                 </div>
               </AutocompleteItem>
             )}
@@ -245,7 +245,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
             value={shipment.vehicle_plate ?? ""}
             onValueChange={(v) => onChange("vehicle_plate", v)}
             size="sm"
-            classNames={{ inputWrapper: "bg-white" }}
+            classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
           />
         </div>
       </div>
@@ -257,25 +257,25 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
         <div className="flex items-center justify-between">
           <SectionLabel icon={RiReceiptLine}>Chi phí phát sinh</SectionLabel>
           {totalExpenses > 0 && (
-            <span className="text-[11px] font-bold text-orange-600 mb-2">
+            <span className="text-[11px] font-bold text-orange-600 dark:text-orange-300 mb-2">
               Tổng: {Number(totalExpenses).toLocaleString("vi-VN")}đ
             </span>
           )}
         </div>
 
         {expenses.length === 0 ? (
-          <p className="text-[11px] text-gray-400 italic px-1">Chưa có chi phí nào.</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-400 italic px-1">Chưa có chi phí nào.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {expenses.map((exp, i) => (
-              <div key={i} className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-gray-100">
+              <div key={i} className="flex items-center gap-2 p-2.5 bg-white dark:bg-[#161922] rounded-xl border border-gray-100 dark:border-white/10">
                 <div className="grid grid-cols-3 gap-2 flex-1">
                   <Select
                     size="sm"
                     label="Loại"
                     selectedKeys={new Set([exp.expense_type])}
                     onSelectionChange={(keys) => handleExpenseChange(i, "expense_type", [...keys][0])}
-                    classNames={{ trigger: "bg-gray-50" }}
+                    classNames={{ trigger: "bg-gray-50 dark:bg-white/5" }}
                   >
                     {EXPENSE_TYPES.map(({ key, label }) => (
                       <SelectItem key={key}>{label}</SelectItem>
@@ -290,7 +290,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
                     onValueChange={(v) => handleExpenseChange(i, "amount", v)}
                     isInvalid={!!errors[`shipment_${index}_expense_${i}_amount`]}
                     errorMessage={errors[`shipment_${index}_expense_${i}_amount`]}
-                    classNames={{ inputWrapper: "bg-gray-50" }}
+                    classNames={{ inputWrapper: "bg-gray-50 dark:bg-white/5" }}
                   />
                   <Input
                     size="sm"
@@ -298,7 +298,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
                     placeholder="Mô tả..."
                     value={exp.description}
                     onValueChange={(v) => handleExpenseChange(i, "description", v)}
-                    classNames={{ inputWrapper: "bg-gray-50" }}
+                    classNames={{ inputWrapper: "bg-gray-50 dark:bg-white/5" }}
                   />
                 </div>
                 <Button size="sm" variant="light" isIconOnly onPress={() => handleRemoveExpense(i)}>
@@ -326,7 +326,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
         value={shipment.notes ?? ""}
         onValueChange={(v) => onChange("notes", v)}
         size="sm"
-        classNames={{ inputWrapper: "bg-white" }}
+        classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
       />
     </div>
   );

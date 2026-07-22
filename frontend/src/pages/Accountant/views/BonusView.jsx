@@ -8,7 +8,7 @@ import {
   RiAddLine, RiCalendarLine, RiPriceTag3Line, RiFlag2Line, RiUserLine, RiSortDesc,
 } from "react-icons/ri";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { useBonuses } from "../hooks/useBonuses";
 import { accountantService } from "../services/accountant.service";
 import { PaginationBar } from "../components/shared/PaginationBar";
@@ -61,16 +61,16 @@ const EMPTY_CREATE_FORM = { driver_id: "", type: "", year: currentYear, benefici
 
 function StatCard({ label, value, color = "default" }) {
   const colors = {
-    default: "bg-white border-gray-100",
-    blue:    "bg-blue-50 border-blue-100",
-    green:   "bg-green-50 border-green-100",
-    yellow:  "bg-yellow-50 border-yellow-100",
-    red:     "bg-red-50 border-red-100",
+    default: "bg-white dark:bg-[#161922] border-gray-100 dark:border-white/10",
+    blue:    "bg-blue-50 dark:bg-blue-500/10 border-blue-100 dark:border-blue-500/20",
+    green:   "bg-green-50 dark:bg-green-500/10 border-green-100 dark:border-green-500/20",
+    yellow:  "bg-yellow-50 dark:bg-yellow-500/10 border-yellow-100 dark:border-yellow-500/20",
+    red:     "bg-red-50 dark:bg-red-500/10 border-red-100 dark:border-red-500/20",
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-xl font-bold text-gray-800">{value}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+      <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
     </div>
   );
 }
@@ -244,12 +244,12 @@ export function BonusView({ search }) {
       ) : error ? (
         <p className="text-red-500 text-sm">{error}</p>
       ) : filtered.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-12">Không có dữ liệu</p>
+        <p className="text-gray-400 dark:text-gray-400 text-sm text-center py-12">Không có dữ liệu</p>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+        <div className="bg-white dark:bg-[#161922] rounded-xl border border-gray-100 dark:border-white/10 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="text-xs text-gray-500 border-b border-gray-100">
+              <tr className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
                 <th className="px-4 py-3 text-left font-semibold">Nhân viên</th>
                 <th className="px-4 py-3 text-left font-semibold">Loại</th>
                 <th className="px-4 py-3 text-left font-semibold">Năm</th>
@@ -260,12 +260,12 @@ export function BonusView({ search }) {
                 <th className="px-4 py-3 text-center font-semibold">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/10">
               {filtered.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{b.driver_name}</p>
-                    <p className="text-xs text-gray-400">{b.driver_phone}</p>
+                    <p className="font-medium text-gray-800 dark:text-gray-100">{b.driver_name}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-400">{b.driver_phone}</p>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {TYPE_LABEL[b.type] ?? b.type}
@@ -276,20 +276,20 @@ export function BonusView({ search }) {
                   </td>
                   <td className="px-4 py-3 max-w-[200px]">
                     {b.beneficiary_name && (
-                      <span className="text-gray-700">
+                      <span className="text-gray-700 dark:text-gray-200">
                         {b.beneficiary_name}
                         {b.beneficiary_relation && (
-                          <span className="text-gray-400 text-xs ml-1">
+                          <span className="text-gray-400 dark:text-gray-400 text-xs ml-1">
                             ({RELATION_LABEL[b.beneficiary_relation] ?? b.beneficiary_relation})
                           </span>
                         )}
                       </span>
                     )}
                     {b.notes && (
-                      <p className="text-xs text-gray-400 truncate">{b.notes}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-400 truncate">{b.notes}</p>
                     )}
                     {b.type === "tet_annual" && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-400 dark:text-gray-400">
                         {b.months_full_count ?? 0} tháng đủ &bull; thâm niên {fmt(b.seniority_bonus)}
                       </p>
                     )}
@@ -306,7 +306,7 @@ export function BonusView({ search }) {
                       {STATUS_LABEL[b.status] ?? b.status}
                     </Chip>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                     {b.approved_by_name ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -407,7 +407,7 @@ export function BonusView({ search }) {
 
           <Textarea label="Ghi chú" value={createForm.notes} onValueChange={(v) => setCreateForm((p) => ({ ...p, notes: v }))} minRows={2} variant="bordered" />
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-700">
+          <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/25 rounded-xl px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
             Khoản do Kế toán tạo sẽ ở trạng thái <strong>Chờ duyệt</strong> — cần Manager duyệt trước khi cộng vào lương / chi trả.
           </div>
 
@@ -423,10 +423,10 @@ export function BonusView({ search }) {
         <ModalContent>
           <ModalHeader>Xác nhận chi trả</ModalHeader>
           <ModalBody>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Xác nhận đã chi trả khoản thưởng/phúc lợi này cho tài xế?
             </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800">
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 rounded-xl px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
               Lưu ý: thưởng đã duyệt sẽ tự động cộng vào bảng lương tháng và chuyển
               sang trạng thái đã chi khi kế toán chi lương. Chỉ dùng nút này khi cần
               chi tiền mặt riêng ngoài kỳ lương — khoản đã đánh dấu đã chi sẽ KHÔNG

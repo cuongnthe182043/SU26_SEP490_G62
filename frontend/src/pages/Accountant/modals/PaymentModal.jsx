@@ -9,7 +9,7 @@ import {
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 
-const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
 
 const PAYMENT_METHODS = [
@@ -41,15 +41,15 @@ function HistoryItem({ payment, onVoid }) {
   const statusChip = PAYMENT_STATUS_CHIP[payment.payment_status] ?? PAYMENT_STATUS_CHIP.confirmed;
 
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
+    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 dark:border-white/10 last:border-0">
       <div className="flex flex-col gap-0.5">
-        <MoneyText amount={payment.amount} className="text-xs font-bold text-emerald-600" />
-        <span className="text-[11px] text-gray-400">
+        <MoneyText amount={payment.amount} className="text-xs font-bold text-emerald-600 dark:text-emerald-300" />
+        <span className="text-[11px] text-gray-400 dark:text-gray-400">
           {METHOD_LABEL[payment.payment_method] ?? payment.payment_method ?? "—"} · {date}
           {payment.creator_name ? ` · ghi bởi ${payment.creator_name}` : ""}
         </span>
         {payment.notes && (
-          <span className="text-[11px] text-gray-400 italic">{payment.notes}</span>
+          <span className="text-[11px] text-gray-400 dark:text-gray-400 italic">{payment.notes}</span>
         )}
       </div>
       <div className="flex items-center gap-1.5">
@@ -78,8 +78,8 @@ function AllocationRow({ alloc, isCurrentOrder }) {
   return (
     <div className="flex items-center justify-between py-1.5">
       <div className="flex items-center gap-1.5 min-w-0">
-        <RiArrowRightLine size={11} className="text-gray-400 shrink-0" />
-        <span className="text-[11px] text-gray-600 truncate">
+        <RiArrowRightLine size={11} className="text-gray-400 dark:text-gray-400 shrink-0" />
+        <span className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
           Đơn #{alloc.orderId}
           {isCurrentOrder && (
             <span className="ml-1 text-[10px] text-blue-500 font-medium">(đơn này)</span>
@@ -87,7 +87,7 @@ function AllocationRow({ alloc, isCurrentOrder }) {
         </span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <MoneyText amount={alloc.allocated} className="text-[11px] font-bold text-emerald-700" />
+        <MoneyText amount={alloc.allocated} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300" />
         <Chip size="sm" color={statusColor} variant="flat" className="text-[10px] h-4 px-1">
           {alloc.newStatus === "paid" ? "Xong" : alloc.newStatus === "partial" ? "Một phần" : "Còn nợ"}
         </Chip>
@@ -195,13 +195,13 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5 pb-2">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-              <RiBankCard2Line size={16} className="text-blue-600" />
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+              <RiBankCard2Line size={16} className="text-blue-600 dark:text-blue-300" />
             </div>
             <div>
-              <p className="text-base font-bold text-gray-900">Ghi nhận thanh toán</p>
+              <p className="text-base font-bold text-gray-900 dark:text-gray-100">Ghi nhận thanh toán</p>
               {order && (
-                <p className="text-xs font-normal text-gray-400">
+                <p className="text-xs font-normal text-gray-400 dark:text-gray-400">
                   Đơn #{order.id} · {order.customer_name}
                 </p>
               )}
@@ -213,17 +213,17 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
           {/* Tóm tắt công nợ */}
           {order && (
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-0.5 bg-gray-50 rounded-xl p-3">
-                <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">
+              <div className="flex flex-col gap-0.5 bg-gray-50 dark:bg-white/5 rounded-xl p-3">
+                <span className="text-[10px] text-gray-400 dark:text-gray-400 font-semibold uppercase tracking-wide">
                   Còn lại đơn này
                 </span>
                 <MoneyText
                   amount={orderDebtRemaining}
-                  className="text-sm font-bold text-red-600"
+                  className="text-sm font-bold text-red-600 dark:text-red-300"
                 />
               </div>
-              <div className="flex flex-col gap-0.5 bg-amber-50 rounded-xl p-3">
-                <span className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">
+              <div className="flex flex-col gap-0.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl p-3">
+                <span className="text-[10px] text-amber-600 dark:text-amber-300 font-semibold uppercase tracking-wide">
                   Tổng công nợ khách
                 </span>
                 {debtLoading ? (
@@ -231,7 +231,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
                 ) : (
                   <MoneyText
                     amount={totalOutstanding}
-                    className="text-sm font-bold text-amber-700"
+                    className="text-sm font-bold text-amber-700 dark:text-amber-300"
                   />
                 )}
               </div>
@@ -240,11 +240,11 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
 
           {/* Nếu vừa ghi nhận thành công — hiển thị breakdown */}
           {result && (
-            <div className="bg-emerald-50 rounded-xl p-3 flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-emerald-700">{result.message}</p>
+            <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-3 flex flex-col gap-1.5">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{result.message}</p>
               {result.spreadAcrossOrders && (
                 <div className="flex flex-col gap-0.5 mt-1">
-                  <span className="text-[10px] text-emerald-600 font-medium uppercase tracking-wide mb-0.5">
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-300 font-medium uppercase tracking-wide mb-0.5">
                     Phân bổ vào các đơn
                   </span>
                   {result.allocations.map((alloc) => (
@@ -257,7 +257,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
                 </div>
               )}
               {result.totalRemainingAfter > 0.01 && (
-                <p className="text-[11px] text-amber-600 mt-1">
+                <p className="text-[11px] text-amber-600 dark:text-amber-300 mt-1">
                   Còn tổng nợ:{" "}
                   <MoneyText
                     amount={result.totalRemainingAfter}
@@ -273,7 +273,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
           {/* Form nhập */}
           <div className="flex flex-col gap-3">
             {error && (
-              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+              <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
                 <RiAlertLine size={13} />
                 {error}
               </div>
@@ -296,7 +296,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
                   : undefined
               }
               isInvalid={!!error}
-              classNames={{ inputWrapper: "bg-white" }}
+              classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
             />
             <Select
               label="Hình thức thanh toán"
@@ -314,7 +314,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               value={notes}
               onValueChange={setNotes}
               maxLength={500}
-              classNames={{ inputWrapper: "bg-white" }}
+              classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
               startContent={ic(RiStickyNoteLine)}
             />
           </div>
@@ -323,15 +323,15 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
           <Divider />
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1.5 mb-1">
-              <RiHistoryLine size={13} className="text-gray-400" />
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <RiHistoryLine size={13} className="text-gray-400 dark:text-gray-400" />
+              <span className="text-xs font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wide">
                 Lịch sử thanh toán đơn này
               </span>
             </div>
             {histLoading ? (
               <div className="flex justify-center py-4"><Spinner size="sm" /></div>
             ) : history.length === 0 ? (
-              <p className="text-xs text-gray-400 py-2 italic">Chưa có thanh toán nào.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 py-2 italic">Chưa có thanh toán nào.</p>
             ) : (
               history.map((p, i) => <HistoryItem key={i} payment={p} onVoid={handleVoidPayment} />)
             )}

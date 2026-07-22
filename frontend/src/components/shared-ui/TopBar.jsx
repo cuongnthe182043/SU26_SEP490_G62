@@ -6,6 +6,7 @@ import {
   RiTimeLine, RiInboxLine,
 } from "react-icons/ri";
 import { useNotifications } from "../../hooks/useNotifications";
+import ThemeToggle from "../../theme/ThemeToggle";
 
 function formatTime(value) {
   if (!value) return "—";
@@ -22,11 +23,11 @@ function formatTime(value) {
 function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead, onSelect }) {
   return (
     <div className="w-80 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/10">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-gray-900">Thông báo</span>
+          <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Thông báo</span>
           {unreadCount > 0 && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-300">
               {unreadCount}
             </span>
           )}
@@ -34,7 +35,7 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead,
         {unreadCount > 0 && (
           <button
             onClick={onMarkAllRead}
-            className="flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 font-medium transition-colors"
+            className="flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
           >
             <RiCheckDoubleLine size={13} />
             Đọc tất cả
@@ -49,13 +50,13 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead,
           </div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-              <RiInboxLine size={18} className="text-gray-400" />
+            <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center">
+              <RiInboxLine size={18} className="text-gray-400 dark:text-gray-500" />
             </div>
-            <p className="text-xs text-gray-400">Không có thông báo nào.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Không có thông báo nào.</p>
           </div>
         ) : (
-          <div className="flex flex-col divide-y divide-gray-50">
+          <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10">
             {notifications.map((n) => {
               // Bấm bất kỳ thông báo nào cũng đánh dấu ĐÃ ĐỌC; nếu có entity_type
               // thì điều hướng thêm tới màn liên quan.
@@ -67,27 +68,27 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead,
                   type={clickable ? "button" : undefined}
                   onClick={clickable ? () => onSelect(n) : undefined}
                   className={`px-4 py-3 transition-colors ${clickable ? "w-full text-left cursor-pointer" : ""} ${
-                    !n.is_read ? "bg-blue-50/50" : "hover:bg-gray-50"
+                    !n.is_read ? "bg-blue-50/50 dark:bg-blue-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
                     <span
-                      className={`mt-[5px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                      className={`mt-[5px] w-1.5 h-1.5 rounded-full shrink-0 ${
                         !n.is_read ? "bg-blue-500" : "bg-transparent"
                       }`}
                     />
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2">
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-100 leading-snug line-clamp-2">
                         {n.title}
                       </p>
                       {n.message && (
-                        <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-2">
                           {n.message}
                         </p>
                       )}
                       <div className="flex items-center gap-1 mt-0.5">
-                        <RiTimeLine size={10} className="text-gray-300" />
-                        <span className="text-[10px] text-gray-400">{formatTime(n.created_at)}</span>
+                        <RiTimeLine size={10} className="text-gray-300 dark:text-gray-500" />
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatTime(n.created_at)}</span>
                       </div>
                     </div>
                   </div>
@@ -128,13 +129,13 @@ export function TopBar({
   const handleOpenChange = (isOpen) => setOpen(isOpen);
 
   return (
-    <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-gray-100 flex-shrink-0 gap-4">
+    <header className="flex items-center justify-between px-6 h-16 bg-white dark:bg-[#161922] border-b border-gray-100 dark:border-white/10 shrink-0 gap-4">
       <div className="flex flex-col min-w-0">
-        <h1 className="text-base font-bold text-gray-900 leading-tight truncate">{title}</h1>
-        {subtitle && <p className="text-xs text-gray-400 mt-0.5 truncate">{subtitle}</p>}
+        <h1 className="text-base font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{title}</h1>
+        {subtitle && <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5 truncate">{subtitle}</p>}
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         {search !== undefined && onSearchChange && (
           <Input
             value={search}
@@ -145,7 +146,7 @@ export function TopBar({
             variant="bordered"
             classNames={{
               base: "w-60",
-              inputWrapper: "bg-gray-50 border-gray-200 hover:border-blue-300 h-9 rounded-lg",
+              inputWrapper: "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 hover:border-blue-300 dark:hover:border-blue-500/50 h-9 rounded-lg",
               input: "text-sm",
             }}
             isClearable
@@ -177,13 +178,15 @@ export function TopBar({
           </Button>
         )}
 
+        <ThemeToggle />
+
         <Popover
           isOpen={open}
           onOpenChange={handleOpenChange}
           placement="bottom-end"
           offset={8}
           classNames={{
-            content: "p-0 rounded-2xl shadow-xl border border-gray-100 overflow-hidden",
+            content: "p-0 rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] overflow-hidden",
           }}
         >
           <PopoverTrigger>
@@ -191,7 +194,7 @@ export function TopBar({
               isIconOnly
               variant="flat"
               size="sm"
-              className="relative h-9 w-9 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 transition-colors overflow-visible"
+              className="relative h-9 w-9 text-gray-500 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-white/10 hover:bg-gray-100 dark:hover:bg-white/20 transition-colors overflow-visible"
               aria-label="Thông báo"
             >
               <RiNotification3Line size={18} />
