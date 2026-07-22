@@ -340,7 +340,7 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
 
   return (
     <div className={`rounded-2xl border ${config.wrap} px-4 py-3 flex items-center gap-3 flex-wrap`}>
-      <div className="w-9 h-9 rounded-xl bg-white/70 flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-xl bg-white/70 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
         <Icon size={18} className={config.iconTone} />
       </div>
       <div className="flex-1 min-w-[180px]">
