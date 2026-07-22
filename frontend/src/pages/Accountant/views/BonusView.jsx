@@ -4,7 +4,11 @@ import {
   ModalBody, ModalFooter, Spinner, Select, SelectItem,
   Tabs, Tab, Input, NumberInput, Textarea,
 } from "@heroui/react";
-import { RiAddLine } from "react-icons/ri";
+import {
+  RiAddLine, RiCalendarLine, RiPriceTag3Line, RiFlag2Line, RiUserLine, RiSortDesc,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 import { useBonuses } from "../hooks/useBonuses";
 import { accountantService } from "../services/accountant.service";
 import { PaginationBar } from "../components/shared/PaginationBar";
