@@ -2,6 +2,12 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Select, SelectItem, Textarea, Input, Checkbox,
 } from "@heroui/react";
+import {
+  RiTruckLine, RiUserLine, RiScales3Line, RiFlag2Line, RiUserSharedLine,
+  RiFileTextLine, RiMoneyDollarCircleLine, RiBankCardLine, RiUserReceivedLine,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 shrink-0" />;
 
 export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation }) {
   if (!incident) return null;
