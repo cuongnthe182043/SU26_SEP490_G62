@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { StatsGrid } from "../components/revenue/StatsGrid";
 import { FilterBar } from "../components/revenue/FilterBar";
 import { OrdersTable } from "../components/revenue/OrdersTable";
@@ -57,7 +58,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
       };
       const { rows } = await accountantService.exportOrdersReport(filters);
       if (rows.length === 0) {
-        alert("Không có chuyến nào khớp bộ lọc hiện tại để xuất.");
+        notify.info("Không có chuyến nào khớp bộ lọc hiện tại để xuất.");
         return;
       }
       const filterParts = [];
@@ -68,7 +69,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
       if (filters.search) filterParts.push(`Tìm kiếm: ${filters.search}`);
       await exportOrdersReportToExcel(rows, { filterLabel: filterParts.join(" · ") });
     } catch (err) {
-      alert(err.message ?? "Xuất báo cáo thất bại.");
+      notify.error(err.message ?? "Xuất báo cáo thất bại.");
     } finally {
       setExporting(false);
     }
