@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { Button, Input, Select, SelectItem, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
 import { RiCalendarLine, RiAddLine, RiDeleteBinLine } from "react-icons/ri";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
@@ -32,7 +33,7 @@ export default function HolidaysView() {
       const data = await managerService.getHolidays(y);
       setHolidays(data.holidays || []);
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -49,8 +50,8 @@ export default function HolidaysView() {
   }, [holidays, safePage]);
 
   const handleAdd = async () => {
-    if (!newDate) { alert("Chọn ngày lễ"); return; }
-    if (!newName.trim()) { alert("Nhập tên ngày lễ"); return; }
+    if (!newDate) { notify.error("Chọn ngày lễ"); return; }
+    if (!newName.trim()) { notify.error("Nhập tên ngày lễ"); return; }
     setSaving(true);
     try {
       await managerService.createHoliday({ holiday_date: newDate, name: newName.trim() });
@@ -60,7 +61,7 @@ export default function HolidaysView() {
       const addedYear = new Date(newDate).getFullYear();
       if (addedYear !== year) setYear(addedYear); else await load();
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     } finally {
       setSaving(false);
     }
@@ -74,7 +75,7 @@ export default function HolidaysView() {
       setDeleteTarget(null);
       await load();
     } catch (err) {
-      alert(err.message);
+      notify.error(err.message);
     }
   };
 
