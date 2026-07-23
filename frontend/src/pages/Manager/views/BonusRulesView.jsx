@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Input, NumberInput, Select, SelectItem, Switch, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -49,7 +50,7 @@ export default function BonusRulesView() {
       const data = await managerService.getBonusRules();
       setRules(data.rules || []);
     } catch (err) {
-      alert(err.message || "Không thể tải quy tắc thưởng.");
+      notify.error(err.message || "Không thể tải quy tắc thưởng.");
     } finally {
       setLoading(false);
     }
@@ -114,7 +115,7 @@ export default function BonusRulesView() {
       setDeleteTarget(null);
       load();
     } catch (err) {
-      alert(err.message || "Không thể xóa quy tắc thưởng.");
+      notify.error(err.message || "Không thể xóa quy tắc thưởng.");
     }
   };
 
