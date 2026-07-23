@@ -3,10 +3,10 @@ const sqlRunner = require('../repositories/chatbotSqlRunner');
 const knowledge = require('./chatbotKnowledge');
 
 // Dùng Google Gemini (có free tier — aistudio.google.com). Đổi model qua env
-// CHATBOT_MODEL (mặc định gemini-flash-latest — Gemini 3 flash, có free tier & tốt).
+// CHATBOT_MODEL (mặc định gemini-2.0-flash — Gemini 2.0 Flash nhanh & thông minh hơn).
 // Chỉ file này phụ thuộc nhà cung cấp — lớp bảo mật SQL, view, phân quyền, FE dùng
 // chung không đổi.
-const MODEL = process.env.CHATBOT_MODEL || 'gemini-flash-latest';
+const MODEL = process.env.CHATBOT_MODEL || 'gemini-2.0-flash';
 const MAX_ITERATIONS = 6; // chặn vòng lặp tool vô hạn
 
 let genAI = null;
