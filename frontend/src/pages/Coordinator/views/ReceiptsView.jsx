@@ -3,7 +3,12 @@ import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine } from "react-icons/ri";
+import {
+  RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine,
+  RiPriceTag3Line, RiFlag2Line, RiSortDesc,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
@@ -152,14 +157,14 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-end gap-3">
-        <Select label="Loại" selectedKeys={[kindFilter]} onSelectionChange={(keys) => setKindFilter([...keys][0])} variant="bordered" size="sm" className="w-48">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 flex flex-wrap items-end gap-3">
+        <Select label="Loại" selectedKeys={[kindFilter]} onSelectionChange={(keys) => setKindFilter([...keys][0])} variant="bordered" size="sm" className="w-48" startContent={ic(RiPriceTag3Line)}>
           <SelectItem key="all">Tất cả</SelectItem>
           <SelectItem key="requests">Yêu cầu chờ xử lý</SelectItem>
           <SelectItem key="receipts">Phiếu thu đã tạo</SelectItem>
           <SelectItem key="rejected">Đã từ chối</SelectItem>
         </Select>
-        <Select label="Trạng thái" selectedKeys={[statusFilter]} onSelectionChange={(keys) => setStatusFilter([...keys][0])} variant="bordered" size="sm" className="w-44">
+        <Select label="Trạng thái" selectedKeys={[statusFilter]} onSelectionChange={(keys) => setStatusFilter([...keys][0])} variant="bordered" size="sm" className="w-44" startContent={ic(RiFlag2Line)}>
           <SelectItem key="all">Tất cả</SelectItem>
           <SelectItem key="pending">Chờ duyệt</SelectItem>
           <SelectItem key="processing">Đang xử lý</SelectItem>
@@ -168,22 +173,22 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
         </Select>
         <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
         <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
-        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48">
+        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48" startContent={ic(RiSortDesc)}>
           <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
           <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
           <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
         </Select>
         <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={resetFilters}>Xóa lọc</Button>
-        <div className="ml-auto text-xs text-gray-400">
+        <div className="ml-auto text-xs text-gray-400 dark:text-gray-400">
           {summary.total} bản ghi · {summary.approved} đã tạo · {summary.pending} chờ xử lý
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
           <div>
-            <div className="text-sm font-bold text-gray-800">Yêu cầu & phiếu thu</div>
-            <div className="text-xs text-gray-400">Tài xế gửi yêu cầu, coordinator xử lý và xem lại các phiếu thu đã tạo ngay tại đây.</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Yêu cầu & phiếu thu</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">Tài xế gửi yêu cầu, coordinator xử lý và xem lại các phiếu thu đã tạo ngay tại đây.</div>
           </div>
         </div>
 
@@ -200,7 +205,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                     <button
                       key={p}
                       onClick={() => loadReceiptRequests(p)}
-                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"}`}
                     >
                       {p}
                     </button>

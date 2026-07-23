@@ -1,6 +1,8 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useState } from "react";
 import { Button, Spinner, Select, SelectItem, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
-import { RiEyeLine } from "react-icons/ri";
+import { RiEyeLine, RiFlag2Line, RiAlertLine, RiSortDesc } from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import IncidentDetailModal from "../modals/IncidentDetailModal";
 import CreateIncidentModal from "../modals/CreateIncidentModal";
@@ -175,17 +177,18 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10 gap-3 flex-wrap">
           <div>
-            <div className="text-sm font-bold text-gray-800">Danh sách sự cố</div>
-            <div className="text-xs text-gray-400">Nếu chưa lấy hàng, doanh thu thuộc về tài xế thay thế. Nếu đã lấy hàng, doanh thu chia 50/50.</div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Danh sách sự cố</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">Nếu chưa lấy hàng, doanh thu thuộc về tài xế thay thế. Nếu đã lấy hàng, doanh thu chia 50/50.</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Select
               size="sm"
               variant="bordered"
               className="w-44"
+              startContent={ic(RiFlag2Line)}
               selectedKeys={new Set([statusFilter])}
               onSelectionChange={(keys) => setStatusFilter([...keys][0] ?? "")}
             >
@@ -197,6 +200,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               size="sm"
               variant="bordered"
               className="w-40"
+              startContent={ic(RiAlertLine)}
               selectedKeys={new Set([severityFilter])}
               onSelectionChange={(keys) => setSeverityFilter([...keys][0] ?? "")}
             >
@@ -209,6 +213,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               variant="bordered"
               className="w-44"
               placeholder="Sắp xếp"
+              startContent={ic(RiSortDesc)}
               selectedKeys={new Set([sortBy])}
               onSelectionChange={(keys) => setSortBy([...keys][0] ?? "newest")}
             >
@@ -216,7 +221,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
                 <SelectItem key={o.value} textValue={o.label}>{o.label}</SelectItem>
               ))}
             </Select>
-            <span className="text-xs text-gray-400 whitespace-nowrap">{incidents.length} sự cố · {incidents.filter((i) => i.status === "open").length} mới tiếp nhận</span>
+            <span className="text-xs text-gray-400 dark:text-gray-400 whitespace-nowrap">{incidents.length} sự cố · {incidents.filter((i) => i.status === "open").length} mới tiếp nhận</span>
           </div>
         </div>
 
@@ -233,7 +238,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
                     <button
                       key={p}
                       onClick={() => loadIncidents(p)}
-                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                      className={`w-7 h-7 rounded-lg text-xs font-medium ${p === pagination.page ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"}`}
                     >
                       {p}
                     </button>
@@ -262,8 +267,8 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
               <TableRow key={incident.id}>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-semibold text-gray-800">#{incident.id}</span>
-                    <span className="text-xs text-gray-400">{incidentTypeLabel(incident.incident_type)}</span>
+                    <span className="font-semibold text-gray-800 dark:text-gray-100">#{incident.id}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{incidentTypeLabel(incident.incident_type)}</span>
                   </div>
                 </TableCell>
                 <TableCell>{incident.shipment_id ? `#${incident.shipment_id}` : "-"}</TableCell>

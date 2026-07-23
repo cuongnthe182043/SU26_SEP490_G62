@@ -29,9 +29,9 @@ export function ConfirmDialog({
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose?.()} placement="center">
       <ModalContent>
-        <ModalHeader className="text-base font-bold text-gray-900">{title}</ModalHeader>
+        <ModalHeader className="text-base font-bold text-gray-900 dark:text-gray-100">{title}</ModalHeader>
         <ModalBody>
-          {description && <p className="text-sm text-gray-500">{description}</p>}
+          {description && <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>}
           {requireReason && (
             <Textarea
               label={reasonLabel}

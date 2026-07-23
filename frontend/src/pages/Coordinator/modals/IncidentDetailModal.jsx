@@ -2,6 +2,12 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Select, SelectItem, Textarea, Input, Checkbox,
 } from "@heroui/react";
+import {
+  RiTruckLine, RiUserLine, RiScales3Line, RiFlag2Line, RiUserSharedLine,
+  RiFileTextLine, RiMoneyDollarCircleLine, RiBankCardLine, RiUserReceivedLine,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
 export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation }) {
   if (!incident) return null;
@@ -15,11 +21,11 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
   const compensationState = incident.compensation_status ?? "none";
   const hasLiveCompensation = ["pending", "approved", "paid"].includes(compensationState);
   const COMPENSATION_BANNER = {
-    pending:  { text: "Khoản đền bù đang chờ Manager duyệt — sự cố tạm khóa ở “đang xử lý”.", cls: "border-amber-200 bg-amber-50 text-amber-700" },
-    approved: { text: "Khoản đền bù đã được duyệt, chờ Kế toán chi.", cls: "border-blue-200 bg-blue-50 text-blue-700" },
-    paid:     { text: "Khoản đền bù đã được chi.", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-    rejected: { text: "Khoản đền bù đã bị từ chối.", cls: "border-red-200 bg-red-50 text-red-700" },
-    cancelled: { text: "Khoản đền bù đã được duyệt nhưng bị Kế toán huỷ trước khi chi.", cls: "border-red-200 bg-red-50 text-red-700" },
+    pending:  { text: "Khoản đền bù đang chờ Manager duyệt — sự cố tạm khóa ở “đang xử lý”.", cls: "border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+    approved: { text: "Khoản đền bù đã được duyệt, chờ Kế toán chi.", cls: "border-blue-200 dark:border-blue-500/25 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300" },
+    paid:     { text: "Khoản đền bù đã được chi.", cls: "border-emerald-200 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+    rejected: { text: "Khoản đền bù đã bị từ chối.", cls: "border-red-200 dark:border-red-500/25 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300" },
+    cancelled: { text: "Khoản đền bù đã được duyệt nhưng bị Kế toán huỷ trước khi chi.", cls: "border-red-200 dark:border-red-500/25 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300" },
   }[compensationState];
 
   // Đã có phiếu còn hiệu lực → backend chặn tạo trùng, nên ẩn luôn form thay vì để bấm rồi báo lỗi.
@@ -35,18 +41,19 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="2xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
-          <span className="text-base font-bold text-gray-900">Sự cố #{incident.id}</span>
-          <span className="text-xs font-normal text-gray-400">{incident.description || "Không có mô tả."}</span>
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">Sự cố #{incident.id}</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">{incident.description || "Không có mô tả."}</span>
         </ModalHeader>
         <ModalBody className="gap-4">
           <div className="grid grid-cols-3 gap-3">
-            <Input label="Chuyến" value={incident.shipment_id ? `#${incident.shipment_id}` : "-"} isReadOnly variant="bordered" />
-            <Input label="Tài xế báo cáo" value={incident.reported_by_name || "-"} isReadOnly variant="bordered" />
+            <Input label="Chuyến" value={incident.shipment_id ? `#${incident.shipment_id}` : "-"} isReadOnly variant="bordered" startContent={ic(RiTruckLine)} />
+            <Input label="Tài xế báo cáo" value={incident.reported_by_name || "-"} isReadOnly variant="bordered" startContent={ic(RiUserLine)} />
             <Input
               label="Quy tắc doanh thu"
               value={incident.pickup_completed ? "Đã lấy hàng - chia 50/50" : "Chưa lấy hàng - tài xế thay thế nhận 100%"}
               isReadOnly
               variant="bordered"
+              startContent={ic(RiScales3Line)}
             />
           </div>
 
@@ -58,6 +65,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               isDisabled={statusLocked}
               description={statusLocked ? "Khóa tới khi Manager duyệt khoản đền bù" : undefined}
               variant="bordered"
+              startContent={ic(RiFlag2Line)}
             >
               <SelectItem key="open">Mới tiếp nhận</SelectItem>
               <SelectItem key="investigating">Đang xử lý</SelectItem>
@@ -70,12 +78,13 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               selectedKeys={incidentForm.replacement_driver_id ? [incidentForm.replacement_driver_id] : []}
               onSelectionChange={(keys) => setIncidentForm((prev) => ({ ...prev, replacement_driver_id: [...keys][0] ?? "" }))}
               variant="bordered"
+              startContent={ic(RiUserSharedLine)}
             >
               {replacementOptions.map((driver) => (
                 <SelectItem key={String(driver.id)}>{`${driver.full_name} - ${driver.plate_number || "Chưa có xe"}`}</SelectItem>
               ))}
             </Select>
-            <Input label="Đã thay thế" value={incident.replacement_driver_name || "-"} isReadOnly variant="bordered" />
+            <Input label="Đã thay thế" value={incident.replacement_driver_name || "-"} isReadOnly variant="bordered" startContent={ic(RiUserReceivedLine)} />
           </div>
 
           <Textarea
@@ -85,6 +94,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
             onValueChange={(v) => setIncidentForm((prev) => ({ ...prev, resolution: v }))}
             minRows={4}
             variant="bordered"
+            startContent={ic(RiFileTextLine)}
           />
 
           {COMPENSATION_BANNER && (
@@ -106,7 +116,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
           )}
 
           {showCompensation && (
-            <div className="rounded-xl border border-gray-200 p-4 flex flex-col gap-3">
+            <div className="rounded-xl border border-gray-200 dark:border-white/10 p-4 flex flex-col gap-3">
               <Checkbox
                 isSelected={compensation.enabled}
                 onValueChange={(v) => updateCompensation(
@@ -116,9 +126,9 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                 )}
                 size="sm"
               >
-                <span className="text-sm font-semibold text-gray-800">Tạo khoản đền bù hàng hóa hư hại</span>
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Tạo khoản đền bù hàng hóa hư hại</span>
               </Checkbox>
-              <p className="text-xs text-gray-400 -mt-1">
+              <p className="text-xs text-gray-400 dark:text-gray-400 -mt-1">
                 Khi lưu, hệ thống tạo một phiếu chi loại “Đền bù hàng hóa” (chờ Manager duyệt, Kế toán chi).
                 Sự cố giữ ở “đang xử lý” và chỉ tự chuyển sang “đã giải quyết” sau khi Manager duyệt khoản chi.
               </p>
@@ -135,12 +145,14 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                       onValueChange={(v) => updateCompensation({ amount: v })}
                       variant="bordered"
                       isRequired
+                      startContent={ic(RiMoneyDollarCircleLine)}
                     />
                     <Select
                       label="Hình thức chi"
                       selectedKeys={[compensation.payment_method]}
                       onSelectionChange={(keys) => updateCompensation({ payment_method: [...keys][0] })}
                       variant="bordered"
+                      startContent={ic(RiBankCardLine)}
                     >
                       <SelectItem key="cash">Tiền mặt</SelectItem>
                       <SelectItem key="bank_transfer">Chuyển khoản</SelectItem>
@@ -153,10 +165,11 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                     onValueChange={(v) => updateCompensation({ payee: v })}
                     variant="bordered"
                     isRequired
+                    startContent={ic(RiUserReceivedLine)}
                   />
                   {incident.customer_name && (
                     <div className="flex items-center gap-2 flex-wrap text-xs -mt-1">
-                      <span className="text-gray-500">
+                      <span className="text-gray-500 dark:text-gray-400">
                         Khách hàng của đơn{incident.order_id ? ` #${incident.order_id}` : ""}:
                       </span>
                       <Button
@@ -177,6 +190,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                     onValueChange={(v) => updateCompensation({ reason: v })}
                     minRows={2}
                     variant="bordered"
+                    startContent={ic(RiFileTextLine)}
                   />
                 </div>
               )}

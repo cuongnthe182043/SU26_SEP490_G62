@@ -3,7 +3,12 @@ import {
   Button, Chip, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader,
   Select, SelectItem, Spinner, Input,
 } from "@heroui/react";
-import { RiDownloadLine, RiBookOpenLine } from "react-icons/ri";
+import {
+  RiDownloadLine, RiBookOpenLine,
+  RiPriceTag3Line, RiFileTransferLine, RiSortDesc,
+} from "react-icons/ri";
+
+const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
@@ -70,11 +75,11 @@ function ExportModal({ onClose, onExported }) {
     <Modal isOpen onClose={onClose} size="md">
       <ModalContent>
         <ModalHeader className="flex items-center gap-2">
-          <RiDownloadLine className="text-blue-600" size={18} />
+          <RiDownloadLine className="text-blue-600 dark:text-blue-300" size={18} />
           Xuất kỳ kế toán
         </ModalHeader>
         <ModalBody className="gap-4">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Xuất các bút toán <strong>chưa xuất</strong> trong kỳ đã chọn ra file CSV
             (dùng để import vào MISA hoặc phần mềm kế toán khác).
             Sau khi xuất, các bút toán được đánh dấu đã chốt và không xuất lại được.
@@ -83,7 +88,7 @@ function ExportModal({ onClose, onExported }) {
             <Input type="date" label="Từ ngày" value={from} onChange={(e) => setFrom(e.target.value)} />
             <Input type="date" label="Đến ngày" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
         </ModalBody>
         <ModalFooter>
           <Button variant="light" onPress={onClose} isDisabled={loading}>Hủy</Button>
@@ -144,6 +149,7 @@ export function LedgerView() {
           label="Loại sự kiện"
           size="sm"
           className="w-56"
+          startContent={ic(RiPriceTag3Line)}
           selectedKeys={filterEvent ? [filterEvent] : []}
           onChange={(e) => resetPageAnd(setFilterEvent)(e.target.value)}
         >
@@ -165,6 +171,7 @@ export function LedgerView() {
           label="Trạng thái xuất"
           size="sm"
           className="w-44"
+          startContent={ic(RiFileTransferLine)}
           selectedKeys={filterExported ? [filterExported] : []}
           onChange={(e) => resetPageAnd(setFilterExported)(e.target.value)}
         >
@@ -176,6 +183,7 @@ export function LedgerView() {
           size="sm"
           variant="bordered"
           className="w-52"
+          startContent={ic(RiSortDesc)}
           selectedKeys={new Set([sortBy])}
           onChange={(e) => resetPageAnd(setSortBy)(e.target.value)}
         >
@@ -195,16 +203,16 @@ export function LedgerView() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-red-700 dark:text-red-300 text-sm rounded-xl px-4 py-3">
           {error}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16"><Spinner /></div>
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-400 gap-2">
             <RiBookOpenLine size={32} />
             <p className="text-sm">Chưa có bút toán nào</p>
           </div>
@@ -212,7 +220,7 @@ export function LedgerView() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                <tr className="bg-gray-50 dark:bg-white/5 text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
                   <th className="px-4 py-3 font-semibold">Thời điểm</th>
                   <th className="px-4 py-3 font-semibold">Sự kiện</th>
                   <th className="px-4 py-3 font-semibold">Diễn giải</th>
@@ -222,10 +230,10 @@ export function LedgerView() {
                   <th className="px-4 py-3 font-semibold text-center">Xuất kỳ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
                 {rows.map((r) => (
-                  <tr key={r.id} className={`hover:bg-gray-50 ${r.reversal_of_id || r.reversed_by_id ? "bg-orange-50/40" : ""}`}>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">{fmtDateTime(r.occurred_at)}</td>
+                  <tr key={r.id} className={`hover:bg-gray-50 dark:hover:bg-white/5 ${r.reversal_of_id || r.reversed_by_id ? "bg-orange-50/40 dark:bg-orange-500/10" : ""}`}>
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{fmtDateTime(r.occurred_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <Chip size="sm" variant="flat" color={EVENT_COLOR[r.event_type] ?? "default"}>
@@ -243,14 +251,14 @@ export function LedgerView() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700 max-w-md">{r.description ?? "—"}</td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap text-gray-500 font-mono text-xs">
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-200 max-w-md">{r.description ?? "—"}</td>
+                    <td className="px-4 py-3 text-center whitespace-nowrap text-gray-500 dark:text-gray-400 font-mono text-xs">
                       {r.debit_account} / {r.credit_account}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold">
                       <MoneyText amount={r.amount} />
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{r.actor_name ?? "—"}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.actor_name ?? "—"}</td>
                     <td className="px-4 py-3 text-center">
                       {r.exported_at ? (
                         <Chip size="sm" variant="flat" color="default" title={r.export_batch_id}>
