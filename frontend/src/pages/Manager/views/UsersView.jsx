@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import {
@@ -110,7 +111,7 @@ export default function UsersView({ user }) {
       const data = await managerService.getUsers();
       setAllUsers(data.users || []);
     } catch (error) {
-      alert(`Lỗi: ${error.message}`);
+      notify.error(`Lỗi: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -312,7 +313,7 @@ export default function UsersView({ user }) {
       if (successes.length > 0) await fetchUsers();
       setImportResult({ successes, failures, skippedRows, total: importRows.length });
     } catch (error) {
-      alert(error.message || "Không thể import file Excel.");
+      notify.error(error.message || "Không thể import file Excel.");
     } finally {
       setImporting(false);
     }
@@ -325,7 +326,7 @@ export default function UsersView({ user }) {
       setModalOpen(false);
       fetchUsers();
     } catch (error) {
-      alert(error.message || "Đã có lỗi xảy ra.");
+      notify.error(error.message || "Đã có lỗi xảy ra.");
     }
   };
 
@@ -336,7 +337,7 @@ export default function UsersView({ user }) {
       setToggleTarget(null);
       fetchUsers();
     } catch (error) {
-      alert(error.message || "Đã có lỗi.");
+      notify.error(error.message || "Đã có lỗi.");
     }
   };
 
@@ -346,9 +347,9 @@ export default function UsersView({ user }) {
     try {
       await managerService.resetUserPassword(resetTarget.id);
       setResetTarget(null);
-      alert("Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+      notify.error("Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.");
     } catch (error) {
-      alert(error.message || "Không thể reset mật khẩu.");
+      notify.error(error.message || "Không thể reset mật khẩu.");
     } finally {
       setResetting(false);
     }

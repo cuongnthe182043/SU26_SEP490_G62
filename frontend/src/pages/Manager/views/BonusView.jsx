@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Select, SelectItem, Input, NumberInput, Textarea, Tabs, Tab, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -84,7 +85,7 @@ export default function BonusView() {
       setStats(statsRes);
       setPagination(bonusRes.pagination || { total: (bonusRes.bonuses || []).length, totalPages: 1 });
     } catch (e) {
-      alert(e.message || "Lỗi tải dữ liệu thưởng");
+      notify.error(e.message || "Lỗi tải dữ liệu thưởng");
     } finally {
       setLoading(false);
     }
@@ -104,14 +105,14 @@ export default function BonusView() {
       setApproveTarget(null);
       loadBonuses();
     } catch (e) {
-      alert(e.message || "Lỗi duyệt");
+      notify.error(e.message || "Lỗi duyệt");
     } finally {
       setActing(false);
     }
   };
 
   const handleReject = async () => {
-    if (!rejectReason.trim()) { alert("Vui lòng nhập lý do từ chối"); return; }
+    if (!rejectReason.trim()) { notify.error("Vui lòng nhập lý do từ chối"); return; }
     setActing(true);
     try {
       await managerService.rejectBonus(rejectTarget.id, rejectReason.trim());
@@ -119,7 +120,7 @@ export default function BonusView() {
       setRejectReason("");
       loadBonuses();
     } catch (e) {
-      alert(e.message || "Lỗi từ chối");
+      notify.error(e.message || "Lỗi từ chối");
     } finally {
       setActing(false);
     }
@@ -131,7 +132,7 @@ export default function BonusView() {
       const data = await managerService.previewTetBonuses(tetYear);
       setPreview(data.previews || data);
     } catch (e) {
-      alert(e.message || "Lỗi preview");
+      notify.error(e.message || "Lỗi preview");
     } finally {
       setPreviewing(false);
     }
@@ -144,9 +145,9 @@ export default function BonusView() {
       setConfirmGenerate(false);
       setPreview(null);
       loadBonuses();
-      alert(`Đã tạo ${res.inserted} phiếu thưởng Tết (bỏ qua ${res.skipped} đã tồn tại)`);
+      notify.success(`Đã tạo ${res.inserted} phiếu thưởng Tết (bỏ qua ${res.skipped} đã tồn tại)`);
     } catch (e) {
-      alert(e.message || "Lỗi tạo thưởng Tết");
+      notify.error(e.message || "Lỗi tạo thưởng Tết");
     } finally {
       setGenerating(false);
     }
@@ -158,9 +159,9 @@ export default function BonusView() {
   };
 
   const handleCreate = async () => {
-    if (!createForm.driver_id) { alert("Chọn nhân viên"); return; }
-    if (!createForm.type) { alert("Chọn loại phúc lợi"); return; }
-    if (!createForm.amount) { alert("Nhập số tiền"); return; }
+    if (!createForm.driver_id) { notify.error("Chọn nhân viên"); return; }
+    if (!createForm.type) { notify.error("Chọn loại phúc lợi"); return; }
+    if (!createForm.amount) { notify.error("Nhập số tiền"); return; }
     setCreating(true);
     try {
       await managerService.createBonus(createForm);
@@ -168,7 +169,7 @@ export default function BonusView() {
       loadBonuses();
       setTab("list");
     } catch (e) {
-      alert(e.message || "Lỗi tạo phúc lợi");
+      notify.error(e.message || "Lỗi tạo phúc lợi");
     } finally {
       setCreating(false);
     }

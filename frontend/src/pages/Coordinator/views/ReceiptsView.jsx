@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
@@ -85,7 +86,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
       setDetail(data);
       setForm({ notes: data?.request?.coordinator_notes || "", expenses: [], priceOverride: "" });
     } catch (error) {
-      alert(error.message || "Không thể tải chi tiết yêu cầu phiếu thu.");
+      notify.error(error.message || "Không thể tải chi tiết yêu cầu phiếu thu.");
       closeModal();
     } finally {
       setDetailLoading(false);
@@ -129,7 +130,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
       await loadReceiptRequests();
       onReceiptPublished?.();
     } catch (error) {
-      alert(error.message || "Không thể tạo phiếu thu.");
+      notify.error(error.message || "Không thể tạo phiếu thu.");
     } finally {
       setPublishing(false);
     }
@@ -143,7 +144,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
       await coordinatorService.rejectReceiptRequest(requestId, reason.trim());
       await loadReceiptRequests();
     } catch (error) {
-      alert(error.message || "Không thể từ chối yêu cầu phiếu thu.");
+      notify.error(error.message || "Không thể từ chối yêu cầu phiếu thu.");
     } finally {
       setRejectingId(null);
     }
