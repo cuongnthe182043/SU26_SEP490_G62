@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "./Toast";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Select, SelectItem,
@@ -25,7 +26,7 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
       await onSave(driver.driver_id, Number(vehicleGroupId));
       onClose();
     } catch (e) {
-      alert(e.message || "Lỗi cập nhật nhóm xe KPI");
+      notify.error(e.message || "Lỗi cập nhật nhóm xe KPI");
     } finally {
       setSaving(false);
     }
