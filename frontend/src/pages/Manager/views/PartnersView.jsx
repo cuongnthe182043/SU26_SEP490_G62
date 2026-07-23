@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { Button, Input, Select, SelectItem, Spinner, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiSearchLine, RiAddLine, RiBuilding2Line, RiFileSearchLine, RiWalletLine, RiPencilLine, RiFileList3Line } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
@@ -46,7 +47,7 @@ export default function PartnersView({ user }) {
       setSummary(data.summary || {});
       setPagination(data.pagination || { total: (data.partners || []).length, totalPages: 1 });
     } catch (error) {
-      alert(error.message || "Không thể tải danh sách đối tác.");
+      notify.error(error.message || "Không thể tải danh sách đối tác.");
     } finally {
       setLoading(false);
     }
@@ -77,7 +78,7 @@ export default function PartnersView({ user }) {
   };
 
   const handleSubmit = async () => {
-    if (!form.company_name.trim()) { alert("Vui lòng nhập tên đối tác"); return; }
+    if (!form.company_name.trim()) { notify.error("Vui lòng nhập tên đối tác"); return; }
     setSaving(true);
     try {
       if (editing) await managerService.updatePartner(editing.id, form);
@@ -86,7 +87,7 @@ export default function PartnersView({ user }) {
       setEditing(null);
       await load();
     } catch (error) {
-      alert(error.message || "Không thể lưu đối tác.");
+      notify.error(error.message || "Không thể lưu đối tác.");
     } finally {
       setSaving(false);
     }
@@ -101,7 +102,7 @@ export default function PartnersView({ user }) {
       setSelectedPartner(data.partner || partner);
       setSelectedDebts(data.debts || []);
     } catch (error) {
-      alert(error.message || "Không thể tải công nợ đối tác.");
+      notify.error(error.message || "Không thể tải công nợ đối tác.");
       setDebtModalOpen(false);
     } finally {
       setDebtLoading(false);
