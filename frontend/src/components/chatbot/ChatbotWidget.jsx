@@ -28,7 +28,7 @@ function GeminiSpark({ size = 22, gradient = true, color = "#fff" }) {
 const GREETING = {
   role: "assistant",
   content:
-    "Chào anh/chị 👋 Em là trợ lý dữ liệu. Anh/chị có thể hỏi em về doanh thu, công nợ, KPI, chuyến, sự cố... hoặc quy trình nghiệp vụ. Ví dụ: \"Doanh thu tháng này bao nhiêu?\"",
+    "Chào anh/chị 👋 Em là trợ lý dữ liệu LogisCount. Anh/chị có thể hỏi em về doanh thu, công nợ, KPI, chuyến xe, sự cố... hoặc quy trình nghiệp vụ.\n\nVí dụ: \"Doanh thu tháng này bao nhiêu?\"",
 };
 
 const SUGGESTIONS = [
@@ -36,6 +36,85 @@ const SUGGESTIONS = [
   "Đối tác nào đang nợ nhiều nhất?",
   "Có bao nhiêu chuyến chưa hoàn thành?",
 ];
+
+function FormattedMessage({ content }) {
+  if (!content) return null;
+
+  const renderInline = (text) => {
+    const parts = [];
+    let remaining = text;
+    let key = 0;
+
+    while (remaining) {
+      const boldMatch = remaining.match(/^(.*?)\*\*(.*?)\*\*(.*)/s);
+      const codeMatch = remaining.match(/^(.*?)\`(.*?)\`(.*)/s);
+
+      if (boldMatch && (!codeMatch || boldMatch[1].length <= codeMatch[1].length)) {
+        if (boldMatch[1]) parts.push(<span key={key++}>{boldMatch[1]}</span>);
+        parts.push(
+          <strong key={key++} className="font-semibold text-gray-900 dark:text-white">
+            {boldMatch[2]}
+          </strong>
+        );
+        remaining = boldMatch[3];
+      } else if (codeMatch) {
+        if (codeMatch[1]) parts.push(<span key={key++}>{codeMatch[1]}</span>);
+        parts.push(
+          <code
+            key={key++}
+            className="rounded bg-blue-50 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-mono text-blue-700 dark:text-blue-300"
+          >
+            {codeMatch[2]}
+          </code>
+        );
+        remaining = codeMatch[3];
+      } else {
+        parts.push(<span key={key++}>{remaining}</span>);
+        break;
+      }
+    }
+    return parts;
+  };
+
+  const lines = content.split("\n");
+
+  return (
+    <div className="space-y-1">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-1" />;
+
+        // Sub-bullet
+        if (/^\s+[\*\-]\s+/.test(line)) {
+          const subContent = line.trim().replace(/^[\*\-]\s+/, "");
+          return (
+            <div key={idx} className="flex items-start gap-1.5 pl-3 my-0.5 text-[12.5px]">
+              <span className="text-blue-400 select-none">•</span>
+              <div className="flex-1">{renderInline(subContent)}</div>
+            </div>
+          );
+        }
+
+        // Bullet item (* or -)
+        if (/^[\*\-]\s+/.test(trimmed)) {
+          const bulletContent = trimmed.replace(/^[\*\-]\s+/, "");
+          return (
+            <div key={idx} className="flex items-start gap-1.5 pl-1 my-0.5">
+              <span className="text-blue-500 font-bold select-none">•</span>
+              <div className="flex-1">{renderInline(bulletContent)}</div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={idx} className="my-0.5">
+            {renderInline(line)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function ChatbotWidget() {
   const [enabled, setEnabled] = useState(false);
@@ -140,7 +219,7 @@ export default function ChatbotWidget() {
                       : "rounded-bl-sm border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] text-gray-800 dark:text-gray-100 shadow-sm"
                   }`}
                 >
-                  {m.content}
+                  <FormattedMessage content={m.content} />
                 </div>
               </div>
             ))}
