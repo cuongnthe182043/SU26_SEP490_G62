@@ -5,6 +5,7 @@ import {
   RiMenuFoldLine,
   RiMenuUnfoldLine,
 } from "react-icons/ri";
+import Logo from "../../theme/Logo";
 
 function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onViewChange }) {
   const base =
@@ -17,20 +18,20 @@ function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onVie
       onClick={() => !disabled && onViewChange(navKey)}
       className={`group ${base}
         ${disabled
-          ? "text-gray-300 cursor-not-allowed select-none"
+          ? "text-gray-300 dark:text-gray-600 cursor-not-allowed select-none"
           : active
-            ? "bg-blue-600 text-white font-semibold shadow-sm shadow-blue-200"
-            : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            ? "bg-blue-600 text-white font-semibold shadow-sm shadow-blue-200 dark:shadow-none"
+            : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-gray-100"
         }`}
     >
       <Icon
         size={18}
         className={
           disabled
-            ? "text-gray-300"
+            ? "text-gray-300 dark:text-gray-600"
             : active
-              ? "text-white flex-shrink-0"
-              : "text-gray-400 group-hover:text-gray-600 flex-shrink-0"
+              ? "text-white shrink-0"
+              : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0"
         }
       />
       {!collapsed && <span className="flex-1 truncate">{label}</span>}
@@ -71,26 +72,26 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex flex-col min-h-screen bg-white border-r border-gray-200 flex-shrink-0
-                  transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[220px]"}`}
+      className={`g62-sidebar flex flex-col min-h-screen bg-white dark:bg-[#161922] border-r border-gray-200 dark:border-white/10 shrink-0
+                  transition-all duration-200 ${collapsed ? "w-15" : "w-55"}`}
     >
-      <div className={`flex items-center h-16 border-b border-gray-100
+      <div className={`flex items-center h-16 border-b border-gray-100 dark:border-white/10
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
-          <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 bg-gray-50 border border-gray-100">
-            <img src="/logo.png" alt="LogisCount" className="w-full h-[125%] object-cover object-top" />
+          <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 bg-gray-50 dark:bg-white/10 border border-gray-100 dark:border-white/10">
+            <Logo className="w-full h-full object-cover object-top" />
           </div>
         )}
         {!collapsed && (
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="font-bold text-sm text-gray-800 leading-none truncate">{brandLabel}</span>
-            {brandSubLabel && <span className="text-xs text-gray-400 mt-0.5">{brandSubLabel}</span>}
+            <span className="font-bold text-sm text-gray-800 dark:text-gray-100 leading-none truncate">{brandLabel}</span>
+            {brandSubLabel && <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{brandSubLabel}</span>}
           </div>
         )}
         <button
           onClick={onToggle}
-          className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400
-                     hover:bg-gray-100 hover:text-gray-700 transition-colors flex-shrink-0"
+          className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 dark:text-gray-400
+                     hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-200 transition-colors shrink-0"
           title={collapsed ? "Mở sidebar" : "Thu sidebar"}
         >
           {collapsed ? <RiMenuUnfoldLine size={17} /> : <RiMenuFoldLine size={17} />}
@@ -102,11 +103,11 @@ export function Sidebar({
         {navGroups.map(({ label, items }) => (
           <div key={label}>
             {!collapsed && (
-              <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                 {label}
               </p>
             )}
-            {collapsed && <div className="mb-1.5 border-t border-gray-100 mx-1" />}
+            {collapsed && <div className="mb-1.5 border-t border-gray-100 dark:border-white/10 mx-1" />}
             <div className="flex flex-col gap-0.5">
               {items.map(({ key, label: itemLabel, icon, disabled }) => (
                 <NavItem
@@ -125,7 +126,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className={`pb-4 flex flex-col gap-1 border-t border-gray-100 pt-3
+      <div className={`pb-4 flex flex-col gap-1 border-t border-gray-100 dark:border-white/10 pt-3
                        ${collapsed ? "px-1 items-center" : "px-3"}`}>
         {collapsed ? (
           <>
@@ -142,7 +143,7 @@ export function Sidebar({
               <button
                 onClick={onLogout}
                 className="flex items-center justify-center w-8 h-8 rounded-lg
-                           bg-red-100 text-red-700 hover:bg-red-700 hover:text-white transition-colors"
+                           bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white transition-colors"
               >
                 <RiLogoutBoxLine size={16} />
               </button>
@@ -153,18 +154,18 @@ export function Sidebar({
             <button
               onClick={onProfile}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl w-full text-left
-                         text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-800
+                         text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-gray-100
                          transition-colors duration-150"
             >
               <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center
-                              text-white font-bold text-xs flex-shrink-0">
+                              text-white font-bold text-xs shrink-0">
                 {avatar}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium text-gray-700 truncate text-xs leading-tight">
+                <span className="font-medium text-gray-700 dark:text-gray-200 truncate text-xs leading-tight">
                   {user?.full_name ?? brandLabel}
                 </span>
-                <span className="text-gray-400 truncate text-[11px] mt-0.5">
+                <span className="text-gray-400 dark:text-gray-500 truncate text-[11px] mt-0.5">
                   {user?.email ?? ""}
                 </span>
               </div>
@@ -173,7 +174,7 @@ export function Sidebar({
             <button
               onClick={onLogout}
               className="flex items-center gap-3 px-3 py-2 rounded-xl w-full text-left
-                         text-sm bg-red-100 text-red-700 hover:bg-red-700 hover:text-white
+                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white
                          transition-colors duration-150"
             >
               <RiLogoutBoxLine size={16} />

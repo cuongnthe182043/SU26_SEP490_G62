@@ -8,6 +8,7 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import {
     Bell,
     BellOff,
@@ -31,6 +32,37 @@ import { useNotifications } from '@/hooks/use-notifications';
 import type { AppNotification } from '@/types/notification';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+// entity_type (backend gắn) → màn hình tương ứng của tài xế. Trả null nếu không có
+// màn phù hợp (khi đó mở modal chi tiết thay vì điều hướng).
+function routeForNotification(n: AppNotification): string | { pathname: string; params: Record<string, string> } | null {
+    const id = n.target_id != null ? String(n.target_id) : null;
+    switch (n.entity_type) {
+        case 'incidents':
+            return id ? { pathname: '/incident-detail', params: { id } } : '/incident-history';
+        case 'orders':
+            return id ? { pathname: '/order/[id]', params: { id } } : null;
+        case 'payroll':
+        case 'salary_advance':
+        case 'salary_advances':
+            return '/payroll';
+        case 'driver_bonuses':
+            return '/bonus';
+        case 'debts':
+        case 'debt_payments':
+            return '/debt';
+        case 'maintenance_record':
+            return '/maintenance';
+        case 'receipt':
+            return '/(tabs)/receipts';
+        case 'shipments':
+            return '/active-trip';
+        case 'vehicle':
+            return '/(tabs)/profile';
+        default:
+            return null;
+    }
+}
 
 function formatRelativeTime(value: string): string {
     const date = new Date(value);
@@ -302,7 +334,9 @@ export function NotificationsScreen() {
 
     const handleCardPress = useCallback(async (item: AppNotification) => {
         if (!item.is_read) await markAsRead(item.id);
-        setSelectedItem({ ...item, is_read: true });
+        const href = routeForNotification(item);
+        if (href) router.push(href as never);          // điều hướng tới màn liên quan
+        else setSelectedItem({ ...item, is_read: true }); // không có màn → mở chi tiết
     }, [markAsRead]);
 
     const displayed = activeTab === 'unread'

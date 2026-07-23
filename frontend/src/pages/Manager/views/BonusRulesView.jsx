@@ -181,35 +181,35 @@ export default function BonusRulesView() {
         </Button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-10"><Spinner color="primary" /></div>
         ) : filteredRules.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-8">Chưa có quy tắc thưởng nào.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có quy tắc thưởng nào.</p>
         ) : (
-          <div className="flex flex-col divide-y divide-gray-50 overflow-x-auto">
+          <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 overflow-x-auto">
             {pagedRules.map((rule) => (
               <div key={rule.id} className="flex items-center justify-between px-5 py-4 gap-4 min-w-max">
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-800">{rule.title}</span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{rule.title}</span>
                     <Chip size="sm" variant="flat" color={rule.is_active ? "success" : "default"}>
                       {rule.is_active ? "Đang áp dụng" : "Tạm dừng"}
                     </Chip>
                   </div>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 dark:text-gray-400">
                     {BONUS_TYPES.find((t) => t.value === rule.bonus_type)?.label || rule.bonus_type} · {rule.vehicle_group_name || "Tất cả nhóm xe"}
                   </span>
                 </div>
-                <div className="flex items-center gap-6 flex-shrink-0">
+                <div className="flex items-center gap-6 shrink-0">
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-400 uppercase">Số tiền thưởng</div>
-                    <div className="text-sm font-semibold text-blue-600">{formatCurrency(rule.reward_amount)}</div>
+                    <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Số tiền thưởng</div>
+                    <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(rule.reward_amount)}</div>
                   </div>
                   {rule.conditions_json?.min_revenue && (
                     <div className="text-right">
-                      <div className="text-[10px] text-gray-400 uppercase">Ngưỡng doanh thu</div>
-                      <div className="text-sm font-semibold text-gray-700">{formatCurrency(rule.conditions_json.min_revenue)}</div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Ngưỡng doanh thu</div>
+                      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(rule.conditions_json.min_revenue)}</div>
                     </div>
                   )}
                   <div className="flex gap-1">
@@ -276,7 +276,7 @@ export default function BonusRulesView() {
 
             <div className="flex items-center gap-2">
               <Switch isSelected={form.is_active} onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))} size="sm" />
-              <span className="text-sm text-gray-600">Đang áp dụng</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">Đang áp dụng</span>
             </div>
           </ModalBody>
           <ModalFooter>
@@ -289,7 +289,7 @@ export default function BonusRulesView() {
       <Modal isOpen={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)} size="sm">
         <ModalContent>
           <ModalHeader>Xóa quy tắc thưởng</ModalHeader>
-          <ModalBody><p className="text-sm text-gray-500">Xóa quy tắc "{deleteTarget?.title}"?</p></ModalBody>
+          <ModalBody><p className="text-sm text-gray-500 dark:text-gray-400">Xóa quy tắc "{deleteTarget?.title}"?</p></ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setDeleteTarget(null)}>Đóng</Button>
             <Button color="danger" onPress={handleDelete}>Xóa</Button>

@@ -11,6 +11,21 @@
     rel="stylesheet">
   <title>LogisCount</title>
   <link rel="icon" type="image/png" href="/logo.png" />
+  <script>
+    // Áp dụng theme trước khi React mount để tránh nháy (FOUC)
+    (function () {
+      try {
+        var t = localStorage.getItem("g62-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        var r = document.documentElement;
+        r.classList.toggle("dark", t === "dark");
+        r.style.colorScheme = t;
+        r.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>

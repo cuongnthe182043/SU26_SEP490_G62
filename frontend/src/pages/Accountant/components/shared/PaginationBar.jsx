@@ -22,7 +22,7 @@ export function PaginationBar({
 
   return (
     <div className="flex items-center justify-between flex-wrap gap-3 px-1">
-      <span className="text-xs text-gray-400 select-none">
+      <span className="text-xs text-gray-400 dark:text-gray-400 select-none">
         {totalItems === 0
           ? "Không có dữ liệu"
           : `Hiển thị ${from}–${to} / ${totalItems} mục`}
