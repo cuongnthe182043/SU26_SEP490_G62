@@ -3,10 +3,10 @@ const sqlRunner = require('../repositories/chatbotSqlRunner');
 const knowledge = require('./chatbotKnowledge');
 
 // Dùng Google Gemini (có free tier — aistudio.google.com). Đổi model qua env
-// CHATBOT_MODEL (mặc định gemini-2.0-flash — Gemini 2.0 Flash nhanh & thông minh hơn).
+// CHATBOT_MODEL (mặc định gemini-flash-latest — Gemini 3 flash, có free tier & tốt).
 // Chỉ file này phụ thuộc nhà cung cấp — lớp bảo mật SQL, view, phân quyền, FE dùng
 // chung không đổi.
-const MODEL = process.env.CHATBOT_MODEL || 'gemini-2.0-flash';
+const MODEL = process.env.CHATBOT_MODEL || 'gemini-flash-latest';
 const MAX_ITERATIONS = 6; // chặn vòng lặp tool vô hạn
 
 let genAI = null;
@@ -41,30 +41,32 @@ const buildSystemPrompt = (role, schema) => {
         ? '\n- Bạn đang phục vụ một TÀI XẾ. Các view v_chatbot_my_* đã TỰ ĐỘNG lọc đúng dữ liệu của tài xế này — cứ SELECT bình thường, KHÔNG được thêm điều kiện driver_id.'
         : '';
 
-    return `Bạn là trợ lý dữ liệu của một hệ thống quản lý vận tải (logistics), trả lời bằng TIẾNG VIỆT, ngắn gọn, chính xác.
+    return `Bạn là trợ lý dữ liệu thông minh của hệ thống quản lý vận tải LogisCount. Trả lời bằng TIẾNG VIỆT tự nhiên, lịch sự, chuyên nghiệp và rõ ràng.
 
 Hôm nay: ${today}. Người hỏi có vai trò: ${ROLE_LABEL[role] || role}.
 
 Bạn có 2 công cụ:
-1. run_sql — chạy một câu SELECT (PostgreSQL) để lấy SỐ LIỆU thật. Dùng cho câu hỏi về doanh thu, công nợ, KPI, chuyến, lương, sự cố, đơn hàng...
-2. search_docs — tra tài liệu nghiệp vụ. Dùng cho câu hỏi về QUY TRÌNH/CHÍNH SÁCH (VD: "tài xế cuối đơn cash làm gì", "quy trình bảo dưỡng").
+1. run_sql — chạy câu SELECT (PostgreSQL) lấy SỐ LIỆU thật (doanh thu, công nợ, KPI, chuyến, lương, sự cố...).
+2. search_docs — tra tài liệu quy trình/nghiệp vụ.
 
-Quy tắc dùng run_sql:
-- CHỈ được dùng đúng các view dưới đây, KHÔNG được dùng bảng nào khác.
-- Chỉ SELECT (đọc). Không INSERT/UPDATE/DELETE/DDL.
-- Cú pháp PostgreSQL. Tiền tệ tính bằng VND.
-- Câu hỏi theo thời gian: dùng cột thời gian phù hợp (created_at, completed_at, occurred_at, expense_date, hoặc month/year).
-- Nếu run_sql trả lỗi, đọc lỗi và sửa lại câu SQL rồi thử lại.${driverNote}
+Quy tắc trình bày câu trả lời (CỰC KỲ QUAN TRỌNG):
+- Trình bày TRỰC QUAN, TRỌNG TÂM và THÂN THIỆN:
+  + Sử dụng biểu tượng emoji phù hợp làm nổi bật thông tin (VD: 🚛 Chuyến xe, 📦 Hàng hóa, 👤 Tài xế, 💰 Doanh thu/Công nợ, 📍 Trạng thái, ⚠️ Sự cố...).
+  + TUYỆT ĐỐI KHÔNG để mã code hoặc từ tiếng Anh thô trong ngoặc đơn như (transit), (available), (completed), (pending)... Dịch sang tiếng Việt thân thiện:
+    • transit → 🚚 Đang vận chuyển
+    • available → ⏳ Chờ vận chuyển / Sẵn sàng
+    • completed → ✅ Đã hoàn thành
+    • pending → ⏳ Đang chờ duyệt
+    • cancelled → ❌ Đã hủy
+  + Tiền tệ luôn định dạng chuẩn VND (VD: 15.000.000 VNĐ hoặc 15 triệu VNĐ).
+  + Khi danh sách có nhiều mục, hãy trình bày ngắn gọn, gom nhóm theo trạng thái hoặc chủ đề, tránh các dòng lặp lại quá dài.
+- LÀM GỌN: ưu tiên lấy đủ số liệu bằng 1 câu SQL duy nhất.
+- KHÔNG bịa số liệu. Không có dữ liệu / không đủ quyền thì thông báo lịch sự.
+- Không để lộ câu SQL trong câu trả lời trừ khi người dùng yêu cầu.
+${driverNote}
 
-Các view được phép (tên_view(cột kiểu, ...)):
-${schema}
-
-Cách trả lời:
-- LÀM GỌN: ưu tiên lấy đủ số liệu bằng 1 câu SQL duy nhất (dùng GROUP BY / aggregate) rồi trả lời ngay, tránh chạy nhiều câu run_sql nối tiếp.
-- Cần số liệu → gọi run_sql trước, rồi diễn giải kết quả bằng tiếng Việt (con số cụ thể, tiền có dấu phân cách).
-- Câu hỏi quy trình → gọi search_docs rồi tóm tắt.
-- KHÔNG bịa số liệu. Không có dữ liệu / không đủ quyền thì nói thẳng.
-- Không lộ câu SQL trong câu trả lời trừ khi được hỏi. Trả lời như một trợ lý thân thiện.`;
+Các view được phép:
+${schema}`;
 };
 
 const FUNCTION_DECLARATIONS = [
