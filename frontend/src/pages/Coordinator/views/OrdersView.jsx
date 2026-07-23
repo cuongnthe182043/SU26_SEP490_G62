@@ -1,4 +1,6 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   Button, Input, Tabs, Tab,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem, Textarea,
@@ -247,7 +249,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       closeOrderModal();
       await loadOrders(editingTrip ? pagination.page : 1);
     } catch (error) {
-      alert(error.message || "Không thể lưu đơn hàng.");
+      notify.error(error.message || "Không thể lưu đơn hàng.");
     } finally {
       setCreating(false);
     }
@@ -255,13 +257,18 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
 
   const handleCancelOrder = async (trip) => {
     if (!trip?.orderId) return;
-    const confirmed = window.confirm(`Bạn có chắc muốn hủy đơn #${trip.orderId}?`);
+    const confirmed = await confirmDialog({
+      title: "Hủy đơn hàng",
+      description: `Bạn có chắc muốn hủy đơn #${trip.orderId}?`,
+      confirmLabel: "Hủy đơn",
+      danger: true,
+    });
     if (!confirmed) return;
     try {
       await coordinatorService.cancelOrder(trip.orderId, "Coordinator cancelled order");
       await loadOrders(pagination.page);
     } catch (error) {
-      alert(error.message || "Không thể hủy đơn hàng.");
+      notify.error(error.message || "Không thể hủy đơn hàng.");
     }
   };
 
@@ -276,7 +283,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       closeReassignModal();
       await loadOrders(pagination.page);
     } catch (error) {
-      alert(error.message || "Không thể điều chuyển chuyến.");
+      notify.error(error.message || "Không thể điều chuyển chuyến.");
     } finally {
       setReassignBusy(false);
     }
@@ -290,7 +297,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       closeCancelModal();
       await loadOrders(pagination.page);
     } catch (error) {
-      alert(error.message || "Không thể hủy chuyến.");
+      notify.error(error.message || "Không thể hủy chuyến.");
     } finally {
       setCancelBusy(false);
     }

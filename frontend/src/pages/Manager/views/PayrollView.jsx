@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -199,7 +200,7 @@ export default function PayrollView() {
       const res = await managerService.getPayrolls({ month, year, ...(status ? { status } : {}), ...(search ? { search } : {}), ...(sort ? { sort } : {}) });
       setPayrolls(res.payrolls || []);
     } catch (e) {
-      alert(e.message || "Lỗi tải bảng lương");
+      notify.error(e.message || "Lỗi tải bảng lương");
     } finally {
       setLoading(false);
     }
@@ -221,7 +222,7 @@ export default function PayrollView() {
       await managerService.reviewPayroll(record.id);
       load();
     } catch (e) {
-      alert(e.message || "Lỗi xác nhận");
+      notify.error(e.message || "Lỗi xác nhận");
     } finally {
       setReviewing(null);
     }
