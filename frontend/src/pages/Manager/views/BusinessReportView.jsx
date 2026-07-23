@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Spinner, Select, SelectItem, Button } from "@heroui/react";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   RiLineChartLine, RiWallet3Line, RiFundsLine, RiPercentLine,
   RiAlertLine, RiTruckLine, RiTimeLine, RiCoinLine,
@@ -167,12 +168,22 @@ export default function BusinessReportView() {
         acting={acting}
         actionErr={actionErr}
         onClose={() => runAction(managerService.closeReportPeriod)}
-        onSignOff={() => {
-          if (window.confirm("Ký duyệt sẽ KHOÁ CỨNG số liệu kỳ này (không mở lại được). Tiếp tục?"))
+        onSignOff={async () => {
+          if (await confirmDialog({
+            title: "Ký duyệt kỳ báo cáo",
+            description: "Ký duyệt sẽ KHOÁ CỨNG số liệu kỳ này (không mở lại được). Tiếp tục?",
+            confirmLabel: "Ký duyệt",
+            danger: true,
+          }))
             runAction(managerService.signOffReportPeriod);
         }}
-        onReopen={() => {
-          if (window.confirm("Mở lại sẽ xoá bản chốt, số liệu quay về tính động. Tiếp tục?"))
+        onReopen={async () => {
+          if (await confirmDialog({
+            title: "Mở lại kỳ báo cáo",
+            description: "Mở lại sẽ xoá bản chốt, số liệu quay về tính động. Tiếp tục?",
+            confirmLabel: "Mở lại",
+            danger: true,
+          }))
             runAction(managerService.reopenReportPeriod);
         }}
       />
