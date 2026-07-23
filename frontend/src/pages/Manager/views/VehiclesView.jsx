@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Input, Select, SelectItem, Chip, Spinner, Textarea,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
@@ -71,7 +72,7 @@ export default function VehiclesView({ user }) {
     try {
       const data = await managerService.getVehicleGroups();
       setVehicleGroups(data.vehicleGroups || []);
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   const loadVehicles = async (opts = {}) => {
@@ -87,14 +88,14 @@ export default function VehiclesView({ user }) {
       });
       setVehicles(data.items || []);
       setPagination({ page: data.pagination?.page || 1, limit: data.pagination?.limit || 10, total: data.pagination?.total || 0 });
-    } catch (err) { alert(err.message); } finally { setLoading(false); }
+    } catch (err) { notify.error(err.message); } finally { setLoading(false); }
   };
 
   const loadMaintenanceRequests = async () => {
     try {
       const data = await managerService.getMaintenanceRequests();
       setMaintenanceRequests(data.requests || []);
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   useEffect(() => {
@@ -122,7 +123,7 @@ export default function VehiclesView({ user }) {
       setGroupModalOpen(false);
       setEditingGroup(null);
       await loadVehicleGroups();
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   const handleGroupDelete = async () => {
@@ -130,7 +131,7 @@ export default function VehiclesView({ user }) {
       await managerService.deleteVehicleGroup(groupDeleteTarget.id);
       setGroupDeleteTarget(null);
       await loadVehicleGroups();
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   // ─── Vehicles CRUD ──────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ export default function VehiclesView({ user }) {
       setVehicleModalOpen(false);
       setEditingVehicle(null);
       await loadVehicles();
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   const openDetail = async (vehicle) => {
@@ -149,7 +150,7 @@ export default function VehiclesView({ user }) {
       const data = await managerService.getVehicleDetail(vehicle.id);
       setDetailVehicle(data.vehicle);
       managerService.getVehicleAssignmentHistory(vehicle.id).then((res) => setAssignmentHistory(res.history || [])).catch(() => setAssignmentHistory([]));
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   const handleDriverToggle = (vehicle) => {
@@ -162,7 +163,7 @@ export default function VehiclesView({ user }) {
       await managerService.assignVehicleDriver(unassignTarget.id, null);
       setUnassignTarget(null);
       await loadVehicles();
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   // ─── Lifecycle actions ──────────────────────────────────────────────────
@@ -172,7 +173,7 @@ export default function VehiclesView({ user }) {
     try {
       const data = await managerService.getDriverOptions(vehicle.id);
       setMaintenanceDriverOptions(data.drivers || []);
-    } catch (err) { alert(err.message); } finally { setLoadingMaintenanceDrivers(false); }
+    } catch (err) { notify.error(err.message); } finally { setLoadingMaintenanceDrivers(false); }
   };
 
   const submitMaintenance = async (values) => {
@@ -185,7 +186,7 @@ export default function VehiclesView({ user }) {
     try {
       const data = await managerService.getVehicleDetail(vehicle.id);
       setVerifyTarget(data.vehicle);
-    } catch (err) { alert(err.message); }
+    } catch (err) { notify.error(err.message); }
   };
 
   const submitVerify = async (values) => {
@@ -218,18 +219,18 @@ export default function VehiclesView({ user }) {
     try {
       await managerService.approveMaintenanceRequest(request.id);
       await Promise.all([loadMaintenanceRequests(), loadVehicles()]);
-    } catch (err) { alert(err.message); } finally { setProcessingRequestId(null); }
+    } catch (err) { notify.error(err.message); } finally { setProcessingRequestId(null); }
   };
 
   const handleRejectRequest = async () => {
-    if (!rejectRequestReason.trim()) { alert("Cần ghi lý do từ chối"); return; }
+    if (!rejectRequestReason.trim()) { notify.error("Cần ghi lý do từ chối"); return; }
     setProcessingRequestId(rejectRequestTarget.id);
     try {
       await managerService.rejectMaintenanceRequest(rejectRequestTarget.id, { reason: rejectRequestReason.trim() });
       setRejectRequestTarget(null);
       setRejectRequestReason("");
       await loadMaintenanceRequests();
-    } catch (err) { alert(err.message); } finally { setProcessingRequestId(null); }
+    } catch (err) { notify.error(err.message); } finally { setProcessingRequestId(null); }
   };
 
   const getActionItems = (vehicle) => {
