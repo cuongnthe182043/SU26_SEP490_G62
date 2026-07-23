@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, NumberInput } from "@heroui/react";
 import {
   RiInformationLine, RiTruckLine, RiRoadMapLine, RiCarLine, RiRoadsterLine,
@@ -25,7 +26,7 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
     setLoadingDrivers(true);
     accountantService.getDriverOptions(editingVehicle?.id)
       .then((data) => setDriverOptions(data.drivers || []))
-      .catch((err) => alert(err.message))
+      .catch((err) => notify.error(err.message))
       .finally(() => setLoadingDrivers(false));
   }, [editingVehicle?.id, open]);
 
