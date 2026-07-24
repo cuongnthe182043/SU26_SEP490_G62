@@ -1,4 +1,5 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { Button, Spinner, Select, SelectItem, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiEyeLine, RiFlag2Line, RiAlertLine, RiSortDesc } from "react-icons/ri";
 
@@ -105,11 +106,11 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
     let compensationPayload = null;
     if (compensation.enabled) {
       if (!compensation.amount || Number(compensation.amount) <= 0) {
-        alert("Nhập số tiền đền bù hợp lệ.");
+        notify.error("Nhập số tiền đền bù hợp lệ.");
         return;
       }
       if (!compensation.payee.trim()) {
-        alert("Nhập người/đơn vị nhận đền bù.");
+        notify.error("Nhập người/đơn vị nhận đền bù.");
         return;
       }
       compensationPayload = {
@@ -134,7 +135,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       loadIncidents();
       onIncidentResolved?.();
     } catch (error) {
-      alert(error.message || "Không thể cập nhật sự cố.");
+      notify.error(error.message || "Không thể cập nhật sự cố.");
     } finally {
       setSaving(false);
     }
@@ -150,11 +151,11 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
 
   const handleCreateIncident = async () => {
     if (!createForm.incidentType) {
-      alert("Vui lòng chọn loại sự cố.");
+      notify.error("Vui lòng chọn loại sự cố.");
       return;
     }
     if (!createForm.description?.trim() || createForm.description.trim().length < 10) {
-      alert("Mô tả phải có ít nhất 10 ký tự.");
+      notify.error("Mô tả phải có ít nhất 10 ký tự.");
       return;
     }
     setCreating(true);
@@ -169,7 +170,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       closeCreateModal();
       loadIncidents();
     } catch (error) {
-      alert(error.message || "Không thể tạo sự cố.");
+      notify.error(error.message || "Không thể tạo sự cố.");
     } finally {
       setCreating(false);
     }

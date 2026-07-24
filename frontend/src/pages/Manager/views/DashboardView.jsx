@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import { Button, Input, Textarea, Spinner, Select, SelectItem } from "@heroui/react";
 import {
   RiUserSettingsLine, RiTruckLine, RiWalletLine, RiExchangeLine,
@@ -80,7 +81,7 @@ export default function DashboardView({ user }) {
         updated_at: companyData.info?.updated_at || null,
       });
     } catch (error) {
-      alert(error.message || "Không thể tải dữ liệu quản lý.");
+      notify.error(error.message || "Không thể tải dữ liệu quản lý.");
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ export default function DashboardView({ user }) {
       await managerService.approveSalaryAdvance(record.id);
       await refreshAll();
     } catch (error) {
-      alert(error.message || "Không thể phê duyệt yêu cầu.");
+      notify.error(error.message || "Không thể phê duyệt yêu cầu.");
     } finally {
       setActingId(null);
     }
@@ -147,7 +148,7 @@ export default function DashboardView({ user }) {
       setRejectReason("");
       await refreshAll();
     } catch (error) {
-      alert(error.message || "Không thể từ chối yêu cầu.");
+      notify.error(error.message || "Không thể từ chối yêu cầu.");
     } finally {
       setActingId(null);
     }
@@ -159,7 +160,7 @@ export default function DashboardView({ user }) {
       await managerService.confirmDebtRepayment(record.id);
       await refreshAll();
     } catch (error) {
-      alert(error.message || "Không thể xác nhận nộp tiền.");
+      notify.error(error.message || "Không thể xác nhận nộp tiền.");
     } finally {
       setActingId(null);
     }
@@ -173,7 +174,7 @@ export default function DashboardView({ user }) {
       setRejectReason("");
       await refreshAll();
     } catch (error) {
-      alert(error.message || "Không thể từ chối yêu cầu.");
+      notify.error(error.message || "Không thể từ chối yêu cầu.");
     } finally {
       setActingId(null);
     }
@@ -185,7 +186,7 @@ export default function DashboardView({ user }) {
       const result = await managerService.updateCompanyInfo(companyForm);
       setCompanyForm((p) => ({ ...p, ...result.info }));
     } catch (error) {
-      alert(error.message || "Không thể cập nhật thông tin công ty.");
+      notify.error(error.message || "Không thể cập nhật thông tin công ty.");
     } finally {
       setSavingCompany(false);
     }
@@ -200,7 +201,7 @@ export default function DashboardView({ user }) {
       const result = await managerService.uploadBankQr(file);
       setCompanyForm((p) => ({ ...p, ...result.info }));
     } catch (error) {
-      alert(error.message || "Không thể tải ảnh QR lên.");
+      notify.error(error.message || "Không thể tải ảnh QR lên.");
     } finally {
       setUploadingQr(false);
     }

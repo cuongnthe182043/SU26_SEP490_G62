@@ -9,6 +9,8 @@ import AccountantPage from "../pages/Accountant/AccountantPage";
 import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
 import ChatbotWidget from "../components/chatbot/ChatbotWidget";
+import { Toaster } from "../components/shared-ui/Toast";
+import { ConfirmRoot } from "../components/shared-ui/confirm";
 import { appTheme, appThemeDark } from "../styles/theme";
 import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
 import "../styles/global.css";
@@ -42,6 +44,8 @@ function AppShell() {
     >
       {renderPage()}
       {showChatbot && <ChatbotWidget />}
+      <Toaster />
+      <ConfirmRoot />
     </ConfigProvider>
   );
 }

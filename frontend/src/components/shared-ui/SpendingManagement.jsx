@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { notify } from "./Toast";
 import {
   Button, Select, SelectItem, Input, NumberInput, Textarea, Tabs, Tab, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -120,7 +121,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setExpenseStats(res.stats || null);
       setExpensePagination({ total: res.total ?? 0, totalPages: res.totalPages ?? 1 });
     } catch (e) {
-      alert(e.message || "Lỗi tải chi phí");
+      notify.error(e.message || "Lỗi tải chi phí");
     } finally {
       setExpenseLoading(false);
     }
@@ -139,7 +140,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setVoucherStats(res.stats || null);
       setVoucherPagination({ total: res.total ?? 0, totalPages: res.totalPages ?? 1 });
     } catch (e) {
-      alert(e.message || "Lỗi tải phiếu chi");
+      notify.error(e.message || "Lỗi tải phiếu chi");
     } finally {
       setVoucherLoading(false);
     }
@@ -151,7 +152,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       const res = await api.getSummary({ month, year });
       setSummary(res);
     } catch (e) {
-      alert(e.message || "Lỗi tải tổng hợp chi");
+      notify.error(e.message || "Lỗi tải tổng hợp chi");
     } finally {
       setSummaryLoading(false);
     }
@@ -170,14 +171,14 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       await api.approveExpense(r.id);
       loadExpenses();
     } catch (e) {
-      alert(e.message || "Lỗi duyệt chi phí");
+      notify.error(e.message || "Lỗi duyệt chi phí");
     } finally {
       setActing(false);
     }
   };
 
   const handleRejectExpense = async () => {
-    if (!expenseRejectReason.trim()) { alert("Vui lòng nhập lý do từ chối"); return; }
+    if (!expenseRejectReason.trim()) { notify.error("Vui lòng nhập lý do từ chối"); return; }
     setActing(true);
     try {
       await api.rejectExpense(expenseRejectTarget.id, expenseRejectReason.trim());
@@ -185,7 +186,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setExpenseRejectReason("");
       loadExpenses();
     } catch (e) {
-      alert(e.message || "Lỗi từ chối chi phí");
+      notify.error(e.message || "Lỗi từ chối chi phí");
     } finally {
       setActing(false);
     }
@@ -193,10 +194,10 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
 
   // ── Actions: phiếu chi ──
   const handleCreateVoucher = async () => {
-    if (!voucherForm.voucher_type) { alert("Chọn loại chi"); return; }
-    if (!voucherForm.amount || Number(voucherForm.amount) <= 0) { alert("Nhập số tiền hợp lệ"); return; }
-    if (!voucherForm.payee.trim()) { alert("Nhập người/đơn vị nhận tiền"); return; }
-    if (!voucherForm.reason.trim()) { alert("Nhập lý do chi"); return; }
+    if (!voucherForm.voucher_type) { notify.error("Chọn loại chi"); return; }
+    if (!voucherForm.amount || Number(voucherForm.amount) <= 0) { notify.error("Nhập số tiền hợp lệ"); return; }
+    if (!voucherForm.payee.trim()) { notify.error("Nhập người/đơn vị nhận tiền"); return; }
+    if (!voucherForm.reason.trim()) { notify.error("Nhập lý do chi"); return; }
     setActing(true);
     try {
       const fd = new FormData();
@@ -208,7 +209,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setProofFile(null);
       loadVouchers();
     } catch (e) {
-      alert(e.message || "Lỗi tạo phiếu chi");
+      notify.error(e.message || "Lỗi tạo phiếu chi");
     } finally {
       setActing(false);
     }
@@ -220,14 +221,14 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       await api.approveVoucher(r.id);
       loadVouchers();
     } catch (e) {
-      alert(e.message || "Lỗi duyệt phiếu chi");
+      notify.error(e.message || "Lỗi duyệt phiếu chi");
     } finally {
       setActing(false);
     }
   };
 
   const handleRejectVoucher = async () => {
-    if (!voucherRejectReason.trim()) { alert("Vui lòng nhập lý do từ chối"); return; }
+    if (!voucherRejectReason.trim()) { notify.error("Vui lòng nhập lý do từ chối"); return; }
     setActing(true);
     try {
       await api.rejectVoucher(voucherRejectTarget.id, voucherRejectReason.trim());
@@ -235,14 +236,14 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setVoucherRejectReason("");
       loadVouchers();
     } catch (e) {
-      alert(e.message || "Lỗi từ chối phiếu chi");
+      notify.error(e.message || "Lỗi từ chối phiếu chi");
     } finally {
       setActing(false);
     }
   };
 
   const handleCancelVoucher = async () => {
-    if (!voucherCancelReason.trim()) { alert("Vui lòng nhập lý do huỷ"); return; }
+    if (!voucherCancelReason.trim()) { notify.error("Vui lòng nhập lý do huỷ"); return; }
     setActing(true);
     try {
       await api.cancelVoucher(voucherCancelTarget.id, voucherCancelReason.trim());
@@ -250,7 +251,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setVoucherCancelReason("");
       loadVouchers();
     } catch (e) {
-      alert(e.message || "Lỗi huỷ phiếu chi");
+      notify.error(e.message || "Lỗi huỷ phiếu chi");
     } finally {
       setActing(false);
     }
@@ -263,7 +264,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setPayTarget(null);
       loadVouchers();
     } catch (e) {
-      alert(e.message || "Lỗi xác nhận chi");
+      notify.error(e.message || "Lỗi xác nhận chi");
     } finally {
       setActing(false);
     }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { notify } from "./Toast";
 import {
   Button, Input, Select, SelectItem, Spinner, Chip,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -178,7 +179,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
       setDrivers(data.drivers || []);
       setStatusLabels(data.status_labels || {});
     } catch (error) {
-      alert(error.message || "Không thể tải dữ liệu chấm công.");
+      notify.error(error.message || "Không thể tải dữ liệu chấm công.");
     } finally {
       setLoading(false);
     }
@@ -211,7 +212,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
         return fresh || prev;
       });
     } catch (error) {
-      alert(error.message || "Không thể chấm công.");
+      notify.error(error.message || "Không thể chấm công.");
     } finally {
       setMarking(false);
     }
@@ -223,7 +224,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
       await clearAttendance(driverId, workDate);
       await load();
     } catch (error) {
-      alert(error.message || "Không thể xoá đánh dấu.");
+      notify.error(error.message || "Không thể xoá đánh dấu.");
     } finally {
       setMarking(false);
     }

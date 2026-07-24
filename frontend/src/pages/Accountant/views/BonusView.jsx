@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../../../components/shared-ui/Toast";
 import {
   Button, Chip, Modal, ModalContent, ModalHeader,
   ModalBody, ModalFooter, Spinner, Select, SelectItem,
@@ -113,18 +114,18 @@ export function BonusView({ search }) {
   };
 
   const handleCreate = async () => {
-    if (!createForm.driver_id) { alert("Chọn tài xế"); return; }
-    if (!createForm.type) { alert("Chọn loại phúc lợi"); return; }
-    if (!createForm.amount) { alert("Nhập số tiền"); return; }
+    if (!createForm.driver_id) { notify.error("Chọn tài xế"); return; }
+    if (!createForm.type) { notify.error("Chọn loại phúc lợi"); return; }
+    if (!createForm.amount) { notify.error("Nhập số tiền"); return; }
     setCreating(true);
     try {
       const res = await accountantService.createBonus(createForm);
-      alert(res.message ?? "Tạo khoản thưởng/phúc lợi thành công");
+      notify.success(res.message ?? "Tạo khoản thưởng/phúc lợi thành công");
       setCreateForm(EMPTY_CREATE_FORM);
       refresh();
       setTab("list");
     } catch (err) {
-      alert(err.message ?? "Lỗi tạo phúc lợi");
+      notify.error(err.message ?? "Lỗi tạo phúc lợi");
     } finally {
       setCreating(false);
     }
@@ -140,7 +141,7 @@ export function BonusView({ search }) {
       await payBonus(confirmId);
       setConfirmId(null);
     } catch (err) {
-      alert(err.message ?? "Lỗi chi trả");
+      notify.error(err.message ?? "Lỗi chi trả");
     } finally {
       setPaying(null);
     }
