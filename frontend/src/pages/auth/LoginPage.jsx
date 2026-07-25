@@ -3,8 +3,10 @@ import { Button, Input, Modal, Space, message } from "antd";
 import { apiRequest } from "../../services/apiClient";
 import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
+import LoadingState from "../../components/LoadingState";
 import ThemeToggle from "../../theme/ThemeToggle";
 import Logo from "../../theme/Logo";
+import { RiEyeLine, RiEyeOffLine } from "react-icons/ri";
 import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,6 +81,7 @@ export default function LoginPage({ onLoginSuccess }) {
   const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
   const [touched, setTouched] = useState({ email: false, password: false });
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [googleError, setGoogleError] = useState("");
@@ -371,7 +374,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 aria-live="polite"
               />
               {!googleReady && !googleError && (
-                <div className="login-help">Loading Google sign-in...</div>
+                <LoadingState label="Đang tải đăng nhập Google..." size="sm" className="py-2 justify-start" />
               )}
               {googleError && (
                 <div className="login-error" role="alert">
@@ -417,30 +420,42 @@ export default function LoginPage({ onLoginSuccess }) {
 
               <label className="field">
                 <span className="label-text">Password</span>
-                <input
-                  aria-label="Password"
-                  type="password"
-                  placeholder="At least 6 characters"
-                  value={password}
-                  onChange={(event) => {
-                    const nextPassword = event.target.value;
-                    setPassword(nextPassword);
-                    if (touched.password) {
-                      syncFieldErrors(email, nextPassword);
-                    }
-                  }}
-                  onBlur={() => {
-                    setTouched((current) => ({ ...current, password: true }));
-                    syncFieldErrors(email, password);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  className={passwordError ? "input-error" : ""}
-                  required
-                />
+                <div className="password-input-wrap">
+                  <input
+                    aria-label="Password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="At least 6 characters"
+                    value={password}
+                    onChange={(event) => {
+                      const nextPassword = event.target.value;
+                      setPassword(nextPassword);
+                      if (touched.password) {
+                        syncFieldErrors(email, nextPassword);
+                      }
+                    }}
+                    onBlur={() => {
+                      setTouched((current) => ({ ...current, password: true }));
+                      syncFieldErrors(email, password);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    className={passwordError ? "input-error" : ""}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-eye-btn"
+                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                    title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setShowPassword((current) => !current)}
+                  >
+                    {showPassword ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}
+                  </button>
+                </div>
                 {passwordError && <div className="field-error">{passwordError}</div>}
               </label>
 
