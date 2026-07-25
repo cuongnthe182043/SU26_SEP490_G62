@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Avatar, Badge, Button, Dropdown, Space, Typography } from 'antd';
+import {
+  Avatar as HeroAvatar,
+  Badge as HeroBadge,
+  Button as HeroButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@heroui/react';
 import { Bell, ChevronDown, Grid, HelpCircle, LogOut, Settings2, User } from 'lucide-react';
 import { apiRequest } from '../../services/apiClient';
 import { useRoleRealtime } from '../../hooks/useRoleRealtime';
@@ -7,9 +14,60 @@ import { C } from '../../styles/theme';
 import LoadingState from '../LoadingState';
 import ProfileModal from '../profile/ProfileModal';
 
-const { Text } = Typography;
 const SW = 1.75;
 const NOTIFICATION_ENABLED_ROLES = new Set(['manager', 'coordinator']);
+
+function Text({ children, strong, style }) {
+  const Component = strong ? 'strong' : 'span';
+  return <Component style={style}>{children}</Component>;
+}
+
+function Space({ children, size = 8, style }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: size, ...style }}>{children}</div>;
+}
+
+function Avatar({ size, src, icon, style }) {
+  const dimension = typeof size === 'number' ? size : size === 'lg' ? 56 : 40;
+  return (
+    <HeroAvatar
+      src={src}
+      fallback={icon}
+      style={{ width: dimension, height: dimension, minWidth: dimension, ...style }}
+    />
+  );
+}
+
+function Badge({ count, children, color }) {
+  return (
+    <HeroBadge content={count || null} color={color === '#BA1A1A' ? 'danger' : 'primary'} isInvisible={!count}>
+      {children}
+    </HeroBadge>
+  );
+}
+
+function Button({ icon, children, onClick, style, type }) {
+  return (
+    <HeroButton
+      isIconOnly={!children}
+      variant={type === 'text' ? 'light' : 'flat'}
+      onPress={onClick}
+      style={style}
+    >
+      {icon}
+      {children}
+    </HeroButton>
+  );
+}
+
+function Dropdown({ menu, children, open, onOpenChange, placement }) {
+  const content = menu?.items?.[0]?.label ?? null;
+  return (
+    <Popover isOpen={open} onOpenChange={onOpenChange} placement={placement === 'bottomRight' ? 'bottom-end' : placement}>
+      <PopoverTrigger>{children}</PopoverTrigger>
+      <PopoverContent>{content}</PopoverContent>
+    </Popover>
+  );
+}
 
 function roleLabel(role) {
   const labels = {

@@ -1,5 +1,3 @@
-import ExcelJS from "exceljs";
-
 // Xuất báo cáo kinh doanh (Manager) ra Excel nhiều sheet — cùng phong cách trình bày
 // với báo cáo doanh thu của Kế toán (exportOrdersReport.js): header xanh thương hiệu,
 // viền mảnh, cột tiền canh phải định dạng #,##0. Dữ liệu lấy thẳng từ payload đang xem
@@ -80,6 +78,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
   const totalCost = num(pnl.operating_cost) + num(pnl.payroll_cost);
   const prevCost = num(prev.operating_cost) + num(prev.payroll_cost);
 
+  const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "LogisCount";
   wb.created = new Date();

@@ -30,7 +30,11 @@ export function useAuthSession() {
 
   const logout = useCallback(async () => {
     try {
-      await apiRequest("/auth/logout", { method: "POST", retryOnAuthFailure: false });
+      await apiRequest("/auth/logout", {
+        method: "POST",
+        retryOnAuthFailure: false,
+        skipAuthRefresh: true,
+      });
     } catch {
       // Clear local session state even if the logout request fails.
     }

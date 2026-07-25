@@ -1,4 +1,10 @@
-const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
+if (import.meta.env.PROD && !configuredApiBaseUrl) {
+  throw new Error("Missing VITE_API_BASE_URL for production frontend build.");
+}
+
+const DEFAULT_API_BASE_URL = configuredApiBaseUrl || "http://localhost:9999";
 
 export const apiBaseUrl = DEFAULT_API_BASE_URL;
 let refreshPromise = null;
@@ -30,11 +36,17 @@ async function parseResponse(response) {
   const payload = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
+    const retryAfterHeader = response.headers.get("retry-after") || response.headers.get("ratelimit-reset");
+    const retryAfterSeconds = Number.parseInt(retryAfterHeader || "", 10);
     const message =
       (payload && typeof payload === "object" && (payload.error || payload.message)) ||
       (typeof payload === "string" && payload.trim()) ||
       `Request failed with status ${response.status}`;
     const error = new Error(message);
+    error.status = response.status;
+    error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds
+      : 0;
     if (payload && typeof payload === "object") {
       Object.assign(error, payload);
     }
