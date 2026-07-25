@@ -12,6 +12,8 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
+import { exportLedgerCsvToExcel } from "../utils/exportLedgerReport";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const fmtDateTime = (iso) =>
   iso ? new Date(iso).toLocaleString("vi-VN", {
@@ -51,22 +53,12 @@ function ExportModal({ onClose, onExported }) {
     setError(null);
     try {
       const csv = await accountantService.exportLedgerPeriod(from, to);
-      // apiRequest() đọc response bằng response.text() — theo spec Fetch, bước decode UTF-8
-      // này TỰ ĐỘNG XÓA BOM ở đầu chuỗi (dù backend đã cố tình chèn BOM cho Excel/MISA nhận
-      // đúng UTF-8). Thiếu BOM khiến Excel mở file bằng bảng mã ANSI mặc định của Windows,
-      // làm tiếng Việt bị lỗi phông (mojibake) — phải chèn lại BOM thủ công ở đây trước khi
-      // tạo Blob để tải xuống.
-      const csvWithBom = csv.charCodeAt(0) === 0xfeff ? csv : `﻿${csv}`;
-      const blob = new Blob([csvWithBom], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `nhat-ky-tai-chinh_${from}_${to}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await exportLedgerCsvToExcel(csv, { from, to });
       onExported();
+      notify.success("Đã xuất kỳ kế toán.");
     } catch (err) {
-      setError(err.message ?? "Xuất kỳ kế toán thất bại");
+      setError(err.message ?? "Xuất Excel kỳ kế toán thất bại");
+      notify.error(err.message ?? "Xuất Excel kỳ kế toán thất bại");
       setLoading(false);
     }
   };
@@ -80,8 +72,8 @@ function ExportModal({ onClose, onExported }) {
         </ModalHeader>
         <ModalBody className="gap-4">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Xuất các bút toán <strong>chưa xuất</strong> trong kỳ đã chọn ra file CSV
-            (dùng để import vào MISA hoặc phần mềm kế toán khác).
+            Xuất các bút toán <strong>chưa xuất</strong> trong kỳ đã chọn ra file Excel
+            có định dạng sẵn: tiêu đề, bộ lọc, cột tiền, ngày phát sinh và dòng tổng cộng.
             Sau khi xuất, các bút toán được đánh dấu đã chốt và không xuất lại được.
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -93,7 +85,7 @@ function ExportModal({ onClose, onExported }) {
         <ModalFooter>
           <Button variant="light" onPress={onClose} isDisabled={loading}>Hủy</Button>
           <Button color="primary" onPress={handleExport} isLoading={loading}>
-            Xuất CSV và chốt kỳ
+            Xuất Excel và chốt kỳ
           </Button>
         </ModalFooter>
       </ModalContent>

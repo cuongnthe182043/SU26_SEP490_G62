@@ -1,5 +1,6 @@
 const bonusRuleRepository = require('../repositories/bonusRuleRepository');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 
 const normalizePayload = (payload = {}) => {
     const title = String(payload.title || '').trim();
@@ -57,6 +58,22 @@ const broadcastRuleChange = (action, ruleId) => {
     });
 };
 
+const notifyRuleChange = (action, rule, actorId = null) => {
+    const actionText = {
+        created: 'được tạo',
+        updated: 'được cập nhật',
+        deleted: 'bị xóa',
+    }[action] || 'có thay đổi';
+
+    notifyRolesSafe(['manager', 'accountant'], {
+        title: 'Quy tắc thưởng có thay đổi',
+        message: `Quy tắc thưởng "${rule?.title || `#${rule?.id || ''}`}" vừa ${actionText}.`,
+        type: `BONUS_RULE_${String(action || 'changed').toUpperCase()}`,
+        entityType: 'bonus_rules',
+        entityId: rule?.id ?? null,
+    }, { excludeUserId: actorId, displayMode: 'toast' });
+};
+
 const listRules = async (query) => bonusRuleRepository.listRules({
     vehicleGroupId: query.vehicle_group_id ? Number(query.vehicle_group_id) : null,
     bonusType: query.bonus_type || null,
@@ -73,6 +90,7 @@ const createRule = async (payload) => {
     const normalized = normalizePayload(payload);
     const rule = await bonusRuleRepository.createRule(normalized);
     broadcastRuleChange('created', rule.id);
+    notifyRuleChange('created', rule, payload.actor_id ?? null);
     return rule;
 };
 
@@ -93,14 +111,16 @@ const updateRule = async (id, payload) => {
     const updated = await bonusRuleRepository.updateRule(id, normalized);
     if (!updated) throw new Error('Không thể cập nhật quy tắc thưởng');
     broadcastRuleChange('updated', id);
+    notifyRuleChange('updated', updated, payload.actor_id ?? null);
     return updated;
 };
 
-const deleteRule = async (id) => {
+const deleteRule = async (id, actorId = null) => {
     const existing = await bonusRuleRepository.getRuleById(id);
     if (!existing) throw new Error('Quy tắc thưởng không tồn tại');
     await bonusRuleRepository.deleteRule(id);
     broadcastRuleChange('deleted', id);
+    notifyRuleChange('deleted', existing, actorId);
     return { success: true };
 };
 

@@ -57,12 +57,25 @@ html, body, #root {
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
 }
 
+.loading-screen-logo-frame {
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-subtle, #eef1f6);
+  border-radius: 18px;
+  background: var(--surface-2, #F8F9FF);
+  overflow: hidden;
+}
+
 .loading-screen-logo {
   display: block;
-  width: 82px;
-  max-width: 40vw;
-  height: auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
   object-fit: contain;
+  object-position: center;
+  overflow: hidden;
 }
 
 /* Thin scrollbar */
@@ -74,6 +87,7 @@ html, body, #root {
 /* ── Sidebar nền theo theme (bỏ khoá sáng cứng cũ) ── */
 .g62-sidebar {
   background-color: var(--surface) !important;
+  transition-property: width, min-width, border-color, color, box-shadow !important;
 }
 
 /* AntD Menu item smooth transition */

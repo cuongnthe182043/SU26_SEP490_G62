@@ -44,7 +44,7 @@ const cancelOrder = async (req, res) => {
         const orderId = Number(req.params.id);
         if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
 
-        const cancelledOrder = await orderService.cancelOrder(orderId, req.body?.reason);
+        const cancelledOrder = await orderService.cancelOrder(orderId, req.body?.reason, req.user?.userId ?? null);
         if (!cancelledOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
 
         res.json({ message: 'Hủy đơn hàng thành công', order: cancelledOrder });

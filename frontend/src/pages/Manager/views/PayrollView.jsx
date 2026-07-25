@@ -112,8 +112,11 @@ function ManagerRevertModal({ row, onClose, onDone }) {
       await managerService.revertPayroll(row.id, reason.trim() || undefined);
       onDone();
       onClose();
+      notify.success("Đã trả bảng lương về tính lại.");
     } catch (err) {
-      setError(err.message ?? "Lỗi khi trả về.");
+      const message = err.message ?? "Lỗi khi trả về.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -221,6 +224,7 @@ export default function PayrollView() {
     try {
       await managerService.reviewPayroll(record.id);
       load();
+      notify.success("Đã xác nhận bảng lương.");
     } catch (e) {
       notify.error(e.message || "Lỗi xác nhận");
     } finally {

@@ -32,7 +32,7 @@ const createUser = async (req, res) => {
         const newId = await adminService.createUser(
             email, full_name, phone, role, gender, dob, city,
             address, country, national_id, tax_code,
-            emergency_contact_name, emergency_contact_phone, notes,
+            emergency_contact_name, emergency_contact_phone, notes, req.user?.userId ?? null,
         );
         res.status(201).json({ message: 'Tạo người dùng thành công.', id: newId });
     } catch (err) {
@@ -65,7 +65,7 @@ const updateUser = async (req, res) => {
         await adminService.updateUser(
             userId, full_name, phone, role, gender, dob, city,
             address, country, national_id, tax_code,
-            emergency_contact_name, emergency_contact_phone, notes, email,
+            emergency_contact_name, emergency_contact_phone, notes, email, req.user?.userId ?? null,
         );
         res.json({ message: 'Cập nhật thành công.' });
     } catch (err) {

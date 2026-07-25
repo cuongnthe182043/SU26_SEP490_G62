@@ -205,6 +205,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
     try {
       await markAttendance({ driver_id: driverId, work_date: workDate, status });
       await load();
+      notify.success("Đã cập nhật chấm công.");
       setSelectedDriver((prev) => {
         if (!prev || prev.driver_id !== driverId) return prev;
         const fresh = drivers.find((d) => d.driver_id === driverId);
@@ -222,6 +223,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
     try {
       await clearAttendance(driverId, workDate);
       await load();
+      notify.success("Đã xóa chấm công.");
     } catch (error) {
       notify.error(error.message || "Không thể xoá đánh dấu.");
     } finally {

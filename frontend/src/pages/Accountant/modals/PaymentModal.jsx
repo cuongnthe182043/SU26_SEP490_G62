@@ -8,6 +8,7 @@ import {
   RiAlertLine, RiArrowRightLine, RiMoneyDollarCircleLine, RiStickyNoteLine,
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
@@ -118,8 +119,10 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       await accountantService.voidRepayment(payment.id, reason.trim());
       await loadData();
       onPaymentRecorded?.();
+      notify.success("Đã hủy khoản thanh toán.");
     } catch (err) {
       setError(err.message ?? "Hủy xác nhận thất bại");
+      notify.error(err.message ?? "Hủy xác nhận thất bại");
     }
   };
 
@@ -177,12 +180,14 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       });
       setResult(data);
       onPaymentRecorded();
+      notify.success("Đã ghi nhận thanh toán.");
       // Reload history với debt mới
       loadData();
       setAmount("");
       setNotes("");
     } catch (err) {
       setError(err.message ?? "Lỗi khi ghi nhận thanh toán.");
+      notify.error(err.message ?? "Lỗi khi ghi nhận thanh toán.");
     } finally {
       setSubmit(false);
     }

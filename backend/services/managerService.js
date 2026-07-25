@@ -22,6 +22,18 @@ const broadcastWorkflowChange = (section, action, extra = {}) => {
     notificationGateway.broadcastToRole('manager', createManagerRealtimePayload(section, action, extra));
 };
 
+const notifyManagerWorkflow = (section, action, payload, actorId = null) => {
+    notificationService.getUserIdsByRole('manager').then((ids) =>
+        notificationService.createForUsers(ids.filter((id) => Number(id) !== Number(actorId)), {
+            title: payload.title,
+            message: payload.message,
+            type: `MANAGER_${section}_${action}`.toUpperCase(),
+            entityType: payload.entityType || section,
+            entityId: payload.entityId ?? null,
+        }, { displayMode: payload.displayMode || 'toast' })
+    ).catch(() => {});
+};
+
 const getDashboard = async () => {
     const [overview, finance, pendingAdvances, pendingRepayments, receiptRequests, companyInfo] = await Promise.all([
         managerRepository.getOverviewMetrics(),
@@ -87,6 +99,12 @@ const closeReportPeriod = async ({ year, month, actorId, note } = {}) => {
     const snapshot = await managerReportRepository.getBusinessReport({ year, month });
     await managerReportRepository.upsertClosedPeriod({ year, month, snapshot, actorId, note });
     broadcastWorkflowChange('reports', 'period_closed', { year, month });
+    notifyManagerWorkflow('reports', 'period_closed', {
+        title: 'Kỳ báo cáo đã được chốt',
+        message: `Báo cáo tháng ${month}/${year} vừa được chốt.`,
+        entityType: 'reports',
+        entityId: null,
+    }, actorId);
     return getBusinessReport({ year, month });
 };
 
@@ -99,6 +117,13 @@ const signOffReportPeriod = async ({ year, month, actorId } = {}) => {
         throw err;
     }
     broadcastWorkflowChange('reports', 'period_signed_off', { year, month });
+    notifyManagerWorkflow('reports', 'period_signed_off', {
+        title: 'Kỳ báo cáo đã được ký duyệt',
+        message: `Báo cáo tháng ${month}/${year} vừa được ký duyệt.`,
+        entityType: 'reports',
+        entityId: null,
+        displayMode: 'alert',
+    }, actorId);
     return getBusinessReport({ year, month });
 };
 
@@ -111,6 +136,12 @@ const reopenReportPeriod = async ({ year, month } = {}) => {
         throw err;
     }
     broadcastWorkflowChange('reports', 'period_reopened', { year, month });
+    notifyManagerWorkflow('reports', 'period_reopened', {
+        title: 'Kỳ báo cáo đã được mở lại',
+        message: `Báo cáo tháng ${month}/${year} vừa được mở lại.`,
+        entityType: 'reports',
+        entityId: null,
+    });
     return getBusinessReport({ year, month });
 };
 
@@ -274,6 +305,12 @@ const createPartner = async (payload, actorId = null) => {
         oldData: null, newData: { company_name: partner.company_name, tax_code: partner.tax_code },
     });
     broadcastPartnerChange('created', { partnerId: partner.id });
+    notifyManagerWorkflow('partners', 'created', {
+        title: 'Đối tác mới đã được tạo',
+        message: `Đối tác "${partner.company_name}" vừa được tạo.`,
+        entityType: 'partner',
+        entityId: partner.id,
+    }, actorId);
     return partner;
 };
 
@@ -292,6 +329,12 @@ const updatePartner = async (partnerId, payload, actorId = null) => {
                    payment_term_days: partner.payment_term_days },
     });
     broadcastPartnerChange('updated', { partnerId: partner.id });
+    notifyManagerWorkflow('partners', 'updated', {
+        title: 'Đối tác đã được cập nhật',
+        message: `Thông tin đối tác "${partner.company_name}" vừa được cập nhật.`,
+        entityType: 'partner',
+        entityId: partner.id,
+    }, actorId);
     return partner;
 };
 
@@ -326,6 +369,12 @@ const recordPartnerPayment = async (partnerId, { amount, paymentMethod, notes },
     });
 
     broadcastPartnerChange('payment', { partnerId });
+    notifyManagerWorkflow('partners', 'payment', {
+        title: 'Đối tác đã thanh toán công nợ',
+        message: `Đã ghi nhận thanh toán ${numericAmount.toLocaleString('vi-VN')}đ cho đối tác "${existing.company_name}".`,
+        entityType: 'partner',
+        entityId: partnerId,
+    }, actorId);
     return result;
 };
 
