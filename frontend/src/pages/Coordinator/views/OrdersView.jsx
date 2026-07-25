@@ -243,8 +243,10 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       const payload = buildOrderPayload();
       if (editingTrip) {
         await coordinatorService.updateOrder(editingTrip.orderId, payload);
+        notify.success("Đã cập nhật đơn hàng.");
       } else {
         await coordinatorService.createOrder(payload);
+        notify.success("Đã tạo đơn hàng.");
       }
       closeOrderModal();
       await loadOrders(editingTrip ? pagination.page : 1);
@@ -267,6 +269,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     try {
       await coordinatorService.cancelOrder(trip.orderId, "Coordinator cancelled order");
       await loadOrders(pagination.page);
+      notify.success("Đã hủy đơn hàng.");
     } catch (error) {
       notify.error(error.message || "Không thể hủy đơn hàng.");
     }
@@ -282,6 +285,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       await coordinatorService.reassignShipment(reassignTarget, Number(selectedDriver));
       closeReassignModal();
       await loadOrders(pagination.page);
+      notify.success("Đã điều chuyển chuyến.");
     } catch (error) {
       notify.error(error.message || "Không thể điều chuyển chuyến.");
     } finally {
@@ -296,6 +300,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       await coordinatorService.cancelShipment(cancelTarget, cancelReason.trim());
       closeCancelModal();
       await loadOrders(pagination.page);
+      notify.success("Đã hủy chuyến.");
     } catch (error) {
       notify.error(error.message || "Không thể hủy chuyến.");
     } finally {

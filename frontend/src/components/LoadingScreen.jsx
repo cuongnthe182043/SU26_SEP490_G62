@@ -6,12 +6,9 @@ export default function LoadingScreen({ label = "Đang tải..." }) {
   return (
     <main className="loading-screen" role="status" aria-live="polite">
       <div className="loading-screen-card">
-        <Logo
-          className="loading-screen-logo"
-          width={82}
-          height={82}
-          style={{ width: 82, maxWidth: "40vw", height: "auto" }}
-        />
+        <div className="loading-screen-logo-frame">
+          <Logo className="loading-screen-logo" width={64} height={64} />
+        </div>
         <LoadingState label={label} className="py-0" />
       </div>
     </main>

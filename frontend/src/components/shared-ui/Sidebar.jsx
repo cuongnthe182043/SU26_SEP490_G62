@@ -79,7 +79,7 @@ export function Sidebar({
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
           <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 bg-gray-50 dark:bg-white/10 border border-gray-100 dark:border-white/10">
-            <Logo className="w-full h-full object-cover object-top" />
+            <Logo className="w-full h-full rounded-xl object-cover object-top" />
           </div>
         )}
         {!collapsed && (

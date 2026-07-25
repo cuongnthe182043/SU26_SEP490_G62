@@ -5,6 +5,7 @@ import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
 import { RiAddLine, RiSearchLine, RiPencilLine, RiDeleteBinLine } from "react-icons/ri";
+import { notify } from "./Toast";
 
 const EMPTY_FORM = {
   customer_type: "individual",
@@ -96,8 +97,10 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
     try {
       if (editing) {
         await updateCustomer(editing.id, form);
+        notify.success("Đã cập nhật khách hàng.");
       } else {
         await createCustomer(form);
+        notify.success("Đã thêm khách hàng.");
       }
       closeModal();
       load(pagination.page);
@@ -115,6 +118,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
     try {
       await deleteCustomer(deleteTarget.id);
       setDeleteTarget(null);
+      notify.success("Đã xóa khách hàng.");
       load(pagination.page);
     } catch (err) {
       setError(err.message ?? "Không thể xóa khách hàng.");

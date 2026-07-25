@@ -7,6 +7,7 @@ import { RiAddLine, RiFileAddLine } from "react-icons/ri";
 import { CustomerSection } from "./CustomerSection";
 import { ShipmentForm } from "./ShipmentForm";
 import { accountantService } from "../../services/accountant.service";
+import { notify } from "../../../../components/shared-ui/Toast";
 
 const EMPTY_SHIPMENT = () => ({
   pickup_addresses: [""],
@@ -155,9 +156,11 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
         })),
       });
       onOrderCreated();
+      notify.success("Đã tạo đơn hàng ngoài hệ thống.");
       handleClose();
     } catch (err) {
       setApiError(err.message ?? "Lỗi khi tạo đơn hàng.");
+      notify.error(err.message ?? "Không thể tạo đơn hàng ngoài hệ thống.");
     } finally {
       setSubmitting(false);
     }
