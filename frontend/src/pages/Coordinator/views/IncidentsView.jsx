@@ -1,7 +1,7 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
 import { Button, Spinner, Select, SelectItem, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
-import { RiEyeLine, RiFlag2Line, RiAlertLine, RiSortDesc } from "react-icons/ri";
+import { RiEyeLine, RiFlag2Line, RiAlertLine, RiSortDesc, RiToolsLine } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
@@ -47,6 +47,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
+  const [detailIncident, setDetailIncident] = useState(null);
   const [form, setForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
   const [compensation, setCompensation] = useState(EMPTY_COMPENSATION);
 
@@ -89,15 +90,23 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
     setCompensation(EMPTY_COMPENSATION);
   };
 
+  const buildIncidentForm = (incident) => ({
+    status: incident.status === "open" ? "investigating" : incident.status || "investigating",
+    resolution: incident.resolution || incident.resolution_note || "",
+    replacement_driver_id: incident.replacement_driver_id ? String(incident.replacement_driver_id) : "",
+  });
+
   const openModal = (incident) => {
     setSelectedIncident(incident);
-    setForm({
-      status: incident.status === "open" ? "investigating" : incident.status || "investigating",
-      resolution: "",
-      replacement_driver_id: incident.replacement_driver_id ? String(incident.replacement_driver_id) : "",
-    });
+    setForm(buildIncidentForm(incident));
     setCompensation(EMPTY_COMPENSATION);
     setModalOpen(true);
+  };
+
+  const openDetailModal = (incident) => {
+    setDetailIncident(incident);
+    setForm(buildIncidentForm(incident));
+    setCompensation(EMPTY_COMPENSATION);
   };
 
   const handleSubmit = async () => {
@@ -280,15 +289,28 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
                 <TableCell>{incident.pickup_completed ? "Đã lấy hàng" : "Chưa lấy hàng"}</TableCell>
                 <TableCell><StatusBadge status={incident.status} /></TableCell>
                 <TableCell>
-                  <Button
-                    size="sm"
-                    variant="light"
-                    startContent={<RiEyeLine size={14} />}
-                    isDisabled={incident.status === "closed" || incident.status === "resolved"}
-                    onPress={() => openModal(incident)}
-                  >
-                    Xử lý
-                  </Button>
+                  <div className="flex justify-end gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      className="h-8 px-3 text-xs gap-1.5 overflow-visible"
+                      onPress={() => openDetailModal(incident)}
+                    >
+                      <RiEyeLine size={16} className="shrink-0 overflow-visible" />
+                      <span>Chi tiết</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="light"
+                      color="primary"
+                      className="h-8 px-3 text-xs gap-1.5 overflow-visible"
+                      isDisabled={incident.status === "closed" || incident.status === "resolved"}
+                      onPress={() => openModal(incident)}
+                    >
+                      <RiToolsLine size={16} className="shrink-0 overflow-visible" />
+                      <span>Xử lý</span>
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
@@ -308,6 +330,20 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
         onSubmit={handleSubmit}
         compensation={compensation}
         setCompensation={setCompensation}
+      />
+
+      <IncidentDetailModal
+        open={!!detailIncident}
+        incident={detailIncident}
+        incidentForm={form}
+        setIncidentForm={setForm}
+        saving={false}
+        drivers={drivers}
+        onClose={() => setDetailIncident(null)}
+        onSubmit={() => {}}
+        compensation={compensation}
+        setCompensation={setCompensation}
+        readOnly
       />
 
       <CreateIncidentModal

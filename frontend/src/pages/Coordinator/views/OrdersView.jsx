@@ -5,10 +5,11 @@ import {
   Button, Input, Tabs, Tab,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem, Textarea,
 } from "@heroui/react";
-import { RiRefreshLine, RiUserLine, RiSortDesc } from "react-icons/ri";
+import { RiRefreshLine, RiUserLine, RiSortDesc, RiExchangeLine } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import OrderFormModal from "../modals/OrderFormModal";
+import OrderDetailModal from "../modals/OrderDetailModal";
 import { OrdersTable } from "../components/OrdersTable";
 import { coordinatorService } from "../services/coordinator.service";
 import {
@@ -39,6 +40,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   const [partners, setPartners] = useState([]);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailOrder, setDetailOrder] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -472,6 +474,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
           loading={loading}
           pagination={pagination}
           onPageChange={(page) => loadOrders(page)}
+          onDetail={setDetailOrder}
           onEdit={openEditModal}
           onCancelOrder={handleCancelOrder}
           onReassignShipment={(shipmentId) => setReassignTarget(shipmentId)}
@@ -502,6 +505,12 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         getSuggestedFare={getSuggestedFare}
       />
 
+      <OrderDetailModal
+        open={!!detailOrder}
+        order={detailOrder}
+        onClose={() => setDetailOrder(null)}
+      />
+
       <Modal isOpen={!!reassignTarget} onOpenChange={(isOpen) => !isOpen && closeReassignModal()} size="sm">
         <ModalContent>
           <ModalHeader>Điều chuyển chuyến #{reassignTarget}</ModalHeader>
@@ -518,8 +527,9 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={closeReassignModal}>Đóng</Button>
-            <Button color="primary" isDisabled={!selectedDriver} isLoading={reassignBusy} onPress={submitReassignShipment}>
-              Điều chuyển
+            <Button color="primary" className="h-10 px-4 gap-2 overflow-visible" isDisabled={!selectedDriver} isLoading={reassignBusy} onPress={submitReassignShipment}>
+              {!reassignBusy && <RiExchangeLine size={18} className="shrink-0 overflow-visible" />}
+              <span>Điều chuyển</span>
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -97,7 +97,7 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
   const handleLogout = async () => {
     if (await confirmDialog({
       title: 'Đăng xuất',
-      description: 'Anh có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?',
+      description: 'Bạn có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?',
       confirmLabel: 'Đăng xuất',
       danger: true,
     })) {
