@@ -91,10 +91,23 @@ export function Toaster() {
     return () => listeners.delete(l);
   }, []);
 
+  const stackedItems = items.slice(-4).reverse();
+
   return (
-    <div className="fixed top-[90px] right-4 z-[9999] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
-      {items.map((t) => (
-        <ToastCard key={t.id} toast={t} onClose={() => dismiss(t.id)} />
+    <div className="fixed top-[90px] right-4 z-[9999] h-36 w-[360px] max-w-[calc(100vw-2rem)] pointer-events-none">
+      {stackedItems.map((t, index) => (
+        <div
+          key={t.id}
+          className="absolute inset-x-0 transition-all duration-200 ease-out"
+          style={{
+            zIndex: stackedItems.length - index,
+            transform: `translateY(${index * 12}px) scale(${1 - index * 0.035})`,
+            opacity: 1 - index * 0.12,
+            transformOrigin: "top right",
+          }}
+        >
+          <ToastCard toast={t} onClose={() => dismiss(t.id)} />
+        </div>
       ))}
     </div>
   );
