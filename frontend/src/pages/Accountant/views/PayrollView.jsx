@@ -17,6 +17,7 @@ import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
 import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
@@ -556,6 +557,11 @@ export function PayrollView({ defaultTab = "payroll" }) {
   };
 
   const handleConfirm = async (id) => {
+    if (!(await confirmDialog({
+      title: "Xác nhận bảng lương",
+      description: "Xác nhận bảng lương này để chuyển sang bước chi trả?",
+      confirmLabel: "Xác nhận",
+    }))) return;
     setConfirming(id);
     try {
       await accountantService.confirmPayroll(id);
@@ -569,6 +575,12 @@ export function PayrollView({ defaultTab = "payroll" }) {
   };
 
   const handlePay = async (id) => {
+    if (!(await confirmDialog({
+      title: "Đánh dấu đã trả lương",
+      description: "Xác nhận đã trả lương cho tài xế? Thao tác này sẽ cập nhật trạng thái phiếu lương.",
+      confirmLabel: "Đã trả",
+      danger: true,
+    }))) return;
     setConfirming(id);
     try {
       await accountantService.markPayrollPaid(id);
