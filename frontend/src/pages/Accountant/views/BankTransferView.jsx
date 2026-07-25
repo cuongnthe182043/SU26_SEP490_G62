@@ -6,6 +6,7 @@ import {
 import { RiBankCardLine, RiCheckLine, RiImageLine, RiSearchLine } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 
 const fmt = (v) =>
   v == null ? "—" : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(v));
@@ -49,6 +50,11 @@ function ConfirmModal({ receipt, onClose, onConfirmed }) {
   const [error,       setError]       = useState(null);
 
   const handleConfirm = async () => {
+    if (!(await confirmDialog({
+      title: "Xác nhận chuyển khoản",
+      description: `Xác nhận đã nhận ${fmt(receipt.amount)} từ khách hàng?`,
+      confirmLabel: "Xác nhận",
+    }))) return;
     setLoading(true);
     setError(null);
     try {

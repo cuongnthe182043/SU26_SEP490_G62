@@ -15,6 +15,7 @@ import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
@@ -84,6 +85,11 @@ function BankTransferPanel({ s, onConfirmed }) {
 
   const handleConfirm = async () => {
     if (!amountValid) { setError("Vui lòng nhập số tiền thực nhận"); return; }
+    if (!(await confirmDialog({
+      title: "Xác nhận chuyển khoản",
+      description: `Xác nhận đã nhận ${fmtVND(actualNum)} cho phiếu thu này?`,
+      confirmLabel: "Xác nhận",
+    }))) return;
     setLoading(true);
     setError(null);
     try {

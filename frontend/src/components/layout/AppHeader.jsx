@@ -13,6 +13,7 @@ import { useRoleRealtime } from '../../hooks/useRoleRealtime';
 import { C } from '../../styles/theme';
 import LoadingState from '../LoadingState';
 import ProfileModal from '../profile/ProfileModal';
+import { confirmDialog } from '../shared-ui/confirm';
 
 const SW = 1.75;
 const NOTIFICATION_ENABLED_ROLES = new Set(['manager', 'coordinator']);
@@ -93,6 +94,16 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const notificationSupported = NOTIFICATION_ENABLED_ROLES.has(String(user?.role || '').toLowerCase());
+  const handleLogout = async () => {
+    if (await confirmDialog({
+      title: 'Đăng xuất',
+      description: 'Anh có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?',
+      confirmLabel: 'Đăng xuất',
+      danger: true,
+    })) {
+      onLogout?.();
+    }
+  };
 
   const loadNotifications = async () => {
     if (!notificationSupported) return;
@@ -328,7 +339,7 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
 
               <button
                 type="button"
-                onClick={onLogout}
+                onClick={handleLogout}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

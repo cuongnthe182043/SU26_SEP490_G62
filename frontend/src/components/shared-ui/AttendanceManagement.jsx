@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { notify } from "./Toast";
+import { confirmDialog } from "./confirm";
 import {
   Button, Input, Select, SelectItem, Spinner, Chip,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -219,6 +220,12 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
   };
 
   const handleClear = async (driverId, workDate) => {
+    if (!(await confirmDialog({
+      title: "Xóa chấm công",
+      description: "Xóa trạng thái chấm công của tài xế trong ngày này?",
+      confirmLabel: "Xóa",
+      danger: true,
+    }))) return;
     setMarking(true);
     try {
       await clearAttendance(driverId, workDate);
