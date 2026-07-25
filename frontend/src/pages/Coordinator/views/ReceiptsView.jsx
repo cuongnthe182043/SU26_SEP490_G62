@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
@@ -138,8 +139,14 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
   };
 
   const rejectReceiptRequest = async (requestId) => {
-    const reason = window.prompt("Nhập lý do từ chối yêu cầu phiếu thu:");
-    if (reason === null) return;
+    const confirmed = await confirmDialog({
+      title: "Từ chối yêu cầu phiếu thu",
+      description: "Từ chối yêu cầu phiếu thu này? Điều phối có thể xử lý lại nếu cần.",
+      confirmLabel: "Từ chối",
+      danger: true,
+    });
+    if (!confirmed) return;
+    const reason = "Điều phối từ chối yêu cầu phiếu thu từ giao diện web";
     setRejectingId(requestId);
     try {
       await coordinatorService.rejectReceiptRequest(requestId, reason.trim());

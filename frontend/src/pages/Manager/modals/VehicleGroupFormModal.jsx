@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Textarea, NumberInput } from "@heroui/react";
 import { RiTruckLine, RiFileTextLine, RiScales3Line, RiMoneyDollarCircleLine } from "react-icons/ri";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -26,8 +27,18 @@ export default function VehicleGroupFormModal({ open, editingGroup, onClose, onS
   }, [editingGroup, open]);
 
   const handleOk = () => {
-    if (!form.name.trim()) return setError("Tên nhóm xe là bắt buộc.");
-    if (form.price_per_km == null) return setError("Đơn giá/km là bắt buộc.");
+    if (!form.name.trim()) {
+      const message = "Tên nhóm xe là bắt buộc.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
+    if (form.price_per_km == null) {
+      const message = "Đơn giá/km là bắt buộc.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setError(null);
     onSubmit(form);
   };

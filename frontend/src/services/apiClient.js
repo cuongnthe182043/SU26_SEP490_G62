@@ -8,6 +8,7 @@ const DEFAULT_API_BASE_URL = configuredApiBaseUrl || "http://localhost:9999";
 
 export const apiBaseUrl = DEFAULT_API_BASE_URL;
 let refreshPromise = null;
+let csrfTokenCache = null;
 
 function buildUrl(path) {
   if (/^https?:\/\//i.test(path)) {
@@ -26,14 +27,71 @@ function getCookieValue(name) {
     ?.slice(name.length + 1) ?? null;
 }
 
+function getStoredCsrfToken() {
+  if (csrfTokenCache) return csrfTokenCache;
+  if (typeof window === "undefined") return null;
+  try {
+    csrfTokenCache = window.sessionStorage.getItem("csrf_token");
+  } catch {
+    csrfTokenCache = null;
+  }
+  return csrfTokenCache;
+}
+
+function setStoredCsrfToken(token) {
+  if (!token) return;
+  csrfTokenCache = String(token);
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem("csrf_token", csrfTokenCache);
+  } catch {
+    // Session storage can be unavailable in strict browser modes; memory cache still works.
+  }
+}
+
+function clearStoredCsrfToken() {
+  csrfTokenCache = null;
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem("csrf_token");
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function getCsrfToken() {
+  const cookieToken = getCookieValue("csrf_token");
+  if (cookieToken) {
+    const decoded = decodeURIComponent(cookieToken);
+    setStoredCsrfToken(decoded);
+    return decoded;
+  }
+  return getStoredCsrfToken();
+}
+
 function isUnsafeMethod(method) {
   return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
+}
+
+function canBootstrapCsrf(path) {
+  return ![
+    "/auth/login",
+    "/auth/google",
+    "/auth/refresh",
+    "/auth/forgot-password/request",
+    "/auth/forgot-password/verify",
+    "/auth/forgot-password/reset",
+  ].includes(path);
 }
 
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
   const payload = isJson ? await response.json() : await response.text();
+
+  if (payload && typeof payload === "object" && payload.csrfToken) {
+    setStoredCsrfToken(payload.csrfToken);
+  }
 
   if (!response.ok) {
     const retryAfterHeader = response.headers.get("retry-after") || response.headers.get("ratelimit-reset");
@@ -79,8 +137,8 @@ async function isRefreshableAuthFailure(response) {
 export async function refreshAuthSession() {
   if (!refreshPromise) {
     const headers = new Headers();
-    const csrfToken = getCookieValue("csrf_token");
-    if (csrfToken) headers.set("X-CSRF-Token", decodeURIComponent(csrfToken));
+    const csrfToken = getCsrfToken();
+    if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
 
     refreshPromise = fetch(buildUrl("/auth/refresh"), {
       method: "POST",
@@ -98,6 +156,11 @@ export async function refreshAuthSession() {
             (typeof payload === "string" && payload.trim()) ||
             "Unable to refresh session";
           throw new Error(message);
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const payload = await response.json();
+          if (payload?.csrfToken) setStoredCsrfToken(payload.csrfToken);
         }
         return response;
       })
@@ -119,8 +182,16 @@ export async function apiRequest(path, options = {}) {
     requestHeaders.set("Authorization", `Bearer ${token}`);
   }
   if (isUnsafeMethod(method) && !requestHeaders.has("X-CSRF-Token")) {
-    const csrfToken = getCookieValue("csrf_token");
-    if (csrfToken) requestHeaders.set("X-CSRF-Token", decodeURIComponent(csrfToken));
+    let csrfToken = getCsrfToken();
+    if (!csrfToken && canBootstrapCsrf(path)) {
+      try {
+        await refreshAuthSession();
+        csrfToken = getCsrfToken();
+      } catch {
+        // Let the original request surface the actual auth/CSRF error to the caller.
+      }
+    }
+    if (csrfToken) requestHeaders.set("X-CSRF-Token", csrfToken);
   }
 
   let requestBody = body;
@@ -148,5 +219,7 @@ export async function apiRequest(path, options = {}) {
     });
   }
 
-  return parseResponse(response);
+  const payload = await parseResponse(response);
+  if (path === "/auth/logout") clearStoredCsrfToken();
+  return payload;
 }

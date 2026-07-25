@@ -50,7 +50,9 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
       setCustomers(data.customers || []);
       setPagination(data.pagination || { page, limit: 20, total: 0 });
     } catch (err) {
-      setError(err.message ?? "Không thể tải danh sách khách hàng.");
+      const message = err.message ?? "Không thể tải danh sách khách hàng.";
+      setError(message);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,9 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
       closeModal();
       load(pagination.page);
     } catch (err) {
-      setError(err.message ?? "Không thể lưu khách hàng.");
+      const message = err.message ?? "Không thể lưu khách hàng.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -121,7 +125,9 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
       notify.success("Đã xóa khách hàng.");
       load(pagination.page);
     } catch (err) {
-      setError(err.message ?? "Không thể xóa khách hàng.");
+      const message = err.message ?? "Không thể xóa khách hàng.";
+      setError(message);
+      notify.error(message);
       setDeleteTarget(null);
     }
   };
