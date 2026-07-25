@@ -84,7 +84,12 @@ function BankTransferPanel({ s, onConfirmed }) {
   const amountValid = actualNum >= 0 && actualAmount.trim() !== "";
 
   const handleConfirm = async () => {
-    if (!amountValid) { setError("Vui lòng nhập số tiền thực nhận"); return; }
+    if (!amountValid) {
+      const message = "Vui lòng nhập số tiền thực nhận";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     if (!(await confirmDialog({
       title: "Xác nhận chuyển khoản",
       description: `Xác nhận đã nhận ${fmtVND(actualNum)} cho phiếu thu này?`,

@@ -50,10 +50,25 @@ export default function VehicleFormModal({ open, editingVehicle, vehicleGroups, 
   }, [editingVehicle, open]);
 
   const handleOk = () => {
-    if (!form.plate_number.trim()) return setError("Biển số xe là bắt buộc.");
-    if (!form.vehicle_group_id) return setError("Vui lòng chọn nhóm xe.");
+    if (!form.plate_number.trim()) {
+      const message = "Biển số xe là bắt buộc.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
+    if (!form.vehicle_group_id) {
+      const message = "Vui lòng chọn nhóm xe.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     const currentYear = new Date().getFullYear();
-    if (form.manufacture_year && form.manufacture_year > currentYear) return setError("Năm sản xuất không được ở tương lai.");
+    if (form.manufacture_year && form.manufacture_year > currentYear) {
+      const message = "Năm sản xuất không được ở tương lai.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setError(null);
     onSubmit({
       ...form,

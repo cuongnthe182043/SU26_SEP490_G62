@@ -165,13 +165,15 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const handleSubmit = async () => {
     const num = Number(String(amount).replace(/[^0-9.]/g, ""));
     if (!num || num <= 0) {
-      setError("Sá»‘ tiá»n pháº£i lá»›n hÆ¡n 0.");
+      const message = "Sá»‘ tiá»n pháº£i lá»›n hÆ¡n 0.";
+      setError(message);
+      notify.error(message);
       return;
     }
     if (totalOutstanding > 0 && num > totalOutstanding + 0.01) {
-      setError(
-        `Sá»‘ tiá»n vÆ°á»£t quÃ¡ tá»•ng cÃ´ng ná»£ khÃ¡ch hÃ ng (${Math.round(totalOutstanding).toLocaleString("vi-VN")}Ä‘).`
-      );
+      const message = `Sá»‘ tiá»n vÆ°á»£t quÃ¡ tá»•ng cÃ´ng ná»£ khÃ¡ch hÃ ng (${Math.round(totalOutstanding).toLocaleString("vi-VN")}Ä‘).`;
+      setError(message);
+      notify.error(message);
       return;
     }
 

@@ -107,7 +107,9 @@ export default function BonusRulesView() {
       closeModal();
       load();
     } catch (err) {
-      setError(err.message || "Không thể lưu quy tắc thưởng.");
+      const message = err.message || "Không thể lưu quy tắc thưởng.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }

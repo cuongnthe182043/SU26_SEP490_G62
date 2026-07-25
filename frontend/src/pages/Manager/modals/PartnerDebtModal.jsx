@@ -24,8 +24,18 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
 
   const handlePay = async () => {
     const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setError("Số tiền phải lớn hơn 0."); return; }
-    if (amt > totalRemaining + 0.01) { setError("Số tiền vượt quá công nợ còn lại."); return; }
+    if (!Number.isFinite(amt) || amt <= 0) {
+      const message = "Số tiền phải lớn hơn 0.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
+    if (amt > totalRemaining + 0.01) {
+      const message = "Số tiền vượt quá công nợ còn lại.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -34,7 +44,9 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
       notify.success("Đã ghi nhận thanh toán đối tác.");
       onPaid?.(partner.id);
     } catch (err) {
-      setError(err.message ?? "Lỗi khi ghi nhận thanh toán.");
+      const message = err.message ?? "Lỗi khi ghi nhận thanh toán.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
