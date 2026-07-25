@@ -1,30 +1,26 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import VehicleList from '../../src/features/admin/VehicleList';
-import * as api from '../../src/features/admin/vehicleManagementApi';
+import VehiclesView from '../../src/pages/Manager/views/VehiclesView';
+import { managerService } from '../../src/pages/Manager/services/manager.service';
 
-vi.mock('../../src/features/admin/vehicleManagementApi', () => ({
-  fetchVehicleGroups: vi.fn().mockResolvedValue({ vehicleGroups: [{ id: 1, name: 'Group A' }] }),
-  fetchVehicles: vi.fn().mockResolvedValue({
-    items: [{ id: 1, plate_number: '29A-123.45', vehicle_group_id: 1, status: 'active', vehicle_group_name: 'Group A' }],
-    pagination: { page: 1, limit: 10, total: 1 }
-  }),
-  createVehicle: vi.fn(),
-  updateVehicle: vi.fn(),
-  fetchVehicleDetail: vi.fn(),
-  fetchDriverOptions: vi.fn().mockResolvedValue({ drivers: [] }),
-  assignVehicleDriver: vi.fn(),
-  sendVehicleToMaintenance: vi.fn(),
-  markVehicleBroken: vi.fn(),
-  retireVehicle: vi.fn(),
-  restoreVehicle: vi.fn(),
-  verifyVehicleMaintenance: vi.fn()
+vi.mock('../../src/hooks/useRoleRealtime', () => ({
+  useRoleRealtime: vi.fn(),
 }));
 
+vi.mock('../../src/pages/Manager/services/manager.service', () => ({
+  managerService: {
+    getVehicleGroups: vi.fn(),
+    getVehicles: vi.fn(),
+    getMaintenanceRequests: vi.fn(),
+    getVehicleDetail: vi.fn(),
+    getVehicleAssignmentHistory: vi.fn(),
+  },
+}));
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -36,47 +32,44 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
-describe('VehicleList', () => {
+global.ResizeObserver = global.ResizeObserver || class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
+describe('VehiclesView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managerService.getVehicleGroups.mockResolvedValue({ vehicleGroups: [{ id: 1, name: 'Group A' }] });
+    managerService.getVehicles.mockResolvedValue({
+      items: [{ id: 1, plate_number: '29A-123.45', vehicle_group_id: 1, vehicle_group_name: 'Group A', status: 'active' }],
+      pagination: { page: 1, limit: 10, total: 1 },
+    });
+    managerService.getMaintenanceRequests.mockResolvedValue({ requests: [] });
   });
 
-  it('L1-VM-FE-01: renders vehicle table and fetches initial data', async () => {
-    render(<VehicleList />);
+  it('loads and renders vehicles', async () => {
+    render(<VehiclesView user={{ role: 'manager' }} />);
 
     await waitFor(() => {
-      expect(api.fetchVehicleGroups).toHaveBeenCalled();
-      expect(api.fetchVehicles).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+      expect(managerService.getVehicleGroups).toHaveBeenCalled();
+      expect(managerService.getVehicles).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
       expect(screen.getByText('29A-123.45')).toBeInTheDocument();
     });
   });
 
-  it('L1-VM-FE-02: handles search and filtering', async () => {
-    render(<VehicleList />);
+  it('applies vehicle search filter', async () => {
+    render(<VehiclesView user={{ role: 'manager' }} />);
+    await waitFor(() => expect(screen.getByText('29A-123.45')).toBeInTheDocument());
 
-    await waitFor(() => {
-      expect(screen.getByText('29A-123.45')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Tìm theo biển số/i), {
+      target: { value: '29A' },
     });
-
-    const searchInput = screen.getByPlaceholderText(/search by plate number/i);
-    fireEvent.change(searchInput, { target: { value: '29A' } });
-
-    const applyBtn = screen.getByRole('button', { name: /apply/i });
-    fireEvent.click(applyBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Áp dụng/i }));
 
     await waitFor(() => {
-      expect(api.fetchVehicles).toHaveBeenCalledWith(expect.objectContaining({ search: '29A', page: 1 }));
-    });
-  });
-
-  it('L1-VM-FE-03: opens add vehicle modal', async () => {
-    render(<VehicleList />);
-
-    const addBtn = screen.getByRole('button', { name: /add vehicle/i });
-    fireEvent.click(addBtn);
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(managerService.getVehicles).toHaveBeenCalledWith(expect.objectContaining({ search: '29A', page: 1 }));
     });
   });
 });

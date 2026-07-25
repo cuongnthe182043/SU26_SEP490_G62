@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
-import * as XLSX from "xlsx";
-import ExcelJS from "exceljs";
 import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Select, SelectItem,
@@ -52,7 +50,7 @@ const normalizeImportedDate = (value) => {
   if (value === undefined || value === null || value === "") return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
   if (typeof value === "number") {
-    const parsed = XLSX.SSF.parse_date_code(value);
+    const parsed = normalizeImportedDate.xlsx?.SSF.parse_date_code(value);
     if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
   }
   const raw = String(value).trim();
@@ -66,6 +64,13 @@ const normalizeImportedDate = (value) => {
   const parsedDate = new Date(raw);
   return Number.isNaN(parsedDate.getTime()) ? raw : parsedDate.toISOString().slice(0, 10);
 };
+
+const loadExcelJS = async () => {
+  const mod = await import("exceljs");
+  return mod.default || mod;
+};
+
+const loadXLSX = async () => import("xlsx");
 
 const isRowEmpty = (row) => IMPORT_HEADERS.every((h) => !normalizeText(row?.[h]));
 
@@ -155,6 +160,7 @@ export default function UsersView({ user }) {
   const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const handleDownloadSample = async () => {
+    const ExcelJS = await loadExcelJS();
     const REQUIRED_HEADERS = new Set(["email", "full_name", "phone", "role"]);
     const BRAND_BLUE = "FF2563EB";
     const HEADER_TEXT = "FFFFFFFF";
@@ -279,6 +285,8 @@ export default function UsersView({ user }) {
 
     setImporting(true);
     try {
+      const XLSX = await loadXLSX();
+      normalizeImportedDate.xlsx = XLSX;
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
       const firstSheet = workbook.SheetNames[0];
