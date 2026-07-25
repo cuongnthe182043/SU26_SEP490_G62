@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator, Pressable, RefreshControl,
-    ScrollView, StyleSheet, View,
+    Pressable, RefreshControl, ScrollView, StyleSheet, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -14,6 +13,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { AppText } from '@/components/app-text';
 import { AppButton } from '@/components/app-button';
 import { ScreenHeader } from '@/components/screen-header';
+import { SimpleCardSkeleton } from '@/components/skeleton';
 import { appTheme } from '@/theme/app-theme';
 import { incidentService } from '@/services/incident-service';
 import {
@@ -134,9 +134,10 @@ export function IncidentDetailScreen() {
             >
                 {/* Loading */}
                 {isLoading && !incident ? (
-                    <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical={80} gap={12}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                        <AppText variant="caption" tone="muted">Đang tải...</AppText>
+                    <YStack gap={12}>
+                        <SimpleCardSkeleton />
+                        <SimpleCardSkeleton />
+                        <SimpleCardSkeleton />
                     </YStack>
                 ) : null}
 

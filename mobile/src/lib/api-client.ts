@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '@/constants/api';
+import { getApiBaseUrl } from '@/constants/api';
 import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { ApiError } from '@/lib/api-error';
 import { authEvents } from '@/lib/auth-events';
@@ -50,6 +50,16 @@ function isTokenExpiringSoon(token: string, skewSeconds = 10): boolean {
   }
 }
 
+function formatRetryAfter(seconds: number): string {
+  const totalSeconds = Math.ceil(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (minutes <= 0) return `${remainingSeconds} giây`;
+  if (remainingSeconds === 0) return `${minutes} phút`;
+  return `${minutes} phút ${remainingSeconds} giây`;
+}
+
 // Chống gọi refresh nhiều lần cùng lúc khi có nhiều request 401 song song
 let _refreshPromise: Promise<string | null> | null = null;
 
@@ -62,12 +72,13 @@ async function attemptTokenRefresh(): Promise<string | null> {
   if (_refreshPromise) return _refreshPromise;
 
   _refreshPromise = (async () => {
+    const apiBaseUrl = getApiBaseUrl();
     const refreshToken = await tokenStorage.getRefreshToken();
     if (!refreshToken) return null; // không có refresh token → logout
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      response = await fetch(`${apiBaseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -113,6 +124,7 @@ async function handleUnauthorized(): Promise<void> {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
+  const apiBaseUrl = getApiBaseUrl();
   const authHeaders = await getAuthHeaders();
   const headers = new Headers({
     ...authHeaders,
@@ -132,7 +144,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${apiBaseUrl}${path}`, {
       ...options,
       headers,
       body,
@@ -140,7 +152,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   } catch (err) {
      
     console.error('[api-client] fetch failed', {
-      url: `${API_BASE_URL}${path}`,
+      url: `${apiBaseUrl}${path}`,
       method: options.method,
       isFormData: body instanceof FormData,
       error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
@@ -171,10 +183,18 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get('retry-after') ?? payload?.retryAfter ?? payload?.retry_after);
+      const waitText = Number.isFinite(retryAfter) && retryAfter > 0
+        ? ` Vui lòng thử lại sau ${formatRetryAfter(retryAfter)}.`
+        : ' Vui lòng thử lại sau ít phút.';
+      throw new ApiError((payload?.error ?? payload?.message ?? 'Bạn thao tác quá nhanh.') + waitText, 429);
+    }
+
     if (payload === null) {
        
       console.error('[api-client] non-JSON error response', {
-        url: `${API_BASE_URL}${path}`, method: options.method, status: response.status,
+        url: `${apiBaseUrl}${path}`, method: options.method, status: response.status,
       });
     }
     throw new ApiError(payload?.error ?? payload?.message ?? ERROR_MESSAGES.network, response.status);

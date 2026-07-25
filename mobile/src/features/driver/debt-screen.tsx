@@ -443,7 +443,7 @@ function DebtCard({
                         Lịch sử nộp tiền
                     </Text>
                     {isLoading ? (
-                        <ActivityIndicator color={appTheme.colors.primary} size="small" style={{ marginVertical: 8 }} />
+                        <SimpleListSkeleton count={2} />
                     ) : payments.length > 0 ? (
                         <YStack gap={6}>
                             {payments.map((p) => (

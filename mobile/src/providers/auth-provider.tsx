@@ -2,6 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, useSegments } from 'expo-router';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
+<<<<<<< Updated upstream
+=======
+import { getApiBaseUrl } from '@/constants/api';
+>>>>>>> Stashed changes
 import { ApiError } from '@/lib/api-error';
 import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
@@ -29,6 +33,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const signOut = useCallback(async () => {
+<<<<<<< Updated upstream
+=======
+    const refreshToken = await tokenStorage.getRefreshToken();
+    if (refreshToken) {
+      try {
+        const apiBaseUrl = getApiBaseUrl();
+        await fetch(`${apiBaseUrl}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        // Logout local vẫn phải hoàn tất dù server/config tạm lỗi.
+      }
+    }
+>>>>>>> Stashed changes
     await tokenStorage.clearAll();
     setProfile(null);
     setStatus('unauthenticated');
