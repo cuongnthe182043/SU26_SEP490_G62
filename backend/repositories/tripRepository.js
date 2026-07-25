@@ -30,6 +30,14 @@ const insertAssignmentHistory = async (
     );
 };
 
+const CLAIM_DRIVER_LOCK_NS = 62001;
+const CLAIM_VEHICLE_LOCK_NS = 62002;
+
+const lockClaimResources = async (client, driverId, vehicleId) => {
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [CLAIM_DRIVER_LOCK_NS, Number(driverId)]);
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [CLAIM_VEHICLE_LOCK_NS, Number(vehicleId)]);
+};
+
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
         `SELECT v.vehicle_group_id
@@ -244,6 +252,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await lockClaimResources(client, driverId, vehicleId);
 
         const vehicleCheck = await client.query(
             `SELECT
