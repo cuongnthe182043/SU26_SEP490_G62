@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tooltip } from 'antd';
+import { Tooltip as HeroTooltip } from '@heroui/react';
 import {
   Building2,
   Calendar,
@@ -28,6 +28,15 @@ const PRIMARY = '#3B4FD8';
 const TEXT_SUB = '#424751';
 const TEXT_MUTED = '#737782';
 const BORDER = '#C2C6D340';
+
+function Tooltip({ title, placement, children }) {
+  if (!title) return children;
+  return (
+    <HeroTooltip content={title} placement={placement}>
+      {children}
+    </HeroTooltip>
+  );
+}
 
 const MENU_CONFIG = {
   manager: [

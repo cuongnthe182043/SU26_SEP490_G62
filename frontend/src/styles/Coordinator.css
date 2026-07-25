@@ -1242,7 +1242,7 @@
   color: #b94a5a;
 }
 
-/* Absent driver (no check-in) row styling — antd Table rowClassName */
+/* Absent driver (no check-in) row styling */
 .coordinator-shell tr.row-no-checkin > td {
   background-color: #fffbeb !important;
 }

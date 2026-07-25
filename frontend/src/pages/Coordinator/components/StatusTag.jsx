@@ -1,33 +1,33 @@
-import { Tag } from "antd";
+import { Chip } from "@heroui/react";
 import { normalizeStatus } from "../utils";
 
 const COLOR_BY_STATUS = {
-  available: "blue",
-  claimed: "gold",
-  picking: "gold",
-  loaded: "gold",
-  transit: "processing",
-  arrived: "cyan",
-  returning: "orange",
+  available: "primary",
+  claimed: "warning",
+  picking: "warning",
+  loaded: "warning",
+  transit: "secondary",
+  arrived: "primary",
+  returning: "warning",
   completed: "success",
   cancelled: "default",
-  failed: "error",
-  partial: "purple",
-  open: "error",
-  investigating: "gold",
+  failed: "danger",
+  partial: "secondary",
+  open: "danger",
+  investigating: "warning",
   resolved: "success",
   closed: "default",
-  pending: "gold",
-  processing: "processing",
+  pending: "warning",
+  processing: "secondary",
   approved: "success",
-  rejected: "error",
+  rejected: "danger",
 };
 
 export default function StatusTag({ status, children }) {
   const key = normalizeStatus(status);
   return (
-    <Tag color={COLOR_BY_STATUS[key] || "default"} style={{ margin: 0 }}>
+    <Chip color={COLOR_BY_STATUS[key] || "default"} size="sm" variant="flat">
       {children ?? status ?? "-"}
-    </Tag>
+    </Chip>
   );
 }
