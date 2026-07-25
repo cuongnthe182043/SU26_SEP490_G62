@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Select, SelectItem, Spinner, Tabs, Tab, Button } from "@heroui/react";
-import { RiTrophyLine, RiPencilLine } from "react-icons/ri";
+import { Select, SelectItem, Spinner, Tabs, Tab, Button, Chip } from "@heroui/react";
+import {
+  RiTrophyLine, RiPencilLine, RiCarLine, RiRouteLine, RiMoneyDollarCircleLine,
+  RiAlertLine, RiShieldCheckLine, RiMedalLine, RiUserStarLine,
+} from "react-icons/ri";
 import { Section } from "./Section";
 import { PaginationBar } from "./PaginationBar";
 import { DriverVehicleGroupModal } from "./DriverVehicleGroupModal";
@@ -25,39 +28,12 @@ const SORT_LABELS = {
   incidents: "Sự cố ít nhất",
 };
 
-// Huy chương top 3: vàng - bạc - đồng.
 const RANK_STYLE = {
-  1: "bg-linear-to-br from-amber-300 to-yellow-500 text-white shadow-sm",
-  2: "bg-linear-to-br from-slate-200 to-slate-400 text-white",
-  3: "bg-linear-to-br from-orange-300 to-orange-500 text-white",
+  1: "bg-linear-to-br from-amber-300 to-yellow-500 text-white shadow-amber-500/30",
+  2: "bg-linear-to-br from-slate-200 to-slate-500 text-white shadow-slate-500/20",
+  3: "bg-linear-to-br from-orange-300 to-orange-500 text-white shadow-orange-500/25",
 };
 const rankBadge = (rank) => RANK_STYLE[rank] || "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400";
-
-// Thẻ tổng quan nhỏ.
-function StatChip({ label, value, tone = "gray" }) {
-  const toneCls = {
-    gray: "text-gray-800 dark:text-gray-100",
-    blue: "text-blue-600 dark:text-blue-300",
-    green: "text-emerald-600 dark:text-emerald-300",
-    rose: "text-rose-500",
-  }[tone];
-  return (
-    <div className="flex-1 min-w-30 rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#161922] px-4 py-3">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400">{label}</div>
-      <div className={`mt-0.5 text-lg font-bold ${toneCls}`}>{value}</div>
-    </div>
-  );
-}
-
-// Thanh tỉ lệ doanh thu so với người cao nhất.
-function RevenueBar({ value, max }) {
-  const pct = Math.max(2, Math.min(100, (Number(value || 0) / (max || 1)) * 100));
-  return (
-    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-      <div className="h-full rounded-full bg-linear-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
 
 const sortKpiRows = (rows, sortBy) => {
   const sorted = [...rows];
@@ -69,11 +45,201 @@ const sortKpiRows = (rows, sortBy) => {
 
 const sortLeaderboard = (rows, sortBy) => {
   const sorted = [...rows];
-  if (sortBy === "trips") sorted.sort((a, b) => (a.trips_rank ?? 0) - (b.trips_rank ?? 0));
+  if (sortBy === "trips") sorted.sort((a, b) => (b.completed_shipments ?? 0) - (a.completed_shipments ?? 0));
   else if (sortBy === "incidents") sorted.sort((a, b) => (a.incident_count ?? 0) - (b.incident_count ?? 0));
   else sorted.sort((a, b) => (a.revenue_rank ?? 0) - (b.revenue_rank ?? 0));
   return sorted;
 };
+
+function getInitials(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "TX";
+  return parts.slice(-2).map((p) => p[0]).join("").toUpperCase();
+}
+
+function getDriverState(row, avgRevenue = 0) {
+  const incidents = Number(row.incident_count || 0);
+  const critical = Number(row.critical_incident_count || 0);
+  const revenue = Number(row.total_revenue || 0);
+  if (critical > 0) return { label: "Cần xử lý", color: "danger" };
+  if (incidents > 0) return { label: "Cần chú ý", color: "warning" };
+  if (avgRevenue > 0 && revenue >= avgRevenue) return { label: "Vượt trung bình", color: "success" };
+  return { label: "Ổn định", color: "primary" };
+}
+
+function metricRank(row, fallbackRank, sortBy) {
+  if (sortBy === "trips") return row.trips_rank ?? fallbackRank;
+  if (sortBy === "incidents") return row.incident_rank ?? fallbackRank;
+  return row.revenue_rank ?? fallbackRank;
+}
+
+function DriverAvatar({ name, rank }) {
+  return (
+    <div className="relative shrink-0">
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-sm font-extrabold text-gray-600 dark:bg-white/10 dark:text-gray-200">
+        {getInitials(name)}
+      </div>
+      {rank <= 3 && (
+        <span className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow-sm ${rankBadge(rank)}`}>
+          {rank}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function StatChip({ label, value, icon: Icon, tone = "gray" }) {
+  const toneCls = {
+    gray: "text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10",
+    blue: "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 border-blue-100 dark:border-blue-500/20",
+    green: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20",
+    rose: "text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20",
+    amber: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20",
+  }[tone];
+  return (
+    <div className={`flex min-w-36 flex-1 items-center gap-3 rounded-xl border px-4 py-3 ${toneCls}`}>
+      {Icon && <Icon size={20} className="shrink-0 opacity-80" />}
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{label}</div>
+        <div className="mt-0.5 truncate text-lg font-extrabold">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function RevenueBar({ value, max, tone = "blue", showPercent = true }) {
+  const pct = Math.max(2, Math.min(100, (Number(value || 0) / (max || 1)) * 100));
+  const color = tone === "green"
+    ? "from-emerald-400 to-teal-500"
+    : tone === "amber"
+      ? "from-amber-400 to-orange-500"
+      : "from-blue-400 to-indigo-500";
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-400">
+        <span>Tỷ lệ doanh thu</span>
+        {showPercent && <span>{Math.round(pct)}%</span>}
+      </div>
+      <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+        <div className={`h-full rounded-full bg-linear-to-r ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function MetricPill({ label, value, tone = "gray" }) {
+  const toneCls = {
+    gray: "bg-gray-50 text-gray-700 dark:bg-white/5 dark:text-gray-200",
+    blue: "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
+    green: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
+    rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300",
+    amber: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+  }[tone];
+  return (
+    <div className={`rounded-lg px-3 py-2 text-right ${toneCls}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{label}</div>
+      <div className="mt-0.5 text-sm font-extrabold">{value}</div>
+    </div>
+  );
+}
+
+function PodiumCard({ row, rank, maxRevenue }) {
+  const sizeCls = rank === 1 ? "md:col-span-2 border-amber-200 dark:border-amber-400/30" : "border-gray-100 dark:border-white/10";
+  const iconCls = rank === 1 ? "text-amber-500" : rank === 2 ? "text-slate-400" : "text-orange-400";
+  return (
+    <div className={`rounded-xl border bg-white p-4 shadow-sm dark:bg-[#161922] ${sizeCls}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <DriverAvatar name={row.driver_name} rank={rank} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <RiMedalLine size={16} className={iconCls} />
+              <span className="text-[11px] font-bold uppercase text-gray-400 dark:text-gray-400">Hạng {rank}</span>
+            </div>
+            <div className="truncate text-sm font-extrabold text-gray-900 dark:text-gray-100">{row.driver_name}</div>
+            <div className="truncate text-xs text-gray-400 dark:text-gray-400">{row.vehicle_group_name || "Chưa gán nhóm xe"}</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-lg font-black text-blue-700 dark:text-blue-300">{formatCompact(row.total_revenue)} đ</div>
+          <div className="text-[11px] text-gray-400 dark:text-gray-400">{row.completed_shipments || 0} chuyến</div>
+        </div>
+      </div>
+      <RevenueBar value={row.total_revenue} max={maxRevenue} tone={rank === 1 ? "amber" : "blue"} />
+    </div>
+  );
+}
+
+function DriverKpiRow({ row, rank, maxRevenue, avgRevenue, onEdit }) {
+  const state = getDriverState(row, avgRevenue);
+  const incidents = Number(row.incident_count || 0);
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-white/10 dark:bg-[#161922]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <DriverAvatar name={row.driver_name} rank={rank} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-extrabold text-gray-900 dark:text-gray-100">{row.driver_name}</span>
+              <Chip size="sm" color={state.color} variant="flat" className="h-5 text-[10px] font-bold">
+                {state.label}
+              </Chip>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span className="truncate text-xs text-gray-400 dark:text-gray-400">{row.vehicle_group_name || "Chưa gán nhóm xe"}</span>
+              {onEdit && (
+                <Button isIconOnly size="sm" variant="light" className="h-5 min-w-5 text-gray-400" onPress={onEdit}>
+                  <RiPencilLine size={12} />
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 lg:w-[460px]">
+          <MetricPill label="Chuyến" value={row.completed_shipments || 0} tone="gray" />
+          <MetricPill label="Doanh thu" value={formatCompact(row.total_revenue) + " đ"} tone="blue" />
+          <MetricPill label="Sự cố" value={incidents} tone={incidents > 0 ? "rose" : "green"} />
+        </div>
+      </div>
+      <RevenueBar value={row.total_revenue} max={maxRevenue} />
+      {Number(row.critical_incident_count || 0) > 0 && (
+        <div className="mt-2 text-[11px] font-semibold text-red-600 dark:text-red-300">
+          Có {row.critical_incident_count} sự cố nặng trong kỳ.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeaderboardRow({ row, rank, maxRevenue, sortBy }) {
+  const displayRank = metricRank(row, rank, sortBy);
+  const incidents = Number(row.incident_count || 0);
+  return (
+    <div className={`rounded-xl border p-4 shadow-sm ${row.is_me ? "border-blue-200 bg-blue-50/70 dark:border-blue-400/30 dark:bg-blue-500/10" : "border-gray-100 bg-white dark:border-white/10 dark:bg-[#161922]"}`}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black shadow-sm ${rankBadge(displayRank)}`}>
+            {displayRank}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-extrabold text-gray-900 dark:text-gray-100">
+              {row.driver_name}
+              {row.is_me && <span className="ml-1.5 text-[10px] font-bold text-blue-500">(Bạn)</span>}
+            </div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">
+              {SORT_LABELS[sortBy]} · {incidents > 0 ? `${incidents} sự cố` : "Không có sự cố"}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:w-72">
+          <MetricPill label="Chuyến" value={row.completed_shipments || 0} tone="gray" />
+          <MetricPill label="Doanh thu" value={formatCompact(row.total_revenue) + " đ"} tone="blue" />
+        </div>
+      </div>
+      <RevenueBar value={row.total_revenue} max={maxRevenue} />
+    </div>
+  );
+}
 
 export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup, onUpdateDriverGroup }) {
   const [tab, setTab] = useState("kpi");
@@ -96,13 +262,23 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   const sortedKpiRows = useMemo(() => sortKpiRows(kpiRows, kpiSortBy), [kpiRows, kpiSortBy]);
   const sortedLeaderboard = useMemo(() => sortLeaderboard(leaderboard, leaderboardSortBy), [leaderboard, leaderboardSortBy]);
 
-  // Tổng quan kỳ (cho tab KPI) + mốc doanh thu cao nhất (vẽ thanh tỉ lệ).
-  const kpiSummary = useMemo(() => ({
-    drivers: kpiRows.length,
-    trips: kpiRows.reduce((s, r) => s + Number(r.completed_shipments || 0), 0),
-    revenue: kpiRows.reduce((s, r) => s + Number(r.total_revenue || 0), 0),
-    incidents: kpiRows.reduce((s, r) => s + Number(r.incident_count || 0), 0),
-  }), [kpiRows]);
+  const kpiSummary = useMemo(() => {
+    const drivers = kpiRows.length;
+    const trips = kpiRows.reduce((s, r) => s + Number(r.completed_shipments || 0), 0);
+    const revenue = kpiRows.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+    const incidents = kpiRows.reduce((s, r) => s + Number(r.incident_count || 0), 0);
+    const cleanDrivers = kpiRows.filter((r) => Number(r.incident_count || 0) === 0).length;
+    return {
+      drivers,
+      trips,
+      revenue,
+      incidents,
+      cleanDrivers,
+      avgRevenue: drivers ? revenue / drivers : 0,
+      cleanRate: drivers ? Math.round((cleanDrivers / drivers) * 100) : 0,
+    };
+  }, [kpiRows]);
+
   const kpiMaxRevenue = useMemo(
     () => Math.max(1, ...kpiRows.map((r) => Number(r.total_revenue || 0))),
     [kpiRows],
@@ -111,6 +287,10 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
     () => Math.max(1, ...leaderboard.map((r) => Number(r.total_revenue || 0))),
     [leaderboard],
   );
+  const podiumRows = useMemo(() => sortedKpiRows.slice(0, 3), [sortedKpiRows]);
+  const mostIncidentDriver = useMemo(() => {
+    return [...kpiRows].sort((a, b) => Number(b.incident_count || 0) - Number(a.incident_count || 0))[0] || null;
+  }, [kpiRows]);
 
   useEffect(() => {
     getVehicleGroups()
@@ -140,8 +320,8 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, month, year, vehicleGroupId, reloadToken]);
 
-  useEffect(() => { setKpiPage(1); }, [kpiRows]);
-  useEffect(() => { setLeaderboardPage(1); }, [leaderboard]);
+  useEffect(() => { setKpiPage(1); }, [kpiRows, kpiSortBy]);
+  useEffect(() => { setLeaderboardPage(1); }, [leaderboard, leaderboardSortBy]);
 
   const kpiTotalPages = Math.max(1, Math.ceil(sortedKpiRows.length / PAGE_SIZE));
   const pagedKpiRows = useMemo(() => {
@@ -158,32 +338,13 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-3">
-        <Select
-          selectedKeys={[String(month)]}
-          onSelectionChange={(keys) => setMonth(Number([...keys][0]))}
-          variant="bordered"
-          size="sm"
-          className="w-32"
-        >
+        <Select selectedKeys={[String(month)]} onSelectionChange={(keys) => setMonth(Number([...keys][0]))} variant="bordered" size="sm" className="w-32">
           {MONTHS.map((m) => <SelectItem key={String(m)}>{`Tháng ${m}`}</SelectItem>)}
         </Select>
-        <Select
-          selectedKeys={[String(year)]}
-          onSelectionChange={(keys) => setYear(Number([...keys][0]))}
-          variant="bordered"
-          size="sm"
-          className="w-28"
-        >
+        <Select selectedKeys={[String(year)]} onSelectionChange={(keys) => setYear(Number([...keys][0]))} variant="bordered" size="sm" className="w-28">
           {YEARS.map((y) => <SelectItem key={String(y)}>{String(y)}</SelectItem>)}
         </Select>
-        <Select
-          selectedKeys={vehicleGroupId ? [vehicleGroupId] : []}
-          onSelectionChange={(keys) => setVehicleGroupId([...keys][0] ?? null)}
-          placeholder="Tất cả nhóm xe"
-          variant="bordered"
-          size="sm"
-          className="w-56"
-        >
+        <Select selectedKeys={vehicleGroupId ? [vehicleGroupId] : []} onSelectionChange={(keys) => setVehicleGroupId([...keys][0] ?? null)} placeholder="Tất cả nhóm xe" variant="bordered" size="sm" className="w-56">
           {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{g.name}</SelectItem>)}
         </Select>
       </div>
@@ -191,155 +352,99 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
       <Section title="KPI & Xếp hạng tài xế" icon={RiTrophyLine}>
         <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary" size="sm">
           <Tab key="kpi" title="KPI tài xế">
-            {kpiRows.length > 0 && (
-              <div className="flex flex-wrap gap-3 mt-3">
-                <StatChip label="Tài xế" value={kpiSummary.drivers} />
-                <StatChip label="Tổng chuyến" value={kpiSummary.trips} tone="gray" />
-                <StatChip label="Tổng doanh thu" value={formatCompact(kpiSummary.revenue) + " đ"} tone="blue" />
-                <StatChip label="Tổng sự cố" value={kpiSummary.incidents} tone="rose" />
-              </div>
-            )}
-            <div className="flex justify-end mt-3">
-              <Select
-                placeholder="Sắp xếp"
-                selectedKeys={new Set([kpiSortBy])}
-                onSelectionChange={(keys) => setKpiSortBy([...keys][0] ?? "revenue")}
-                variant="bordered"
-                size="sm"
-                className="w-48"
-              >
-                {Object.entries(SORT_LABELS).map(([key, label]) => (
-                  <SelectItem key={key} textValue={label}>{label}</SelectItem>
-                ))}
-              </Select>
-            </div>
             {kpiLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : kpiRows.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu KPI trong kỳ này.</p>
+              <p className="py-8 text-center text-xs text-gray-400 dark:text-gray-400">Chưa có dữ liệu KPI trong kỳ này.</p>
             ) : (
               <>
-                <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 mt-3">
-                  {pagedKpiRows.map((row) => (
-                    <div key={row.driver_id} className="py-3">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-400 dark:text-gray-400">{row.vehicle_group_name}</span>
-                            {onUpdateDriverGroup && (
-                              <Button
-                                isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
-                                onPress={() => setEditingDriver(row)}
-                              >
-                                <RiPencilLine size={12} className="text-gray-400 dark:text-gray-400" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-6 text-right shrink-0">
-                          <div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Chuyến</div>
-                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{row.completed_shipments}</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Doanh thu</div>
-                            <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(row.total_revenue)}</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Sự cố</div>
-                            <div className={`text-sm font-semibold ${Number(row.incident_count) > 0 ? "text-rose-500" : "text-gray-400 dark:text-gray-400"}`}>
-                              {row.incident_count}
-                              {Number(row.critical_incident_count) > 0 && (
-                                <span className="ml-1 text-[10px] font-bold text-red-600 dark:text-red-300">({row.critical_incident_count} nặng)</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <RevenueBar value={row.total_revenue} max={kpiMaxRevenue} />
-                    </div>
-                  ))}
+                <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <StatChip label="Tài xế" value={kpiSummary.drivers} icon={RiUserStarLine} />
+                  <StatChip label="Tổng chuyến" value={kpiSummary.trips} icon={RiRouteLine} tone="gray" />
+                  <StatChip label="Tổng doanh thu" value={formatCompact(kpiSummary.revenue) + " đ"} icon={RiMoneyDollarCircleLine} tone="blue" />
+                  <StatChip label="Không sự cố" value={`${kpiSummary.cleanRate}%`} icon={RiShieldCheckLine} tone="green" />
                 </div>
-                {kpiRows.length > 0 && (
-                  <div className="mt-3">
-                    <PaginationBar
-                      page={kpiPage}
-                      pageSize={PAGE_SIZE}
-                      totalItems={kpiRows.length}
-                      totalPages={kpiTotalPages}
-                      onPageChange={setKpiPage}
-                    />
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  <StatChip label="Doanh thu TB/tài xế" value={formatCompact(kpiSummary.avgRevenue) + " đ"} icon={RiCarLine} tone="amber" />
+                  <StatChip label="Tổng sự cố" value={kpiSummary.incidents} icon={RiAlertLine} tone={kpiSummary.incidents > 0 ? "rose" : "green"} />
+                  <StatChip
+                    label="Cần chú ý nhất"
+                    value={mostIncidentDriver?.incident_count > 0 ? mostIncidentDriver.driver_name : "Không có"}
+                    icon={RiAlertLine}
+                    tone={mostIncidentDriver?.incident_count > 0 ? "rose" : "green"}
+                  />
+                </div>
+
+                {podiumRows.length > 0 && (
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    {podiumRows.map((row, index) => (
+                      <PodiumCard key={row.driver_id} row={row} rank={index + 1} maxRevenue={kpiMaxRevenue} />
+                    ))}
                   </div>
                 )}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs font-semibold text-gray-400 dark:text-gray-400">
+                    Sắp theo: <span className="text-gray-700 dark:text-gray-200">{SORT_LABELS[kpiSortBy]}</span>
+                  </div>
+                  <Select placeholder="Sắp xếp" selectedKeys={new Set([kpiSortBy])} onSelectionChange={(keys) => setKpiSortBy([...keys][0] ?? "revenue")} variant="bordered" size="sm" className="w-48">
+                    {Object.entries(SORT_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} textValue={label}>{label}</SelectItem>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3">
+                  {pagedKpiRows.map((row, index) => {
+                    const rank = (kpiPage - 1) * PAGE_SIZE + index + 1;
+                    return (
+                      <DriverKpiRow
+                        key={row.driver_id}
+                        row={row}
+                        rank={rank}
+                        maxRevenue={kpiMaxRevenue}
+                        avgRevenue={kpiSummary.avgRevenue}
+                        onEdit={onUpdateDriverGroup ? () => setEditingDriver(row) : null}
+                      />
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3">
+                  <PaginationBar page={kpiPage} pageSize={PAGE_SIZE} totalItems={kpiRows.length} totalPages={kpiTotalPages} onPageChange={setKpiPage} />
+                </div>
               </>
             )}
           </Tab>
+
           <Tab key="leaderboard" title="Bảng xếp hạng">
-            <div className="flex justify-end mt-3">
-              <Select
-                placeholder="Sắp xếp"
-                selectedKeys={new Set([leaderboardSortBy])}
-                onSelectionChange={(keys) => setLeaderboardSortBy([...keys][0] ?? "revenue")}
-                variant="bordered"
-                size="sm"
-                className="w-48"
-              >
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs font-semibold text-gray-400 dark:text-gray-400">
+                Hạng đang tính theo: <span className="text-gray-700 dark:text-gray-200">{SORT_LABELS[leaderboardSortBy]}</span>
+              </div>
+              <Select placeholder="Sắp xếp" selectedKeys={new Set([leaderboardSortBy])} onSelectionChange={(keys) => setLeaderboardSortBy([...keys][0] ?? "revenue")} variant="bordered" size="sm" className="w-48">
                 {Object.entries(SORT_LABELS).map(([key, label]) => (
                   <SelectItem key={key} textValue={label}>{label}</SelectItem>
                 ))}
               </Select>
             </div>
+
             {leaderboardLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : leaderboard.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có dữ liệu xếp hạng — chọn 1 nhóm xe.</p>
+              <p className="py-8 text-center text-xs text-gray-400 dark:text-gray-400">Chưa có dữ liệu xếp hạng. Chọn 1 nhóm xe để xem.</p>
             ) : (
               <>
-                <div className="flex flex-col divide-y divide-gray-50 dark:divide-white/10 mt-3">
-                  {pagedLeaderboard.map((row) => (
-                    <div key={row.driver_id} className={`py-3 ${row.is_me ? "bg-blue-50/40 dark:bg-blue-500/10 -mx-5 px-5 rounded-lg" : ""}`}>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${rankBadge(row.revenue_rank)}`}>
-                            {row.revenue_rank}
-                          </span>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-                              {row.driver_name}
-                              {row.is_me && <span className="ml-1.5 text-[10px] font-bold text-blue-500">(Bạn)</span>}
-                            </span>
-                            {Number(row.incident_count) > 0 && (
-                              <span className="text-[10px] text-rose-400">{row.incident_count} sự cố</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-6 text-right shrink-0">
-                          <div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Chuyến</div>
-                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{row.completed_shipments}</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Doanh thu</div>
-                            <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(row.total_revenue)}</div>
-                          </div>
-                        </div>
-                      </div>
-                      <RevenueBar value={row.total_revenue} max={lbMaxRevenue} />
-                    </div>
-                  ))}
+                <div className="mt-3 flex flex-col gap-3">
+                  {pagedLeaderboard.map((row, index) => {
+                    const rank = (leaderboardPage - 1) * PAGE_SIZE + index + 1;
+                    return <LeaderboardRow key={row.driver_id} row={row} rank={rank} maxRevenue={lbMaxRevenue} sortBy={leaderboardSortBy} />;
+                  })}
                 </div>
-                {leaderboard.length > 0 && (
-                  <div className="mt-3">
-                    <PaginationBar
-                      page={leaderboardPage}
-                      pageSize={PAGE_SIZE}
-                      totalItems={leaderboard.length}
-                      totalPages={leaderboardTotalPages}
-                      onPageChange={setLeaderboardPage}
-                    />
-                  </div>
-                )}
+                <div className="mt-3">
+                  <PaginationBar page={leaderboardPage} pageSize={PAGE_SIZE} totalItems={leaderboard.length} totalPages={leaderboardTotalPages} onPageChange={setLeaderboardPage} />
+                </div>
               </>
             )}
           </Tab>
@@ -351,8 +456,8 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
           open={!!editingDriver}
           driver={editingDriver}
           vehicleGroups={vehicleGroups}
-          onSave={async (driverId, vehicleGroupId) => {
-            await onUpdateDriverGroup(driverId, vehicleGroupId);
+          onSave={async (driverId, nextVehicleGroupId) => {
+            await onUpdateDriverGroup(driverId, nextVehicleGroupId);
             setReloadToken((t) => t + 1);
           }}
           onClose={() => setEditingDriver(null)}
