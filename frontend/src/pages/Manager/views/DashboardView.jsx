@@ -13,6 +13,7 @@ import { Section } from "../../../components/shared-ui/Section";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { BankSelect } from "../../../components/shared-ui/BankSelect";
 import { KpiLeaderboard } from "../../../components/shared-ui/KpiLeaderboard";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   VND, VND_FULL, RevenueChart, VehicleRevenueChart,
   DebtAgingBars, TopCustomersTable, DriverHoldingsList, PayrollQuickStats,
@@ -129,6 +130,11 @@ export default function DashboardView({ user }) {
   };
 
   const handleApproveAdvance = async (record) => {
+    if (!(await confirmDialog({
+      title: "Duyệt ứng lương",
+      description: `Duyệt yêu cầu ứng lương ${fmt(record.amount)} của ${record.driver_name || "tài xế"}?`,
+      confirmLabel: "Duyệt",
+    }))) return;
     setActingId(`advance-approve-${record.id}`);
     try {
       await managerService.approveSalaryAdvance(record.id);
@@ -157,6 +163,11 @@ export default function DashboardView({ user }) {
   };
 
   const handleConfirmRepayment = async (record) => {
+    if (!(await confirmDialog({
+      title: "Xác nhận nộp công nợ",
+      description: `Xác nhận khoản nộp ${fmt(record.amount)} của ${record.driver_name || "tài xế"}?`,
+      confirmLabel: "Xác nhận",
+    }))) return;
     setActingId(`repayment-confirm-${record.id}`);
     try {
       await managerService.confirmDebtRepayment(record.id);

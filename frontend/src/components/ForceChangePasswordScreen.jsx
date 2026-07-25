@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiRequest } from "../services/apiClient";
+import { notify } from "./shared-ui/Toast";
 
 export default function ForceChangePasswordScreen({ user, onChanged, onLogout }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -12,10 +13,15 @@ export default function ForceChangePasswordScreen({ user, onChanged, onLogout })
     e.preventDefault();
     setError("");
 
-    if (!currentPassword) return setError("Vui lòng nhập mật khẩu tạm thời.");
-    if (newPassword.length < 6) return setError("Mật khẩu mới phải có ít nhất 6 ký tự.");
-    if (newPassword !== confirmPassword) return setError("Mật khẩu xác nhận không khớp.");
-    if (newPassword === currentPassword) return setError("Mật khẩu mới phải khác mật khẩu tạm thời.");
+    const showError = (message) => {
+      setError(message);
+      notify.error(message);
+    };
+
+    if (!currentPassword) return showError("Vui lòng nhập mật khẩu tạm thời.");
+    if (newPassword.length < 6) return showError("Mật khẩu mới phải có ít nhất 6 ký tự.");
+    if (newPassword !== confirmPassword) return showError("Mật khẩu xác nhận không khớp.");
+    if (newPassword === currentPassword) return showError("Mật khẩu mới phải khác mật khẩu tạm thời.");
 
     setSubmitting(true);
     try {
@@ -23,9 +29,10 @@ export default function ForceChangePasswordScreen({ user, onChanged, onLogout })
         method: "PATCH",
         body: { currentPassword, newPassword },
       });
+      notify.success("Đã đổi mật khẩu.");
       onChanged?.();
     } catch (err) {
-      setError(err.message || "Không thể đổi mật khẩu.");
+      showError(err.message || "Không thể đổi mật khẩu.");
     } finally {
       setSubmitting(false);
     }

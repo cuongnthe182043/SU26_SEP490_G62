@@ -4,6 +4,7 @@ import {
   RiToolsLine, RiFileTextLine, RiUserLine,
   RiErrorWarningFill, RiAlertLine,
 } from "react-icons/ri";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -23,6 +24,11 @@ const SEVERITY_LEVELS = [
 
 const normalizeBillPics = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === "string" && v.trim()) : []);
 
+const showFormError = (setError, message) => {
+  setError(message);
+  notify.error(message);
+};
+
 export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDrivers, onClose, onSubmit }) {
   const [form, setForm] = useState({ maintenance_type: "scheduled", description: "", maintenance_date: new Date().toISOString().slice(0, 10), performed_by: "" });
   const [error, setError] = useState(null);
@@ -41,12 +47,12 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
   }, [open, vehicle]);
 
   const handleOk = async () => {
-    if (!form.performed_by) return setError("Vui lòng chọn tài xế thực hiện.");
+    if (!form.performed_by) return showFormError(setError, "Vui lòng chọn tài xế thực hiện.");
     setSaving(true);
     try {
       await onSubmit({ ...form, performed_by: Number(form.performed_by) });
     } catch (err) {
-      setError(err.message);
+      showFormError(setError, err.message || "Không thể gửi xe đi bảo dưỡng.");
     } finally {
       setSaving(false);
     }
@@ -101,7 +107,7 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
     try {
       await onSubmit({ verification_note: note });
     } catch (err) {
-      setError(err.message);
+      showFormError(setError, err.message || "Không thể xác nhận bảo dưỡng.");
     } finally {
       setSaving(false);
     }
@@ -145,13 +151,13 @@ export function MarkBrokenModal({ open, vehicle, onClose, onSubmit }) {
   useEffect(() => { if (open) { setForm({ failure_type: "", severity_level: "medium", description: "", note: "" }); setError(null); } }, [open]);
 
   const handleOk = async () => {
-    if (!form.failure_type.trim()) return setError("Loại hỏng hóc là bắt buộc.");
-    if (!form.description.trim()) return setError("Mô tả là bắt buộc.");
+    if (!form.failure_type.trim()) return showFormError(setError, "Loại hỏng hóc là bắt buộc.");
+    if (!form.description.trim()) return showFormError(setError, "Mô tả là bắt buộc.");
     setSaving(true);
     try {
       await onSubmit(form);
     } catch (err) {
-      setError(err.message);
+      showFormError(setError, err.message || "Không thể đánh dấu xe bị hỏng.");
     } finally {
       setSaving(false);
     }
@@ -187,12 +193,12 @@ export function RestoreVehicleModal({ open, vehicle, onClose, onSubmit }) {
   useEffect(() => { if (open) { setNote(""); setError(null); } }, [open]);
 
   const handleOk = async () => {
-    if (!note.trim()) return setError("Ghi chú xử lý là bắt buộc.");
+    if (!note.trim()) return showFormError(setError, "Ghi chú xử lý là bắt buộc.");
     setSaving(true);
     try {
       await onSubmit({ resolution_note: note });
     } catch (err) {
-      setError(err.message);
+      showFormError(setError, err.message || "Không thể khôi phục xe.");
     } finally {
       setSaving(false);
     }
@@ -223,12 +229,12 @@ export function RetireVehicleModal({ open, vehicle, onClose, onSubmit }) {
   useEffect(() => { if (open) { setNote(""); setError(null); } }, [open]);
 
   const handleOk = async () => {
-    if (!note.trim()) return setError("Ghi chú thu hồi là bắt buộc.");
+    if (!note.trim()) return showFormError(setError, "Ghi chú thu hồi là bắt buộc.");
     setSaving(true);
     try {
       await onSubmit({ note });
     } catch (err) {
-      setError(err.message);
+      showFormError(setError, err.message || "Không thể thu hồi xe.");
     } finally {
       setSaving(false);
     }

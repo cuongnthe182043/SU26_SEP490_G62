@@ -6,6 +6,7 @@ import {
   RiMenuUnfoldLine,
 } from "react-icons/ri";
 import Logo from "../../theme/Logo";
+import { confirmDialog } from "./confirm";
 
 function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onViewChange }) {
   const base =
@@ -69,6 +70,16 @@ export function Sidebar({
   onToggle,
 }) {
   const avatar = user?.full_name?.[0]?.toUpperCase() ?? "A";
+  const handleLogout = async () => {
+    if (await confirmDialog({
+      title: "Đăng xuất",
+      description: "Anh có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?",
+      confirmLabel: "Đăng xuất",
+      danger: true,
+    })) {
+      onLogout?.();
+    }
+  };
 
   return (
     <aside
@@ -141,7 +152,7 @@ export function Sidebar({
             </Tooltip>
             <Tooltip content="Đăng xuất" placement="right" color="foreground">
               <button
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="flex items-center justify-center w-8 h-8 rounded-lg
                            bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white transition-colors"
               >
@@ -172,7 +183,7 @@ export function Sidebar({
             </button>
 
             <button
-              onClick={onLogout}
+              onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-2 rounded-xl w-full text-left
                          text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white
                          transition-colors duration-150"
