@@ -6,6 +6,7 @@ const logger = require('../config/logger');
 // khiến client mất token mà không kịp gọi refresh.
 const ACCESS_COOKIE_MAX_AGE_MS = authService.ACCESS_TOKEN_EXPIRES_IN_MS;
 const REFRESH_COOKIE_MAX_AGE_MS = authService.REFRESH_TOKEN_TTL_MS;
+const CSRF_COOKIE_NAME = 'csrf_token';
 
 const shouldUseSecureCookies = () => process.env.NODE_ENV === 'production';
 
@@ -22,6 +23,15 @@ const setSessionCookies = (res, accessToken, refreshToken) => {
     res.cookie(authService.REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS));
 };
 
+const setCsrfCookie = (res) => {
+    const token = authService.createCsrfToken();
+    res.cookie(CSRF_COOKIE_NAME, token, {
+        ...getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS),
+        httpOnly: false,
+    });
+    return token;
+};
+
 const clearSessionCookies = (res) => {
     res.clearCookie(authService.AUTH_COOKIE_NAME, {
         ...getCookieOptions(ACCESS_COOKIE_MAX_AGE_MS),
@@ -29,6 +39,11 @@ const clearSessionCookies = (res) => {
     });
     res.clearCookie(authService.REFRESH_COOKIE_NAME, {
         ...getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS),
+        maxAge: undefined,
+    });
+    res.clearCookie(CSRF_COOKIE_NAME, {
+        ...getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS),
+        httpOnly: false,
         maxAge: undefined,
     });
 };
@@ -62,11 +77,13 @@ const login = async (req, res) => {
         const { email, password } = req.body;
         const result = await authService.login(email, password);
         setSessionCookies(res, result.token, result.refreshToken);
+        const csrfToken = setCsrfCookie(res);
 
         res.json({
             message: 'Login successful',
             // Keep bearer token in the JSON response for mobile clients.
             token: result.token,
+            csrfToken,
             user: result.user,
         });
     } catch (err) {
@@ -83,11 +100,13 @@ const googleLogin = async (req, res) => {
         const { credential } = req.body;
         const result = await authService.loginWithGoogle(credential);
         setSessionCookies(res, result.token, result.refreshToken);
+        const csrfToken = setCsrfCookie(res);
 
         res.json({
             message: 'Google login successful',
             // Keep bearer token in the JSON response for mobile clients.
             token: result.token,
+            csrfToken,
             user: result.user,
         });
     } catch (err) {
@@ -157,10 +176,12 @@ const refresh = async (req, res) => {
             ?? null;
         const result = await authService.refreshSession(refreshToken);
         setSessionCookies(res, result.accessToken, result.refreshToken);
+        const csrfToken = setCsrfCookie(res);
 
         res.json({
             message: 'Session refreshed',
             token: result.accessToken ?? result.token,
+            csrfToken,
             refreshToken: result.refreshToken,   // mobile cần để lưu lại
             user: result.user,
         });
@@ -172,7 +193,10 @@ const refresh = async (req, res) => {
 };
 
 const logout = async (req, res) => {
-    const refreshToken = readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
+    const refreshToken =
+        readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME)
+        ?? req.body?.refreshToken
+        ?? null;
     await authService.revokeRefreshToken(refreshToken);
     clearSessionCookies(res);
     res.json({ message: 'Logout successful' });

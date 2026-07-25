@@ -2,11 +2,13 @@ const accountantBankTransferRepository = require('../repositories/accountantBank
 const notificationService = require('./notificationService');
 
 const getPendingBankTransfers = async ({ page = 1, limit = 20, search = '' } = {}) => {
-    const offset = (Number(page) - 1) * Number(limit);
+    const safePage  = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const offset = (safePage - 1) * safeLimit;
     const like   = `%${search}%`;
 
     const [receipts, total] = await Promise.all([
-        accountantBankTransferRepository.getPendingBankTransfers({ limit: Number(limit), offset, like }),
+        accountantBankTransferRepository.getPendingBankTransfers({ limit: safeLimit, offset, like }),
         accountantBankTransferRepository.countPendingBankTransfers(like),
     ]);
 
@@ -14,9 +16,9 @@ const getPendingBankTransfers = async ({ page = 1, limit = 20, search = '' } = {
         receipts,
         pagination: {
             total,
-            page: Number(page),
-            limit: Number(limit),
-            totalPages: Math.ceil(total / Number(limit)),
+            page: safePage,
+            limit: safeLimit,
+            totalPages: Math.ceil(total / safeLimit),
         },
     };
 };

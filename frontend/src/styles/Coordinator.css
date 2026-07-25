@@ -463,8 +463,24 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  font: 600 18px/1.4 Inter, system-ui, sans-serif;
-  color: #18227f;
+  padding: 24px;
+}
+
+.loading-screen-card {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: min(320px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border-subtle, #eef1f6);
+  border-radius: 16px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.loading-screen-logo {
+  width: 82px;
+  height: auto;
 }
 
 .coordinator-shell .create-form,
