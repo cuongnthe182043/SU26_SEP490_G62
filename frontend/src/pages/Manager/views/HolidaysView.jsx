@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
-import { Button, Input, Select, SelectItem, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
+import { Button, Input, Select, SelectItem, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
 import { RiCalendarLine, RiAddLine, RiDeleteBinLine } from "react-icons/ri";
+import LoadingState from "../../../components/LoadingState";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
@@ -110,7 +111,7 @@ export default function HolidaysView() {
       </p>
 
       {loading ? (
-        <div className="flex justify-center py-10"><Spinner color="primary" /></div>
+        <LoadingState label="Đang tải ngày lễ..." />
       ) : holidays.length === 0 ? (
         <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Chưa có ngày lễ nào cho năm {year}.</p>
       ) : (

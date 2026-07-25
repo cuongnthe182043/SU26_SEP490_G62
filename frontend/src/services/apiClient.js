@@ -11,6 +11,19 @@ function buildUrl(path) {
   return `${apiBaseUrl}${path}`;
 }
 
+function getCookieValue(name) {
+  if (typeof document === "undefined") return null;
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1) ?? null;
+}
+
+function isUnsafeMethod(method) {
+  return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
+}
+
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
@@ -53,8 +66,13 @@ async function isRefreshableAuthFailure(response) {
 
 export async function refreshAuthSession() {
   if (!refreshPromise) {
+    const headers = new Headers();
+    const csrfToken = getCookieValue("csrf_token");
+    if (csrfToken) headers.set("X-CSRF-Token", decodeURIComponent(csrfToken));
+
     refreshPromise = fetch(buildUrl("/auth/refresh"), {
       method: "POST",
+      headers,
       credentials: "include",
     })
       .then(async (response) => {
@@ -87,6 +105,10 @@ export async function apiRequest(path, options = {}) {
 
   if (token) {
     requestHeaders.set("Authorization", `Bearer ${token}`);
+  }
+  if (isUnsafeMethod(method) && !requestHeaders.has("X-CSRF-Token")) {
+    const csrfToken = getCookieValue("csrf_token");
+    if (csrfToken) requestHeaders.set("X-CSRF-Token", decodeURIComponent(csrfToken));
   }
 
   let requestBody = body;

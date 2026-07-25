@@ -92,6 +92,8 @@ const ensureRefreshTokenTable = async () => {
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
+const createCsrfToken = () => crypto.randomBytes(32).toString('base64url');
+
 const getRefreshTokenExpiryDate = () => new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
 const buildUserPayload = (account, profile) => ({
@@ -465,4 +467,5 @@ module.exports = {
     AuthError,
     AUTH_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
+    createCsrfToken,
 };

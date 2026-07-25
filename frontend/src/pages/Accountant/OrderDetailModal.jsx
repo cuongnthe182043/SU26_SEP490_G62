@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { RiCheckLine, RiCloseLine } from "react-icons/ri";
+import LoadingState from "../../components/LoadingState";
 import { apiRequest } from "../../services/apiClient";
 import { RouteStops } from "./components/shared/RouteStops";
 
@@ -346,9 +347,7 @@ export default function OrderDetailModal({
               </h3>
 
               {loading ? (
-                <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>
-                  Đang tải...
-                </div>
+                <LoadingState label="Đang tải danh sách chuyến..." />
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {shipments.map((s) => {

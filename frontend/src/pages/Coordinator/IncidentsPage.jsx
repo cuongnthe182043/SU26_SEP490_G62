@@ -5,6 +5,7 @@ import { apiRequest } from "../../services/apiClient";
 import IncidentDetailModal from "./components/IncidentDetailModal";
 import CreateIncidentModal from "./components/CreateIncidentModal";
 import StatusTag from "./components/StatusTag";
+import LoadingState from "../../components/LoadingState";
 
 const EMPTY_CREATE_FORM = { incidentType: "", severityLevel: "medium", shipmentId: "", description: "", location: "" };
 
@@ -194,7 +195,11 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
           <p>Theo dõi sự cố đang mở, chọn tài xế thay thế và áp dụng quy tắc chia doanh thu theo mốc lấy hàng.</p>
         </div>
         <div className="hero-metrics">
-          <div className="upload-hint">{incidentsLoading ? "Đang tải..." : `${incidents.length} sự cố`}</div>
+          <div className="upload-hint">
+            {incidentsLoading ? (
+              <LoadingState label="Đang tải..." size="sm" className="py-0 justify-start" />
+            ) : `${incidents.length} sự cố`}
+          </div>
           <div className="upload-hint">{incidents.filter((item) => item.status === "open").length} mới tiếp nhận</div>
           <div className="upload-hint">{incidents.filter((item) => item.pickup_completed).length} đã lấy hàng</div>
           <Button
