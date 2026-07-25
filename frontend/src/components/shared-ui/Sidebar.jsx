@@ -190,7 +190,8 @@ export function Sidebar({
               <button
                 onClick={handleLogout}
                 className="flex items-center justify-center w-8 h-8 rounded-lg
-                           bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white transition-colors"
+                           bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300
+                           hover:bg-red-700 hover:text-white dark:hover:bg-red-600 dark:hover:text-white transition-colors"
               >
                 <RiLogoutBoxLine size={16} />
               </button>
@@ -218,7 +219,8 @@ export function Sidebar({
             <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-2 rounded-xl w-full text-left
-                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white
+                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300
+                         hover:bg-red-700 hover:text-white dark:hover:bg-red-600 dark:hover:text-white
                          transition-colors duration-150"
             >
               <RiLogoutBoxLine size={16} />
