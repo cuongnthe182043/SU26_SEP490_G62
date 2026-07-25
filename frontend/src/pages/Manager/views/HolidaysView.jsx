@@ -61,6 +61,7 @@ export default function HolidaysView() {
       setNewName("");
       const addedYear = new Date(newDate).getFullYear();
       if (addedYear !== year) setYear(addedYear); else await load();
+      notify.success("Đã thêm ngày lễ.");
     } catch (err) {
       notify.error(err.message);
     } finally {
@@ -75,6 +76,7 @@ export default function HolidaysView() {
       await managerService.deleteHoliday(dateKey);
       setDeleteTarget(null);
       await load();
+      notify.success("Đã xóa ngày lễ.");
     } catch (err) {
       notify.error(err.message);
     }

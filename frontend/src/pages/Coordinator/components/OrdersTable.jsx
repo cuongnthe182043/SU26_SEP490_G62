@@ -22,14 +22,16 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">#{trip.orderId}</span>
+              <span className="text-[15px] font-bold text-gray-800 dark:text-gray-100">
+                {trip.customerName || "—"}
+              </span>
               {trip.shipmentCount > 1 && (
                 <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 rounded px-1.5 py-0.5">
                   {trip.shipmentCount} chuyến
                 </span>
               )}
             </div>
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{trip.customerName || "—"}</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{trip.customerPhone || "—"}</span>
           </div>
         </td>
         <td className="py-3.5 pr-4"><span className="text-xs text-gray-500 dark:text-gray-400">{trip.date || "—"}</span></td>
@@ -117,7 +119,7 @@ export function OrdersTable({
           </colgroup>
           <thead>
             <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-              {["", "Đơn / Khách hàng", "Ngày", "BKS", "Lái xe", "Hành trình", "Cước xe", "Trạng thái", ""].map((label, i) => (
+              {["", "Khách hàng / SĐT", "Ngày", "BKS", "Lái xe", "Hành trình", "Cước xe", "Trạng thái", ""].map((label, i) => (
                 <th key={i} className="text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wider py-3 pr-4 first:pl-5 last:pr-5">
                   {label}
                 </th>

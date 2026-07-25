@@ -103,6 +103,7 @@ export default function BonusView() {
     try {
       await managerService.approveBonus(approveTarget.id, adjustAmount ?? undefined);
       setApproveTarget(null);
+      notify.success("Đã duyệt khoản thưởng/phúc lợi.");
       loadBonuses();
     } catch (e) {
       notify.error(e.message || "Lỗi duyệt");
@@ -118,6 +119,7 @@ export default function BonusView() {
       await managerService.rejectBonus(rejectTarget.id, rejectReason.trim());
       setRejectTarget(null);
       setRejectReason("");
+      notify.success("Đã từ chối khoản thưởng/phúc lợi.");
       loadBonuses();
     } catch (e) {
       notify.error(e.message || "Lỗi từ chối");
@@ -166,6 +168,7 @@ export default function BonusView() {
     try {
       await managerService.createBonus(createForm);
       setCreateForm(EMPTY_CREATE_FORM);
+      notify.success("Đã tạo khoản thưởng/phúc lợi.");
       loadBonuses();
       setTab("list");
     } catch (e) {

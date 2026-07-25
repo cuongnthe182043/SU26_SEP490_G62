@@ -118,8 +118,8 @@ export default function VehiclesView({ user }) {
   // ─── Vehicle groups ─────────────────────────────────────────────────────
   const handleGroupSubmit = async (values) => {
     try {
-      if (editingGroup) await accountantService.updateVehicleGroup(editingGroup.id, { ...values, upgrade_allowed: editingGroup.upgrade_allowed });
-      else await accountantService.createVehicleGroup({ ...values, upgrade_allowed: false });
+      if (editingGroup) { await accountantService.updateVehicleGroup(editingGroup.id, { ...values, upgrade_allowed: editingGroup.upgrade_allowed }); notify.success("Đã cập nhật nhóm xe."); }
+      else { await accountantService.createVehicleGroup({ ...values, upgrade_allowed: false }); notify.success("Đã tạo nhóm xe."); }
       setGroupModalOpen(false);
       setEditingGroup(null);
       await loadVehicleGroups();
@@ -131,14 +131,15 @@ export default function VehiclesView({ user }) {
       await accountantService.deleteVehicleGroup(groupDeleteTarget.id);
       setGroupDeleteTarget(null);
       await loadVehicleGroups();
+      notify.success("Đã xóa nhóm xe.");
     } catch (err) { notify.error(err.message); }
   };
 
   // ─── Vehicles CRUD ──────────────────────────────────────────────────────
   const handleVehicleSubmit = async (values) => {
     try {
-      if (editingVehicle) await accountantService.updateVehicle(editingVehicle.id, values);
-      else await accountantService.createVehicle(values);
+      if (editingVehicle) { await accountantService.updateVehicle(editingVehicle.id, values); notify.success("Đã cập nhật xe."); }
+      else { await accountantService.createVehicle(values); notify.success("Đã tạo xe."); }
       setVehicleModalOpen(false);
       setEditingVehicle(null);
       await loadVehicles();
@@ -163,6 +164,7 @@ export default function VehiclesView({ user }) {
       await accountantService.assignVehicleDriver(unassignTarget.id, null);
       setUnassignTarget(null);
       await loadVehicles();
+      notify.success("Đã bỏ gán tài xế.");
     } catch (err) { notify.error(err.message); }
   };
 
@@ -180,6 +182,7 @@ export default function VehiclesView({ user }) {
     await accountantService.sendVehicleToMaintenance(maintenanceTarget.id, values);
     setMaintenanceTarget(null);
     await loadVehicles();
+    notify.success("Đã đưa xe vào bảo dưỡng.");
   };
 
   const handleVerifyMaintenance = async (vehicle) => {
@@ -193,24 +196,28 @@ export default function VehiclesView({ user }) {
     await accountantService.verifyVehicleMaintenance(verifyTarget.id, values);
     setVerifyTarget(null);
     await loadVehicles();
+    notify.success("Đã xác minh bảo dưỡng.");
   };
 
   const submitBroken = async (values) => {
     await accountantService.markVehicleBroken(brokenTarget.id, values);
     setBrokenTarget(null);
     await loadVehicles();
+    notify.success("Đã đánh dấu xe hỏng.");
   };
 
   const submitRestore = async (values) => {
     await accountantService.restoreVehicle(restoreTarget.id, values);
     setRestoreTarget(null);
     await loadVehicles();
+    notify.success("Đã khôi phục xe.");
   };
 
   const submitRetire = async (values) => {
     await accountantService.retireVehicle(retireTarget.id, values);
     setRetireTarget(null);
     await loadVehicles();
+    notify.success("Đã ngừng sử dụng xe.");
   };
 
   // ─── Maintenance requests ───────────────────────────────────────────────
@@ -219,6 +226,7 @@ export default function VehiclesView({ user }) {
     try {
       await accountantService.approveMaintenanceRequest(request.id);
       await Promise.all([loadMaintenanceRequests(), loadVehicles()]);
+      notify.success("Đã duyệt yêu cầu bảo dưỡng.");
     } catch (err) { notify.error(err.message); } finally { setProcessingRequestId(null); }
   };
 
@@ -230,6 +238,7 @@ export default function VehiclesView({ user }) {
       setRejectRequestTarget(null);
       setRejectRequestReason("");
       await loadMaintenanceRequests();
+      notify.success("Đã từ chối yêu cầu bảo dưỡng.");
     } catch (err) { notify.error(err.message); } finally { setProcessingRequestId(null); }
   };
 
