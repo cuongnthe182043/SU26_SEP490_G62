@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { API_BASE_URL } from '@/constants/api';
+import { getApiBaseUrl } from '@/constants/api';
 import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { appEvents } from '@/lib/app-events';
 import { ApiError } from '@/lib/api-error';
@@ -31,7 +31,7 @@ type NotificationsContextValue = {
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
 const toWsUrl = () => {
-    const url = new URL(API_BASE_URL);
+    const url = new URL(getApiBaseUrl());
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/notifications';
     url.search   = '';
@@ -180,7 +180,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         if (!token) return;
 
         shouldConnectRef.current = true;
-        const wsUrl = toWsUrl();
+        let wsUrl: URL;
+        try {
+            wsUrl = toWsUrl();
+        } catch {
+            return;
+        }
         wsUrl.searchParams.set('token', token);
 
         const socket = new WebSocket(wsUrl.toString());
