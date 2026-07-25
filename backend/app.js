@@ -65,6 +65,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_EXEMPT_PATHS = new Set([
     '/auth/login',
     '/auth/google',
+    '/auth/refresh',
+    '/auth/logout',
     '/auth/forgot-password/request',
     '/auth/forgot-password/verify',
     '/auth/forgot-password/reset',
