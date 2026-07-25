@@ -133,6 +133,7 @@ export default function DashboardView({ user }) {
     try {
       await managerService.approveSalaryAdvance(record.id);
       await refreshAll();
+      notify.success("Đã duyệt yêu cầu ứng lương.");
     } catch (error) {
       notify.error(error.message || "Không thể phê duyệt yêu cầu.");
     } finally {
@@ -147,6 +148,7 @@ export default function DashboardView({ user }) {
       setRejectAdvanceTarget(null);
       setRejectReason("");
       await refreshAll();
+      notify.success("Đã từ chối yêu cầu ứng lương.");
     } catch (error) {
       notify.error(error.message || "Không thể từ chối yêu cầu.");
     } finally {
@@ -159,6 +161,7 @@ export default function DashboardView({ user }) {
     try {
       await managerService.confirmDebtRepayment(record.id);
       await refreshAll();
+      notify.success("Đã xác nhận nộp công nợ.");
     } catch (error) {
       notify.error(error.message || "Không thể xác nhận nộp tiền.");
     } finally {
@@ -173,6 +176,7 @@ export default function DashboardView({ user }) {
       setRejectRepaymentTarget(null);
       setRejectReason("");
       await refreshAll();
+      notify.success("Đã từ chối báo nộp công nợ.");
     } catch (error) {
       notify.error(error.message || "Không thể từ chối yêu cầu.");
     } finally {
@@ -185,6 +189,7 @@ export default function DashboardView({ user }) {
     try {
       const result = await managerService.updateCompanyInfo(companyForm);
       setCompanyForm((p) => ({ ...p, ...result.info }));
+      notify.success("Đã cập nhật thông tin công ty.");
     } catch (error) {
       notify.error(error.message || "Không thể cập nhật thông tin công ty.");
     } finally {
@@ -200,6 +205,7 @@ export default function DashboardView({ user }) {
     try {
       const result = await managerService.uploadBankQr(file);
       setCompanyForm((p) => ({ ...p, ...result.info }));
+      notify.success("Đã tải QR ngân hàng.");
     } catch (error) {
       notify.error(error.message || "Không thể tải ảnh QR lên.");
     } finally {

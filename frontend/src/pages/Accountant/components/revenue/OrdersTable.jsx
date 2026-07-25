@@ -46,15 +46,16 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">#{order.id}</span>
+              <span className="text-[15px] font-bold text-gray-800 dark:text-gray-100">
+                {order.customer_name ?? "—"}
+              </span>
               {order.cargo_name && (
                 <span className="text-xs text-gray-400 dark:text-gray-400 font-normal">{order.cargo_name}</span>
               )}
             </div>
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{order.customer_name ?? "—"}</span>
-            {order.customer_phone && (
-              <span className="text-[11px] text-gray-400 dark:text-gray-400 font-mono">{order.customer_phone}</span>
-            )}
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              {order.customer_phone ?? "—"}
+            </span>
           </div>
         </td>
 
@@ -217,7 +218,7 @@ export function OrdersTable({
             <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               {[
                 { label: "" },
-                { label: "Đơn / Khách hàng" },
+                { label: "Khách hàng / SĐT" },
                 { label: "Ngày tạo" },
                 { label: "Chuyến" },
                 { label: "Doanh thu" },

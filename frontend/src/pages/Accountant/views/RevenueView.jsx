@@ -68,6 +68,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
       if (filters.debt_status) filterParts.push(`Trạng thái nợ: ${filters.debt_status}`);
       if (filters.search) filterParts.push(`Tìm kiếm: ${filters.search}`);
       await exportOrdersReportToExcel(rows, { filterLabel: filterParts.join(" · ") });
+      notify.success("Đã xuất báo cáo doanh thu.");
     } catch (err) {
       notify.error(err.message ?? "Xuất báo cáo thất bại.");
     } finally {

@@ -20,6 +20,7 @@ import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { useDebts } from "../hooks/useDebts";
 import { accountantService } from "../services/accountant.service";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -98,6 +99,7 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
       await accountantService.confirmRepayment(item.id);
       load();
       onChanged?.();
+      notify.success("Đã xác nhận báo nộp tiền.");
     } catch (err) {
       setError(err.message ?? "Xác nhận thất bại");
     } finally {
@@ -116,6 +118,7 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
       setRejectReason("");
       load();
       onChanged?.();
+      notify.success("Đã từ chối báo nộp tiền.");
     } catch (err) {
       setError(err.message ?? "Từ chối thất bại");
     } finally {
@@ -479,6 +482,7 @@ function PayDebtModal({ person, onClose, onDone }) {
       });
       onDone();
       onClose();
+      notify.success("Đã ghi nhận thanh toán công nợ.");
     } catch (err) {
       setError(err.message ?? "Lỗi khi ghi nhận.");
     } finally {
@@ -580,6 +584,7 @@ function TransferDebtModal({ debt, onClose, onDone }) {
       await accountantService.transferDebtToDriver(debt.id, Number(selectedId), notes.trim());
       onDone();
       onClose();
+      notify.success("Đã chuyển công nợ sang tài xế.");
     } catch (err) {
       setError(err.message ?? "Chuyển công nợ thất bại.");
     } finally {

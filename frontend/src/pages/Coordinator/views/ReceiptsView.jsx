@@ -129,6 +129,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
       closeModal();
       await loadReceiptRequests();
       onReceiptPublished?.();
+      notify.success("Đã tạo phiếu thu.");
     } catch (error) {
       notify.error(error.message || "Không thể tạo phiếu thu.");
     } finally {
@@ -143,6 +144,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
     try {
       await coordinatorService.rejectReceiptRequest(requestId, reason.trim());
       await loadReceiptRequests();
+      notify.success("Đã từ chối yêu cầu phiếu thu.");
     } catch (error) {
       notify.error(error.message || "Không thể từ chối yêu cầu phiếu thu.");
     } finally {

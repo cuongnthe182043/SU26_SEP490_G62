@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip, Input, Select, SelectItem } from "@heroui/react";
 import { RiMoneyDollarCircleLine, RiBankCardLine } from "react-icons/ri";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { managerService } from "../services/manager.service";
@@ -30,6 +31,7 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
     try {
       await managerService.recordPartnerPayment(partner.id, { amount: amt, payment_method: method });
       setAmount("");
+      notify.success("Đã ghi nhận thanh toán đối tác.");
       onPaid?.(partner.id);
     } catch (err) {
       setError(err.message ?? "Lỗi khi ghi nhận thanh toán.");

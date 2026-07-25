@@ -25,7 +25,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
     try {
-        const rule = await bonusRuleService.createRule(req.body);
+        const rule = await bonusRuleService.createRule({ ...req.body, actor_id: req.user?.userId ?? null });
         res.status(201).json({ message: 'Đã tạo quy tắc thưởng', rule });
     } catch (err) { sendError(res, err); }
 };
@@ -34,7 +34,7 @@ const update = async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!id) return res.status(400).json({ error: 'ID không hợp lệ' });
-        const rule = await bonusRuleService.updateRule(id, req.body);
+        const rule = await bonusRuleService.updateRule(id, { ...req.body, actor_id: req.user?.userId ?? null });
         res.json({ message: 'Đã cập nhật quy tắc thưởng', rule });
     } catch (err) { sendError(res, err); }
 };
@@ -43,7 +43,7 @@ const remove = async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!id) return res.status(400).json({ error: 'ID không hợp lệ' });
-        await bonusRuleService.deleteRule(id);
+        await bonusRuleService.deleteRule(id, req.user?.userId ?? null);
         res.json({ message: 'Đã xóa quy tắc thưởng' });
     } catch (err) { sendError(res, err); }
 };

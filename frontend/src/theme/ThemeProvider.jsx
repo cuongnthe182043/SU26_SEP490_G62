@@ -41,6 +41,7 @@ export function ThemeProvider({ children }) {
 
   const setTheme = useCallback((next) => {
     window.localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
     setThemeState(next);
   }, []);
 
@@ -48,6 +49,7 @@ export function ThemeProvider({ children }) {
     setThemeState((prev) => {
       const next = prev === "dark" ? "light" : "dark";
       window.localStorage.setItem(STORAGE_KEY, next);
+      applyTheme(next);
       return next;
     });
   }, []);
