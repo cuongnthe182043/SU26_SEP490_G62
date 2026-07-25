@@ -4,8 +4,6 @@ import {
   Button, Chip, Spinner,
 } from "@heroui/react";
 import { RiFileExcel2Line, RiUploadCloud2Line, RiCheckboxCircleLine, RiErrorWarningLine, RiDownloadLine } from "react-icons/ri";
-import * as XLSX from "xlsx";
-import ExcelJS from "exceljs";
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
@@ -90,7 +88,15 @@ const BORDER_COLOR = "FFE2E8F0";
 
 const thinBorder = { style: "thin", color: { argb: BORDER_COLOR } };
 
+const loadExcelJS = async () => {
+  const mod = await import("exceljs");
+  return mod.default || mod;
+};
+
+const loadXLSX = async () => import("xlsx");
+
 const downloadTemplate = async () => {
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   wb.creator = "LogisCount";
   wb.created = new Date();
@@ -224,7 +230,7 @@ const parseKm = (v) => {
 // Đọc trực tiếp cell gốc (không qua sheet_to_json) để tránh SheetJS tự format lại
 // text của ô kiểu "Date" theo bảng định dạng dựng sẵn (thiên về kiểu Mỹ m/d/yy),
 // khiến chuỗi hiển thị khác với dd/mm/yyyy dù Excel vẫn hiện đúng dd/mm/yyyy.
-const parseDateCell = (cell) => {
+const parseDateCell = (cell, XLSX) => {
   if (!cell) return null;
 
   if (cell.t === "n" && typeof cell.v === "number") {
@@ -253,7 +259,7 @@ const splitStops = (v) => String(v ?? "")
   .filter(Boolean);
 
 // Parse workbook → { rows: [{rowIndex, order, display}], errors: [string] }
-function parseWorkbook(wb) {
+function parseWorkbook(wb, XLSX) {
   const sheetName = wb.SheetNames.includes("DON_HANG") ? "DON_HANG" : wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
@@ -283,7 +289,7 @@ function parseWorkbook(wb) {
     const rowErr = [];
 
     const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
-    const dateIso = parseDateCell(ws[dateCellAddr]);
+    const dateIso = parseDateCell(ws[dateCellAddr], XLSX);
     if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
 
     const plate = String(get(r, "plate")).trim();
@@ -401,8 +407,9 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     setFileName(file.name);
     try {
       const buf = await file.arrayBuffer();
+      const XLSX = await loadXLSX();
       const wb = XLSX.read(buf, { type: "array" });
-      setParsed(parseWorkbook(wb));
+      setParsed(parseWorkbook(wb, XLSX));
     } catch (err) {
       setParsed(null);
       setFatalError(`Không đọc được file: ${err.message}`);

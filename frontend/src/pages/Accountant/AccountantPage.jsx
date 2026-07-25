@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
@@ -16,7 +16,6 @@ import { PayrollView } from "./views/PayrollView";
 import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
-import SpendingView from "./views/SpendingView";
 import AttendanceView from "./views/AttendanceView";
 import VehiclesView from "./views/VehiclesView";
 import BonusRulesView from "../Manager/views/BonusRulesView";
@@ -25,6 +24,8 @@ import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
+
+const SpendingView = lazy(() => import("./views/SpendingView"));
 
 const NAV_GROUPS = [
   {
@@ -250,7 +251,9 @@ export default function AccountantPage({ user, onLogout }) {
               <LedgerView />
             )}
             {activeView === "spending" && (
-              <SpendingView />
+              <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải quản lý chi...</div>}>
+                <SpendingView />
+              </Suspense>
             )}
             {activeView === "bonus-rules" && (
               <BonusRulesView />
