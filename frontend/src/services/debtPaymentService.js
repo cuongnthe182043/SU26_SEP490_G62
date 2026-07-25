@@ -1,9 +1,5 @@
 import { apiRequest } from './apiClient';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9999';
-
-const getToken = () => localStorage.getItem('token');
-
 /**
  * Preview phân bổ thanh toán - xem trước sẽ chia tiền vào đâu
  */
@@ -11,7 +7,6 @@ export const previewDebtAllocation = async (personType, personId, amount) => {
   return apiRequest('/accountant/debts/payment/preview', {
     method: 'POST',
     body: { personType, personId, amount },
-    token: getToken(),
   });
 };
 
@@ -22,7 +17,6 @@ export const allocateDebtPayment = async (personType, personId, amount, paymentM
   return apiRequest('/accountant/debts/payment/allocate', {
     method: 'POST',
     body: { personType, personId, amount, paymentMethod, notes },
-    token: getToken(),
   });
 };
 
@@ -33,7 +27,6 @@ export const paymentByShipment = async (shipmentId, amount, paymentMethod = 'cas
   return apiRequest('/accountant/debts/payment/by-shipment', {
     method: 'POST',
     body: { shipmentId, amount, paymentMethod, notes },
-    token: getToken(),
   });
 };
 
@@ -44,7 +37,6 @@ export const paymentByDebt = async (debtId, amount, paymentMethod = 'cash', note
   return apiRequest('/accountant/debts/payment/by-debt', {
     method: 'POST',
     body: { debtId, amount, paymentMethod, notes },
-    token: getToken(),
   });
 };
 
@@ -52,9 +44,7 @@ export const paymentByDebt = async (debtId, amount, paymentMethod = 'cash', note
  * Lấy chi tiết công nợ theo person
  */
 export const getDebtsByPerson = async (personType, personId) => {
-  return apiRequest(`/accountant/debts/person/${personType}/${personId}`, {
-    token: getToken(),
-  });
+  return apiRequest(`/accountant/debts/person/${personType}/${personId}`);
 };
 
 /**
@@ -69,16 +59,12 @@ export const getGroupedDebts = async (params = {}) => {
   if (params.page) query.set('page', params.page);
   if (params.limit) query.set('limit', params.limit);
 
-  return apiRequest(`/accountant/debts/grouped?${query}`, {
-    token: getToken(),
-  });
+  return apiRequest(`/accountant/debts/grouped?${query}`);
 };
 
 /**
  * Lấy lịch sử thanh toán của 1 người (customer/driver)
  */
 export const getPaymentHistoryByPerson = async (personType, personId) => {
-  return apiRequest(`/accountant/debts/payment/history/${personType}/${personId}`, {
-    token: getToken(),
-  });
+  return apiRequest(`/accountant/debts/payment/history/${personType}/${personId}`);
 };

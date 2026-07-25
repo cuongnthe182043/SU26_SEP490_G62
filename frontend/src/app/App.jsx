@@ -1,23 +1,20 @@
-import React from "react";
-import { ConfigProvider, theme as antdTheme } from "antd";
-import viVN from "antd/locale/vi_VN";
+import React, { Suspense, lazy } from "react";
 import LoadingScreen from "../components/LoadingScreen";
 import ForceChangePasswordScreen from "../components/ForceChangePasswordScreen";
 import { useAuthSession } from "../hooks/useAuthSession";
-import ManagerPage from "../pages/Manager/ManagerPage";
-import AccountantPage from "../pages/Accountant/AccountantPage";
-import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
-import ChatbotWidget from "../components/chatbot/ChatbotWidget";
 import { Toaster } from "../components/shared-ui/Toast";
 import { ConfirmRoot } from "../components/shared-ui/confirm";
-import { appTheme, appThemeDark } from "../styles/theme";
-import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
+import { ThemeProvider } from "../theme/ThemeProvider";
 import "../styles/global.css";
+
+const ManagerPage = lazy(() => import("../pages/Manager/ManagerPage"));
+const AccountantPage = lazy(() => import("../pages/Accountant/AccountantPage"));
+const CoordinatorPage = lazy(() => import("../pages/Coordinator/CoordinatorPage"));
+const ChatbotWidget = lazy(() => import("../components/chatbot/ChatbotWidget"));
 
 function AppShell() {
   const { user, loading, setSession, refreshSession, logout } = useAuthSession();
-  const { isDark } = useTheme();
 
   // Chỉ hiện trợ lý AI khi đã đăng nhập xong (không ở màn login / đổi mật khẩu bắt buộc).
   const showChatbot = Boolean(user) && !user?.must_change_password;
@@ -34,19 +31,17 @@ function AppShell() {
     return <LoadingScreen label="Không có trang cho vai trò này." />;
   };
 
+  const content = renderPage();
+
   return (
-    <ConfigProvider
-      theme={{
-        ...(isDark ? appThemeDark : appTheme),
-        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-      }}
-      locale={viVN}
-    >
-      {renderPage()}
-      {showChatbot && <ChatbotWidget />}
+    <>
+      <Suspense fallback={<LoadingScreen label="Đang tải giao diện..." />}>
+        {content}
+        {showChatbot && <ChatbotWidget />}
+      </Suspense>
       <Toaster />
       <ConfirmRoot />
-    </ConfigProvider>
+    </>
   );
 }
 

@@ -3,13 +3,10 @@ import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Select, SelectItem, Avatar, Divider, Chip,
 } from '@heroui/react';
-import { DatePicker } from 'antd';
-import { CameraOutlined } from '@ant-design/icons';
-import Upload from 'antd/lib/upload';
-import message from 'antd/lib/message';
 import dayjs from 'dayjs';
 import { apiRequest } from '../../services/apiClient';
-import { RiUser3Line, RiMailLine, RiPhoneLine, RiMapPinLine, RiShieldCheckLine, RiSendPlaneLine } from 'react-icons/ri';
+import { notify } from '../shared-ui/Toast';
+import { RiUser3Line, RiMailLine, RiPhoneLine, RiMapPinLine, RiShieldCheckLine, RiSendPlaneLine, RiCameraLine } from 'react-icons/ri';
 
 const GENDER_OPTIONS = [
   { key: 'male',   label: 'Nam' },
@@ -54,7 +51,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         setErrors({});
         setResendCooldown(0);
       } catch (err) {
-        message.error(err.message || 'Không thể tải hồ sơ.');
+        notify.error(err.message || 'Không thể tải hồ sơ.');
       } finally {
         setLoading(false);
       }
@@ -80,7 +77,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
     return e;
   };
 
-  const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
+  const handleAvatarUpload = async (file) => {
+    if (!file) return;
     setUploadingAvatar(true);
     try {
       const formData = new FormData();
@@ -88,12 +86,10 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       const data = await apiRequest('/api/profile/me/avatar', { method: 'POST', body: formData });
       const next = { ...profile, avatar_url: data.avatar_url };
       setProfile(next);
-      message.success(data.message || 'Cập nhật ảnh đại diện thành công.');
+      notify.success(data.message || 'Cập nhật ảnh đại diện thành công.');
       onProfileUpdated?.({ ...next });
-      onSuccess?.(data, file);
     } catch (err) {
-      message.error(err.message || 'Không thể tải avatar lên.');
-      onError?.(err);
+      notify.error(err.message || 'Không thể tải avatar lên.');
     } finally {
       setUploadingAvatar(false);
     }
@@ -110,16 +106,16 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
           full_name: fullName,
           phone:     phone || null,
           gender:    [...gender][0] || null,
-          dob:       dob ? dob.format('YYYY-MM-DD') : null,
+          dob:       dob ? dayjs(dob).format('YYYY-MM-DD') : null,
           city:      city || null,
         },
       });
       const merged = { ...profile, ...data.profile };
       setProfile(merged);
-      message.success(data.message || 'Cập nhật hồ sơ thành công.');
+      notify.success(data.message || 'Cập nhật hồ sơ thành công.');
       onProfileUpdated?.({ ...merged });
     } catch (err) {
-      message.error(err.message || 'Không thể cập nhật hồ sơ.');
+      notify.error(err.message || 'Không thể cập nhật hồ sơ.');
     } finally {
       setSaving(false);
     }
@@ -130,11 +126,11 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
     try {
       const data = await apiRequest('/api/profile/me/email/send-code', { method: 'POST' });
       setResendCooldown(Number(data.retry_after_seconds || 60));
-      message.success(data.message || 'Đã gửi mã xác nhận.');
+      notify.success(data.message || 'Đã gửi mã xác nhận.');
     } catch (err) {
       const seconds = Number(err?.retry_after_seconds) || Number((err?.message || '').match(/(\d+)/)?.[1]) || 0;
       if (seconds > 0) setResendCooldown(seconds);
-      message.error(err.message || 'Không thể gửi mã xác nhận.');
+      notify.error(err.message || 'Không thể gửi mã xác nhận.');
     } finally {
       setSendingCode(false);
     }
@@ -158,10 +154,10 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       setProfile(next);
       setVerCode('');
       setNewEmail('');
-      message.success(data.message || 'Cập nhật email thành công.');
+      notify.success(data.message || 'Cập nhật email thành công.');
       onProfileUpdated?.({ ...next });
     } catch (err) {
-      message.error(err.message || 'Không thể cập nhật email.');
+      notify.error(err.message || 'Không thể cập nhật email.');
     } finally {
       setVerifyingCode(false);
     }
@@ -189,23 +185,20 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
                 {profile?.full_name || '—'}
               </span>
               <span className="text-xs text-gray-400 dark:text-gray-400 truncate">{profile?.email || '—'}</span>
-              <Upload
-                accept="image/*"
-                showUploadList={false}
-                customRequest={handleAvatarUpload}
-                disabled={uploadingAvatar || loading}
-              >
+              <label>
+                <input type="file" accept="image/*" disabled={uploadingAvatar || loading} style={{ display: 'none' }} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; handleAvatarUpload(file); }} />
                 <Button
                   size="sm"
                   variant="flat"
                   color="default"
                   isLoading={uploadingAvatar}
-                  startContent={!uploadingAvatar && <CameraOutlined />}
+                  as="span"
+                  startContent={!uploadingAvatar && <RiCameraLine />}
                   className="mt-1 h-7 text-xs"
                 >
                   {uploadingAvatar ? 'Đang tải...' : 'Đổi ảnh'}
                 </Button>
-              </Upload>
+              </label>
             </div>
           </div>
 
@@ -251,13 +244,13 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-700 dark:text-gray-200">Ngày sinh</label>
-              <DatePicker
-                value={dob}
-                onChange={setDob}
-                format="DD/MM/YYYY"
+              <Input
+                type="date"
+                value={dob ? dayjs(dob).format('YYYY-MM-DD') : ''}
+                onValueChange={(value) => setDob(value ? dayjs(value) : null)}
                 placeholder="Chọn ngày sinh"
-                disabled={loading}
-                style={{ width: '100%', height: 40, borderRadius: 10 }}
+                isDisabled={loading}
+                classNames={{ inputWrapper: 'bg-white dark:bg-[#161922]' }}
               />
             </div>
 

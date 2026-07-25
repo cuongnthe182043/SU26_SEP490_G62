@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
 import {
   RiDashboardLine,
@@ -30,8 +30,9 @@ import BonusView from "./views/BonusView";
 import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
-import SpendingView from "./views/SpendingView";
 import BusinessReportView from "./views/BusinessReportView";
+
+const SpendingView = lazy(() => import("./views/SpendingView"));
 
 const NAV_GROUPS = [
   {
@@ -166,7 +167,11 @@ export default function ManagerPage({ user, onLogout }) {
             {activeView === "bonus-rules" && <BonusRulesView />}
             {activeView === "kpi" && <KpiView />}
             {activeView === "holidays" && <HolidaysView />}
-            {activeView === "spending" && <SpendingView />}
+            {activeView === "spending" && (
+              <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải quản lý chi...</div>}>
+                <SpendingView />
+              </Suspense>
+            )}
           </main>
         </div>
       </div>
