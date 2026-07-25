@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, View, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, View, StyleSheet } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { Gift, Banknote } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { AppText }      from '@/components/app-text';
+import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { bonusService, type DriverBonus, type BonusType, type BonusStatus } from '@/services/bonus-service';
 
@@ -192,8 +193,8 @@ export default function BonusScreen() {
             <ScreenHeader title="Thưởng & Phúc lợi" />
 
             {loading ? (
-                <View style={styles.center}>
-                    <ActivityIndicator color={appTheme.colors.primary} />
+                <View style={styles.skeletonWrap}>
+                    <SimpleListSkeleton count={4} />
                 </View>
             ) : error ? (
                 <View style={styles.center}>
@@ -252,6 +253,7 @@ export default function BonusScreen() {
 const styles = StyleSheet.create({
     container:      { flex: 1, backgroundColor: '#F9FAFB' },
     center:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+    skeletonWrap:   { padding: 16 },
     scroll:         { padding: 16, gap: 12 },
     card: {
         backgroundColor: '#fff',
