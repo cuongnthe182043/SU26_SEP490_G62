@@ -4,6 +4,7 @@
     "strict": true,
     "jsx": "react-native",
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
