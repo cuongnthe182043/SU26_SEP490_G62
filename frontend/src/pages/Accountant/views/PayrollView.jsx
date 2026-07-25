@@ -289,7 +289,9 @@ function DisburseModal({ advance, onClose, onDone }) {
       onClose();
       notify.success("Đã xác nhận giải ngân ứng lương.");
     } catch (err) {
-      setError(err.message ?? "Lỗi khi giải ngân.");
+      const message = err.message ?? "Lỗi khi giải ngân.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -345,7 +347,9 @@ function AdjustModal({ row, onClose, onDone }) {
   const handleSubmit = async () => {
     const b = Number(bonus), d = Number(deduction);
     if (!Number.isFinite(b) || b < 0 || !Number.isFinite(d) || d < 0) {
-      setError("Số tiền điều chỉnh phải là số không âm.");
+      const message = "Số tiền điều chỉnh phải là số không âm.";
+      setError(message);
+      notify.error(message);
       return;
     }
     setSaving(true);
@@ -356,7 +360,9 @@ function AdjustModal({ row, onClose, onDone }) {
       onClose();
       notify.success("Đã điều chỉnh bảng lương.");
     } catch (err) {
-      setError(err.message ?? "Lỗi khi điều chỉnh.");
+      const message = err.message ?? "Lỗi khi điều chỉnh.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -422,7 +428,9 @@ function RevertModal({ row, onClose, onDone }) {
       onClose();
       notify.success("Đã trả bảng lương về tính lại.");
     } catch (err) {
-      setError(err.message ?? "Lỗi khi trả về.");
+      const message = err.message ?? "Lỗi khi trả về.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
