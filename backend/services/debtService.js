@@ -42,19 +42,45 @@ const submitRepayment = async (driverId, debtId, { amount, paymentMethod, notes 
 };
 
 const cancelRepayment = async (driverId, paymentId) => {
-    return debtRepository.cancelRepayment(driverId, paymentId);
+    const result = await debtRepository.cancelRepayment(driverId, paymentId);
+    notificationService.createForUser(driverId, {
+        title: 'Đã hủy báo nộp công nợ',
+        message: `Bạn đã hủy báo nộp công nợ #${paymentId}.`,
+        type: 'DEBT_REPAYMENT_CANCELLED',
+        entityType: 'debt_payments',
+        entityId: paymentId,
+    }, { displayMode: 'toast' }).catch(() => {});
+    return result;
 };
 
 const confirmRepayment = async (paymentId, confirmedBy) => {
     const result = await debtRepository.confirmRepayment(paymentId, confirmedBy);
     // Nợ khách hàng không có driver_id — chỉ broadcast khi là nợ tài xế
     if (result.driverId) broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
+    if (result.driverId) {
+        notificationService.createForUser(result.driverId, {
+            title: 'Khoản nộp công nợ đã được xác nhận',
+            message: `Khoản nộp công nợ #${paymentId} đã được xác nhận.`,
+            type: 'DEBT_REPAYMENT_CONFIRMED',
+            entityType: 'debt_payments',
+            entityId: paymentId,
+        }, { displayMode: 'toast' }).catch(() => {});
+    }
     return result;
 };
 
 const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     const pay = await debtRepository.rejectRepayment(paymentId, rejectedBy, reason);
     if (pay?.driverId) broadcastToUser(pay.driverId, { type: 'debt.updated', debtId: pay.debtId });
+    if (pay?.driverId) {
+        notificationService.createForUser(pay.driverId, {
+            title: 'Khoản nộp công nợ bị từ chối',
+            message: reason ? `Khoản nộp công nợ #${paymentId} bị từ chối: ${reason}` : `Khoản nộp công nợ #${paymentId} bị từ chối.`,
+            type: 'DEBT_REPAYMENT_REJECTED',
+            entityType: 'debt_payments',
+            entityId: paymentId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
     return pay;
 };
 
@@ -63,6 +89,15 @@ const voidRepayment = async (paymentId, voidedBy, reason) => {
     if (!reason?.trim()) throw new Error('Cần ghi lý do hủy xác nhận');
     const result = await debtRepository.voidRepayment(paymentId, voidedBy, reason.trim());
     if (result?.driverId) broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
+    if (result?.driverId) {
+        notificationService.createForUser(result.driverId, {
+            title: 'Khoản nộp công nợ đã bị hủy xác nhận',
+            message: `Khoản nộp công nợ #${paymentId} bị hủy xác nhận: ${reason.trim()}`,
+            type: 'DEBT_REPAYMENT_VOIDED',
+            entityType: 'debt_payments',
+            entityId: paymentId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
     return result;
 };
 

@@ -169,6 +169,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     setActing(true);
     try {
       await api.approveExpense(r.id);
+      notify.success("Đã duyệt chi phí.");
       loadExpenses();
     } catch (e) {
       notify.error(e.message || "Lỗi duyệt chi phí");
@@ -184,6 +185,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       await api.rejectExpense(expenseRejectTarget.id, expenseRejectReason.trim());
       setExpenseRejectTarget(null);
       setExpenseRejectReason("");
+      notify.success("Đã từ chối chi phí.");
       loadExpenses();
     } catch (e) {
       notify.error(e.message || "Lỗi từ chối chi phí");
@@ -207,6 +209,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       setCreateOpen(false);
       setVoucherForm(EMPTY_VOUCHER_FORM);
       setProofFile(null);
+      notify.success("Đã tạo phiếu chi.");
       loadVouchers();
     } catch (e) {
       notify.error(e.message || "Lỗi tạo phiếu chi");
@@ -219,6 +222,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     setActing(true);
     try {
       await api.approveVoucher(r.id);
+      notify.success("Đã duyệt phiếu chi.");
       loadVouchers();
     } catch (e) {
       notify.error(e.message || "Lỗi duyệt phiếu chi");
@@ -234,6 +238,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       await api.rejectVoucher(voucherRejectTarget.id, voucherRejectReason.trim());
       setVoucherRejectTarget(null);
       setVoucherRejectReason("");
+      notify.success("Đã từ chối phiếu chi.");
       loadVouchers();
     } catch (e) {
       notify.error(e.message || "Lỗi từ chối phiếu chi");
@@ -249,6 +254,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       await api.cancelVoucher(voucherCancelTarget.id, voucherCancelReason.trim());
       setVoucherCancelTarget(null);
       setVoucherCancelReason("");
+      notify.success("Đã hủy phiếu chi.");
       loadVouchers();
     } catch (e) {
       notify.error(e.message || "Lỗi huỷ phiếu chi");
@@ -262,6 +268,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     try {
       await api.payVoucher(payTarget.id);
       setPayTarget(null);
+      notify.success("Đã xác nhận chi tiền.");
       loadVouchers();
     } catch (e) {
       notify.error(e.message || "Lỗi xác nhận chi");

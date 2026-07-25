@@ -7,6 +7,7 @@ import { RiFileExcel2Line, RiUploadCloud2Line, RiCheckboxCircleLine, RiErrorWarn
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
+import { notify } from "../../../components/shared-ui/Toast";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
@@ -387,6 +388,24 @@ function parseWorkbook(wb, XLSX) {
   return { rows, errors };
 }
 
+const getBackendImportError = (result) =>
+  result?.errors?.[0]?.error || result?.message || "Import thất bại.";
+
+const notifyImportResult = (result) => {
+  const imported = Number(result?.imported_count || 0);
+  const failed = Number(result?.error_count || 0);
+
+  if (failed > 0 && imported === 0) {
+    notify.error(`${result.message || "Import thất bại."} ${getBackendImportError(result)}`);
+    return;
+  }
+  if (failed > 0) {
+    notify.warning(`${result.message || "Import chưa hoàn tất."} ${getBackendImportError(result)}`);
+    return;
+  }
+  notify.success(result?.message || "Import Excel thành công.");
+};
+
 export function ImportExcelModal({ isOpen, onClose, onImported }) {
   const fileRef = useRef(null);
   const [fileName, setFileName] = useState(null);
@@ -423,15 +442,25 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     try {
       const res = await accountantService.importOrders(parsed.rows.map((r) => r.order));
       setResult(res);
+      notifyImportResult(res);
       if (res.imported_count > 0) onImported?.();
     } catch (err) {
       setFatalError(err.message ?? "Import thất bại");
+      notify.error(err.message ?? "Import thất bại");
     } finally {
       setSubmitting(false);
     }
   };
 
   const canImport = parsed && parsed.rows.length > 0 && parsed.errors.length === 0 && !submitting && !result;
+  const resultHasErrors = Number(result?.error_count || 0) > 0;
+  const resultFailedAll = resultHasErrors && Number(result?.imported_count || 0) === 0;
+  const resultBoxClass = resultFailedAll
+    ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25"
+    : resultHasErrors
+      ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25"
+      : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25";
+  const ResultIcon = resultHasErrors ? RiErrorWarningLine : RiCheckboxCircleLine;
 
   return (
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} size="4xl" scrollBehavior="inside">
@@ -527,13 +556,18 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
 
           {/* Kết quả import */}
           {result && (
-            <div className={`rounded-xl border px-4 py-3 ${result.error_count > 0 ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25"}`}>
+            <div className={`rounded-xl border px-4 py-3 ${resultBoxClass}`}>
               <div className="flex items-center gap-2 text-sm font-semibold mb-1">
-                <RiCheckboxCircleLine size={16} className="text-emerald-600 dark:text-emerald-300" />
+                <ResultIcon size={16} className={resultHasErrors ? "text-red-600 dark:text-red-300" : "text-emerald-600 dark:text-emerald-300"} />
                 {result.message}
               </div>
+              {resultFailedAll && (
+                <p className="mb-2 text-xs text-red-700 dark:text-red-300">
+                  Không có dòng nào được import. Vui lòng sửa các lỗi bên dưới rồi chọn lại file.
+                </p>
+              )}
               {result.errors?.length > 0 && (
-                <ul className="text-xs text-amber-700 dark:text-amber-300 list-disc pl-5 max-h-40 overflow-y-auto">
+                <ul className={`text-xs list-disc pl-5 max-h-40 overflow-y-auto ${resultFailedAll ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
                   {result.errors.map((e, i) => <li key={i}>{e.error}</li>)}
                 </ul>
               )}

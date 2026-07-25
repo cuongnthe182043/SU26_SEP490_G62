@@ -134,6 +134,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       closeModal();
       loadIncidents();
       onIncidentResolved?.();
+      notify.success("Đã cập nhật sự cố.");
     } catch (error) {
       notify.error(error.message || "Không thể cập nhật sự cố.");
     } finally {
@@ -169,6 +170,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       });
       closeCreateModal();
       loadIncidents();
+      notify.success("Đã tạo sự cố.");
     } catch (error) {
       notify.error(error.message || "Không thể tạo sự cố.");
     } finally {

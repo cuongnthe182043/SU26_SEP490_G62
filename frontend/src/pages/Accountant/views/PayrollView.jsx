@@ -16,6 +16,7 @@ import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
 import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
+import { notify } from "../../../components/shared-ui/Toast";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
@@ -285,6 +286,7 @@ function DisburseModal({ advance, onClose, onDone }) {
       await accountantService.disburseAdvance(advance.id, notes.trim() || undefined);
       onDone();
       onClose();
+      notify.success("Đã xác nhận giải ngân ứng lương.");
     } catch (err) {
       setError(err.message ?? "Lỗi khi giải ngân.");
     } finally {
@@ -351,6 +353,7 @@ function AdjustModal({ row, onClose, onDone }) {
       await accountantService.adjustPayroll(row.id, { manual_bonus: b, manual_deduction: d, note: note.trim() });
       onDone();
       onClose();
+      notify.success("Đã điều chỉnh bảng lương.");
     } catch (err) {
       setError(err.message ?? "Lỗi khi điều chỉnh.");
     } finally {
@@ -416,6 +419,7 @@ function RevertModal({ row, onClose, onDone }) {
       await accountantService.revertPayroll(row.id, reason.trim() || undefined);
       onDone();
       onClose();
+      notify.success("Đã trả bảng lương về tính lại.");
     } catch (err) {
       setError(err.message ?? "Lỗi khi trả về.");
     } finally {
@@ -542,8 +546,10 @@ export function PayrollView({ defaultTab = "payroll" }) {
     try {
       await accountantService.generatePayrolls(period.month, period.year);
       refetch();
+      notify.success("Đã tạo bảng lương.");
     } catch (err) {
       setGenerateErr(err.message);
+      notify.error(err.message || "Không thể tạo bảng lương.");
     } finally {
       setGenerating(false);
     }
@@ -554,6 +560,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
     try {
       await accountantService.confirmPayroll(id);
       refetch();
+      notify.success("Đã xác nhận bảng lương.");
+    } catch (err) {
+      notify.error(err.message || "Không thể xác nhận bảng lương.");
     } finally {
       setConfirming(null);
     }
@@ -564,6 +573,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
     try {
       await accountantService.markPayrollPaid(id);
       refetch();
+      notify.success("Đã đánh dấu đã trả lương.");
+    } catch (err) {
+      notify.error(err.message || "Không thể đánh dấu đã trả lương.");
     } finally {
       setConfirming(null);
     }

@@ -97,8 +97,13 @@ export default function BonusRulesView() {
         conditions_json: form.bonus_type === "kpi" ? { min_revenue: form.min_revenue } : null,
         is_active: form.is_active,
       };
-      if (editing) await managerService.updateBonusRule(editing.id, payload);
-      else await managerService.createBonusRule(payload);
+      if (editing) {
+        await managerService.updateBonusRule(editing.id, payload);
+        notify.success("Đã cập nhật quy tắc thưởng.");
+      } else {
+        await managerService.createBonusRule(payload);
+        notify.success("Đã tạo quy tắc thưởng.");
+      }
       closeModal();
       load();
     } catch (err) {
@@ -113,6 +118,7 @@ export default function BonusRulesView() {
     try {
       await managerService.deleteBonusRule(deleteTarget.id);
       setDeleteTarget(null);
+      notify.success("Đã xóa quy tắc thưởng.");
       load();
     } catch (err) {
       notify.error(err.message || "Không thể xóa quy tắc thưởng.");

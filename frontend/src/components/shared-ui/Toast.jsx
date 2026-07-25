@@ -38,23 +38,42 @@ export const notify = Object.assign((m) => push("info", m), {
 });
 
 const STYLE = {
-  success: { Icon: RiCheckboxCircleFill, accent: "text-emerald-500", bar: "bg-emerald-500" },
-  error:   { Icon: RiErrorWarningFill,   accent: "text-rose-500",    bar: "bg-rose-500" },
-  warning: { Icon: RiAlertFill,          accent: "text-amber-500",   bar: "bg-amber-500" },
-  info:    { Icon: RiInformationFill,    accent: "text-blue-500",    bar: "bg-blue-500" },
+  success: {
+    Icon: RiCheckboxCircleFill,
+    shell: "border-emerald-400 bg-emerald-500 text-white shadow-emerald-600/30 dark:border-emerald-300/60 dark:bg-emerald-500 dark:text-white",
+    accent: "text-white",
+    close: "text-white/80 hover:text-white",
+  },
+  error: {
+    Icon: RiErrorWarningFill,
+    shell: "border-rose-400 bg-rose-500 text-white shadow-rose-600/30 dark:border-rose-300/60 dark:bg-rose-500 dark:text-white",
+    accent: "text-white",
+    close: "text-white/80 hover:text-white",
+  },
+  warning: {
+    Icon: RiAlertFill,
+    shell: "border-amber-300 bg-amber-400 text-amber-950 shadow-amber-500/30 dark:border-amber-200/70 dark:bg-amber-400 dark:text-amber-950",
+    accent: "text-amber-950",
+    close: "text-amber-950/75 hover:text-amber-950",
+  },
+  info: {
+    Icon: RiInformationFill,
+    shell: "border-sky-400 bg-sky-500 text-white shadow-sky-600/30 dark:border-sky-300/60 dark:bg-sky-500 dark:text-white",
+    accent: "text-white",
+    close: "text-white/80 hover:text-white",
+  },
 };
 
 function ToastCard({ toast, onClose }) {
   const s = STYLE[toast.type] ?? STYLE.info;
   const { Icon } = s;
   return (
-    <div className="g62-toast-in pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f2a] shadow-lg px-4 py-3">
-      <span className={`absolute left-0 top-0 h-full w-1 ${s.bar}`} />
+    <div className={`g62-toast-in pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl border shadow-lg px-4 py-3 ${s.shell}`}>
       <Icon size={20} className={`${s.accent} shrink-0 mt-0.5`} />
-      <p className="flex-1 text-sm text-gray-700 dark:text-gray-200 leading-snug break-words">{toast.message}</p>
+      <p className="flex-1 text-sm leading-snug break-words">{toast.message}</p>
       <button
         onClick={onClose}
-        className="shrink-0 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+        className={`shrink-0 transition-colors ${s.close}`}
         aria-label="Đóng"
       >
         <RiCloseLine size={16} />
@@ -73,7 +92,7 @@ export function Toaster() {
   }, []);
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
+    <div className="fixed top-[90px] right-4 z-[9999] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
       {items.map((t) => (
         <ToastCard key={t.id} toast={t} onClose={() => dismiss(t.id)} />
       ))}

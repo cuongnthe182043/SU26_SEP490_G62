@@ -89,7 +89,12 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   incidents: "incidents",
   orders: "orders",
   order_shipments: "orders",
+  shipments: "orders",
   receipt_requests: "receipts",
+  receipt: "receipts",
+  vehicle_groups: "orders",
+  expenses: "incidents",
+  payment_vouchers: "incidents",
 };
 
 const VIEW_STORAGE_KEY = "coordinator_active_view";

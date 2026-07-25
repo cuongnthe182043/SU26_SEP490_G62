@@ -1,6 +1,7 @@
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 const { validateExpenseReceipt } = require('./expenseAiValidator');
 
 const VEHICLE_STATUSES = ['active', 'maintenance', 'broken', 'retired'];
@@ -133,6 +134,28 @@ const broadcastManagerVehicleChange = (action, vehicle, extra = {}) => {
     };
     notificationGateway.broadcastToRole('manager', payload);
     notificationGateway.broadcastToRole('accountant', payload);
+
+    const actionText = {
+        created: 'được tạo',
+        updated: 'được cập nhật',
+        sent_to_maintenance: 'được đưa vào bảo dưỡng',
+        maintenance_completed: 'hoàn tất bảo dưỡng',
+        maintenance_verified: 'đã xác minh bảo dưỡng',
+        marked_broken: 'được đánh dấu hỏng',
+        restored: 'được khôi phục',
+        retired: 'đã ngừng sử dụng',
+        status_changed: 'đổi trạng thái',
+        driver_assignment_changed: 'đổi tài xế phụ trách',
+        deleted: 'đã bị ẩn/xóa',
+    }[action] || 'có thay đổi';
+
+    notifyRolesSafe(['manager', 'accountant'], {
+        title: 'Xe có thay đổi',
+        message: `Xe ${vehicle?.plate_number || `#${vehicle?.id || ''}`} vừa ${actionText}.`,
+        type: `VEHICLE_${String(action || 'changed').toUpperCase()}`,
+        entityType: extra.maintenanceRecordId ? 'maintenance_record' : 'vehicle',
+        entityId: extra.maintenanceRecordId ?? vehicle?.id ?? null,
+    }, { displayMode: ['marked_broken', 'sent_to_maintenance', 'maintenance_completed'].includes(action) ? 'alert' : 'toast' });
 };
 
 const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existingVehicle = null } = {}) => {
@@ -215,6 +238,13 @@ const createVehicleGroup = async (payload) => {
     await validateVehicleGroupNameUniqueness(normalizedPayload.name);
 
     const vehicleGroupId = await vehicleManagementRepository.createVehicleGroup(normalizedPayload);
+    notifyRolesSafe(['manager', 'accountant', 'coordinator'], {
+        title: 'Nhóm xe mới đã được tạo',
+        message: `Nhóm xe "${normalizedPayload.name}" vừa được tạo.`,
+        type: 'VEHICLE_GROUP_CREATED',
+        entityType: 'vehicle_groups',
+        entityId: vehicleGroupId,
+    }, { displayMode: 'toast' });
     return getVehicleGroupDetail(vehicleGroupId);
 };
 
@@ -227,6 +257,13 @@ const updateVehicleGroup = async (vehicleGroupId, payload) => {
     await validateVehicleGroupNameUniqueness(normalizedPayload.name, id);
 
     await vehicleManagementRepository.updateVehicleGroup(id, normalizedPayload);
+    notifyRolesSafe(['manager', 'accountant', 'coordinator'], {
+        title: 'Nhóm xe đã được cập nhật',
+        message: `Nhóm xe "${normalizedPayload.name}" vừa được cập nhật.`,
+        type: 'VEHICLE_GROUP_UPDATED',
+        entityType: 'vehicle_groups',
+        entityId: id,
+    }, { displayMode: 'toast' });
     return getVehicleGroupDetail(id);
 };
 
@@ -244,6 +281,13 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
         throw err;
     }
 
+    notifyRolesSafe(['manager', 'accountant', 'coordinator'], {
+        title: 'Nhóm xe đã bị ẩn',
+        message: `Nhóm xe "${existingVehicleGroup.name || `#${id}`}" vừa bị ẩn/xóa.`,
+        type: 'VEHICLE_GROUP_DELETED',
+        entityType: 'vehicle_groups',
+        entityId: id,
+    }, { displayMode: 'toast' });
     return { id };
 };
 

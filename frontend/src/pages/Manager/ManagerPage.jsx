@@ -88,16 +88,21 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   salary_advance: "dashboard",
   salary_advances: "dashboard",
   driver_bonuses: "bonus",
+  bonus_rules: "bonus-rules",
   partner: "partners",
   debts: "dashboard",
   debt_payments: "dashboard",
   expenses: "spending",
+  payment_vouchers: "spending",
   vehicle: "vehicles",
+  vehicle_groups: "vehicles",
   maintenance_record: "vehicles",
   incidents: "dashboard",
   orders: "dashboard",
   shipments: "dashboard",
   receipt: "dashboard",
+  reports: "business-report",
+  users: "users",
 };
 const VALID_VIEWS = Object.keys(VIEW_META);
 

@@ -140,6 +140,7 @@ export function BonusView({ search }) {
     try {
       await payBonus(confirmId);
       setConfirmId(null);
+      notify.success("Đã chi trả thưởng/phúc lợi.");
     } catch (err) {
       notify.error(err.message ?? "Lỗi chi trả");
     } finally {

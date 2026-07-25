@@ -3,6 +3,7 @@ const expenseRepository = require('../repositories/expenseRepository');
 const financialLedgerRepository = require('../repositories/financialLedgerRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 
 // ─── Phiếu chi thủ công ───────────────────────────────────────────────────────
 // Quy trình 2 cấp: Accountant tạo → Manager duyệt → Accountant xác nhận đã chi
@@ -24,7 +25,7 @@ const createVoucher = async (data, createdBy, client = null) => {
         throw new Error('Hình thức thanh toán không hợp lệ');
     }
 
-    return paymentVoucherRepository.create({
+    const voucher = await paymentVoucherRepository.create({
         voucher_type,
         amount: Number(amount),
         payee: String(payee).trim(),
@@ -33,6 +34,16 @@ const createVoucher = async (data, createdBy, client = null) => {
         proof_url: proof_url ?? null,
         incident_id: incident_id ?? null,
     }, createdBy, client);
+
+    notifyRolesSafe(['manager'], {
+        title: 'Có phiếu chi cần duyệt',
+        message: `Phiếu chi #${voucher.id} trị giá ${Number(voucher.amount).toLocaleString('vi-VN')}đ cho "${voucher.payee}" đang chờ duyệt.`,
+        type: 'VOUCHER_CREATED',
+        entityType: voucher.incident_id ? 'incidents' : 'payment_vouchers',
+        entityId: voucher.incident_id ?? voucher.id,
+    }, { excludeUserId: createdBy, displayMode: 'alert' });
+
+    return voucher;
 };
 
 const listVouchers = (filters) => paymentVoucherRepository.list(filters);
@@ -42,6 +53,18 @@ const getVoucherStats = (filters) => paymentVoucherRepository.getStats(filters);
 // Ở đây chỉ lo báo cho coordinator và đẩy realtime để danh sách sự cố cập nhật theo.
 const approveVoucher = async (id, approvedBy) => {
     const voucher = await paymentVoucherRepository.approve(id, approvedBy);
+
+    if (!voucher.incident_id) {
+        notificationService.createForUser(voucher.created_by, {
+            title: `Phiếu chi #${voucher.id} đã được duyệt`,
+            message: `Số tiền ${Number(voucher.amount).toLocaleString('vi-VN')}đ chi cho "${voucher.payee}" đã được duyệt, chờ Kế toán chi tiền.`,
+            type: 'VOUCHER_APPROVED',
+            entityType: 'payment_vouchers',
+            entityId: voucher.id,
+        }, { displayMode: 'toast' }).catch((err) => {
+            console.error(`[Spending] Không gửi được thông báo duyệt phiếu chi #${id}:`, err.message);
+        });
+    }
 
     if (voucher.incident_id) {
         notificationService.createForUser(voucher.created_by, {
@@ -136,7 +159,35 @@ const cancelVoucher = async (id, cancelledBy, reason) => {
     return voucher;
 };
 
-const payVoucher = (id, paidBy) => paymentVoucherRepository.markPaid(id, paidBy);
+const payVoucher = async (id, paidBy) => {
+    const voucher = await paymentVoucherRepository.markPaid(id, paidBy);
+    const isCompensation = Boolean(voucher.incident_id);
+    const payload = {
+        title: isCompensation
+            ? `Khoản đền bù sự cố #${voucher.incident_id} đã được chi`
+            : `Phiếu chi #${voucher.id} đã được chi`,
+        message: `Kế toán đã chi ${Number(voucher.amount).toLocaleString('vi-VN')}đ cho "${voucher.payee}".`,
+        type: 'VOUCHER_PAID',
+        entityType: isCompensation ? 'incidents' : 'payment_vouchers',
+        entityId: isCompensation ? voucher.incident_id : voucher.id,
+    };
+
+    notificationService.createForUsers([voucher.created_by, voucher.approved_by].filter(Boolean), payload, {
+        displayMode: 'toast',
+    }).catch((err) => {
+        console.error(`[Spending] Không gửi được thông báo chi tiền phiếu chi #${id}:`, err.message);
+    });
+
+    if (isCompensation) {
+        notificationGateway.broadcastToRole('coordinator', {
+            type: 'coordinator.incidents.changed',
+            action: 'compensation_paid',
+            incidentId: voucher.incident_id,
+        });
+    }
+
+    return voucher;
+};
 
 // ─── Chi phí tài xế (danh sách toàn hệ thống cho web) ─────────────────────────
 const listExpenses = (filters) => expenseRepository.listAllExpenses(filters);
