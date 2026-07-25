@@ -24,6 +24,7 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
     setSaving(true);
     try {
       await onSave(driver.driver_id, Number(vehicleGroupId));
+      notify.success("Đã cập nhật nhóm xe KPI.");
       onClose();
     } catch (e) {
       notify.error(e.message || "Lỗi cập nhật nhóm xe KPI");

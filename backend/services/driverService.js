@@ -2,6 +2,7 @@ const driverRepository = require('../repositories/driverRepository');
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 const { scanMaintenanceReceipt } = require('./expenseAiValidator');
 
 const createError = (message, statusCode) => {
@@ -91,6 +92,14 @@ const requestMaintenance = async (driverId, payload, billUrls = []) => {
         console.error('[driverService] Không gửi được notification yêu cầu bảo dưỡng:', err.message);
     }
 
+    notifyRolesSafe(['accountant'], {
+        title: 'Yêu cầu bảo dưỡng xe',
+        message: `Tài xế yêu cầu bảo dưỡng xe ${vehicle.plate_number ?? ''}: ${reason}`,
+        type: 'MAINTENANCE_REQUESTED',
+        entityType: 'vehicle',
+        entityId: vehicle.id,
+    }, { displayMode: 'alert', excludeUserId: driverId });
+
     return { maintenanceRecordId: result.maintenanceId };
 };
 
@@ -143,6 +152,14 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         notificationGateway.broadcastToRole('manager', payload);
         notificationGateway.broadcastToRole('accountant', payload);
     }
+
+    notifyRolesSafe(['manager', 'accountant'], {
+        title: 'Tài xế đã tải hóa đơn bảo dưỡng',
+        message: `Tài xế đã tải hóa đơn bảo dưỡng cho xe #${parsedVehicleId}.`,
+        type: 'MAINTENANCE_BILL_UPLOADED',
+        entityType: 'maintenance_record',
+        entityId: record.id,
+    }, { displayMode: 'toast', excludeUserId: driverId });
 
     return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
 };
@@ -230,6 +247,14 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
     } catch {
         // Notification failure must not abort the main flow.
     }
+
+    notifyRolesSafe(['accountant'], {
+        title: 'Tài xế đã hoàn tất bảo dưỡng',
+        message: notificationMessage,
+        type: 'MAINTENANCE_COMPLETED',
+        entityType: 'vehicle',
+        entityId: parsedVehicleId,
+    }, { displayMode: 'alert', excludeUserId: driverId });
 
     return { maintenanceRecordId: record.id };
 };

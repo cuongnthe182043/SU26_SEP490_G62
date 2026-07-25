@@ -5,6 +5,7 @@ import {
 } from "@heroui/react";
 import { RiBankCardLine, RiCheckLine, RiImageLine, RiSearchLine } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const fmt = (v) =>
   v == null ? "—" : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(v));
@@ -52,9 +53,11 @@ function ConfirmModal({ receipt, onClose, onConfirmed }) {
     setError(null);
     try {
       await accountantService.confirmBankTransfer(receipt.receipt_id, notes || undefined);
+      notify.success("Đã xác nhận chuyển khoản.");
       onConfirmed();
     } catch (err) {
       setError(err.message ?? "Xác nhận thất bại");
+      notify.error(err.message ?? "Xác nhận thất bại");
       setLoading(false);
     }
   };

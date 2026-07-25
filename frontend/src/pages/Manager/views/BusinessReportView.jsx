@@ -9,6 +9,7 @@ import {
   RiSave3Line, RiFileExcel2Line, RiFileList3Line,
 } from "react-icons/ri";
 import { managerService } from "../services/manager.service";
+import { notify } from "../../../components/shared-ui/Toast";
 import { exportBusinessReportToExcel } from "../utils/exportBusinessReport";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { Section } from "../../../components/shared-ui/Section";
@@ -76,7 +77,7 @@ export default function BusinessReportView() {
   useEffect(() => { load(periodKey); }, [periodKey, load]);
 
   // Chốt / ký duyệt / mở lại kỳ. serviceFn(year, month) → trả report mới, cập nhật thẳng.
-  const runAction = useCallback(async (serviceFn) => {
+  const runAction = useCallback(async (serviceFn, successMessage) => {
     const opt = periodOptions.find((p) => p.key === periodKey) ?? periodOptions[0];
     setActing(true);
     setActionErr(null);
@@ -84,8 +85,11 @@ export default function BusinessReportView() {
       const res = await serviceFn(opt.year, opt.month);
       if (res?.report) setData(res.report);
       else await load(periodKey);
+      notify.success(successMessage);
     } catch (err) {
-      setActionErr(err.message ?? "Thao tác không thành công.");
+      const message = err.message ?? "Thao tác không thành công.";
+      setActionErr(message);
+      notify.error(message);
     } finally {
       setActing(false);
     }
@@ -97,8 +101,10 @@ export default function BusinessReportView() {
     setExporting(true);
     try {
       await exportBusinessReportToExcel(data, { periodLabel: opt.label });
+      notify.success("Đã xuất báo cáo kinh doanh.");
     } catch {
       setActionErr("Xuất file không thành công.");
+      notify.error("Xuất file không thành công.");
     } finally {
       setExporting(false);
     }
@@ -167,7 +173,7 @@ export default function BusinessReportView() {
         meta={meta}
         acting={acting}
         actionErr={actionErr}
-        onClose={() => runAction(managerService.closeReportPeriod)}
+        onClose={() => runAction(managerService.closeReportPeriod, "Đã chốt kỳ báo cáo.")}
         onSignOff={async () => {
           if (await confirmDialog({
             title: "Ký duyệt kỳ báo cáo",
@@ -175,7 +181,7 @@ export default function BusinessReportView() {
             confirmLabel: "Ký duyệt",
             danger: true,
           }))
-            runAction(managerService.signOffReportPeriod);
+            runAction(managerService.signOffReportPeriod, "Đã ký duyệt kỳ báo cáo.");
         }}
         onReopen={async () => {
           if (await confirmDialog({
@@ -184,7 +190,7 @@ export default function BusinessReportView() {
             confirmLabel: "Mở lại",
             danger: true,
           }))
-            runAction(managerService.reopenReportPeriod);
+            runAction(managerService.reopenReportPeriod, "Đã mở lại kỳ báo cáo.");
         }}
       />
 

@@ -81,8 +81,13 @@ export default function PartnersView({ user }) {
     if (!form.company_name.trim()) { notify.error("Vui lòng nhập tên đối tác"); return; }
     setSaving(true);
     try {
-      if (editing) await managerService.updatePartner(editing.id, form);
-      else await managerService.createPartner(form);
+      if (editing) {
+        await managerService.updatePartner(editing.id, form);
+        notify.success("Đã cập nhật đối tác.");
+      } else {
+        await managerService.createPartner(form);
+        notify.success("Đã thêm đối tác.");
+      }
       setModalOpen(false);
       setEditing(null);
       await load();

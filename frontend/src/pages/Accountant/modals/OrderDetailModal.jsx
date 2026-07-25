@@ -14,6 +14,7 @@ import {
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { accountantService } from "../services/accountant.service";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
@@ -90,8 +91,10 @@ function BankTransferPanel({ s, onConfirmed }) {
       setConfirmed(true);
       setConfirmResult(res);
       onConfirmed?.();
+      notify.success("Đã xác nhận chuyển khoản.");
     } catch (err) {
       setError(err.message ?? "Xác nhận thất bại");
+      notify.error(err.message ?? "Xác nhận thất bại");
     } finally {
       setLoading(false);
     }

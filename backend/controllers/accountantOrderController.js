@@ -231,6 +231,7 @@ const importOrders = async (req, res) => {
                 const created = await accountantOrderService.createOrder({
                     ...payload,
                     created_by: req.user.userId,
+                    suppress_notifications: true,
                 });
                 imported.push({ row_index: order.row_index ?? null, order_id: created.id });
                 (created.autoResolvedDrivers || []).forEach((d) => {
@@ -240,6 +241,11 @@ const importOrders = async (req, res) => {
                 errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
             }
         }
+
+        accountantOrderService.notifyImportSummary({
+            count: imported.length,
+            actorId: req.user.userId,
+        });
 
         res.status(errors.length > 0 && imported.length === 0 ? 400 : 201).json({
             message: `Import xong: ${imported.length} đơn thành công${errors.length ? `, ${errors.length} dòng lỗi` : ''}.`,
@@ -279,6 +285,7 @@ const updateOrder = async (req, res) => {
             customer_company: customer_company?.trim() || undefined,
             cargo_name:       cargo_name?.trim()       || undefined,
             notes:            notes?.trim()            || undefined,
+            updated_by:       req.user.userId,
         });
 
         res.json({ message: 'Cập nhật đơn hàng thành công.', order: updated });

@@ -320,6 +320,7 @@ export default function UsersView({ user }) {
 
       if (successes.length > 0) await fetchUsers();
       setImportResult({ successes, failures, skippedRows, total: importRows.length });
+      notify.success(`Import xong: ${successes.length} thành công, ${failures.length} lỗi.`);
     } catch (error) {
       notify.error(error.message || "Không thể import file Excel.");
     } finally {
@@ -329,8 +330,13 @@ export default function UsersView({ user }) {
 
   const handleSaveUser = async (formData) => {
     try {
-      if (editingUser) await managerService.updateUser(editingUser.id, formData);
-      else await managerService.createUser(formData);
+      if (editingUser) {
+        await managerService.updateUser(editingUser.id, formData);
+        notify.success("Đã cập nhật tài khoản.");
+      } else {
+        await managerService.createUser(formData);
+        notify.success("Đã tạo tài khoản.");
+      }
       setModalOpen(false);
       fetchUsers();
     } catch (error) {
@@ -344,6 +350,7 @@ export default function UsersView({ user }) {
       await managerService.toggleUserStatus(toggleTarget.id, !toggleTarget.is_active);
       setToggleTarget(null);
       fetchUsers();
+      notify.success("Đã cập nhật trạng thái tài khoản.");
     } catch (error) {
       notify.error(error.message || "Đã có lỗi.");
     }
@@ -355,7 +362,7 @@ export default function UsersView({ user }) {
     try {
       await managerService.resetUserPassword(resetTarget.id);
       setResetTarget(null);
-      notify.error("Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+      notify.success("Đã reset mật khẩu. Mật khẩu tạm thời đã được gửi qua email của nhân viên.");
     } catch (error) {
       notify.error(error.message || "Không thể reset mật khẩu.");
     } finally {

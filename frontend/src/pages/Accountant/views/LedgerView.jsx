@@ -13,6 +13,7 @@ import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { exportLedgerCsvToExcel } from "../utils/exportLedgerReport";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const fmtDateTime = (iso) =>
   iso ? new Date(iso).toLocaleString("vi-VN", {
@@ -54,8 +55,10 @@ function ExportModal({ onClose, onExported }) {
       const csv = await accountantService.exportLedgerPeriod(from, to);
       await exportLedgerCsvToExcel(csv, { from, to });
       onExported();
+      notify.success("Đã xuất kỳ kế toán.");
     } catch (err) {
       setError(err.message ?? "Xuất Excel kỳ kế toán thất bại");
+      notify.error(err.message ?? "Xuất Excel kỳ kế toán thất bại");
       setLoading(false);
     }
   };

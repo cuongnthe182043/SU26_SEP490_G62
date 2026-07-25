@@ -2,6 +2,7 @@ const profileRepository = require('../repositories/profileRepository');
 const bcrypt = require('bcryptjs');
 const emailService = require('./emailService');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 const { generateRandomPassword } = require('../utils/passwordGenerator');
 const {
     normalizePositiveInteger,
@@ -109,7 +110,7 @@ const getAllUsers = async () => {
     return profileRepository.getAllUsers();
 };
 
-const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
+const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes, actorId = null) => {
     const password = generateRandomPassword();
     if (!email || !role) {
         throw new AdminError('Thiếu thông tin bắt buộc (email, role).', 400);
@@ -163,6 +164,13 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
             action: 'created',
             userId: newId,
         });
+        notifyRolesSafe(['manager'], {
+            title: 'Tài khoản mới đã được tạo',
+            message: `Tài khoản ${normalizedFullName} (${normalizedRole}) vừa được tạo.`,
+            type: 'USER_CREATED',
+            entityType: 'users',
+            entityId: newId,
+        }, { excludeUserId: actorId, displayMode: 'toast' });
         return newId;
     } catch (err) {
         if (err.code === '23505') {
@@ -172,7 +180,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
     }
 };
 
-const updateUser = async (userId, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes, email) => {
+const updateUser = async (userId, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes, email, actorId = null) => {
     const normalizedUserId = normalizeUserId(userId);
     const normalizedRole = normalizeManagerRole(role);
     const normalizedFullName = normalizeFullName(full_name);
@@ -224,6 +232,13 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
             action: 'updated',
             userId: normalizedUserId,
         });
+        notifyRolesSafe(['manager'], {
+            title: 'Tài khoản đã được cập nhật',
+            message: `Thông tin tài khoản ${normalizedFullName} vừa được cập nhật.`,
+            type: 'USER_UPDATED',
+            entityType: 'users',
+            entityId: normalizedUserId,
+        }, { excludeUserId: actorId, displayMode: 'toast' });
     } catch (err) {
         if (err.code === '23505') {
             throw new AdminError('Số điện thoại hoặc Email đã tồn tại.', 409);
@@ -258,6 +273,13 @@ const resetUserPassword = async (userId, currentUserId) => {
         action: 'password_reset',
         userId: normalizedUserId,
     });
+    notifyRolesSafe(['manager'], {
+        title: 'Mật khẩu tài khoản đã được reset',
+        message: `Mật khẩu tài khoản ${existingUser.full_name || updated.email} vừa được reset.`,
+        type: 'USER_PASSWORD_RESET',
+        entityType: 'users',
+        entityId: normalizedUserId,
+    }, { excludeUserId: normalizedCurrentUserId, displayMode: 'toast' });
 };
 
 const toggleUserStatus = async (userId, is_active, currentUserId) => {
@@ -290,6 +312,13 @@ const toggleUserStatus = async (userId, is_active, currentUserId) => {
         userId: normalizedUserId,
         is_active: normalizedStatus,
     });
+    notifyRolesSafe(['manager'], {
+        title: normalizedStatus ? 'Tài khoản đã được mở khóa' : 'Tài khoản đã bị khóa',
+        message: `Tài khoản ${existingUser.full_name || normalizedUserId} vừa ${normalizedStatus ? 'được mở khóa' : 'bị khóa'}.`,
+        type: 'USER_STATUS_CHANGED',
+        entityType: 'users',
+        entityId: normalizedUserId,
+    }, { excludeUserId: normalizedCurrentUserId, displayMode: 'toast' });
     return {
         ...updatedUser,
         changed: true,

@@ -2,6 +2,7 @@ const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const notificationGateway = require('./notificationGateway');
+const { notifyRolesSafe } = require('./roleNotificationService');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { normalizeVietnamPhone } = require('../utils/phone');
 
@@ -118,6 +119,30 @@ const broadcastCoordinatorOrderChange = (action, order) => {
         action,
         orderId: order?.id ?? null,
     });
+};
+
+const notifyOrderChange = (action, order, actorId = null, extra = {}) => {
+    const customerText = order?.customer_name ? ` cho ${order.customer_name}` : '';
+    const titleByAction = {
+        created: 'Có đơn hàng mới',
+        imported: 'Đã import đơn hàng',
+        updated: 'Đơn hàng đã được cập nhật',
+        cancelled: 'Đơn hàng đã bị hủy',
+    };
+    const messageByAction = {
+        created: `Đơn hàng #${order?.id ?? ''}${customerText} vừa được tạo.`,
+        imported: `Đã import ${extra.count ?? 0} đơn hàng từ Excel.`,
+        updated: `Đơn hàng #${order?.id ?? ''}${customerText} vừa được cập nhật.`,
+        cancelled: `Đơn hàng #${order?.id ?? ''}${customerText} vừa bị hủy${extra.reason ? `: ${extra.reason}` : '.'}`,
+    };
+
+    notifyRolesSafe(['coordinator', 'accountant', 'manager'], {
+        title: titleByAction[action] || 'Đơn hàng có thay đổi',
+        message: messageByAction[action] || `Đơn hàng #${order?.id ?? ''} có thay đổi.`,
+        type: `ORDER_${String(action || 'changed').toUpperCase()}`,
+        entityType: 'orders',
+        entityId: order?.id ?? null,
+    }, { displayMode: action === 'cancelled' ? 'alert' : 'toast', excludeUserId: actorId });
 };
 
 const createOrder = async (userId, payload) => {
@@ -271,6 +296,7 @@ const createOrder = async (userId, payload) => {
 
         await dbClient.query('COMMIT');
         broadcastCoordinatorOrderChange('created', result.order);
+        notifyOrderChange('created', result.order, userId);
         return result;
     } catch (err) {
         if (dbClient) {
@@ -389,6 +415,12 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
         }
 
         await dbClient.query('COMMIT');
+        if (createdOrders.length > 0) {
+            notifyOrderChange('imported', createdOrders[0]?.order ?? createdOrders[0], userId, {
+                count: createdOrders.length,
+            });
+            broadcastCoordinatorOrderChange('created', createdOrders[0]?.order ?? createdOrders[0]);
+        }
         return createdOrders;
     } catch (err) {
         if (dbClient) {
@@ -526,12 +558,14 @@ const updateOrder = async (orderId, payload) => {
         prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
     broadcastCoordinatorOrderChange('updated', updatedOrder);
+    notifyOrderChange('updated', updatedOrder, payload.updated_by ?? null);
     return updatedOrder;
 };
 
-const cancelOrder = async (orderId, reason) => {
+const cancelOrder = async (orderId, reason, actorId = null) => {
     const cancelledOrder = await orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
     broadcastCoordinatorOrderChange('cancelled', cancelledOrder);
+    notifyOrderChange('cancelled', cancelledOrder, actorId, { reason: safeTrim(reason) });
     return cancelledOrder;
 };
 

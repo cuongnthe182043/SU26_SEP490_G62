@@ -133,13 +133,19 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   salary_advance: "advance",
   salary_advances: "advance",
   driver_bonuses: "bonus",
+  bonus_rules: "bonus-rules",
   debts: "debt",
   debt_payments: "debt",
   partner: "debt",
   expenses: "spending",
+  payment_vouchers: "spending",
   vehicle: "vehicles",
+  vehicle_groups: "vehicles",
   maintenance_record: "vehicles",
   receipt: "revenue",
+  receipt_requests: "revenue",
+  orders: "revenue",
+  reports: "report",
 };
 const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "attendance", "holidays", "vehicles"];
 
