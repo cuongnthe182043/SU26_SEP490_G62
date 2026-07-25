@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { notify } from "./Toast";
+import { confirmDialog } from "./confirm";
 import {
   Button, Select, SelectItem, Input, NumberInput, Textarea, Tabs, Tab, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -166,6 +167,11 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
 
   // ── Actions: chi phí tài xế ──
   const handleApproveExpense = async (r) => {
+    if (!(await confirmDialog({
+      title: "Duyệt chi phí",
+      description: `Duyệt chi phí ${fmt(r.amount)} cho ${r.driver_name || "tài xế"}?`,
+      confirmLabel: "Duyệt",
+    }))) return;
     setActing(true);
     try {
       await api.approveExpense(r.id);
@@ -219,6 +225,11 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   };
 
   const handleApproveVoucher = async (r) => {
+    if (!(await confirmDialog({
+      title: "Duyệt phiếu chi",
+      description: `Duyệt phiếu chi ${fmt(r.amount)} cho ${r.payee || "người nhận"}?`,
+      confirmLabel: "Duyệt",
+    }))) return;
     setActing(true);
     try {
       await api.approveVoucher(r.id);
@@ -264,6 +275,12 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   };
 
   const handlePayVoucher = async () => {
+    if (!(await confirmDialog({
+      title: "Xác nhận chi tiền",
+      description: `Xác nhận đã chi ${fmt(payTarget?.amount)} cho ${payTarget?.payee || "người nhận"}?`,
+      confirmLabel: "Đã chi",
+      danger: true,
+    }))) return;
     setActing(true);
     try {
       await api.payVoucher(payTarget.id);

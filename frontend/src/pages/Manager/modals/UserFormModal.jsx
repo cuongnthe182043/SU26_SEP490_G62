@@ -5,6 +5,7 @@ import {
   RiMapPin2Line, RiFlag2Line, RiMapPinLine, RiIdCardLine,
   RiPriceTag3Line, RiContactsLine, RiStickyNoteLine,
 } from "react-icons/ri";
+import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -38,13 +39,18 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
 
   const update = (key) => (value) => setForm((p) => ({ ...p, [key]: value }));
 
+  const showError = (message) => {
+    setError(message);
+    notify.error(message);
+  };
+
   const handleOk = () => {
-    if (!form.email.trim()) return setError("Vui lòng nhập email.");
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) return setError("Email không hợp lệ.");
-    if (!form.full_name.trim()) return setError("Vui lòng nhập họ và tên.");
-    if (!/^0\d{9,10}$/.test(form.phone)) return setError("Số điện thoại không hợp lệ.");
+    if (!form.email.trim()) return showError("Vui lòng nhập email.");
+    if (!/^\S+@\S+\.\S+$/.test(form.email)) return showError("Email không hợp lệ.");
+    if (!form.full_name.trim()) return showError("Vui lòng nhập họ và tên.");
+    if (!/^0\d{9,10}$/.test(form.phone)) return showError("Số điện thoại không hợp lệ.");
     if (form.emergency_contact_phone && !/^0\d{9,10}$/.test(form.emergency_contact_phone)) {
-      return setError("Số điện thoại khẩn cấp không hợp lệ.");
+      return showError("Số điện thoại khẩn cấp không hợp lệ.");
     }
     setError(null);
     onSave({ ...form, dob: form.dob || null });
