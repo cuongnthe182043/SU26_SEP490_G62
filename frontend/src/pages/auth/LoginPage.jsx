@@ -11,6 +11,29 @@ import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function formatCooldown(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
+}
+
+function getRateLimitMessage(error) {
+  if (error?.status !== 429) return "";
+
+  const retryAfterSeconds = Number(error.retryAfterSeconds || error.retry_after_seconds || 0);
+  if (retryAfterSeconds > 0) {
+    return `Too many login attempts. Please try again after ${formatCooldown(retryAfterSeconds)}.`;
+  }
+
+  return error.message || "Too many login attempts. Please try again later.";
+}
+
 function validateCredentials(email, password) {
   const errors = { email: "", password: "" };
 
@@ -81,6 +104,7 @@ export default function LoginPage({ onLoginSuccess }) {
   const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
   const [touched, setTouched] = useState({ email: false, password: false });
   const [submitting, setSubmitting] = useState(false);
+  const [loginCooldown, setLoginCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
@@ -100,6 +124,22 @@ export default function LoginPage({ onLoginSuccess }) {
   const syncFieldErrors = (nextEmail, nextPassword) => {
     setFieldErrors(validateCredentials(nextEmail, nextPassword));
   };
+
+  useEffect(() => {
+    if (loginCooldown <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      setLoginCooldown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginCooldown]);
 
   useEffect(() => {
     if (forgotCooldown <= 0) return undefined;
@@ -181,7 +221,8 @@ export default function LoginPage({ onLoginSuccess }) {
             try {
               await googleCredentialHandlerRef.current(response.credential);
             } catch (err) {
-              setError(err.message || "Google sign-in failed.");
+              const rateLimitMessage = getRateLimitMessage(err);
+              setError(rateLimitMessage || err.message || "Google sign-in failed.");
             }
           },
         });
@@ -229,6 +270,11 @@ export default function LoginPage({ onLoginSuccess }) {
       return;
     }
 
+    if (loginCooldown > 0) {
+      setError(`Too many login attempts. Please try again after ${formatCooldown(loginCooldown)}.`);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -247,7 +293,14 @@ export default function LoginPage({ onLoginSuccess }) {
         rememberEmail: remember ? email : "",
       });
     } catch (err) {
-      setError(err.message || "Login failed. Please try again.");
+      const rateLimitMessage = getRateLimitMessage(err);
+      if (rateLimitMessage) {
+        const retryAfterSeconds = Number(err.retryAfterSeconds || err.retry_after_seconds || 0);
+        setLoginCooldown(retryAfterSeconds);
+        setError(rateLimitMessage);
+      } else {
+        setError(err.message || "Login failed. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -492,10 +545,14 @@ export default function LoginPage({ onLoginSuccess }) {
               <button
                 type="submit"
                 className="login-btn"
-                disabled={submitting || !formIsValid || googleLoading}
-                aria-disabled={submitting || !formIsValid || googleLoading}
+                disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
+                aria-disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
               >
-                {submitting ? "Signing in..." : "Sign in"}
+                {submitting
+                  ? "Signing in..."
+                  : loginCooldown > 0
+                    ? `Try again in ${formatCooldown(loginCooldown)}`
+                    : "Sign in"}
               </button>
             </form>
           </div>
