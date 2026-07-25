@@ -10,10 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ant-design/icons": "^6.2.5",
     "@heroui/react": "^2.8.10",
     "@heroui/theme": "^2.4.26",
-    "antd": "^6.4.3",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.42.0",
     "lucide-react": "^1.17.0",

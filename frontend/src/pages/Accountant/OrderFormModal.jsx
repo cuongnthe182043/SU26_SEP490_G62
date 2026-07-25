@@ -2,40 +2,210 @@ import React, { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import dayjs from "dayjs";
 import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  DatePicker,
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  message,
-  Row,
-  Select,
-  Space,
-  Statistic,
-  Tag,
-  Typography,
-} from "antd";
+  Button as HeroButton,
+  Card as HeroCard,
+  CardBody,
+  CardHeader,
+  Chip,
+  Input as HeroInput,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Select as HeroSelect,
+  SelectItem,
+  Textarea,
+} from "@heroui/react";
 import {
-  DeleteOutlined,
-  PlusOutlined,
-  MinusCircleOutlined,
-  CarOutlined,
-  UserOutlined,
-  DollarOutlined,
-  ExclamationCircleOutlined,
-  PhoneOutlined,
-  ShopOutlined,
-  InboxOutlined,
-} from "@ant-design/icons";
+  RiAddLine,
+  RiAlertLine,
+  RiCarLine,
+  RiDeleteBinLine,
+  RiInboxLine,
+  RiMoneyDollarCircleLine,
+  RiPhoneLine,
+  RiSubtractLine,
+  RiStore2Line,
+  RiUser3Line,
+} from "react-icons/ri";
 import "../../styles/OrderFormModal.css";
 import { apiRequest } from "../../services/apiClient";
+import { notify } from "../../components/shared-ui/Toast";
 
-const { Text } = Typography;
-const { TextArea } = Input;
+const DeleteOutlined = RiDeleteBinLine;
+const PlusOutlined = RiAddLine;
+const MinusCircleOutlined = RiSubtractLine;
+const CarOutlined = RiCarLine;
+const UserOutlined = RiUser3Line;
+const DollarOutlined = RiMoneyDollarCircleLine;
+const ExclamationCircleOutlined = RiAlertLine;
+const PhoneOutlined = RiPhoneLine;
+const ShopOutlined = RiStore2Line;
+const InboxOutlined = RiInboxLine;
+
+function Text({ children, strong, style }) {
+  const Component = strong ? "strong" : "span";
+  return <Component style={style}>{children}</Component>;
+}
+
+function Space({ children, size = 8, style }) {
+  return <div style={{ display: "flex", alignItems: "center", gap: size, ...style }}>{children}</div>;
+}
+
+function Alert({ message, type = "default", style }) {
+  const color = type === "error" ? "#ba1a1a" : type === "warning" ? "#b45309" : "#2563eb";
+  const bg = type === "error" ? "#fff1f2" : type === "warning" ? "#fffbeb" : "#eff6ff";
+  return (
+    <div style={{ border: `1px solid ${color}30`, background: bg, color, borderRadius: 10, padding: "10px 12px", ...style }}>
+      {message}
+    </div>
+  );
+}
+
+function Button({ children, type, danger, loading, icon, onClick, block, size, className, style }) {
+  return (
+    <HeroButton
+      color={danger ? "danger" : type === "primary" ? "primary" : "default"}
+      variant={type === "text" ? "light" : type === "dashed" ? "bordered" : "flat"}
+      isLoading={loading}
+      startContent={!loading && icon ? icon : undefined}
+      onPress={onClick}
+      fullWidth={block}
+      size={size === "large" ? "lg" : size === "small" ? "sm" : "md"}
+      className={className}
+      style={style}
+    >
+      {children}
+    </HeroButton>
+  );
+}
+
+function Card({ children, className, title, styles }) {
+  return (
+    <HeroCard className={className}>
+      {title && <CardHeader>{title}</CardHeader>}
+      <CardBody style={styles?.body}>{children}</CardBody>
+    </HeroCard>
+  );
+}
+
+function Row({ children, gutter = 0, align }) {
+  return <div style={{ display: "flex", flexWrap: "wrap", gap: Array.isArray(gutter) ? gutter[0] : gutter, alignItems: align }}>{children}</div>;
+}
+
+function Col({ children, span }) {
+  return <div style={{ flex: `1 1 ${span ? `${(span / 24) * 100}%` : "0"}`, minWidth: 220 }}>{children}</div>;
+}
+
+function FieldItem({ label, children, style }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, ...style }}>
+      {label && <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{label}</span>}
+      {children}
+    </label>
+  );
+}
+
+const Form = { Item: FieldItem };
+
+function Select({ value, onChange, options = [], placeholder, disabled, size, style, allowClear }) {
+  const keys = value === undefined || value === null || value === "" ? [] : [String(value)];
+  return (
+    <HeroSelect
+      selectedKeys={keys}
+      placeholder={placeholder}
+      isDisabled={disabled}
+      size={size === "small" ? "sm" : "md"}
+      style={style}
+      onSelectionChange={(selected) => {
+        const next = [...selected][0] ?? "";
+        onChange?.(allowClear && !next ? undefined : next);
+      }}
+    >
+      {options.map((option) => (
+        <SelectItem key={String(option.value)}>{option.label}</SelectItem>
+      ))}
+    </HeroSelect>
+  );
+}
+
+function Input({ value, onChange, placeholder, disabled, size, status, prefix, style, maxLength }) {
+  return (
+    <HeroInput
+      value={value ?? ""}
+      onValueChange={(next) => onChange?.({ target: { value: next } })}
+      placeholder={placeholder}
+      isDisabled={disabled}
+      size={size === "small" ? "sm" : "md"}
+      isInvalid={status === "error"}
+      startContent={prefix}
+      style={style}
+      maxLength={maxLength}
+    />
+  );
+}
+
+Input.TextArea = function TextAreaCompat({ value, onChange, rows, placeholder }) {
+  return <Textarea value={value ?? ""} onValueChange={(next) => onChange?.({ target: { value: next } })} minRows={rows || 3} placeholder={placeholder} />;
+};
+
+function InputNumber({ value, onChange, min, style, size }) {
+  return (
+    <HeroInput
+      type="number"
+      value={String(value ?? "")}
+      min={min}
+      onValueChange={(next) => onChange?.(Number(next) || 0)}
+      style={style}
+      size={size === "small" ? "sm" : "md"}
+    />
+  );
+}
+
+function DatePicker({ value, onChange, placeholder, disabled, status, style }) {
+  return (
+    <HeroInput
+      type="date"
+      value={value ? dayjs(value).format("YYYY-MM-DD") : ""}
+      onValueChange={(next) => onChange?.(next ? dayjs(next) : null)}
+      placeholder={placeholder}
+      isDisabled={disabled}
+      isInvalid={status === "error"}
+      style={style}
+    />
+  );
+}
+
+function Drawer({ open, onClose, title, footer, children }) {
+  return (
+    <Modal isOpen={open} onClose={onClose} size="full" scrollBehavior="inside">
+      <ModalContent>
+        <ModalHeader>{title}</ModalHeader>
+        <ModalBody>{children}</ModalBody>
+        {footer && <ModalFooter>{footer}</ModalFooter>}
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function Tag({ children, color, icon, style }) {
+  const mappedColor = color === "orange" ? "warning" : color === "blue" ? "primary" : "default";
+  return (
+    <Chip color={mappedColor} variant="flat" size="sm" startContent={icon} style={style}>
+      {children}
+    </Chip>
+  );
+}
+
+function Statistic({ title, value, prefix, valueStyle }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, ...valueStyle }}>{prefix}{Number(value || 0).toLocaleString()}</div>
+    </div>
+  );
+}
 
 const EXPENSE_TYPES = [
   { value: "toll",    label: "BOT / Phí cầu đường (khách chịu)", group: "pass_through" },
@@ -776,7 +946,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
         setDrivers(data.drivers || []);
         setVehicleGroups(data.vehicle_groups || []);
       } catch (err) {
-        message.error(err.message || "Không tải được dữ liệu xe/tài xế.");
+        notify.error(err.message || "Không tải được dữ liệu xe/tài xế.");
       }
     };
 
@@ -977,7 +1147,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
         method: "POST",
         body: payload,
       });
-      message.success(`Đã lưu đơn với ${shipments.length} chuyến.`);
+      notify.success(`Đã lưu đơn với ${shipments.length} chuyến.`);
       setShipments([newShipment()]);
       setCustomerName("");
       setCustomerPhone("");

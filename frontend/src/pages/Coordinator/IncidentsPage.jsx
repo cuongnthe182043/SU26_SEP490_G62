@@ -1,7 +1,17 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { Button, Table, message } from "antd";
-import { EyeOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  Button,
+  Pagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableColumn,
+  TableHeader,
+  TableRow,
+} from "@heroui/react";
+import { RiAddLine, RiEyeLine } from "react-icons/ri";
 import { apiRequest } from "../../services/apiClient";
+import { notify } from "../../components/shared-ui/Toast";
 import IncidentDetailModal from "./components/IncidentDetailModal";
 import CreateIncidentModal from "./components/CreateIncidentModal";
 import StatusTag from "./components/StatusTag";
@@ -38,18 +48,16 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
       const data = await apiRequest(`${basePath}/incidents${queryString ? `?${queryString}` : ""}`);
       setIncidents(data.incidents || []);
       if (data.pagination) {
-        setIncidentPaginationSafe(data.pagination);
+        setPagination(data.pagination);
       } else {
-        setIncidentPaginationSafe({ page, limit: pagination.limit, total: data.incidents?.length || 0, totalPages: 1 });
+        setPagination({ page, limit: pagination.limit, total: data.incidents?.length || 0, totalPages: 1 });
       }
     } catch (error) {
-      message.error(error.message || "Không thể tải danh sách sự cố.");
+      notify.error(error.message || "Không thể tải danh sách sự cố.");
     } finally {
       setIncidentsLoading(false);
     }
   };
-
-  const setIncidentPaginationSafe = (next) => setPagination(next);
 
   useEffect(() => {
     loadIncidents(1);
@@ -62,7 +70,7 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
         const data = await apiRequest("/api/drivers");
         setDrivers(data.drivers || []);
       } catch {
-        message.error("Không thể tải danh sách tài xế.");
+        notify.error("Không thể tải danh sách tài xế.");
       }
     })();
   }, []);
@@ -95,12 +103,12 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
           replacementDriverId: form.replacement_driver_id ? Number(form.replacement_driver_id) : null,
         },
       });
-      message.success("Cập nhật sự cố thành công.");
+      notify.success("Cập nhật sự cố thành công.");
       closeModal();
       loadIncidents();
       onIncidentResolved?.();
     } catch (error) {
-      message.error(error.message || "Không thể cập nhật sự cố.");
+      notify.error(error.message || "Không thể cập nhật sự cố.");
     } finally {
       setSaving(false);
     }
@@ -113,11 +121,11 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
 
   const handleCreateIncident = async () => {
     if (!createForm.incidentType) {
-      message.error("Vui lòng chọn loại sự cố.");
+      notify.error("Vui lòng chọn loại sự cố.");
       return;
     }
     if (!createForm.description?.trim() || createForm.description.trim().length < 10) {
-      message.error("Mô tả phải có ít nhất 10 ký tự.");
+      notify.error("Mô tả phải có ít nhất 10 ký tự.");
       return;
     }
     setCreating(true);
@@ -132,60 +140,15 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
           location: createForm.location?.trim() || null,
         },
       });
-      message.success("Đã tạo sự cố.");
+      notify.success("Đã tạo sự cố.");
       closeCreateModal();
       loadIncidents();
     } catch (error) {
-      message.error(error.message || "Không thể tạo sự cố.");
+      notify.error(error.message || "Không thể tạo sự cố.");
     } finally {
       setCreating(false);
     }
   };
-
-  const columns = [
-    {
-      title: "Sự cố",
-      key: "incident",
-      render: (_, incident) => (
-        <div style={{ display: "grid", gap: 4 }}>
-          <strong>#{incident.id}</strong>
-          <span>{incident.incident_type}</span>
-        </div>
-      ),
-    },
-    { title: "Chuyến", dataIndex: "shipment_id", key: "shipment_id", render: (value) => (value ? `#${value}` : "-") },
-    { title: "Tài xế báo cáo", dataIndex: "reported_by_name", key: "reported_by_name", render: (value) => value || "-" },
-    { title: "Tài xế hiện tại", dataIndex: "current_driver_name", key: "current_driver_name", render: (value) => value || "-" },
-    {
-      title: "Trạng thái chuyến",
-      dataIndex: "shipment_status",
-      key: "shipment_status",
-      render: (value) => <StatusTag status={value} />,
-    },
-    { title: "Mốc lấy hàng", dataIndex: "pickup_completed", key: "pickup_completed", render: (value) => (value ? "Đã lấy hàng" : "Chưa lấy hàng") },
-    { title: "Quy tắc doanh thu", dataIndex: "pickup_completed", key: "revenue_rule", render: (value) => (value ? "Chia 50/50" : "Tài xế thay thế nhận 100%") },
-    {
-      title: "Trạng thái sự cố",
-      dataIndex: "status",
-      key: "status",
-      render: (value) => <StatusTag status={value} />,
-    },
-    {
-      title: "Thao tác",
-      key: "actions",
-      render: (_, incident) => (
-        <Button
-          className="coordinator-table-icon-btn"
-          type="text"
-          icon={<EyeOutlined />}
-          disabled={incident.status === "closed" || incident.status === "resolved"}
-          onClick={() => openModal(incident)}
-        >
-          Xử lý
-        </Button>
-      ),
-    },
-  ];
 
   return (
     <>
@@ -202,12 +165,7 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
           </div>
           <div className="upload-hint">{incidents.filter((item) => item.status === "open").length} mới tiếp nhận</div>
           <div className="upload-hint">{incidents.filter((item) => item.pickup_completed).length} đã lấy hàng</div>
-          <Button
-            type="primary"
-            className="coordinator-primary-btn"
-            icon={<PlusOutlined />}
-            onClick={() => setCreateOpen(true)}
-          >
+          <Button color="primary" className="coordinator-primary-btn" startContent={<RiAddLine />} onPress={() => setCreateOpen(true)}>
             Tạo sự cố
           </Button>
         </div>
@@ -222,20 +180,62 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved, 
         </div>
 
         <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={incidents}
-          loading={incidentsLoading}
-          pagination={{
-            current: pagination.page,
-            pageSize: pagination.limit,
-            total: pagination.total,
-            showSizeChanger: false,
-            onChange: (page) => loadIncidents(page),
-          }}
-          locale={{ emptyText: "Không có sự cố nào phù hợp." }}
-          scroll={{ x: true }}
-        />
+          aria-label="Danh sách sự cố"
+          bottomContent={
+            pagination.totalPages > 1 ? (
+              <div className="flex justify-center py-2">
+                <Pagination page={pagination.page} total={pagination.totalPages} onChange={(page) => loadIncidents(page)} showControls />
+              </div>
+            ) : null
+          }
+        >
+          <TableHeader>
+            <TableColumn>Sự cố</TableColumn>
+            <TableColumn>Chuyến</TableColumn>
+            <TableColumn>Tài xế báo cáo</TableColumn>
+            <TableColumn>Tài xế hiện tại</TableColumn>
+            <TableColumn>Trạng thái chuyến</TableColumn>
+            <TableColumn>Mốc lấy hàng</TableColumn>
+            <TableColumn>Quy tắc doanh thu</TableColumn>
+            <TableColumn>Trạng thái sự cố</TableColumn>
+            <TableColumn>Thao tác</TableColumn>
+          </TableHeader>
+          <TableBody
+            isLoading={incidentsLoading}
+            loadingContent={<LoadingState label="Đang tải..." size="sm" />}
+            emptyContent="Không có sự cố nào phù hợp."
+            items={incidents}
+          >
+            {(incident) => (
+              <TableRow key={incident.id}>
+                <TableCell>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <strong>#{incident.id}</strong>
+                    <span>{incident.incident_type}</span>
+                  </div>
+                </TableCell>
+                <TableCell>{incident.shipment_id ? `#${incident.shipment_id}` : "-"}</TableCell>
+                <TableCell>{incident.reported_by_name || "-"}</TableCell>
+                <TableCell>{incident.current_driver_name || "-"}</TableCell>
+                <TableCell><StatusTag status={incident.shipment_status} /></TableCell>
+                <TableCell>{incident.pickup_completed ? "Đã lấy hàng" : "Chưa lấy hàng"}</TableCell>
+                <TableCell>{incident.pickup_completed ? "Chia 50/50" : "Tài xế thay thế nhận 100%"}</TableCell>
+                <TableCell><StatusTag status={incident.status} /></TableCell>
+                <TableCell>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    startContent={<RiEyeLine />}
+                    isDisabled={incident.status === "closed" || incident.status === "resolved"}
+                    onPress={() => openModal(incident)}
+                  >
+                    Xử lý
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </section>
 
       <IncidentDetailModal

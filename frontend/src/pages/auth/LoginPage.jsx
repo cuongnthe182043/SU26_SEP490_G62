@@ -1,15 +1,50 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Input, Modal, Space, message } from "antd";
+import {
+  Button,
+  Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalHeader,
+} from "@heroui/react";
 import { apiRequest } from "../../services/apiClient";
 import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
 import LoadingState from "../../components/LoadingState";
+import { notify } from "../../components/shared-ui/Toast";
 import ThemeToggle from "../../theme/ThemeToggle";
 import Logo from "../../theme/Logo";
 import { RiEyeLine, RiEyeOffLine } from "react-icons/ri";
 import "../../styles/Login.css";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function FieldStack({ children }) {
+  return <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>{children}</div>;
+}
+
+function formatCooldown(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
+}
+
+function getRateLimitMessage(error) {
+  if (error?.status !== 429) return "";
+
+  const retryAfterSeconds = Number(error.retryAfterSeconds || error.retry_after_seconds || 0);
+  if (retryAfterSeconds > 0) {
+    return `Too many login attempts. Please try again after ${formatCooldown(retryAfterSeconds)}.`;
+  }
+
+  return error.message || "Too many login attempts. Please try again later.";
+}
 
 function validateCredentials(email, password) {
   const errors = { email: "", password: "" };
@@ -81,6 +116,7 @@ export default function LoginPage({ onLoginSuccess }) {
   const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
   const [touched, setTouched] = useState({ email: false, password: false });
   const [submitting, setSubmitting] = useState(false);
+  const [loginCooldown, setLoginCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
@@ -100,6 +136,22 @@ export default function LoginPage({ onLoginSuccess }) {
   const syncFieldErrors = (nextEmail, nextPassword) => {
     setFieldErrors(validateCredentials(nextEmail, nextPassword));
   };
+
+  useEffect(() => {
+    if (loginCooldown <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      setLoginCooldown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginCooldown]);
 
   useEffect(() => {
     if (forgotCooldown <= 0) return undefined;
@@ -181,7 +233,8 @@ export default function LoginPage({ onLoginSuccess }) {
             try {
               await googleCredentialHandlerRef.current(response.credential);
             } catch (err) {
-              setError(err.message || "Google sign-in failed.");
+              const rateLimitMessage = getRateLimitMessage(err);
+              setError(rateLimitMessage || err.message || "Google sign-in failed.");
             }
           },
         });
@@ -229,6 +282,11 @@ export default function LoginPage({ onLoginSuccess }) {
       return;
     }
 
+    if (loginCooldown > 0) {
+      setError(`Too many login attempts. Please try again after ${formatCooldown(loginCooldown)}.`);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -247,7 +305,14 @@ export default function LoginPage({ onLoginSuccess }) {
         rememberEmail: remember ? email : "",
       });
     } catch (err) {
-      setError(err.message || "Login failed. Please try again.");
+      const rateLimitMessage = getRateLimitMessage(err);
+      if (rateLimitMessage) {
+        const retryAfterSeconds = Number(err.retryAfterSeconds || err.retry_after_seconds || 0);
+        setLoginCooldown(retryAfterSeconds);
+        setError(rateLimitMessage);
+      } else {
+        setError(err.message || "Login failed. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -266,12 +331,12 @@ export default function LoginPage({ onLoginSuccess }) {
       });
       setForgotCooldown(Number(data.retry_after_seconds || 60));
       setForgotStep(2);
-      message.success(data.message || "Verification code sent.");
+      notify.success(data.message || "Verification code sent.");
     } catch (err) {
       if (Number.isFinite(Number(err?.retry_after_seconds)) && Number(err.retry_after_seconds) > 0) {
         setForgotCooldown(Number(err.retry_after_seconds));
       }
-      message.error(err.message || "Unable to send verification code.");
+      notify.error(err.message || "Unable to send verification code.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -292,9 +357,9 @@ export default function LoginPage({ onLoginSuccess }) {
         },
       });
       setForgotStep(3);
-      message.success(data.message || "Verification code confirmed.");
+      notify.success(data.message || "Verification code confirmed.");
     } catch (err) {
-      message.error(err.message || "Verification failed.");
+      notify.error(err.message || "Verification failed.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -316,12 +381,12 @@ export default function LoginPage({ onLoginSuccess }) {
           confirmPassword: forgotState.confirmPassword,
         },
       });
-      message.success(data.message || "Password reset successful.");
+      notify.success(data.message || "Password reset successful.");
       setEmail(forgotState.email);
       setPassword("");
       resetForgotFlow();
     } catch (err) {
-      message.error(err.message || "Unable to reset password.");
+      notify.error(err.message || "Unable to reset password.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -492,91 +557,96 @@ export default function LoginPage({ onLoginSuccess }) {
               <button
                 type="submit"
                 className="login-btn"
-                disabled={submitting || !formIsValid || googleLoading}
-                aria-disabled={submitting || !formIsValid || googleLoading}
+                disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
+                aria-disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
               >
-                {submitting ? "Signing in..." : "Sign in"}
+                {submitting
+                  ? "Signing in..."
+                  : loginCooldown > 0
+                    ? `Try again in ${formatCooldown(loginCooldown)}`
+                    : "Sign in"}
               </button>
             </form>
           </div>
         </section>
       </main>
 
-      <Modal
-        title="Forgot password"
-        open={forgotOpen}
-        onCancel={resetForgotFlow}
-        footer={null}
-        destroyOnHidden={false}
-      >
+      <Modal isOpen={forgotOpen} onOpenChange={(open) => !open && resetForgotFlow()}>
+        <ModalContent>
+          <ModalHeader>Forgot password</ModalHeader>
+          <ModalBody className="pb-6">
         {forgotStep === 1 && (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <FieldStack>
             <p>Enter your email. If the account exists, we will send a 6-character verification code.</p>
             <Input
               type="email"
               placeholder="you@example.com"
               value={forgotState.email}
               onChange={(event) => updateForgotField("email", event.target.value)}
-              onPressEnter={handleForgotRequest}
-              status={forgotErrors.email ? "error" : ""}
+              onKeyDown={(event) => event.key === "Enter" && handleForgotRequest()}
+              isInvalid={Boolean(forgotErrors.email)}
             />
             {forgotErrors.email && <div className="field-error">{forgotErrors.email}</div>}
-            <Button type="primary" block loading={forgotSubmitting} onClick={handleForgotRequest}>
+            <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotRequest}>
               Send verification code
             </Button>
-          </Space>
+          </FieldStack>
         )}
 
         {forgotStep === 2 && (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <FieldStack>
             <p>We sent a 6-character code to <strong>{forgotState.email}</strong>.</p>
             <Input
               placeholder="Enter verification code"
               value={forgotState.code}
               maxLength={6}
               onChange={(event) => updateForgotField("code", event.target.value.toUpperCase())}
-              onPressEnter={handleForgotVerify}
-              status={forgotErrors.code ? "error" : ""}
+              onKeyDown={(event) => event.key === "Enter" && handleForgotVerify()}
+              isInvalid={Boolean(forgotErrors.code)}
             />
             {forgotErrors.code && <div className="field-error">{forgotErrors.code}</div>}
-            <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, width: "100%" }}>
               <Button
-                disabled={forgotSubmitting || forgotCooldown > 0}
-                onClick={handleForgotRequest}
+                isDisabled={forgotSubmitting || forgotCooldown > 0}
+                onPress={handleForgotRequest}
               >
                 {forgotCooldown > 0 ? `Resend after ${forgotCooldown}s` : "Resend code"}
               </Button>
-              <Button type="primary" loading={forgotSubmitting} onClick={handleForgotVerify}>
+              <Button color="primary" isLoading={forgotSubmitting} onPress={handleForgotVerify}>
                 Verify code
               </Button>
-            </Space>
-          </Space>
+            </div>
+          </FieldStack>
         )}
 
         {forgotStep === 3 && (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <FieldStack>
             <p>Enter your new password for <strong>{forgotState.email}</strong>.</p>
-            <Input.Password
+            <Input
+              type="password"
               placeholder="New password"
               value={forgotState.newPassword}
               onChange={(event) => updateForgotField("newPassword", event.target.value)}
-              onPressEnter={handleForgotReset}
-              status={forgotErrors.newPassword ? "error" : ""}
+              onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
+              isInvalid={Boolean(forgotErrors.newPassword)}
             />
             {forgotErrors.newPassword && <div className="field-error">{forgotErrors.newPassword}</div>}
-            <Input.Password
+            <Input
+              type="password"
               placeholder="Confirm new password"
               value={forgotState.confirmPassword}
               onChange={(event) => updateForgotField("confirmPassword", event.target.value)}
-              onPressEnter={handleForgotReset}
-              status={forgotErrors.confirmPassword ? "error" : ""}
+              onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
+              isInvalid={Boolean(forgotErrors.confirmPassword)}
             />
             {forgotErrors.confirmPassword && <div className="field-error">{forgotErrors.confirmPassword}</div>}
-            <Button type="primary" block loading={forgotSubmitting} onClick={handleForgotReset}>
+            <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotReset}>
               Save new password
             </Button>
-          </Space>
+          </FieldStack>
         )}
+          </ModalBody>
+        </ModalContent>
       </Modal>
     </>
   );
