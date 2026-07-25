@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
-    Pressable, ScrollView, StyleSheet, TextInput, View,
+    ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
+    ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +12,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { AppButton } from '@/components/app-button';
 import { AppText }   from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
+import { SimpleCardSkeleton } from '@/components/skeleton';
 import { appTheme } from '@/theme/app-theme';
 import { useUpdateIncident } from '@/hooks/use-update-incident';
 import { useToast } from '@/providers/ui-provider';
@@ -127,9 +128,10 @@ export function IncidentEditScreen() {
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
                 <StatusBar style="dark" />
                 <ScreenHeader title="Chỉnh sửa sự cố" showBack />
-                <YStack flex={1} alignItems="center" justifyContent="center" gap={12}>
-                    <ActivityIndicator color={appTheme.colors.primary} />
-                    <AppText variant="caption" tone="muted">Đang tải...</AppText>
+                <YStack padding={20} gap={12}>
+                    <SimpleCardSkeleton />
+                    <SimpleCardSkeleton />
+                    <SimpleCardSkeleton />
                 </YStack>
             </View>
         );
