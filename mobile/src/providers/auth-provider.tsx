@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, useSegments } from 'expo-router';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
-import { API_BASE_URL } from '@/constants/api';
+import { getApiBaseUrl } from '@/constants/api';
 import { ApiError } from '@/lib/api-error';
 import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
@@ -31,12 +31,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const refreshToken = await tokenStorage.getRefreshToken();
-    if (refreshToken && API_BASE_URL) {
-      await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      }).catch(() => undefined);
+    if (refreshToken) {
+      try {
+        const apiBaseUrl = getApiBaseUrl();
+        await fetch(`${apiBaseUrl}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        // Logout local vẫn phải hoàn tất dù server/config tạm lỗi.
+      }
     }
     await tokenStorage.clearAll();
     setProfile(null);
