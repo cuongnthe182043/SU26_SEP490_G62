@@ -73,6 +73,17 @@ function isUnsafeMethod(method) {
   return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
 }
 
+function canBootstrapCsrf(path) {
+  return ![
+    "/auth/login",
+    "/auth/google",
+    "/auth/refresh",
+    "/auth/forgot-password/request",
+    "/auth/forgot-password/verify",
+    "/auth/forgot-password/reset",
+  ].includes(path);
+}
+
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
@@ -171,7 +182,15 @@ export async function apiRequest(path, options = {}) {
     requestHeaders.set("Authorization", `Bearer ${token}`);
   }
   if (isUnsafeMethod(method) && !requestHeaders.has("X-CSRF-Token")) {
-    const csrfToken = getCsrfToken();
+    let csrfToken = getCsrfToken();
+    if (!csrfToken && canBootstrapCsrf(path)) {
+      try {
+        await refreshAuthSession();
+        csrfToken = getCsrfToken();
+      } catch {
+        // Let the original request surface the actual auth/CSRF error to the caller.
+      }
+    }
     if (csrfToken) requestHeaders.set("X-CSRF-Token", csrfToken);
   }
 

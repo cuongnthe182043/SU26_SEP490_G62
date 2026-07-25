@@ -173,7 +173,14 @@ export default function BusinessReportView() {
         meta={meta}
         acting={acting}
         actionErr={actionErr}
-        onClose={() => runAction(managerService.closeReportPeriod, "Đã chốt kỳ báo cáo.")}
+        onClose={async () => {
+          if (await confirmDialog({
+            title: "Chốt kỳ báo cáo",
+            description: "Chốt kỳ sẽ ghi nhận snapshot số liệu hiện tại. Anh có chắc muốn chốt kỳ này?",
+            confirmLabel: "Chốt kỳ",
+          }))
+            runAction(managerService.closeReportPeriod, "Đã chốt kỳ báo cáo.");
+        }}
         onSignOff={async () => {
           if (await confirmDialog({
             title: "Ký duyệt kỳ báo cáo",

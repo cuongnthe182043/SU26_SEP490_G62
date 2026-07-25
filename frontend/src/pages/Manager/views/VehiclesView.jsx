@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   Button, Input, Select, SelectItem, Chip, Spinner, Textarea,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
@@ -222,6 +223,11 @@ export default function VehiclesView({ user }) {
 
   // ─── Maintenance requests ───────────────────────────────────────────────
   const handleApproveRequest = async (request) => {
+    if (!(await confirmDialog({
+      title: "Duyệt yêu cầu bảo dưỡng",
+      description: `Duyệt yêu cầu bảo dưỡng xe ${request.plate_number || ""}?`,
+      confirmLabel: "Duyệt",
+    }))) return;
     setProcessingRequestId(request.id);
     try {
       await managerService.approveMaintenanceRequest(request.id);

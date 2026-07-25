@@ -1158,7 +1158,9 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
       onOrderCreated?.(data.order);
       onClose();
     } catch (err) {
-      setFormError(err.message || "Đã xảy ra lỗi hệ thống.");
+      const message = err.message || "Đã xảy ra lỗi hệ thống.";
+      setFormError(message);
+      notify.error(message);
     } finally {
       setSubmitting(false);
     }

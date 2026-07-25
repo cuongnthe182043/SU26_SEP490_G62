@@ -101,7 +101,9 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
       onChanged?.();
       notify.success("Đã xác nhận báo nộp tiền.");
     } catch (err) {
-      setError(err.message ?? "Xác nhận thất bại");
+      const message = err.message ?? "Xác nhận thất bại";
+      setError(message);
+      notify.error(message);
     } finally {
       setActingId(null);
     }
@@ -109,7 +111,12 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
 
   const handleReject = async () => {
     if (!rejectTarget) return;
-    if (!rejectReason.trim()) { setError("Cần nhập lý do từ chối"); return; }
+    if (!rejectReason.trim()) {
+      const message = "Cần nhập lý do từ chối";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setActingId(rejectTarget.id);
     setError(null);
     try {
@@ -120,7 +127,9 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
       onChanged?.();
       notify.success("Đã từ chối báo nộp tiền.");
     } catch (err) {
-      setError(err.message ?? "Từ chối thất bại");
+      const message = err.message ?? "Từ chối thất bại";
+      setError(message);
+      notify.error(message);
     } finally {
       setActingId(null);
     }
@@ -469,8 +478,18 @@ function PayDebtModal({ person, onClose, onDone }) {
 
   const handleSubmit = async () => {
     const num = Number(String(amount).replace(/[^0-9.]/g, ""));
-    if (!num || num <= 0) { setError("Số tiền phải lớn hơn 0."); return; }
-    if (!person_id) { setError("Không xác định được người nợ."); return; }
+    if (!num || num <= 0) {
+      const message = "Số tiền phải lớn hơn 0.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
+    if (!person_id) {
+      const message = "Không xác định được người nợ.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setSaving(true); setError(null);
     try {
       await accountantService.allocatePayment({
@@ -484,7 +503,9 @@ function PayDebtModal({ person, onClose, onDone }) {
       onClose();
       notify.success("Đã ghi nhận thanh toán công nợ.");
     } catch (err) {
-      setError(err.message ?? "Lỗi khi ghi nhận.");
+      const message = err.message ?? "Lỗi khi ghi nhận.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -578,7 +599,12 @@ function TransferDebtModal({ debt, onClose, onDone }) {
 
   const handleSubmit = async () => {
     const selectedId = [...driverId][0];
-    if (!selectedId) { setError("Vui lòng chọn tài xế nhận công nợ."); return; }
+    if (!selectedId) {
+      const message = "Vui lòng chọn tài xế nhận công nợ.";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     setSaving(true); setError(null);
     try {
       await accountantService.transferDebtToDriver(debt.id, Number(selectedId), notes.trim());
@@ -586,7 +612,9 @@ function TransferDebtModal({ debt, onClose, onDone }) {
       onClose();
       notify.success("Đã chuyển công nợ sang tài xế.");
     } catch (err) {
-      setError(err.message ?? "Chuyển công nợ thất bại.");
+      const message = err.message ?? "Chuyển công nợ thất bại.";
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }

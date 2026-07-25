@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   Button, Chip, Modal, ModalContent, ModalHeader,
   ModalBody, ModalFooter, Spinner, Select, SelectItem,
@@ -136,6 +137,12 @@ export function BonusView({ search }) {
 
   const handlePay = async () => {
     if (!confirmId) return;
+    if (!(await confirmDialog({
+      title: "Chi trả thưởng/phúc lợi",
+      description: "Xác nhận đã chi trả khoản thưởng/phúc lợi này?",
+      confirmLabel: "Đã chi",
+      danger: true,
+    }))) return;
     setPaying(confirmId);
     try {
       await payBonus(confirmId);
