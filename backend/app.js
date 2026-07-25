@@ -11,6 +11,7 @@ const routes = require('./routes');
 const swaggerDocument = require('./config/swagger');
 const pool = require('./config/database');
 const logger = require('./config/logger');
+const authService = require('./services/authService');
 const { initNotificationGateway } = require('./services/notificationGateway');
 const { initCronJobs }           = require('./cron/debtCron');
 
@@ -22,6 +23,68 @@ const server = http.createServer(app);
 initNotificationGateway(server);
 initCronJobs();
 
+const DEFAULT_ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+];
+
+const parseOriginList = (value) => String(value || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const allowedOrigins = new Set([
+    ...(isProduction ? [] : DEFAULT_ALLOWED_ORIGINS),
+    ...parseOriginList(process.env.CORS_ORIGINS),
+    ...parseOriginList(process.env.FRONTEND_URL),
+    ...parseOriginList(process.env.FRONTEND_ORIGIN),
+]);
+
+const corsOptions = {
+    origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.has(origin)) return callback(null, true);
+        return callback(null, false);
+    },
+    credentials: true,
+};
+
+const readCookieValue = (cookieHeader, cookieName) => {
+    if (!cookieHeader) return null;
+    const cookie = String(cookieHeader)
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${cookieName}=`));
+    return cookie ? decodeURIComponent(cookie.slice(cookieName.length + 1)) : null;
+};
+
+const CSRF_COOKIE_NAME = 'csrf_token';
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const CSRF_EXEMPT_PATHS = new Set([
+    '/auth/login',
+    '/auth/google',
+    '/auth/forgot-password/request',
+    '/auth/forgot-password/verify',
+    '/auth/forgot-password/reset',
+]);
+
+const csrfProtection = (req, res, next) => {
+    if (SAFE_METHODS.has(req.method) || CSRF_EXEMPT_PATHS.has(req.path)) return next();
+
+    const hasSessionCookie =
+        readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME)
+        || readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
+    if (!hasSessionCookie) return next();
+
+    const csrfCookie = readCookieValue(req.headers.cookie, CSRF_COOKIE_NAME);
+    const csrfHeader = req.get('x-csrf-token');
+    if (csrfCookie && csrfHeader && csrfCookie === csrfHeader) return next();
+
+    return res.status(403).json({ error: 'CSRF token không hợp lệ', code: 'CSRF_TOKEN_INVALID' });
+};
+
 // Chạy sau reverse proxy/load balancer (Cloud Run...) — cần để req.ip và rate-limit
 // nhận đúng IP thật của client thay vì IP của proxy.
 app.set('trust proxy', 1);
@@ -32,10 +95,8 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: isProduction }));
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
-app.use(cors({
-    origin: true,
-    credentials: true,
-}));
+app.use(cors(corsOptions));
+app.use(csrfProtection);
 app.use(morgan(isProduction ? 'combined' : 'dev', {
     stream: { write: (message) => logger.info(message.trim()) },
 }));
