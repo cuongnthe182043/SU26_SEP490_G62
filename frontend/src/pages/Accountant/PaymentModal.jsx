@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import "../../styles/PaymentModal.css";
 import { apiRequest } from "../../services/apiClient";
+import LoadingState from "../../components/LoadingState";
 
 export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const [amount, setAmount] = useState("");
@@ -152,7 +153,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
         <div className="payments-history-section">
           <h4>Lịch sử các lần thu tiền</h4>
           {loadingPayments ? (
-            <div className="loading-small">Đang tải lịch sử...</div>
+            <LoadingState label="Đang tải lịch sử thu tiền..." size="sm" className="py-4" />
           ) : paymentsList.length === 0 ? (
             <div className="empty-small">Chưa có phiếu thu nào được ghi nhận cho đơn này.</div>
           ) : (

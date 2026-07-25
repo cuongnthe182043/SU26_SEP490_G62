@@ -161,6 +161,25 @@
 .login-form input{padding:14px 16px;border:1px solid #d8e1ed;border-radius:12px;margin-top:0;font-size:15px;color:#1f2a3d;background:#f9fbfd}
 .login-form input::placeholder{color:#9aa5b3}
 .login-form input:focus{outline:none;box-shadow:0 0 0 4px rgba(25,118,210,0.12);border-color:#1976d2}
+.password-input-wrap{position:relative;display:flex;align-items:center}
+.password-input-wrap input{width:100%;padding-right:48px}
+.password-eye-btn{
+  position:absolute;
+  right:8px;
+  top:50%;
+  transform:translateY(-50%);
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:10px;
+  color:#64748b;
+  background:transparent;
+  cursor:pointer;
+}
+.password-eye-btn:hover{background:rgba(25,118,210,0.08);color:#1976d2}
+.password-eye-btn:focus-visible{outline:2px solid rgba(25,118,210,0.35);outline-offset:2px}
 .input-error{border-color:#d14343 !important;}
 .field-error{color:#d14343;font-size:13px;margin-top:8px}
 .login-btn{margin-top:8px;padding:14px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:12px;cursor:pointer;font-size:15px;font-weight:600;transition:background 0.2s ease}
@@ -273,6 +292,8 @@ html.dark .login-form input:focus{
   box-shadow:0 0 0 4px rgba(107,123,255,0.18);
   border-color:#6B7BFF;
 }
+html.dark .password-eye-btn{ color:#a9afc0; }
+html.dark .password-eye-btn:hover{ background:rgba(107,123,255,0.16); color:#dbe0ff; }
 html.dark .remember{ color:#a9afc0; }
 html.dark .forgot{ color:#8b97ff; }
 html.dark .login-btn{ background:#4a5bd8; }

@@ -4,6 +4,7 @@ import { Bell, ChevronDown, Grid, HelpCircle, LogOut, Settings2, User } from 'lu
 import { apiRequest } from '../../services/apiClient';
 import { useRoleRealtime } from '../../hooks/useRoleRealtime';
 import { C } from '../../styles/theme';
+import LoadingState from '../LoadingState';
 import ProfileModal from '../profile/ProfileModal';
 
 const { Text } = Typography;
@@ -123,7 +124,7 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
 
             <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8, paddingRight: 4 }}>
               {notificationsLoading ? (
-                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Đang tải thông báo...</div>
+                <LoadingState label="Đang tải thông báo..." size="sm" className="py-3 justify-start" />
               ) : notifications.length === 0 ? (
                 <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Chưa có thông báo.</div>
               ) : (
