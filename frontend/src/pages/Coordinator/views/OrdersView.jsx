@@ -1,6 +1,7 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
+import { PrepaidConfirmModal } from "../../../components/shared-ui/PrepaidConfirmModal";
 import {
   Button, Input, Tabs, Tab,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem, Textarea,
@@ -41,6 +42,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
+  const [prepaidTarget, setPrepaidTarget] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -269,9 +271,9 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     });
     if (!confirmed) return;
     try {
-      await coordinatorService.cancelOrder(trip.orderId, "Coordinator cancelled order");
+      const res = await coordinatorService.cancelOrder(trip.orderId, "Coordinator cancelled order");
       await loadOrders(pagination.page);
-      notify.success("Đã hủy đơn hàng.");
+      notify.success(res?.message || "Đã hủy đơn hàng.");
     } catch (error) {
       notify.error(error.message || "Không thể hủy đơn hàng.");
     }
@@ -479,8 +481,20 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
           onCancelOrder={handleCancelOrder}
           onReassignShipment={(shipmentId) => setReassignTarget(shipmentId)}
           onCancelShipment={(shipmentId) => setCancelTarget(shipmentId)}
+          onConfirmPrepaid={(trip) => setPrepaidTarget({
+            id: trip.orderId,
+            prepaidAmount: trip.prepaidAmount,
+            customerName: trip.customerName,
+          })}
         />
       </div>
+
+      <PrepaidConfirmModal
+        order={prepaidTarget}
+        api={coordinatorService}
+        onClose={() => setPrepaidTarget(null)}
+        onDone={() => loadOrders(pagination.page)}
+      />
 
       <OrderFormModal
         open={createOpen}

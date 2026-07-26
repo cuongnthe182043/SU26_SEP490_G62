@@ -79,4 +79,53 @@ const customerByPhone = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders, updateOrder, cancelOrder, importOrders, customerByPhone };
+// GET /orders/prepaid/pending — danh sách đơn có tiền trả trước đang chờ xác nhận
+const listPendingPrepaid = async (req, res) => {
+    try {
+        const orders = await orderService.listPendingPrepaid();
+        res.json({ orders });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// PATCH /orders/:id/prepaid/confirm — xác nhận tiền trả trước đã thực về (chọn kênh + chứng từ)
+const confirmPrepaid = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const paymentMethod = ['cash', 'bank_transfer'].includes(req.body?.payment_method)
+            ? req.body.payment_method : null;
+        if (!paymentMethod) return res.status(400).json({ error: 'Thiếu hình thức nhận tiền (payment_method)' });
+        if (!req.file) return res.status(400).json({ error: 'Thiếu ảnh chứng từ (field "proof")' });
+
+        const order = await orderService.confirmPrepaid(orderId, req.user.userId, {
+            paymentMethod,
+            proofUrl: req.file.path,
+        });
+        if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
+        res.json({ message: 'Đã xác nhận tiền trả trước', order });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+// PATCH /orders/:id/prepaid/reject — tiền trả trước KHÔNG về, hủy khoản chờ (không ghi sổ)
+const rejectPrepaid = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const order = await orderService.rejectPrepaid(orderId, req.user?.userId ?? null);
+        if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
+        res.json({ message: 'Đã hủy khoản trả trước (chưa ghi sổ)', order });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = {
+    createOrder, listOrders, updateOrder, cancelOrder, importOrders, customerByPhone,
+    listPendingPrepaid, confirmPrepaid, rejectPrepaid,
+};

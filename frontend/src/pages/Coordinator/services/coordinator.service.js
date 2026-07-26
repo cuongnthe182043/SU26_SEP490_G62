@@ -14,6 +14,14 @@ export const coordinatorService = {
     apiRequest(`/api/orders/customer-by-phone?phone=${encodeURIComponent(phone)}`, { signal }),
   updateOrder: (orderId, data) => apiRequest(`/api/orders/${orderId}`, { method: "PATCH", body: data }),
   cancelOrder: (orderId, reason) => apiRequest(`/api/orders/${orderId}`, { method: "DELETE", body: { reason } }),
+
+  // ─── Tiền trả trước: xác nhận / từ chối ──────────────────────────────────
+  listPendingPrepaid: () => apiRequest("/api/orders/prepaid/pending"),
+  // formData: { payment_method, proof (file) }
+  confirmPrepaid: (orderId, formData) =>
+    apiRequest(`/api/orders/${orderId}/prepaid/confirm`, { method: "PATCH", body: formData }),
+  rejectPrepaid: (orderId) =>
+    apiRequest(`/api/orders/${orderId}/prepaid/reject`, { method: "PATCH" }),
   importOrders: (file) => {
     const formData = new FormData();
     formData.append("file", file);

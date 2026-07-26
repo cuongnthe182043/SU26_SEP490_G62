@@ -9,7 +9,7 @@ import { formatCurrency } from "../utils";
 
 const infoIcon = (Icon) => <Icon size={15} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
-function InfoTile({ icon, label, value }) {
+function InfoTile({ icon, label, value, extra }) {
   return (
     <div className="rounded-xl border border-gray-100 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.03] p-3">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
@@ -17,9 +17,15 @@ function InfoTile({ icon, label, value }) {
         <span>{label}</span>
       </div>
       <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100 break-words">{value || "-"}</div>
+      {extra}
     </div>
   );
 }
+
+const PREPAID_STATUS_LABEL = {
+  pending: { label: "Chờ xác nhận", color: "warning" },
+  confirmed: { label: "Đã xác nhận", color: "success" },
+};
 
 function ShipmentCard({ shipment }) {
   const pickups = shipment.pickup_addresses?.length ? shipment.pickup_addresses : [shipment.pickup_address].filter(Boolean);
@@ -86,7 +92,16 @@ export default function OrderDetailModal({ open, order, onClose }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <InfoTile icon={infoIcon(RiFileTextLine)} label="Hàng hóa" value={order.cargoName} />
             <InfoTile icon={infoIcon(RiScales3Line)} label="Khối lượng" value={order.cargoWeightKg ? `${order.cargoWeightKg} kg` : "-"} />
-            <InfoTile icon={infoIcon(RiMoneyDollarCircleLine)} label="Ứng trước" value={formatCurrency(order.prepaidAmount)} />
+            <InfoTile
+              icon={infoIcon(RiMoneyDollarCircleLine)}
+              label="Ứng trước"
+              value={formatCurrency(order.prepaidAmount)}
+              extra={PREPAID_STATUS_LABEL[order.prepaidStatus] && (
+                <Chip size="sm" variant="flat" color={PREPAID_STATUS_LABEL[order.prepaidStatus].color} className="mt-1.5 text-[10px] h-5">
+                  {PREPAID_STATUS_LABEL[order.prepaidStatus].label}
+                </Chip>
+              )}
+            />
             <div className="rounded-xl border border-gray-100 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.03] p-3">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">Nguồn đơn</div>
               <div className="mt-1">
