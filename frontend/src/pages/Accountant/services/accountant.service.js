@@ -210,8 +210,9 @@ export const accountantService = {
   createVoucher: (formData) =>
     apiRequest(`${BASE}/vouchers`, { method: "POST", body: formData }),
 
-  payVoucher: (id) =>
-    apiRequest(`${BASE}/vouchers/${id}/pay`, { method: "PATCH" }),
+  // formData (tuỳ chọn) kèm file 'proof' + payment_method — dùng cho phiếu hoàn tiền
+  payVoucher: (id, formData = null) =>
+    apiRequest(`${BASE}/vouchers/${id}/pay`, { method: "PATCH", body: formData ?? undefined }),
 
   // Huỷ phiếu đã duyệt nhưng chưa chi — quyền của kế toán, không cần Manager duyệt lại.
   cancelVoucher: (id, reason) =>

@@ -27,7 +27,8 @@ const EXPENSE_TYPE_LABEL = {
 
 const VOUCHER_TYPE_LABEL = {
   office: "Văn phòng phẩm", rent: "Thuê mặt bằng/kho", utilities: "Điện nước/Internet",
-  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", compensation: "Đền bù hàng hóa", other: "Khác",
+  equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", compensation: "Đền bù hàng hóa",
+  prepaid_refund: "Hoàn tiền trả trước", other: "Khác",
 };
 
 const EVENT_LABEL = {
@@ -96,6 +97,8 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   const [voucherRejectTarget, setVoucherRejectTarget] = useState(null);
   const [voucherRejectReason, setVoucherRejectReason] = useState("");
   const [payTarget, setPayTarget] = useState(null);
+  const [payMethod, setPayMethod] = useState("bank_transfer");
+  const [payProofFile, setPayProofFile] = useState(null);
   const [voucherCancelTarget, setVoucherCancelTarget] = useState(null);
   const [voucherCancelReason, setVoucherCancelReason] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -274,17 +277,26 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     }
   };
 
+  const isRefundVoucher = payTarget?.voucher_type === "prepaid_refund";
+
   const handlePayVoucher = async () => {
-    if (!(await confirmDialog({
-      title: "Xác nhận chi tiền",
-      description: `Xác nhận đã chi ${fmt(payTarget?.amount)} cho ${payTarget?.payee || "người nhận"}?`,
-      confirmLabel: "Đã chi",
-      danger: true,
-    }))) return;
+    // Phiếu hoàn tiền: bắt buộc đính chứng từ đã chuyển/chi cho khách.
+    if (isRefundVoucher && !payProofFile) {
+      notify.error("Vui lòng đính ảnh chứng từ đã hoàn tiền cho khách.");
+      return;
+    }
     setActing(true);
     try {
-      await api.payVoucher(payTarget.id);
+      if (isRefundVoucher) {
+        const fd = new FormData();
+        fd.append("payment_method", payMethod);
+        if (payProofFile) fd.append("proof", payProofFile);
+        await api.payVoucher(payTarget.id, fd);
+      } else {
+        await api.payVoucher(payTarget.id);
+      }
       setPayTarget(null);
+      setPayProofFile(null);
       notify.success("Đã xác nhận chi tiền.");
       loadVouchers();
     } catch (e) {
@@ -497,7 +509,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                           </>
                         )}
                         {canPayVoucher && r.status === "approved" && (
-                          <Button size="sm" color="success" className="text-white" startContent={<RiMoneyDollarCircleLine size={13} />} onPress={() => setPayTarget(r)}>Chi tiền</Button>
+                          <Button size="sm" color="success" className="text-white" startContent={<RiMoneyDollarCircleLine size={13} />} onPress={() => { setPayMethod(r.payment_method || "bank_transfer"); setPayProofFile(null); setPayTarget(r); }}>Chi tiền</Button>
                         )}
                         {/* Huỷ chỉ áp dụng cho phiếu đã duyệt mà chưa chi — chưa có bút toán nào để đảo. */}
                         {canCancelVoucher && r.status === "approved" && (
@@ -684,13 +696,38 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       {/* Modal: xác nhận chi tiền (Accountant) */}
       <Modal isOpen={!!payTarget} onOpenChange={(open) => !open && setPayTarget(null)} size="sm">
         <ModalContent>
-          <ModalHeader>Xác nhận chi tiền</ModalHeader>
-          <ModalBody>
+          <ModalHeader>{isRefundVoucher ? "Hoàn tiền trả trước cho khách" : "Xác nhận chi tiền"}</ModalHeader>
+          <ModalBody className="gap-3">
             {payTarget && (
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Xác nhận đã chi <strong>{fmt(payTarget.amount)}</strong> ({payTarget.payment_method === "bank_transfer" ? "chuyển khoản" : "tiền mặt"}) cho <strong>{payTarget.payee}</strong>?
-                Khoản chi sẽ được ghi vào sổ tài chính và không sửa được (chỉ đảo bút toán).
+                {isRefundVoucher ? (
+                  <>Hoàn <strong>{fmt(payTarget.amount)}</strong> cho khách <strong>{payTarget.payee}</strong>
+                  {payTarget.order_id ? <> (đơn #{payTarget.order_id} đã hủy)</> : null}. Chọn hình thức và đính chứng từ đã hoàn tiền.</>
+                ) : (
+                  <>Xác nhận đã chi <strong>{fmt(payTarget.amount)}</strong> ({payTarget.payment_method === "bank_transfer" ? "chuyển khoản" : "tiền mặt"}) cho <strong>{payTarget.payee}</strong>?
+                  Khoản chi sẽ được ghi vào sổ tài chính và không sửa được (chỉ đảo bút toán).</>
+                )}
               </p>
+            )}
+            {isRefundVoucher && (
+              <>
+                <Select
+                  label="Hình thức hoàn" size="sm" variant="bordered"
+                  selectedKeys={new Set([payMethod])}
+                  onChange={(e) => setPayMethod(e.target.value)}
+                >
+                  <SelectItem key="bank_transfer" textValue="Chuyển khoản">Chuyển khoản</SelectItem>
+                  <SelectItem key="cash" textValue="Tiền mặt">Tiền mặt</SelectItem>
+                </Select>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">Ảnh chứng từ đã hoàn *</label>
+                  <input
+                    type="file" accept="image/*"
+                    onChange={(e) => setPayProofFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-xs text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 dark:file:bg-blue-500/15 file:px-3 file:py-1.5 file:text-blue-600 dark:file:text-blue-300"
+                  />
+                </div>
+              </>
             )}
           </ModalBody>
           <ModalFooter>
