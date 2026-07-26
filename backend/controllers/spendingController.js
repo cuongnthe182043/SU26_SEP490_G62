@@ -114,7 +114,13 @@ const cancelVoucher = async (req, res) => {
 const payVoucher = async (req, res) => {
     try {
         const id = parseId(req.params.id, 'Voucher ID');
-        const voucher = await spendingService.payVoucher(id, req.user.userId);
+        // Cho phép đính chứng từ + chọn lại hình thức chi khi chi tiền (đặc biệt cho phiếu hoàn tiền)
+        const paymentMethod = ['cash', 'bank_transfer'].includes(req.body?.payment_method)
+            ? req.body.payment_method : null;
+        const voucher = await spendingService.payVoucher(id, req.user.userId, {
+            proofUrl: req.file?.path ?? null,
+            paymentMethod,
+        });
         res.json({ message: 'Đã xác nhận chi tiền và ghi sổ tài chính', voucher });
     } catch (err) {
         sendError(res, err);
