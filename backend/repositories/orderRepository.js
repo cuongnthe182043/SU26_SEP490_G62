@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const { ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { insertAssignmentHistory } = require('./tripRepository');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const paymentVoucherRepository = require('./paymentVoucherRepository');
 const { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql } = require('../utils/phone');
 
 
@@ -1151,61 +1152,80 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
     }
 };
 
-//Phương thức hủy order 
-const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
+//Phương thức hủy order
+// Trả về { order, refund } — refund != null khi đơn có tiền ứng trước cần hoàn.
+const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', actorId = null) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        const shipmentResult = await client.query(
+        // Khoá TOÀN BỘ shipments của đơn (không chỉ shipment đầu như trước)
+        const { rows: shipments } = await client.query(
             `SELECT id, status
              FROM order_shipments
              WHERE order_id = $1
              ORDER BY shipment_index ASC
-             LIMIT 1
              FOR UPDATE`,
             [orderId],
         );
-        const shipment = shipmentResult.rows[0];
-        if (!shipment) {
+        if (shipments.length === 0) {
             await client.query('ROLLBACK');
             return null;
         }
 
-        if (['completed', 'cancelled'].includes(String(shipment.status).toLowerCase())) {
-            throw new Error('Không thể hủy đơn đã hoàn tất hoặc đã hủy');
+        const norm = (s) => String(s || '').toLowerCase();
+        if (shipments.every((s) => norm(s.status) === 'cancelled')) {
+            throw new Error('Đơn đã được hủy trước đó');
+        }
+        // Chặn hủy nếu có chuyến đã "chạm hàng": đã lấy hàng / đang vận chuyển / đã hoàn tất.
+        // Các trường hợp này phải xử lý qua luồng sự cố (có thể phát sinh chi phí, đền bù...).
+        const BLOCK = new Set(['transit', 'arrived', 'returning', 'completed']);
+        if (shipments.some((s) => BLOCK.has(norm(s.status)))) {
+            throw new Error('Không thể hủy đơn: có chuyến đã lấy hàng / đang vận chuyển / đã hoàn tất. Vui lòng xử lý qua luồng sự cố.');
         }
 
+        // Hủy tất cả chuyến chưa ở trạng thái kết thúc
         await client.query(
             `UPDATE order_shipments
              SET status = 'cancelled', cancel_reason = $2, cancelled_at = NOW(), updated_at = NOW()
-             WHERE id = $1`,
-            [shipment.id, reason],
+             WHERE order_id = $1 AND status NOT IN ('completed', 'cancelled')`,
+            [orderId, reason],
         );
-        const { rows: [cancelledOrder] } = await client.query(
+
+        const { rows: [ord] } = await client.query(
             `UPDATE orders
              SET derived_status = 'cancelled', updated_at = NOW()
              WHERE id = $1
-             RETURNING prepaid_amount`,
+             RETURNING prepaid_amount, customer_id`,
             [orderId],
         );
 
-        // Đơn đã nhận tiền ứng trước → ghi bút toán hoàn tiền (đảo prepaid_received)
-        // để tiền ứng không "mất tích" khỏi sổ khi đơn bị hủy.
-        const prepaid = Number(cancelledOrder?.prepaid_amount || 0);
+        // Có tiền ứng trước → KHÔNG tự ghi bút toán hoàn nữa. Thay vào đó tạo PHIẾU HOÀN TIỀN
+        // (duyệt sẵn, bỏ qua Manager) để Kế toán chi thật + đính chứng từ; ledger chỉ ghi khi
+        // kế toán bấm "Đã chi" (markPaid → event prepaid_refunded).
+        const prepaid = Number(ord?.prepaid_amount || 0);
+        let refund = null;
         if (prepaid > 0) {
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: 'prepaid_refunded',
-                debitAccount: '131', creditAccount: '1121',
+            const { rows: [cust] } = await client.query(
+                `SELECT full_name, company_name FROM customers WHERE id = $1`,
+                [ord.customer_id],
+            );
+            const payee = cust?.company_name?.trim() || cust?.full_name?.trim() || 'Khách hàng';
+            const voucher = await paymentVoucherRepository.create({
+                voucher_type: 'prepaid_refund',
                 amount: prepaid,
-                description: `Hoàn tiền khách ứng trước do hủy đơn #${orderId} — ${reason}`,
-                refType: 'order', refId: orderId, actorId: null,
-            });
+                payee,
+                reason: `Hoàn tiền khách ứng trước do hủy đơn #${orderId}${reason ? ` — ${reason}` : ''}`,
+                payment_method: 'bank_transfer',
+                order_id: orderId,
+                status: 'approved',
+            }, actorId, client);
+            refund = { voucherId: voucher.id, amount: prepaid, payee };
         }
 
         await client.query('COMMIT');
         const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);
-        return updated.rows[0] ?? null;
+        return { order: updated.rows[0] ?? null, refund };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

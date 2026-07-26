@@ -159,8 +159,8 @@ const cancelVoucher = async (id, cancelledBy, reason) => {
     return voucher;
 };
 
-const payVoucher = async (id, paidBy) => {
-    const voucher = await paymentVoucherRepository.markPaid(id, paidBy);
+const payVoucher = async (id, paidBy, { proofUrl = null, paymentMethod = null } = {}) => {
+    const voucher = await paymentVoucherRepository.markPaid(id, paidBy, { proofUrl, paymentMethod });
     const isCompensation = Boolean(voucher.incident_id);
     const payload = {
         title: isCompensation

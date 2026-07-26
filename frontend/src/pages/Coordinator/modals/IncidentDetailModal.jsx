@@ -3,13 +3,14 @@ import {
   Button, Select, SelectItem, Textarea, Input, Checkbox,
 } from "@heroui/react";
 import {
-  RiTruckLine, RiUserLine, RiScales3Line, RiFlag2Line, RiUserSharedLine,
+  RiTruckLine, RiUserLine, RiScales3Line, RiFlag2Line, RiExchangeLine,
   RiFileTextLine, RiMoneyDollarCircleLine, RiBankCardLine, RiUserReceivedLine,
+  RiAlertLine,
 } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
-export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation }) {
+export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation, readOnly = false }) {
   if (!incident) return null;
 
   const replacementOptions = drivers.filter((driver) => {
@@ -41,7 +42,12 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="2xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
-          <span className="text-base font-bold text-gray-900 dark:text-gray-100">Sự cố #{incident.id}</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300">
+              <RiAlertLine size={17} />
+            </span>
+            <span className="text-base font-bold text-gray-900 dark:text-gray-100">Sự cố #{incident.id}</span>
+          </div>
           <span className="text-xs font-normal text-gray-400 dark:text-gray-400">{incident.description || "Không có mô tả."}</span>
         </ModalHeader>
         <ModalBody className="gap-4">
@@ -62,7 +68,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               label="Trạng thái"
               selectedKeys={[statusLocked ? "investigating" : incidentForm.status]}
               onSelectionChange={(keys) => setIncidentForm((prev) => ({ ...prev, status: [...keys][0] }))}
-              isDisabled={statusLocked}
+              isDisabled={readOnly || statusLocked}
               description={statusLocked ? "Khóa tới khi Manager duyệt khoản đền bù" : undefined}
               variant="bordered"
               startContent={ic(RiFlag2Line)}
@@ -77,8 +83,9 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               placeholder="Không đổi tài xế"
               selectedKeys={incidentForm.replacement_driver_id ? [incidentForm.replacement_driver_id] : []}
               onSelectionChange={(keys) => setIncidentForm((prev) => ({ ...prev, replacement_driver_id: [...keys][0] ?? "" }))}
+              isDisabled={readOnly}
               variant="bordered"
-              startContent={ic(RiUserSharedLine)}
+              startContent={ic(RiExchangeLine)}
             >
               {replacementOptions.map((driver) => (
                 <SelectItem key={String(driver.id)}>{`${driver.full_name} - ${driver.plate_number || "Chưa có xe"}`}</SelectItem>
@@ -92,6 +99,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
             placeholder="Nhập cách xử lý hoặc lý do điều chuyển"
             value={incidentForm.resolution}
             onValueChange={(v) => setIncidentForm((prev) => ({ ...prev, resolution: v }))}
+            isReadOnly={readOnly}
             minRows={4}
             variant="bordered"
             startContent={ic(RiFileTextLine)}
@@ -115,7 +123,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
             </div>
           )}
 
-          {showCompensation && (
+          {showCompensation && !readOnly && (
             <div className="rounded-xl border border-gray-200 dark:border-white/10 p-4 flex flex-col gap-3">
               <Checkbox
                 isSelected={compensation.enabled}
@@ -199,7 +207,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
         </ModalBody>
         <ModalFooter>
           <Button variant="flat" onPress={onClose}>Đóng</Button>
-          <Button color="primary" isLoading={saving} onPress={onSubmit}>Lưu xử lý</Button>
+          {!readOnly && <Button color="primary" isLoading={saving} onPress={onSubmit}>Lưu xử lý</Button>}
         </ModalFooter>
       </ModalContent>
     </Modal>

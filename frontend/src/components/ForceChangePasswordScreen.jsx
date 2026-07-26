@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiRequest } from "../services/apiClient";
+import { confirmDialog } from "./shared-ui/confirm";
 import { notify } from "./shared-ui/Toast";
 
 export default function ForceChangePasswordScreen({ user, onChanged, onLogout }) {
@@ -35,6 +36,17 @@ export default function ForceChangePasswordScreen({ user, onChanged, onLogout })
       showError(err.message || "Không thể đổi mật khẩu.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (await confirmDialog({
+      title: "Đăng xuất",
+      description: "Bạn có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?",
+      confirmLabel: "Đăng xuất",
+      danger: true,
+    })) {
+      onLogout?.();
     }
   };
 
@@ -90,7 +102,7 @@ export default function ForceChangePasswordScreen({ user, onChanged, onLogout })
 
           <button
             type="button"
-            onClick={onLogout}
+            onClick={handleLogout}
             className="text-xs text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
             Đăng xuất

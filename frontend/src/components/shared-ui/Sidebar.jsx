@@ -57,6 +57,42 @@ function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onVie
  * Sidebar dùng chung cho Accountant/Coordinator/Manager.
  * navGroups: [{ label, items: [{ key, label, icon, disabled }] }]
  */
+function getDisplayName(user, fallback) {
+  return user?.full_name || user?.email || fallback;
+}
+
+function getInitials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function UserAvatar({ user, collapsed, fallbackName }) {
+  const displayName = getDisplayName(user, fallbackName);
+  const avatarUrl = user?.avatar_url || user?.avatarUrl || "";
+  const sizeClass = collapsed ? "w-8 h-8" : "w-7 h-7";
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={displayName}
+        className={`${sizeClass} rounded-full object-cover object-center shrink-0 border border-gray-100 dark:border-white/10 bg-gray-100 dark:bg-white/10`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClass} rounded-full bg-blue-600 flex items-center justify-center text-white font-bold ${collapsed ? "text-[11px]" : "text-[10px]"} shrink-0`}
+      title={displayName}
+    >
+      {getInitials(displayName)}
+    </div>
+  );
+}
+
 export function Sidebar({
   navGroups,
   brandLabel = "LogisCount",
@@ -69,11 +105,11 @@ export function Sidebar({
   collapsed,
   onToggle,
 }) {
-  const avatar = user?.full_name?.[0]?.toUpperCase() ?? "A";
+  const displayName = getDisplayName(user, brandLabel);
   const handleLogout = async () => {
     if (await confirmDialog({
       title: "Đăng xuất",
-      description: "Anh có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?",
+      description: "Bạn có chắc muốn đăng xuất khỏi phiên làm việc hiện tại?",
       confirmLabel: "Đăng xuất",
       danger: true,
     })) {
@@ -141,20 +177,21 @@ export function Sidebar({
                        ${collapsed ? "px-1 items-center" : "px-3"}`}>
         {collapsed ? (
           <>
-            <Tooltip content={user?.full_name ?? "Hồ sơ"} placement="right" color="foreground">
+            <Tooltip content={displayName || "Hồ sơ"} placement="right" color="foreground">
               <button
                 onClick={onProfile}
-                className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center
-                           text-white font-bold text-xs hover:ring-2 hover:ring-blue-300 transition-all"
+                className="w-8 h-8 rounded-full flex items-center justify-center
+                           hover:ring-2 hover:ring-blue-300 transition-all overflow-hidden"
               >
-                {avatar}
+                <UserAvatar user={user} collapsed fallbackName={brandLabel} />
               </button>
             </Tooltip>
             <Tooltip content="Đăng xuất" placement="right" color="foreground">
               <button
                 onClick={handleLogout}
                 className="flex items-center justify-center w-8 h-8 rounded-lg
-                           bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white transition-colors"
+                           bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300
+                           hover:bg-red-700 hover:text-white dark:hover:bg-red-600 dark:hover:text-white transition-colors"
               >
                 <RiLogoutBoxLine size={16} />
               </button>
@@ -168,13 +205,10 @@ export function Sidebar({
                          text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-gray-100
                          transition-colors duration-150"
             >
-              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center
-                              text-white font-bold text-xs shrink-0">
-                {avatar}
-              </div>
+              <UserAvatar user={user} fallbackName={brandLabel} />
               <div className="flex flex-col min-w-0">
                 <span className="font-medium text-gray-700 dark:text-gray-200 truncate text-xs leading-tight">
-                  {user?.full_name ?? brandLabel}
+                  {displayName}
                 </span>
                 <span className="text-gray-400 dark:text-gray-500 truncate text-[11px] mt-0.5">
                   {user?.email ?? ""}
@@ -185,7 +219,8 @@ export function Sidebar({
             <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-2 rounded-xl w-full text-left
-                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 hover:bg-red-700 hover:text-white
+                         text-sm bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300
+                         hover:bg-red-700 hover:text-white dark:hover:bg-red-600 dark:hover:text-white
                          transition-colors duration-150"
             >
               <RiLogoutBoxLine size={16} />
