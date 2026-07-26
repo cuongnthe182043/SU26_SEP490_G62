@@ -47,7 +47,10 @@ const cancelOrder = async (req, res) => {
         const cancelledOrder = await orderService.cancelOrder(orderId, req.body?.reason, req.user?.userId ?? null);
         if (!cancelledOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
 
-        res.json({ message: 'Hủy đơn hàng thành công', order: cancelledOrder });
+        const message = cancelledOrder.refund
+            ? `Đã hủy đơn. Tạo phiếu hoàn ${Number(cancelledOrder.refund.amount).toLocaleString('vi-VN')}đ cho khách, chờ Kế toán chi.`
+            : 'Hủy đơn hàng thành công';
+        res.json({ message, order: cancelledOrder });
     } catch (err) {
         res.status(422).json({ error: err.message });
     }

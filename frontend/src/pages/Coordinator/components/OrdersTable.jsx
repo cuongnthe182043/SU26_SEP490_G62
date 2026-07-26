@@ -1,13 +1,13 @@
 import { useState, useCallback } from "react";
 import { Button, Spinner } from "@heroui/react";
-import { RiArrowDownSLine, RiArrowRightSLine, RiInboxLine, RiPencilLine, RiCloseCircleLine } from "react-icons/ri";
+import { RiArrowDownSLine, RiArrowRightSLine, RiInboxLine, RiPencilLine, RiCloseCircleLine, RiEyeLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { ShipmentSubRows } from "./ShipmentSubRows";
 import { canCancelTrip, canEditTrip, formatCurrency } from "../utils";
 
-function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassignShipment, onCancelShipment }) {
+function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment }) {
   return (
     <>
       <tr
@@ -50,11 +50,17 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
         </td>
         <td className="py-3.5 pr-5" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1.5 justify-end">
-            <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} className="h-7 px-3 text-[11px]" isDisabled={!canEditTrip(trip)} onPress={() => onEdit(trip)}>
-              Sửa
+            <Button size="sm" variant="flat" color="default" className="h-8 px-3 text-xs gap-1.5 overflow-visible" onPress={() => onDetail(trip)}>
+              <RiEyeLine size={16} className="shrink-0 overflow-visible" />
+              <span>Chi tiết</span>
             </Button>
-            <Button size="sm" variant="flat" color="danger" startContent={<RiCloseCircleLine size={13} />} className="h-7 px-3 text-[11px]" isDisabled={!canCancelTrip(trip)} onPress={() => onCancelOrder(trip)}>
-              Hủy
+            <Button size="sm" variant="flat" color="primary" className="h-8 px-3 text-xs gap-1.5 overflow-visible" isDisabled={!canEditTrip(trip)} onPress={() => onEdit(trip)}>
+              <RiPencilLine size={16} className="shrink-0 overflow-visible" />
+              <span>Sửa</span>
+            </Button>
+            <Button size="sm" variant="flat" color="danger" className="h-8 px-3 text-xs gap-1.5 overflow-visible" isDisabled={!canCancelTrip(trip)} onPress={() => onCancelOrder(trip)}>
+              <RiCloseCircleLine size={16} className="shrink-0 overflow-visible" />
+              <span>Hủy</span>
             </Button>
           </div>
         </td>
@@ -69,7 +75,7 @@ function OrderRow({ trip, isExpanded, onToggle, onEdit, onCancelOrder, onReassig
 
 export function OrdersTable({
   trips, loading, pagination, onPageChange,
-  onEdit, onCancelOrder, onReassignShipment, onCancelShipment,
+  onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment,
 }) {
   const [expandedIds, setExpandedIds] = useState(new Set());
 
@@ -105,7 +111,7 @@ export function OrdersTable({
     <div className="flex flex-col gap-4 p-5">
       <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922]">
         <div className="overflow-x-auto">
-        <table className="w-full table-fixed min-w-[1000px]">
+        <table className="w-full table-fixed min-w-[1120px]">
           <colgroup>
             <col className="w-10" />
             <col />
@@ -115,7 +121,7 @@ export function OrdersTable({
             <col className="w-44" />
             <col className="w-32" />
             <col className="w-28" />
-            <col className="w-40" />
+            <col className="w-56" />
           </colgroup>
           <thead>
             <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
@@ -133,6 +139,7 @@ export function OrdersTable({
                 trip={trip}
                 isExpanded={expandedIds.has(trip.orderId)}
                 onToggle={() => toggleExpand(trip.orderId)}
+                onDetail={onDetail}
                 onEdit={onEdit}
                 onCancelOrder={onCancelOrder}
                 onReassignShipment={onReassignShipment}

@@ -18,12 +18,12 @@
 -- ─── 1. TÀI KHOẢN & HỒ SƠ ────────────────────────────────────────────────────
 
 INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES
-    (100000, 'admin@gmail.com',   crypt('admin123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
-    (100001, 'coord@gmail.com',   crypt('coord123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
-    (100002, 'acct@gmail.com',    crypt('acct123',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
-    (100003, 'driver1@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
-    (100004, 'driver2@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
-    (100005, 'driver3@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE);
+    (100000, 'admin@gmail.com',   crypt('Admin@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
+    (100001, 'coord@gmail.com',   crypt('Coord@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+    (100002, 'acct@gmail.com',    crypt('Acct@1234',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
+    (100003, 'driver1@gmail.com', crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100004, 'driver2@gmail.com', crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100005, 'driver3@gmail.com', crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE);
 
 INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, address, city, country, emergency_contact_name, emergency_contact_phone, notes) VALUES
     (100000, 'Nguyễn Quang Minh', '0901000001', (SELECT id FROM roles WHERE name = 'manager'),     '1985-04-12', 'male',   '079185000111', '12 Nguyễn Huệ, Quận 1',        'Hồ Chí Minh', 'VN', 'Nguyễn Thị Hoa',  '0908000001', 'Giám đốc điều hành'),

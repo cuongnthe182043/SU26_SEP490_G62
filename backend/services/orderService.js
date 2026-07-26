@@ -563,10 +563,24 @@ const updateOrder = async (orderId, payload) => {
 };
 
 const cancelOrder = async (orderId, reason, actorId = null) => {
-    const cancelledOrder = await orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+    const result = await orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order', actorId);
+    if (!result) return null;
+    const { order: cancelledOrder, refund } = result;
+
     broadcastCoordinatorOrderChange('cancelled', cancelledOrder);
     notifyOrderChange('cancelled', cancelledOrder, actorId, { reason: safeTrim(reason) });
-    return cancelledOrder;
+
+    // Có tiền ứng trước cần hoàn → báo Kế toán vào chi phiếu hoàn tiền.
+    if (refund) {
+        notifyRolesSafe(['accountant'], {
+            title: `Cần hoàn tiền ứng trước — đơn #${orderId} đã hủy`,
+            message: `Hoàn ${Number(refund.amount).toLocaleString('vi-VN')}đ cho "${refund.payee}". Phiếu hoàn tiền #${refund.voucherId} đã tạo, chờ Kế toán chi.`,
+            type: 'PREPAID_REFUND_REQUESTED',
+            entityType: 'payment_vouchers',
+            entityId: refund.voucherId,
+        });
+    }
+    return { ...cancelledOrder, refund };
 };
 
 const searchCustomersByPhone = async (phonePrefix) => orderRepository.searchCustomersByPhone(phonePrefix);

@@ -176,7 +176,7 @@ export default function BusinessReportView() {
         onClose={async () => {
           if (await confirmDialog({
             title: "Chốt kỳ báo cáo",
-            description: "Chốt kỳ sẽ ghi nhận snapshot số liệu hiện tại. Anh có chắc muốn chốt kỳ này?",
+            description: "Chốt kỳ sẽ ghi nhận snapshot số liệu hiện tại. Bạn có chắc muốn chốt kỳ này?",
             confirmLabel: "Chốt kỳ",
           }))
             runAction(managerService.closeReportPeriod, "Đã chốt kỳ báo cáo.");

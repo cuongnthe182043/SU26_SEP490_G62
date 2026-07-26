@@ -10,7 +10,7 @@ const BASE = `
     SELECT
         pv.id, pv.voucher_type, pv.amount::text, pv.payee, pv.reason,
         pv.payment_method, pv.proof_url, pv.status, pv.rejection_reason,
-        pv.incident_id,
+        pv.incident_id, pv.order_id,
         pv.created_by, pv.approved_by, pv.paid_by, pv.cancelled_by,
         pv.approved_at, pv.paid_at, pv.cancelled_at, pv.cancellation_reason,
         pv.created_at, pv.updated_at,
@@ -75,14 +75,14 @@ const getById = async (id, client = null) => {
 
 // `client` tùy chọn: cho phép tạo phiếu chi trong cùng transaction với nghiệp vụ sinh ra nó
 // (VD: resolve sự cố kèm đền bù) để không có trường hợp sự cố đã commit mà phiếu chi thất bại.
-const create = async ({ voucher_type, amount, payee, reason, payment_method, proof_url, incident_id }, createdBy, client = null) => {
+const create = async ({ voucher_type, amount, payee, reason, payment_method, proof_url, incident_id, order_id, status }, createdBy, client = null) => {
     const executor = client ?? pool;
     const { rows: [row] } = await executor.query(
         `INSERT INTO payment_vouchers
-            (voucher_type, amount, payee, reason, payment_method, proof_url, incident_id, status, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+            (voucher_type, amount, payee, reason, payment_method, proof_url, incident_id, order_id, status, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
-        [voucher_type, Number(amount), payee, reason, payment_method ?? 'cash', proof_url ?? null, incident_id ?? null, createdBy],
+        [voucher_type, Number(amount), payee, reason, payment_method ?? 'cash', proof_url ?? null, incident_id ?? null, order_id ?? null, status ?? 'pending', createdBy],
     );
     return getById(row.id, client);
 };
@@ -156,27 +156,38 @@ const approve = (id, approvedBy) => decide(id, approvedBy, { status: 'approved' 
 const reject = (id, rejectedBy, reason) => decide(id, rejectedBy, { status: 'rejected', rejectionReason: reason });
 
 // Accountant xác nhận đã chi tiền — ghi sổ nhật ký tài chính trong cùng transaction.
-// Tiền mặt → có 1111; chuyển khoản → có 1121. Nợ 642 (chi phí QLDN).
-const markPaid = async (id, paidBy) => {
+// Tiền mặt → có 1111; chuyển khoản → có 1121.
+//  - Phiếu chi thường: Nợ 642 (chi phí QLDN), event 'expense_recorded'.
+//  - Phiếu hoàn tiền ứng trước (prepaid_refund): Nợ 131 (phải thu KH — đảo bút toán
+//    prepaid_received), event 'prepaid_refunded', gắn ref về đơn.
+// Cho phép đính chứng từ (proofUrl) + chọn lại hình thức chi (paymentMethod) khi chi.
+const markPaid = async (id, paidBy, { proofUrl = null, paymentMethod = null } = {}) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         const { rows: [row] } = await client.query(
             `UPDATE payment_vouchers
-             SET status = 'paid', paid_by = $2, paid_at = NOW(), updated_at = NOW()
+             SET status = 'paid', paid_by = $2, paid_at = NOW(), updated_at = NOW(),
+                 proof_url      = COALESCE($3, proof_url),
+                 payment_method = COALESCE($4, payment_method)
              WHERE id = $1 AND status = 'approved'
-             RETURNING id, voucher_type, amount, payee, payment_method, incident_id`,
-            [id, paidBy],
+             RETURNING id, voucher_type, amount, payee, payment_method, incident_id, order_id`,
+            [id, paidBy, proofUrl, paymentMethod],
         );
         if (!row) throw new Error('Không tìm thấy phiếu chi hoặc phiếu chưa được duyệt (cần approved)');
 
+        const isRefund = row.voucher_type === 'prepaid_refund';
         await financialLedgerRepository.insertTransaction(client, {
-            eventType: 'expense_recorded',
-            debitAccount: '642',
+            eventType: isRefund ? 'prepaid_refunded' : 'expense_recorded',
+            debitAccount: isRefund ? '131' : '642',
             creditAccount: row.payment_method === 'bank_transfer' ? '1121' : '1111',
             amount: Number(row.amount),
-            description: `Chi ${row.voucher_type} — phiếu chi #${row.id}, chi cho: ${row.payee}`,
-            refType: 'voucher', refId: row.id, actorId: paidBy,
+            description: isRefund
+                ? `Hoàn tiền khách ứng trước — đơn #${row.order_id}, phiếu #${row.id}, cho: ${row.payee}`
+                : `Chi ${row.voucher_type} — phiếu chi #${row.id}, chi cho: ${row.payee}`,
+            refType: isRefund ? 'order' : 'voucher',
+            refId: isRefund ? row.order_id : row.id,
+            actorId: paidBy,
         });
 
         if (row.incident_id) {

@@ -1,5 +1,5 @@
 import { Button } from "@heroui/react";
-import { RiTruckLine, RiUserSharedLine, RiCloseCircleLine } from "react-icons/ri";
+import { RiTruckLine, RiExchangeLine, RiCloseCircleLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { formatCurrency } from "../utils";
@@ -40,28 +40,32 @@ function ShipmentSubRow({ shipment, onReassign, onCancel }) {
         <StatusBadge status={shipment.status} />
       </td>
       <td className="py-3 pr-5">
-        <div className="flex gap-1 justify-end">
+        <div className="flex gap-2 justify-end">
           <Button
             size="sm"
             variant="flat"
             color="primary"
-            startContent={<RiUserSharedLine size={13} />}
-            className="h-7 px-2 text-[11px]"
+            className="h-8 min-w-[104px] px-3 text-xs gap-2 overflow-visible justify-center"
             isDisabled={!shipment.driverName || !SHIPMENT_CANCELLABLE.includes(shipment.status)}
             onPress={() => onReassign(shipment.shipment_id)}
           >
-            Điều chuyển
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              <RiExchangeLine size={16} className="overflow-visible" />
+            </span>
+            <span className="whitespace-nowrap">Điều chuyển</span>
           </Button>
           <Button
             size="sm"
             variant="flat"
             color="danger"
-            startContent={<RiCloseCircleLine size={13} />}
-            className="h-7 px-2 text-[11px]"
+            className="h-8 min-w-[64px] px-3 text-xs gap-2 overflow-visible justify-center"
             isDisabled={!SHIPMENT_CANCELLABLE.includes(shipment.status)}
             onPress={() => onCancel(shipment.shipment_id)}
           >
-            Hủy
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              <RiCloseCircleLine size={16} className="overflow-visible" />
+            </span>
+            <span className="whitespace-nowrap">Hủy</span>
           </Button>
         </div>
       </td>

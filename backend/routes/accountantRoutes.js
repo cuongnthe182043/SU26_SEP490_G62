@@ -52,7 +52,7 @@ const handleUpload = (middleware) => (req, res, next) => {
 router.get  ('/expenses',          spendingController.listExpenses);
 router.get  ('/vouchers',          spendingController.listVouchers);
 router.post ('/vouchers',          handleUpload(uploadPaymentVoucher.single('proof')), spendingController.createVoucher);
-router.patch('/vouchers/:id/pay',  spendingController.payVoucher);
+router.patch('/vouchers/:id/pay',  handleUpload(uploadPaymentVoucher.single('proof')), spendingController.payVoucher);
 router.patch('/vouchers/:id/cancel', spendingController.cancelVoucher);
 router.get  ('/spending-summary',  spendingController.getSpendingSummary);
 
