@@ -315,14 +315,23 @@ const createOrderWithShipments = async (orderData) => {
     const orderCargoName = buildOrderCargoName(orderData.shipments || []);
     const orderPaymentType = buildOrderPaymentType(orderData.shipments || []);
 
+    // Đơn ngoài do Kế toán tự nhập (đơn đã hoàn thành) → nếu có tiền ứng trước thì XÁC NHẬN
+    // NGAY (kế toán chính là người thu). Kênh suy ra từ payment_type: tiền mặt → 1111, còn lại → 1121.
+    const prepaidAmt = Number(orderData.prepaid_amount || 0);
+    const prepaidMethod = prepaidAmt > 0 ? (orderPaymentType === 'cash' ? 'cash' : 'bank_transfer') : null;
+    const prepaidStatus = prepaidAmt > 0 ? 'confirmed' : 'none';
+
     const orderResult = await client.query(
         `INSERT INTO orders (
             customer_id, created_by, updated_by,
             cargo_name, payment_type,
             total_estimated_price, prepaid_amount,
+            prepaid_status, prepaid_method, prepaid_confirmed_by, prepaid_confirmed_at,
             derived_status, notes, partner_id, partner_name, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, 'completed', $7, $8, $9, NOW(), NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $10, $11, CASE WHEN $6 > 0 THEN $2 ELSE NULL END,
+                 CASE WHEN $6 > 0 THEN NOW() ELSE NULL END,
+                 'completed', $7, $8, $9, NOW(), NOW())
          RETURNING *`,
         [
             customerId,
@@ -330,19 +339,22 @@ const createOrderWithShipments = async (orderData) => {
             orderCargoName,
             orderPaymentType,
             totalActualPrice,
-            Number(orderData.prepaid_amount || 0),
+            prepaidAmt,
             orderNotes,
             orderData.partner_id || null,
             orderData.partner_name || null,
+            prepaidStatus,
+            prepaidMethod,
         ]
     );
         const newOrder = orderResult.rows[0];
 
-        // Ghi sổ tiền khách ứng trước (nếu có) — occurred_at theo ngày chạy với đơn import quá khứ
+        // Ghi sổ tiền khách ứng trước (đã xác nhận ngay) — Nợ 1111/1121 theo kênh / Có 131.
+        // insertTransaction tự bỏ qua khi amount = 0.
         await financialLedgerRepository.insertTransaction(client, {
             eventType: 'prepaid_received',
-            debitAccount: '1121', creditAccount: '131',
-            amount: Number(orderData.prepaid_amount || 0),
+            debitAccount: prepaidMethod === 'cash' ? '1111' : '1121', creditAccount: '131',
+            amount: prepaidAmt,
             description: `Khách ứng trước — đơn ngoài #${newOrder.id}`,
             refType: 'order', refId: newOrder.id, actorId: orderData.created_by,
             occurredAt: orderData.completed_at || null,

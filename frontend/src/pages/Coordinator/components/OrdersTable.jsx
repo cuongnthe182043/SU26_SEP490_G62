@@ -1,13 +1,13 @@
 import { useState, useCallback } from "react";
 import { Button, Spinner } from "@heroui/react";
-import { RiArrowDownSLine, RiArrowRightSLine, RiInboxLine, RiPencilLine, RiCloseCircleLine, RiEyeLine } from "react-icons/ri";
+import { RiArrowDownSLine, RiArrowRightSLine, RiInboxLine, RiPencilLine, RiCloseCircleLine, RiEyeLine, RiTimeLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { ShipmentSubRows } from "./ShipmentSubRows";
 import { canCancelTrip, canEditTrip, formatCurrency } from "../utils";
 
-function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment }) {
+function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment, onConfirmPrepaid }) {
   return (
     <>
       <tr
@@ -29,6 +29,16 @@ function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder,
                 <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 rounded px-1.5 py-0.5">
                   {trip.shipmentCount} chuyến
                 </span>
+              )}
+              {trip.prepaidStatus === "pending" && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onConfirmPrepaid(trip); }}
+                  className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded px-1.5 py-0.5 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+                  title="Đã nhập trả trước, chờ xác nhận tiền thực về"
+                >
+                  <RiTimeLine size={11} />
+                  Chờ xác nhận ứng trước
+                </button>
               )}
             </div>
             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{trip.customerPhone || "—"}</span>
@@ -75,7 +85,7 @@ function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder,
 
 export function OrdersTable({
   trips, loading, pagination, onPageChange,
-  onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment,
+  onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment, onConfirmPrepaid,
 }) {
   const [expandedIds, setExpandedIds] = useState(new Set());
 
@@ -144,6 +154,7 @@ export function OrdersTable({
                 onCancelOrder={onCancelOrder}
                 onReassignShipment={onReassignShipment}
                 onCancelShipment={onCancelShipment}
+                onConfirmPrepaid={onConfirmPrepaid}
               />
             ))}
           </tbody>
