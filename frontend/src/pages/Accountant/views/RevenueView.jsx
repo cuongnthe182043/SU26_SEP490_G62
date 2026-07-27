@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { notify } from "../../../components/shared-ui/Toast";
+import { PendingPrepaidPanel } from "../../../components/shared-ui/PendingPrepaidPanel";
 import { StatsGrid } from "../components/revenue/StatsGrid";
 import { FilterBar } from "../components/revenue/FilterBar";
 import { OrdersTable } from "../components/revenue/OrdersTable";
@@ -87,6 +88,8 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <PendingPrepaidPanel api={accountantService} onChanged={() => { refetchOrders(); refetchStats(); }} />
+
       <StatsGrid stats={stats} loading={statsLoading} />
 
       <FilterBar

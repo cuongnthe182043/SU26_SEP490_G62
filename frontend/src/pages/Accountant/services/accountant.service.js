@@ -7,6 +7,14 @@ export const accountantService = {
   getFinanceStats: () =>
     apiRequest(`${BASE}/finance/stats`),
 
+  // ─── Tiền trả trước: xác nhận / từ chối (Kế toán + Điều phối đều được xác nhận) ──
+  listPendingPrepaid: () => apiRequest("/api/orders/prepaid/pending"),
+  // formData: { payment_method, proof (file) }
+  confirmPrepaid: (orderId, formData) =>
+    apiRequest(`/api/orders/${orderId}/prepaid/confirm`, { method: "PATCH", body: formData }),
+  rejectPrepaid: (orderId) =>
+    apiRequest(`/api/orders/${orderId}/prepaid/reject`, { method: "PATCH" }),
+
   getVehicleGroupsForKpi: () =>
     apiRequest(`${BASE}/vehicle-groups`),
 

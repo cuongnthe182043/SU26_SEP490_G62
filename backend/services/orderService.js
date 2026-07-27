@@ -585,4 +585,30 @@ const cancelOrder = async (orderId, reason, actorId = null) => {
 
 const searchCustomersByPhone = async (phonePrefix) => orderRepository.searchCustomersByPhone(phonePrefix);
 
-module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder, searchCustomersByPhone };
+// ── Tiền trả trước: xác nhận / từ chối / danh sách chờ ────────────────────────
+const listPendingPrepaid = () => orderRepository.listPendingPrepaid();
+
+const confirmPrepaid = async (orderId, actorId, { paymentMethod, proofUrl } = {}) => {
+    const order = await orderRepository.confirmPrepaid(orderId, actorId, { paymentMethod, proofUrl });
+    if (!order) return null;
+    broadcastCoordinatorOrderChange('updated', order);
+    notifyRolesSafe(['accountant', 'coordinator'], {
+        title: `Đã xác nhận tiền trả trước — đơn #${orderId}`,
+        message: `${Number(order.prepaid_amount || 0).toLocaleString('vi-VN')}đ (${paymentMethod === 'cash' ? 'tiền mặt' : 'chuyển khoản'}) đã ghi sổ.`,
+        type: 'PREPAID_CONFIRMED',
+        entityType: 'orders',
+        entityId: orderId,
+    }, { excludeUserId: actorId });
+    return order;
+};
+
+const rejectPrepaid = async (orderId, actorId = null) => {
+    const order = await orderRepository.rejectPrepaid(orderId);
+    if (order) broadcastCoordinatorOrderChange('updated', order);
+    return order;
+};
+
+module.exports = {
+    listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder, searchCustomersByPhone,
+    listPendingPrepaid, confirmPrepaid, rejectPrepaid,
+};
