@@ -23,9 +23,6 @@ CREATE TABLE accounts (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Refresh token cho phiên đăng nhập (JWT refresh flow) — bảng này cũng được app tự tạo
--- lazy qua "CREATE TABLE IF NOT EXISTS" (authRepository.ensureRefreshTokenTable), khai báo
--- tường minh ở đây để DB mới có đủ ngay từ đầu, không phụ thuộc lần chạy app đầu tiên.
 CREATE TABLE auth_refresh_tokens (
     token_id                TEXT PRIMARY KEY,
     user_id                 INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -87,9 +84,6 @@ CREATE TABLE vehicles (
 CREATE TABLE drivers (
     profile_id              INT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
     vehicle_id              INT UNIQUE REFERENCES vehicles(id),
-    -- Nhóm xe KPI cố định của tài xế — set 1 lần khi gán xe đầu tiên, KHÔNG tự đổi
-    -- theo vehicle_id hiện tại (VD tài bị điều chuyển tạm sang xe nhóm khác do sự cố).
-    -- KPI/doanh thu luôn tính về nhóm này trừ khi Manager/Coordinator/Accountant sửa tay.
     default_vehicle_group_id INT REFERENCES vehicle_groups(id),
     license_number          TEXT NOT NULL,
     license_expiry_date     DATE,
@@ -139,8 +133,6 @@ CREATE TABLE orders (
     created_by      INT NOT NULL REFERENCES profiles(id),
     updated_by      INT REFERENCES profiles(id),
     partner_name TEXT,
-    -- Đơn đối tác: khách A thuê Đối tác A, Đối tác A thuê công ty mình chở.
-    -- partner_id = bên THUÊ công ty (người trả cước / chịu công nợ). customer_id chỉ là chủ hàng/điểm giao.
     partner_id          INT REFERENCES partners(id),
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
@@ -148,8 +140,6 @@ CREATE TABLE orders (
 
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
     prepaid_amount         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
-    -- Tiền trả trước phải được Kế toán/Điều phối XÁC NHẬN (chọn kênh + chứng từ) mới ghi sổ.
-    -- none: không có / chưa nhập; pending: đã nhập, chờ xác nhận; confirmed: đã xác nhận + ghi sổ.
     prepaid_status         TEXT NOT NULL DEFAULT 'none' CHECK (prepaid_status IN ('none','pending','confirmed')),
     prepaid_method         TEXT CHECK (prepaid_method IN ('cash','bank_transfer')),
     prepaid_proof_url      TEXT,
@@ -170,8 +160,6 @@ CREATE TABLE order_shipments (
     shipment_index        SMALLINT NOT NULL,
     vehicle_group_id      INT REFERENCES vehicle_groups(id),
     estimated_price       NUMERIC(12,2),
-    -- TRUE = giá cố định do DN chốt tay (không tính lại theo km khi duyệt phiếu thu);
-    -- FALSE = giá tự tính theo actual_km × đơn giá nhóm xe.
     is_price_manual       BOOLEAN NOT NULL DEFAULT FALSE,
     estimated_distance_km NUMERIC(10,2),
     actual_distance_km    NUMERIC(10,2),
@@ -312,11 +300,6 @@ CREATE TABLE expenses (
     reviewed_by     INT REFERENCES profiles(id),
     reviewed_at     TIMESTAMPTZ,
     reject_reason   TEXT,
-    -- Hoàn ứng cho tài xế (tài ứng tiền túi khi chạy chuyến):
-    --   pending          = đã duyệt, công ty còn nợ tài — chờ hoàn
-    --   offset_debt      = đã cấn trừ vào nợ thu hộ (khách trả tiền mặt cho tài)
-    --   paid_via_payroll = đã hoàn qua kỳ lương
-    --   settled          = đã tất toán (dữ liệu trước khi có cơ chế hoàn ứng)
     reimbursement_status TEXT
                         CHECK (reimbursement_status IN ('pending','offset_debt','paid_via_payroll','settled')),
     reimbursed_at   TIMESTAMPTZ,
@@ -531,8 +514,6 @@ CREATE TABLE payrolls (
     holiday_bonus           NUMERIC(12,2) NOT NULL DEFAULT 0,
     other_bonus             NUMERIC(12,2) NOT NULL DEFAULT 0,
 
-    -- Điều chỉnh thủ công do Kế toán nhập tay khi cần tính lại — KHÔNG bị "Tính lương"
-    -- (generate) ghi đè, tách bạch với các số hệ thống tự tính.
     manual_bonus            NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (manual_bonus >= 0),
 
     insurance_employee      NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -543,8 +524,6 @@ CREATE TABLE payrolls (
     other_deduction         NUMERIC(12,2) NOT NULL DEFAULT 0,
     manual_deduction        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (manual_deduction >= 0),
 
-    -- Hoàn chi phí tài đã ứng (chi hộ khách + chi phí công ty tài trả trước) —
-    -- KHÔNG phải thu nhập: không vào gross, không BHXH, chỉ cộng vào tiền thực chi trả
     expense_reimbursement   NUMERIC(12,2) NOT NULL DEFAULT 0,
 
     gross_salary            NUMERIC(12,2) GENERATED ALWAYS AS (
@@ -577,7 +556,6 @@ CREATE TABLE payrolls (
     paid_by                 INT REFERENCES profiles(id),
     paid_at                 TIMESTAMPTZ,
 
-    -- Vết điều chỉnh/trả-về-tính-lại gần nhất (ai, khi nào, lý do) — phục vụ audit
     adjusted_by             INT REFERENCES profiles(id),
     adjusted_at             TIMESTAMPTZ,
     adjustment_note         TEXT,
@@ -621,9 +599,6 @@ CREATE TABLE leave_requests (
     UNIQUE (driver_id, leave_date)
 );
 
--- Chấm công (Manager/Coordinator) — lớp phủ trên leave_requests: mặc định mọi ngày
--- không có leave_requests đã duyệt là "Có mặt"; bảng này chỉ lưu NGOẠI LỆ do Manager/
--- Coordinator đánh dấu thủ công (vắng không phép, hoặc chỉnh lại thành có mặt).
 CREATE TABLE attendance_overrides (
     id          INT GENERATED BY DEFAULT AS IDENTITY (START WITH 100000 INCREMENT BY 1) PRIMARY KEY,
     driver_id   INT NOT NULL REFERENCES profiles(id),
@@ -663,8 +638,6 @@ CREATE TABLE incidents (
     replacement_vehicle_id  INT REFERENCES vehicles(id),
     replacement_driver_id   INT REFERENCES profiles(id),
 
-    -- Tách bạch "sự cố đã xử lý xong" khỏi "khoản đền bù đã được duyệt chưa":
-    -- sự cố có thể resolved trong khi phiếu chi đền bù vẫn đang chờ/bị từ chối.
     compensation_status     TEXT NOT NULL DEFAULT 'none'
                                 CHECK (compensation_status IN ('none','pending','approved','rejected','paid','cancelled')),
 
@@ -756,7 +729,6 @@ CREATE TABLE shipment_revenue_allocations (
     UNIQUE (shipment_id, driver_id)
 );
 
-
 CREATE INDEX idx_assign_hist_shipment   ON shipment_assignment_history(shipment_id);
 CREATE INDEX idx_assign_hist_from_drv   ON shipment_assignment_history(from_driver_id);
 CREATE INDEX idx_assign_hist_to_drv     ON shipment_assignment_history(to_driver_id);
@@ -786,7 +758,6 @@ CREATE INDEX idx_order_rr_order_id            ON order_receipt_requests(order_id
 CREATE INDEX idx_order_rr_driver_id           ON order_receipt_requests(driver_id);
 CREATE INDEX idx_order_rr_status              ON order_receipt_requests(status)
     WHERE status IN ('pending','processing');
-
 
 CREATE INDEX idx_sreceipts_shipment_id    ON shipment_receipts(shipment_id);
 CREATE INDEX idx_sreceipts_orr_id         ON shipment_receipts(order_receipt_request_id);
@@ -955,7 +926,6 @@ CREATE INDEX idx_ftx_occurred_at   ON financial_transactions(occurred_at DESC);
 CREATE INDEX idx_ftx_export        ON financial_transactions(exported_at) WHERE exported_at IS NULL;
 CREATE INDEX idx_ftx_reversal_of   ON financial_transactions(reversal_of_id) WHERE reversal_of_id IS NOT NULL;
 
-
 CREATE TABLE payment_vouchers (
     id               INT GENERATED BY DEFAULT AS IDENTITY (START WITH 100000 INCREMENT BY 1) PRIMARY KEY,
     voucher_type     TEXT NOT NULL CHECK (voucher_type IN ('office','rent','utilities','equipment','entertainment','compensation','prepaid_refund','other')),
@@ -970,7 +940,6 @@ CREATE TABLE payment_vouchers (
     cancelled_at        TIMESTAMPTZ,
     cancellation_reason TEXT,
     incident_id      INT REFERENCES incidents(id) ON DELETE SET NULL,
-    -- Phiếu hoàn tiền khách ứng trước (voucher_type='prepaid_refund') gắn với đơn bị hủy
     order_id         INT REFERENCES orders(id) ON DELETE SET NULL,
     created_by       INT NOT NULL REFERENCES profiles(id),
     approved_by      INT REFERENCES profiles(id),
@@ -1091,7 +1060,6 @@ SELECT p.id, p.full_name, p.phone, r.name AS role_name
 FROM profiles p
 JOIN roles r ON r.id = p.role_id;
 
--- ── Nhóm xe / xe ──────────────────────────────────────────────────────────────
 CREATE OR REPLACE VIEW v_chatbot_vehicle_groups AS
 SELECT id, name, description, max_load_weight_kg, price_per_km, status
 FROM vehicle_groups;
@@ -1104,7 +1072,6 @@ FROM vehicles v
 JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
 LEFT JOIN profiles dp ON dp.id = v.assigned_driver_id;
 
--- ── Khách hàng / đối tác (không tax_code/địa chỉ đầy đủ) ─────────────────────
 CREATE OR REPLACE VIEW v_chatbot_customers AS
 SELECT id, customer_type, full_name, company_name, contact_person, phone, address, created_at
 FROM customers;
@@ -1113,7 +1080,6 @@ CREATE OR REPLACE VIEW v_chatbot_partners AS
 SELECT id, company_name, short_name, contact_person, phone, payment_term_days, created_at
 FROM partners;
 
--- ── Đơn hàng (ẩn đơn is_confidential) ────────────────────────────────────────
 CREATE OR REPLACE VIEW v_chatbot_orders AS
 SELECT o.id, o.customer_id, c.full_name AS customer_name, c.company_name AS customer_company,
        o.partner_id, pn.company_name AS partner_name,
@@ -1124,7 +1090,6 @@ LEFT JOIN customers c ON c.id = o.customer_id
 LEFT JOIN partners  pn ON pn.id = o.partner_id
 WHERE o.is_confidential = FALSE;
 
--- ── Chuyến (shipment) + tài xế hiện tại ──────────────────────────────────────
 CREATE OR REPLACE VIEW v_chatbot_shipments AS
 SELECT s.id, s.order_id, s.shipment_index, vg.name AS vehicle_group,
        s.estimated_price, s.actual_price, s.estimated_distance_km, s.actual_distance_km,
@@ -1136,7 +1101,6 @@ LEFT JOIN vehicle_groups vg ON vg.id = s.vehicle_group_id
 LEFT JOIN v_shipment_current sc ON sc.shipment_id = s.id
 LEFT JOIN profiles dp ON dp.id = sc.owner_driver_id;
 
--- ── Sự cố ─────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE VIEW v_chatbot_incidents AS
 SELECT i.id, i.shipment_id, i.vehicle_id, i.reported_by, rp.full_name AS reported_by_name,
        i.incident_type, i.severity_level, i.description, i.location, i.estimated_loss,
@@ -1144,7 +1108,6 @@ SELECT i.id, i.shipment_id, i.vehicle_id, i.reported_by, rp.full_name AS reporte
 FROM incidents i
 LEFT JOIN profiles rp ON rp.id = i.reported_by;
 
--- ── Tài chính (chỉ role privileged được allowlist) ───────────────────────────
 CREATE OR REPLACE VIEW v_chatbot_debts AS
 SELECT d.id, d.debt_type, d.customer_id, d.partner_id, d.driver_id,
        d.order_id, d.shipment_id, d.total_amount, d.due_date, d.created_at,
@@ -1186,7 +1149,6 @@ SELECT i.id, i.invoice_number, i.customer_id, c.full_name AS customer_name,
 FROM invoices i
 LEFT JOIN customers c ON c.id = i.customer_id;
 
--- ── Driver-scoped (tự lọc theo GUC app.actor_id — fail-closed nếu chưa set) ───
 CREATE OR REPLACE VIEW v_chatbot_my_kpi AS
 SELECT * FROM v_chatbot_kpi
 WHERE driver_id = current_setting('app.actor_id', true)::int;

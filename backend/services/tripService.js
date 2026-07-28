@@ -508,7 +508,9 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 title: 'Khách chuyển khoản về công ty — cần xác nhận',
                 message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${receiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
                 type: 'BANK_TRANSFER_PENDING',
-                entityType: 'receipt',
+                // entityType riêng để bấm thông báo mở đúng màn "Xác nhận chuyển khoản"
+                // (dùng 'receipt' sẽ nhảy sang màn Doanh thu như mọi phiếu thu khác)
+                entityType: 'bank_transfer',
                 entityId: receiptId,
             }, { displayMode: 'alert' })
         ).catch(() => {});
