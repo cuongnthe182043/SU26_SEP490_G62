@@ -148,6 +148,13 @@ CREATE TABLE orders (
 
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
     prepaid_amount         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
+    -- Tiền trả trước phải được Kế toán/Điều phối XÁC NHẬN (chọn kênh + chứng từ) mới ghi sổ.
+    -- none: không có / chưa nhập; pending: đã nhập, chờ xác nhận; confirmed: đã xác nhận + ghi sổ.
+    prepaid_status         TEXT NOT NULL DEFAULT 'none' CHECK (prepaid_status IN ('none','pending','confirmed')),
+    prepaid_method         TEXT CHECK (prepaid_method IN ('cash','bank_transfer')),
+    prepaid_proof_url      TEXT,
+    prepaid_confirmed_by   INT REFERENCES profiles(id),
+    prepaid_confirmed_at   TIMESTAMPTZ,
     derived_status      TEXT NOT NULL DEFAULT 'open'
                             CHECK (derived_status IN ('open','completed','cancelled','partial')),
     is_confidential     BOOLEAN NOT NULL DEFAULT FALSE,

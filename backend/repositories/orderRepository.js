@@ -16,6 +16,10 @@ const selectOrderProjection = `
         o.cargo_weight_kg,
         o.payment_type,
         o.prepaid_amount,
+        o.prepaid_status,
+        o.prepaid_method,
+        o.prepaid_proof_url,
+        o.prepaid_confirmed_at,
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
@@ -711,11 +715,13 @@ const createOrderWithShipment = async ({
     shipmentData,
     assignmentData,
 }) => {
-    //Ghi vào order
+    //Ghi vào order. Có tiền ứng trước → prepaid_status='pending' (CHỜ Kế toán/Điều phối
+    // xác nhận tiền thực về + chọn kênh + chứng từ) — KHÔNG ghi sổ prepaid_received ở đây.
+    const prepaidPending = Number(orderData.prepaid_amount || 0) > 0 ? 'pending' : 'none';
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, prepaid_status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
@@ -726,19 +732,12 @@ const createOrderWithShipment = async ({
             orderData.estimated_price || 0,
             orderData.notes,
             orderData.prepaid_amount || 0,
+            prepaidPending,
             orderData.created_at || null,
         ],
     );
 
     const order = orderResult.rows[0];
-    // Ghi sổ tiền khách ứng trước (nếu có)
-    await financialLedgerRepository.insertTransaction(client, {
-        eventType: 'prepaid_received',
-        debitAccount: '1121', creditAccount: '131',
-        amount: Number(orderData.prepaid_amount || 0),
-        description: `Khách ứng trước — đơn #${order.id}`,
-        refType: 'order', refId: order.id, actorId: userId,
-    });
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
             (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, is_price_manual, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
@@ -803,11 +802,12 @@ const createOrderWithMultipleShipments = async ({
 }) => {
     const totalEstimatedPrice = shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0);
 
-    //Tạo và lấy dữ liệu hàng order vừa ghi
+    //Tạo và lấy dữ liệu hàng order vừa ghi. Prepaid → 'pending' (chờ xác nhận), không ghi sổ ở đây.
+    const prepaidPending = Number(orderData.prepaid_amount || 0) > 0 ? 'pending' : 'none';
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, created_at, partner_name, partner_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, notes, prepaid_amount, prepaid_status, created_at, partner_name, partner_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -818,6 +818,7 @@ const createOrderWithMultipleShipments = async ({
             totalEstimatedPrice,
             orderData.notes,
             orderData.prepaid_amount || 0,
+            prepaidPending,
             orderData.created_at || null,
             orderData.partner_name || null,
             orderData.partner_id || null,
@@ -826,15 +827,6 @@ const createOrderWithMultipleShipments = async ({
 
 
     const order = orderResult.rows[0]; //Lấy order
-
-    // Ghi sổ tiền khách ứng trước (nếu có)
-    await financialLedgerRepository.insertTransaction(client, {
-        eventType: 'prepaid_received',
-        debitAccount: '1121', creditAccount: '131',
-        amount: Number(orderData.prepaid_amount || 0),
-        description: `Khách ứng trước — đơn #${order.id}`,
-        refType: 'order', refId: order.id, actorId: userId,
-    });
 
     const createdShipments = [];
 
@@ -964,6 +956,19 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
             throw new Error('Không thể chỉnh sửa đơn đã hoàn tất hoặc đã hủy');
         }
 
+        // Khóa sửa tiền trả trước sau khi đã XÁC NHẬN (đã ghi sổ) — tránh lệch sổ.
+        const { rows: [curOrder] } = await client.query(
+            `SELECT prepaid_amount, prepaid_status FROM orders WHERE id = $1`,
+            [orderId],
+        );
+        if (
+            curOrder?.prepaid_status === 'confirmed'
+            && prepaid_amount != null
+            && Number(prepaid_amount) !== Number(curOrder.prepaid_amount)
+        ) {
+            throw new Error('Không thể sửa tiền trả trước sau khi đã xác nhận. Vui lòng liên hệ Kế toán.');
+        }
+
         const customer = (customer_name || customer_phone)
             ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
             : null;
@@ -981,6 +986,11 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  partner_name = COALESCE($7, partner_name),
                  partner_id = $9,
                  prepaid_amount = COALESCE($8, prepaid_amount),
+                 prepaid_status = CASE
+                     WHEN COALESCE($8, prepaid_amount) = 0 THEN 'none'
+                     WHEN prepaid_status = 'confirmed' THEN 'confirmed'
+                     ELSE 'pending'
+                 END,
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -1196,16 +1206,17 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', acto
             `UPDATE orders
              SET derived_status = 'cancelled', updated_at = NOW()
              WHERE id = $1
-             RETURNING prepaid_amount, customer_id`,
+             RETURNING prepaid_amount, customer_id, prepaid_status`,
             [orderId],
         );
 
-        // Có tiền ứng trước → KHÔNG tự ghi bút toán hoàn nữa. Thay vào đó tạo PHIẾU HOÀN TIỀN
-        // (duyệt sẵn, bỏ qua Manager) để Kế toán chi thật + đính chứng từ; ledger chỉ ghi khi
-        // kế toán bấm "Đã chi" (markPaid → event prepaid_refunded).
+        // Xử lý tiền ứng trước theo TRẠNG THÁI XÁC NHẬN:
+        //  - confirmed (đã thu thật, đã ghi sổ) → tạo PHIẾU HOÀN TIỀN (duyệt sẵn) để Kế toán
+        //    chi thật + đính chứng từ; ledger prepaid_refunded ghi khi kế toán bấm "Đã chi".
+        //  - pending (mới nhập, CHƯA thu thật, CHƯA ghi sổ) → không hoàn gì, chỉ chuyển 'none'.
         const prepaid = Number(ord?.prepaid_amount || 0);
         let refund = null;
-        if (prepaid > 0) {
+        if (prepaid > 0 && ord?.prepaid_status === 'confirmed') {
             const { rows: [cust] } = await client.query(
                 `SELECT full_name, company_name FROM customers WHERE id = $1`,
                 [ord.customer_id],
@@ -1221,6 +1232,9 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', acto
                 status: 'approved',
             }, actorId, client);
             refund = { voucherId: voucher.id, amount: prepaid, payee };
+        } else if (ord?.prepaid_status === 'pending') {
+            // Chưa xác nhận → không có dòng tiền thật, không hoàn. Đánh dấu 'none'.
+            await client.query(`UPDATE orders SET prepaid_status = 'none' WHERE id = $1`, [orderId]);
         }
 
         await client.query('COMMIT');
@@ -1234,8 +1248,90 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', acto
     }
 };
 
-//Gửi phương thức ra ngoài 
+// Danh sách đơn có tiền trả trước ĐANG CHỜ xác nhận
+const listPendingPrepaid = async () => {
+    const { rows } = await pool.query(
+        `${selectOrderProjection} WHERE o.prepaid_status = 'pending' ORDER BY o.created_at DESC`,
+    );
+    return rows;
+};
+
+// Lấy trạng thái trả trước của 1 đơn (dùng để chặn chốt phiếu thu khi còn pending)
+const getOrderPrepaidState = async (orderId) => {
+    const { rows: [row] } = await pool.query(
+        `SELECT prepaid_amount, prepaid_status FROM orders WHERE id = $1`,
+        [orderId],
+    );
+    return row ?? null;
+};
+
+// Xác nhận tiền trả trước đã THỰC VỀ: chọn kênh (mặt/CK) + đính chứng từ → ghi sổ prepaid_received
+// vào đúng tài khoản (1111 tiền mặt / 1121 ngân hàng) / Có 131.
+const confirmPrepaid = async (orderId, actorId, { paymentMethod, proofUrl } = {}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [ord] } = await client.query(
+            `SELECT prepaid_amount, prepaid_status FROM orders WHERE id = $1 FOR UPDATE`,
+            [orderId],
+        );
+        if (!ord) { await client.query('ROLLBACK'); return null; }
+        if (ord.prepaid_status !== 'pending') {
+            throw new Error('Đơn không có khoản trả trước đang chờ xác nhận');
+        }
+        const amount = Number(ord.prepaid_amount || 0);
+        if (!(amount > 0)) throw new Error('Số tiền trả trước không hợp lệ');
+        const method = paymentMethod === 'cash' ? 'cash' : 'bank_transfer';
+
+        await client.query(
+            `UPDATE orders
+             SET prepaid_status = 'confirmed', prepaid_method = $2, prepaid_proof_url = $3,
+                 prepaid_confirmed_by = $4, prepaid_confirmed_at = NOW(), updated_at = NOW()
+             WHERE id = $1`,
+            [orderId, method, proofUrl ?? null, actorId],
+        );
+
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'prepaid_received',
+            debitAccount: method === 'cash' ? '1111' : '1121',
+            creditAccount: '131',
+            amount,
+            description: `Khách ứng trước — đơn #${orderId} (đã xác nhận)`,
+            refType: 'order', refId: orderId, actorId,
+        });
+
+        await client.query('COMMIT');
+        const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);
+        return updated.rows[0] ?? null;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+// Từ chối/hủy khoản trả trước (tiền KHÔNG về): đưa prepaid về 0 + 'none', không ghi sổ.
+const rejectPrepaid = async (orderId) => {
+    const { rows: [ord] } = await pool.query(
+        `UPDATE orders
+         SET prepaid_status = 'none', prepaid_amount = 0, prepaid_method = NULL,
+             prepaid_proof_url = NULL, updated_at = NOW()
+         WHERE id = $1 AND prepaid_status = 'pending'
+         RETURNING id`,
+        [orderId],
+    );
+    if (!ord) throw new Error('Đơn không có khoản trả trước đang chờ xác nhận');
+    const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);
+    return updated.rows[0] ?? null;
+};
+
+//Gửi phương thức ra ngoài
 module.exports = {
+    listPendingPrepaid,
+    getOrderPrepaidState,
+    confirmPrepaid,
+    rejectPrepaid,
     listOrders,
     getDriverById,
     getDriverByPlate,

@@ -668,6 +668,13 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     if (req.status === 'approved') throw new Error('Yêu cầu này đã được duyệt rồi');
     if (req.status === 'rejected') throw new Error('Yêu cầu này đã bị từ chối');
 
+    // Chặn chốt phiếu thu khi tiền trả trước chưa được xác nhận — vì phiếu thu trừ prepaid vào
+    // số phải thu; nếu prepaid chưa chắc đã về thì dễ thu thiếu (hoặc thu dư nếu bỏ trừ).
+    const prepaidState = await orderRepository.getOrderPrepaidState(req.order_id);
+    if (prepaidState?.prepaid_status === 'pending' && Number(prepaidState.prepaid_amount || 0) > 0) {
+        throw new Error('Đơn có tiền trả trước chưa được xác nhận. Vui lòng xác nhận tiền trả trước trước khi chốt phiếu thu.');
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
