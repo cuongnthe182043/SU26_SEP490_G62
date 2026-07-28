@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 const AUTH_TOKEN_KEY    = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
+const CSRF_TOKEN_KEY    = 'csrf_token';
 
 export const tokenStorage = {
   getToken:         () => SecureStore.getItemAsync(AUTH_TOKEN_KEY),
@@ -12,8 +13,13 @@ export const tokenStorage = {
   setRefreshToken:  (token: string) => SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token),
   removeRefreshToken: () => SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
 
+  getCsrfToken:     () => SecureStore.getItemAsync(CSRF_TOKEN_KEY),
+  setCsrfToken:     (token: string) => SecureStore.setItemAsync(CSRF_TOKEN_KEY, token),
+  removeCsrfToken:  () => SecureStore.deleteItemAsync(CSRF_TOKEN_KEY),
+
   clearAll: async () => {
     await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    await SecureStore.deleteItemAsync(CSRF_TOKEN_KEY);
   },
 };
