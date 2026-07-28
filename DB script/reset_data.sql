@@ -1,34 +1,44 @@
 TRUNCATE TABLE
     financial_transactions,
-    driver_bonuses,
-    activity_logs,
-    notifications,
-    incident_evidences,
-    incidents,
-    leave_requests,
-    salary_advances,
-    payrolls,
-    bonus_records,
-    kpi_records,
-    invoice_shipments,
-    invoices,
-    debt_payments,
-    debts,
-    maintenance_records,
-    vehicle_status_history,
-    expense_attachments,
-    expenses,
-    shipment_vehicle_upgrades,
-    shipment_revenue_allocations,
-    shipment_assignment_history,
-    delivery_proofs,
+    payment_vouchers,
     payment_receipts,
     shipment_receipts,
     order_receipt_requests,
-    pass_through_costs,
+    debt_payments,
+    debts,
+    invoice_shipments,
+    invoices,
+
+    payrolls,
+    salary_advances,
+    driver_bonuses,
+    bonus_records,
+    kpi_records,
+    attendance_overrides,
+    leave_requests,
+
+    business_report_periods,
+
+    expense_attachments,
+    expenses,
+
+    shipment_revenue_allocations,
+    shipment_assignment_history,
+    delivery_proofs,
     trip_stops,
     order_shipments,
     orders,
+
+    incident_evidences,
+    incidents,
+    maintenance_records,
+    vehicle_status_history,
+
     partners,
-    customers
+    customers,
+
+    notifications,
+    activity_logs
 RESTART IDENTITY CASCADE;
+
+UPDATE vehicles SET status = 'active' WHERE status IN ('maintenance', 'broken');

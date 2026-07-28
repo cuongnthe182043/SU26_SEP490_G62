@@ -1,3 +1,9 @@
+/* Tailwind nạp 1 lần cho TOÀN APP (file này được App.jsx import).
+   Trước đây chỉ 3 trang vai trò nạp Tailwind nên trang login không có
+   class nào -> giao diện vỡ. @import phải nằm trên cùng file. */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+
 /* ──────────────────────────────────────────────────────────────
    Design tokens — biến CSS đổi theo theme.
    Dùng cho phần layout/scaffolding tự vẽ (không phải HeroUI/AntD).
@@ -88,35 +94,6 @@ html, body, #root {
 .g62-sidebar {
   background-color: var(--surface) !important;
   transition-property: width, min-width, border-color, color, box-shadow !important;
-}
-
-/* AntD Menu item smooth transition */
-.ant-menu-item {
-  transition: background 0.18s ease, color 0.18s ease !important;
-}
-.ant-menu-item .anticon {
-  transition: color 0.18s ease !important;
-}
-.ant-menu-inline .ant-menu-item {
-  width: 100% !important;
-  margin-inline: 0 !important;
-  border-radius: 8px !important;
-}
-
-/* Table striped feel */
-.ant-table-thead > tr > th {
-  font-size: 12px !important;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600 !important;
-}
-
-/* Pill badge style for Tags */
-.ant-tag {
-  border-radius: 20px !important;
-  font-size: 12px !important;
-  font-weight: 600;
-  padding: 2px 10px !important;
 }
 
 /* Toast (thông báo hệ thống) — hiệu ứng trượt vào từ bên phải */

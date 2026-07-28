@@ -320,7 +320,14 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       </div>
 
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
-        <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary">
+        {/* Role không có quyền phiếu chi (VD Điều phối) chỉ còn 1 tab — ẩn thanh tab
+            cho đỡ thừa vì nhãn tab trùng luôn tiêu đề trang. */}
+        <Tabs
+          selectedKey={tab}
+          onSelectionChange={setTab}
+          color="primary"
+          classNames={{ tabList: api.listVouchers ? undefined : "hidden" }}
+        >
           {/* ─── Tab 1: Chi phí tài xế ─── */}
           <Tab key="expenses" title="Chi phí tài xế">
             <div className="grid grid-cols-4 gap-4 my-4">
