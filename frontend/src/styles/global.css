@@ -1,3 +1,9 @@
+/* Tailwind nạp 1 lần cho TOÀN APP (file này được App.jsx import).
+   Trước đây chỉ 3 trang vai trò nạp Tailwind nên trang login không có
+   class nào -> giao diện vỡ. @import phải nằm trên cùng file. */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+
 /* ──────────────────────────────────────────────────────────────
    Design tokens — biến CSS đổi theo theme.
    Dùng cho phần layout/scaffolding tự vẽ (không phải HeroUI/AntD).

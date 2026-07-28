@@ -454,7 +454,7 @@ export default function LoginPage({ onLoginSuccess }) {
                          lg:h-[clamp(150px,22vw,210px)] lg:w-[clamp(150px,22vw,210px)] lg:border-[10px]
                          dark:border-white/10 dark:bg-white/5"
             >
-              <Logo alt="" aria-hidden="true" className="block h-auto w-[78%]" />
+              <Logo alt="" aria-hidden="true" className="block h-[78%] w-[78%] rounded-full object-contain" />
             </div>
           </div>
         </aside>
