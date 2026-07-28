@@ -82,6 +82,16 @@ const getActiveTrip = async (driverId) => {
 };
 
 const claimTrip = async (shipmentId, driverId) => {
+    // Chặn nhận chuyến mới nếu còn chuyến cash đã COMPLETED mà chưa nhập km /
+    // chưa gửi yêu cầu tạo phiếu thu — bắt buộc tài xế xử lý xong nghĩa vụ tài
+    // chính của chuyến trước rồi mới được nhận chuyến tiếp theo.
+    const pendingReceipt = await tripRepository.getPendingReceiptOrder(driverId);
+    if (pendingReceipt) {
+        throw new Error(
+            `PENDING_RECEIPT:Bạn còn chuyến #${pendingReceipt.shipment_id} (đơn #${pendingReceipt.order_id}) chưa nhập km thực tế / chưa gửi yêu cầu tạo phiếu thu. Vui lòng hoàn tất trước khi nhận chuyến mới.`
+        );
+    }
+
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);
     if (!vehicleId) throw new Error('Tài xế chưa được gán xe');
 
@@ -396,10 +406,17 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
     // Lưu km vào order_shipments cho mọi driver
     await tripRepository.saveShipmentActualKm(shipmentId, km);
 
-    const isFinal = await tripRepository.isFinalShipment(shipmentId);
+    const { isMaxIndex, allOthersReady } = await tripRepository.getShipmentFinalStatus(shipmentId);
+    const isFinal = isMaxIndex && allOthersReady;
 
     // Kiểm tra payment_type của order
     const orderPaymentType = await tripRepository.getOrderPaymentType(orderId);
+
+    // Là chuyến cuối (theo thứ tự) nhưng có chuyến khác trong đơn chưa nhập km xong
+    // → chưa cho tạo yêu cầu, báo rõ lý do thay vì im lặng trả về như "không phải chuyến cuối".
+    if (isMaxIndex && !allOthersReady && orderPaymentType === 'cash') {
+        return { km_saved: true, receipt_request_created: false, waiting_for_other_shipments: true };
+    }
 
     // Chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
     if (!isFinal || orderPaymentType !== 'cash') {
