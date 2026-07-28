@@ -214,6 +214,7 @@ export function buildTripFromOrder(order) {
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
     prepaidAmount: order.prepaid_amount || "",
+    prepaidStatus: order.prepaid_status || "none",
     pickupAddress,
     deliveryAddress,
     pickupAddresses,

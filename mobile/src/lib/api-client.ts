@@ -13,6 +13,27 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function isUnsafeMethod(method?: string): boolean {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase());
+}
+
+function canBootstrapCsrf(path: string): boolean {
+  return ![
+    '/auth/login',
+    '/auth/google',
+    '/auth/refresh',
+    '/auth/forgot-password/request',
+    '/auth/forgot-password/verify',
+    '/auth/forgot-password/reset',
+  ].includes(path);
+}
+
+async function persistCsrfToken(payload: unknown): Promise<void> {
+  if (!payload || typeof payload !== 'object') return;
+  const csrfToken = (payload as { csrfToken?: unknown }).csrfToken;
+  if (csrfToken) await tokenStorage.setCsrfToken(String(csrfToken));
+}
+
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 // Decode base64 thuần JS — không phụ thuộc global atob()/Buffer (không đảm bảo có sẵn
@@ -78,9 +99,13 @@ async function attemptTokenRefresh(): Promise<string | null> {
 
     let response: Response;
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = await tokenStorage.getCsrfToken();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
       response = await fetch(`${apiBaseUrl}/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ refreshToken }),
       });
     } catch {
@@ -99,6 +124,7 @@ async function attemptTokenRefresh(): Promise<string | null> {
 
     await tokenStorage.setToken(data.token);
     if (data.refreshToken) await tokenStorage.setRefreshToken(data.refreshToken);
+    await persistCsrfToken(data);
 
     return data.token as string;
   })();
@@ -131,6 +157,19 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
     ...(options.headers as Record<string, string> | undefined),
   });
 
+  if (isUnsafeMethod(options.method) && !headers.has('X-CSRF-Token')) {
+    let csrfToken = await tokenStorage.getCsrfToken();
+    if (!csrfToken && canBootstrapCsrf(path)) {
+      try {
+        await attemptTokenRefresh();
+        csrfToken = await tokenStorage.getCsrfToken();
+      } catch {
+        // Let the original request surface the real auth/CSRF/network error.
+      }
+    }
+    if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+  }
+
   const rawBody = options.body;
   let body: BodyInit | null | undefined;
 
@@ -161,6 +200,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   const payload = await response.json().catch(() => null);
+  await persistCsrfToken(payload);
 
   if (response.status === 401) {
     // Endpoint auth/* = sai credentials, không phải token hết hạn
@@ -183,6 +223,12 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   if (!response.ok) {
+    if (response.status === 403 && payload?.code === 'CSRF_TOKEN_INVALID' && !isRetry && canBootstrapCsrf(path)) {
+      await tokenStorage.removeCsrfToken();
+      const newToken = await attemptTokenRefresh();
+      if (newToken) return request<T>(path, options, true);
+    }
+
     if (response.status === 429) {
       const retryAfter = Number(response.headers.get('retry-after') ?? payload?.retryAfter ?? payload?.retry_after);
       const waitText = Number.isFinite(retryAfter) && retryAfter > 0
@@ -200,6 +246,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
     throw new ApiError(payload?.error ?? payload?.message ?? ERROR_MESSAGES.network, response.status);
   }
 
+  if (path === '/auth/logout') await tokenStorage.removeCsrfToken();
   return payload as T;
 }
 

@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, useSegments } from 'expo-router';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
-import { getApiBaseUrl } from '@/constants/api';
 import { ApiError } from '@/lib/api-error';
+import { apiClient } from '@/lib/api-client';
 import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
 import { tokenStorage } from '@/services/token-storage';
@@ -33,12 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const refreshToken = await tokenStorage.getRefreshToken();
     if (refreshToken) {
       try {
-        const apiBaseUrl = getApiBaseUrl();
-        await fetch(`${apiBaseUrl}/auth/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
+        await apiClient.post('/auth/logout', { refreshToken });
       } catch {
         // Logout local vẫn phải hoàn tất dù server/config tạm lỗi.
       }
