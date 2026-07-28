@@ -436,8 +436,9 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
             )}
           </Tab>
 
-          {/* ─── Tab 2: Phiếu chi ─── */}
-          <Tab key="vouchers" title="Phiếu chi">
+          {/* ─── Tab 2: Phiếu chi — chỉ hiện khi role này có quyền (VD: Coordinator không có) ─── */}
+          {api.listVouchers && (
+            <Tab key="vouchers" title="Phiếu chi">
             <div className="grid grid-cols-4 gap-4 my-4">
               <StatCard label="Chờ duyệt" value={voucherStats?.pending_count || 0} icon={RiMoneyDollarCircleLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
               <StatCard label="Chờ chi" value={voucherStats?.approved_count || 0} icon={RiTimeLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
@@ -529,8 +530,10 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               </div>
             )}
           </Tab>
+          )}
 
-          {/* ─── Tab 3: Tổng hợp chi ─── */}
+          {/* ─── Tab 3: Tổng hợp chi — chỉ hiện khi role này có quyền phiếu chi ─── */}
+          {api.getSummary && (
           <Tab key="summary" title="Tổng hợp chi">
             {summaryLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
@@ -581,6 +584,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               </div>
             )}
           </Tab>
+          )}
         </Tabs>
       </div>
 
