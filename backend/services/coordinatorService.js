@@ -337,13 +337,22 @@ const importExcel = async (userId, fileBuffer) => {
 
 // toll, parking, etc: khách chịu (pass-through). fuel/repair: công ty chịu.
 
+// Chỉ dùng để HIỂN THỊ xem trước (chưa chốt) — phải khớp với logic tính tiền
+// thật trong computeReceiptAmount, nếu không coordinator sẽ thấy số "gợi ý" sai
+// (VD: giá công ty đã sửa tay nhưng preview lại hiện theo km × đơn giá).
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);
     if (Number.isFinite(actualPrice) && actualPrice > 0) {
         return actualPrice;
     }
 
-    const actualKm = Number(shipment.actual_distance_km ?? shipment.estimated_distance_km ?? shipment.actual_km ?? 0);
+    // Giá cố định do DN chốt tay → luôn hiện đúng giá đó, bất kể km.
+    if (shipment.is_price_manual === true) {
+        const manualPrice = Number(shipment.estimated_price);
+        return Number.isFinite(manualPrice) && manualPrice > 0 ? manualPrice : 0;
+    }
+
+    const actualKm = Number(shipment.actual_distance_km ?? shipment.actual_km ?? 0);
     const pricePerKm = Number(shipment.price_per_km || 0);
     return actualKm > 0 && pricePerKm > 0 ? actualKm * pricePerKm : 0;
 };
@@ -388,8 +397,12 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
     const shipments = [];
     for (const shipment of rawShipments) {
         const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
-        // Chi phí bị từ chối không được tính vào bất kỳ tổng tiền nào
-        const countableExpenses = expenses.filter((expense) => expense.status !== 'rejected');
+        // Chỉ chi phí ĐÃ DUYỆT mới được tính vào tổng tiền — 'pending' KHÔNG được coi
+        // như đã duyệt (trước đây tính cả pending, khiến số hiện ra ở màn xem trước
+        // không khớp với số thật sự chốt nếu sau đó bị từ chối). approveReceiptRequest
+        // đã chặn chốt phiếu thu khi còn pass-through pending, nên tới đây chỉ còn
+        // approved/rejected — nhưng vẫn lọc chặt ở đây để phòng hờ chỗ gọi khác.
+        const countableExpenses = expenses.filter((expense) => expense.status === 'approved');
         const totalExpenses = countableExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
         const passThroughExpenses = countableExpenses.reduce((sum, expense) => (
             PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
@@ -455,29 +468,45 @@ const computeReceiptAmount = (pricingSnapshot) => {
     if (shipments.length === 0) throw new Error('Không thể lấy cấu hình giá cho đơn hàng');
 
     const shipmentBreakdown = shipments.map((shipment) => {
-        const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
+        const status = String(shipment.status || '').toLowerCase();
         const pricePerKm = Number(shipment.price_per_km || 0);
         const isPriceManual = shipment.is_price_manual === true;
         const estimatedPrice = Number(shipment.estimated_price);
 
         // Đơn giá CỐ ĐỊNH do DN chốt tay → giữ nguyên estimated_price, KHÔNG tính lại
-        // theo km (tránh phá giá đã chốt khi driver nhập actual_km).
+        // theo km — bất kể tài xế nhập bao nhiêu km, giá công ty sửa luôn thắng tuyệt đối.
         if (isPriceManual) {
             if (!Number.isFinite(estimatedPrice) || estimatedPrice <= 0) {
                 throw new Error(`Chuyến #${shipment.id} là giá cố định nhưng chưa có giá cước hợp lệ`);
             }
+            const manualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
             return {
                 shipment_id: shipment.id,
-                actual_km: Number.isFinite(Number(actualKm)) ? Number(actualKm) : 0,
+                actual_km: Number.isFinite(Number(manualKm)) ? Number(manualKm) : 0,
                 price_per_km: pricePerKm,
                 actual_income: estimatedPrice,
                 is_price_manual: true,
             };
         }
 
-        // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe.
+        // Chuyến đã hủy/thất bại → không phát sinh doanh thu, không đòi hỏi km.
+        if (status === 'cancelled' || status === 'failed') {
+            return {
+                shipment_id: shipment.id,
+                actual_km: 0,
+                price_per_km: pricePerKm,
+                actual_income: 0,
+                is_price_manual: false,
+            };
+        }
+
+        // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe — BẮT BUỘC phải là km THẬT của
+        // chính chuyến đó (actual_distance_km), KHÔNG được lặng lẽ dùng km ước tính
+        // lúc tạo đơn thay thế. Nếu chuyến này chưa có km thật (tài xế của chuyến đó
+        // chưa khai báo), chặn hẳn việc chốt phiếu thu thay vì tính sai.
+        const actualKm = shipment.actual_distance_km;
         if (actualKm === null || actualKm === undefined || Number.isNaN(Number(actualKm)) || Number(actualKm) <= 0) {
-            throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế hợp lệ để tính thu nhập`);
+            throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế (tài xế chuyến đó chưa khai báo) — không thể chốt phiếu thu`);
         }
         if (!pricePerKm || Number.isNaN(pricePerKm) || pricePerKm <= 0) {
             throw new Error(`Chuyến #${shipment.id} chưa có đơn giá xe hợp lệ để tính thu nhập thực tế`);
@@ -681,6 +710,21 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
+
+        // Chặn chốt phiếu thu nếu còn chi phí CHI HỘ KHÁCH (toll/parking/etc) đang
+        // 'pending' chưa được coordinator duyệt/từ chối. Lý do: số tiền phiếu thu
+        // được TÍNH VÀ KHOÁ CỨNG ngay lúc chốt — nếu 1 khoản pending bị tính vào rồi
+        // sau đó mới bị từ chối, khách đã bị thu tiền đó nhưng tài xế (người đã ứng
+        // tiền thật ở trạm) lại không được hoàn (chỉ hoàn khi expense 'approved') →
+        // công ty giữ luôn khoản chênh lệch, tài xế chịu thiệt. Bắt xử lý dứt điểm
+        // (duyệt hoặc từ chối) TRƯỚC khi số tiền được khoá, để không còn tình huống
+        // "tính như đã duyệt nhưng sau lại từ chối".
+        const pendingPassThrough = (pricingSnapshot.shipments || [])
+            .flatMap((shipment) => shipment.expenses || [])
+            .filter((expense) => expense.status === 'pending' && PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim()));
+        if (pendingPassThrough.length > 0) {
+            throw new Error('Đơn còn chi phí chi hộ khách (BOT/vé/ETC...) chưa được duyệt hoặc từ chối. Vui lòng xử lý các chi phí này ở màn "Chi phí tài xế" trước khi chốt phiếu thu.');
+        }
         const requestActualKm = Number(req.actual_km);
         if (Number.isFinite(requestActualKm) && requestActualKm > 0) {
             await coordinatorRepository.updateShipmentActualDistance(client, targetShipment.id, requestActualKm);

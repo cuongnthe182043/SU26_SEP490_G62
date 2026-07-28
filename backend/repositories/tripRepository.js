@@ -574,7 +574,10 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
     }
 };
 
-const isFinalShipment = async (tripId) => {
+// Trả chi tiết (không chỉ true/false) để service phân biệt "không phải chuyến
+// cuối" với "là chuyến cuối nhưng đang chờ chuyến khác nhập km" — cho phép báo
+// đúng lý do thay vì im lặng.
+const getShipmentFinalStatus = async (tripId) => {
     const result = await pool.query(
         `SELECT
             (os.shipment_index = (
@@ -585,14 +588,27 @@ const isFinalShipment = async (tripId) => {
                 SELECT 1 FROM order_shipments s3
                 WHERE s3.order_id = os.order_id
                   AND s3.id != os.id
-                  AND s3.status NOT IN ('completed', 'cancelled', 'failed')
+                  AND (
+                      s3.status NOT IN ('completed', 'cancelled', 'failed')
+                      OR (s3.status = 'completed' AND s3.is_price_manual != TRUE AND s3.actual_distance_km IS NULL)
+                  )
             ) AS all_others_terminal
          FROM order_shipments os
          WHERE os.id = $1`,
         [tripId],
     );
-    if (!result.rows[0]) return false;
-    return result.rows[0].is_max_index && result.rows[0].all_others_terminal;
+    if (!result.rows[0]) return { isMaxIndex: false, allOthersReady: false };
+    return { isMaxIndex: result.rows[0].is_max_index, allOthersReady: result.rows[0].all_others_terminal };
+};
+
+// Chuyến được coi là "final" khi: (1) shipment_index cao nhất, VÀ (2) mọi chuyến
+// khác trong đơn đã ở trạng thái kết thúc, VÀ (3) nếu chuyến khác đó đã completed
+// (và không phải giá cố định) thì PHẢI đã có actual_distance_km — tránh việc tài
+// xế cuối gửi yêu cầu (và coordinator duyệt) trước khi tài xế chuyến khác kịp
+// khai báo km thật, khiến hệ thống lặng lẽ dùng km ước tính lúc tạo đơn.
+const isFinalShipment = async (tripId) => {
+    const { isMaxIndex, allOthersReady } = await getShipmentFinalStatus(tripId);
+    return isMaxIndex && allOthersReady;
 };
 
 const saveDeliveryProof = async (shipmentId, driverId, fileUrl) => {
@@ -1153,26 +1169,31 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
          LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
          LEFT JOIN vehicles v            ON v.id    = sc.vehicle_id`;
 
-    // Thử tìm qua shipment_receipts.id trước
+    // Ưu tiên tra theo order_receipt_requests.id (orr.id) TRƯỚC — đây là ID mobile
+    // luôn gửi (kể cả khi phiếu thu thật đã tồn tại), và LÀ ID DUY NHẤT, không thể
+    // trùng với bất kỳ bản ghi nào khác. Trước đây tra theo shipment_receipts.id
+    // trước có thể trùng số ngẫu nhiên với 1 order_receipt_requests.id (2 sequence
+    // độc lập) và trả nhầm về phiếu thu của yêu cầu KHÁC — đây chính là bug tài xế
+    // ấn vào phiếu đang chờ duyệt lại nhảy sang phiếu không liên quan.
     let result = await pool.query(
+        `SELECT ${COLS}
+         FROM order_receipt_requests orr
+         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
+         ${JOINS}
+         LEFT JOIN profiles p_coord      ON p_coord.id  = COALESCE(sr.created_by, orr.processed_by)
+         WHERE orr.id = $1 AND orr.driver_id = $2`,
+        [receiptId, driverId],
+    );
+    if (result.rows[0]) return result.rows[0];
+
+    // Fallback: dữ liệu cũ / deep-link cũ vẫn còn giữ shipment_receipts.id trực tiếp.
+    result = await pool.query(
         `SELECT ${COLS}
          FROM shipment_receipts sr
          JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
          ${JOINS}
          LEFT JOIN profiles p_coord      ON p_coord.id  = sr.created_by
          WHERE sr.id = $1 AND orr.driver_id = $2`,
-        [receiptId, driverId],
-    );
-    if (result.rows[0]) return result.rows[0];
-
-    // Fallback: dữ liệu cũ — receiptId là order_receipt_requests.id
-    result = await pool.query(
-        `SELECT ${COLS}
-         FROM order_receipt_requests orr
-         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
-         ${JOINS}
-         LEFT JOIN profiles p_coord      ON p_coord.id  = orr.processed_by
-         WHERE orr.id = $1 AND orr.driver_id = $2`,
         [receiptId, driverId],
     );
     return result.rows[0] ?? null;
@@ -1563,6 +1584,7 @@ module.exports = {
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,
+    getShipmentFinalStatus,
     saveDeliveryProof,
     saveLoadingProof,
     reassignShipmentAfterIncident,

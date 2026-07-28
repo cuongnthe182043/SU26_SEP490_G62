@@ -144,8 +144,6 @@ export const managerService = {
 
   // ─── Trips / expenses (shared with Coordinator) ──────────────────────────
   getTripPool: (params = {}) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
-  approveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/approve`, { method: "PATCH" }),
-  rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
   cancelShipment: (shipmentId, reason) => apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
 
