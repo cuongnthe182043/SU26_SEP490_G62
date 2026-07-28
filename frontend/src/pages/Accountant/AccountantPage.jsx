@@ -39,7 +39,7 @@ const NAV_GROUPS = [
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
-      { key: "bank-transfer", label: "Xác nhận chuyển khoản", icon: RiBankCardLine },
+      { key: "bank-transfer", label: "Chuyển khoản", icon: RiBankCardLine },
       { key: "spending", label: "Quản lý chi", icon: RiWalletLine },
       { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
     ],
