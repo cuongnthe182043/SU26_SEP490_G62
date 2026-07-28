@@ -42,25 +42,25 @@ function getRateLimitMessage(error) {
 
   const retryAfterSeconds = Number(error.retryAfterSeconds || error.retry_after_seconds || 0);
   if (retryAfterSeconds > 0) {
-    return `Too many login attempts. Please try again after ${formatCooldown(retryAfterSeconds)}.`;
+    return `Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau ${formatCooldown(retryAfterSeconds)}.`;
   }
 
-  return error.message || "Too many login attempts. Please try again later.";
+  return error.message || "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.";
 }
 
 function validateCredentials(email, password) {
   const errors = { email: "", password: "" };
 
   if (!email) {
-    errors.email = "Email is required.";
+    errors.email = "Vui lòng nhập email.";
   } else if (!emailRegex.test(email)) {
-    errors.email = "Please enter a valid email address.";
+    errors.email = "Email không hợp lệ.";
   }
 
   if (!password) {
-    errors.password = "Password is required.";
+    errors.password = "Vui lòng nhập mật khẩu.";
   } else if (password.length < 6) {
-    errors.password = "Password must be at least 6 characters.";
+    errors.password = "Mật khẩu phải có ít nhất 6 ký tự.";
   }
 
   return errors;
@@ -71,31 +71,31 @@ function validateForgotPasswordStep(step, forgotState) {
 
   if (step === 1) {
     if (!forgotState.email) {
-      errors.email = "Email is required.";
+      errors.email = "Vui lòng nhập email.";
     } else if (!emailRegex.test(forgotState.email)) {
-      errors.email = "Please enter a valid email address.";
+      errors.email = "Email không hợp lệ.";
     }
   }
 
   if (step === 2) {
     if (!forgotState.code) {
-      errors.code = "Verification code is required.";
+      errors.code = "Vui lòng nhập mã xác thực.";
     } else if (forgotState.code.trim().length !== 6) {
-      errors.code = "Verification code must be 6 characters.";
+      errors.code = "Mã xác thực phải gồm 6 ký tự.";
     }
   }
 
   if (step === 3) {
     if (!forgotState.newPassword) {
-      errors.newPassword = "New password is required.";
+      errors.newPassword = "Vui lòng nhập mật khẩu mới.";
     } else if (forgotState.newPassword.length < 6) {
-      errors.newPassword = "Password must be at least 6 characters.";
+      errors.newPassword = "Mật khẩu phải có ít nhất 6 ký tự.";
     }
 
     if (!forgotState.confirmPassword) {
-      errors.confirmPassword = "Please confirm your password.";
+      errors.confirmPassword = "Vui lòng xác nhận lại mật khẩu.";
     } else if (forgotState.confirmPassword !== forgotState.newPassword) {
-      errors.confirmPassword = "Passwords do not match.";
+      errors.confirmPassword = "Mật khẩu xác nhận không khớp.";
     }
   }
 
@@ -187,7 +187,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
   googleCredentialHandlerRef.current = async (credential) => {
     if (!credential) {
-      throw new Error("No Google credential returned.");
+      throw new Error("Google không trả về thông tin xác thực.");
     }
 
     setGoogleLoading(true);
@@ -201,7 +201,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
       const { user } = data;
       if (!user) {
-        throw new Error("Unexpected login response from server.");
+        throw new Error("Phản hồi đăng nhập từ máy chủ không hợp lệ.");
       }
 
       onLoginSuccess?.({
@@ -218,7 +218,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
     const bootstrapGoogleButton = async () => {
       if (!googleClientId) {
-        setGoogleError("Missing Google client ID in frontend environment.");
+        setGoogleError("Thiếu Google Client ID trong cấu hình frontend.");
         return;
       }
 
@@ -236,7 +236,7 @@ export default function LoginPage({ onLoginSuccess }) {
               await googleCredentialHandlerRef.current(response.credential);
             } catch (err) {
               const rateLimitMessage = getRateLimitMessage(err);
-              setError(rateLimitMessage || err.message || "Google sign-in failed.");
+              setError(rateLimitMessage || err.message || "Đăng nhập Google thất bại.");
             }
           },
         });
@@ -260,7 +260,7 @@ export default function LoginPage({ onLoginSuccess }) {
         setGoogleError("");
       } catch (err) {
         if (!cancelled) {
-          setGoogleError(err.message || "Unable to load Google sign-in.");
+          setGoogleError(err.message || "Không tải được đăng nhập Google.");
         }
       }
     };
@@ -299,7 +299,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
       const { user } = data;
       if (!user) {
-        throw new Error("Unexpected login response from server.");
+        throw new Error("Phản hồi đăng nhập từ máy chủ không hợp lệ.");
       }
 
       onLoginSuccess?.({
@@ -313,7 +313,7 @@ export default function LoginPage({ onLoginSuccess }) {
         setLoginCooldown(retryAfterSeconds);
         setError(rateLimitMessage);
       } else {
-        setError(err.message || "Login failed. Please try again.");
+        setError(err.message || "Đăng nhập thất bại. Vui lòng thử lại.");
       }
     } finally {
       setSubmitting(false);
@@ -333,12 +333,12 @@ export default function LoginPage({ onLoginSuccess }) {
       });
       setForgotCooldown(Number(data.retry_after_seconds || 60));
       setForgotStep(2);
-      notify.success(data.message || "Verification code sent.");
+      notify.success(data.message || "Đã gửi mã xác thực.");
     } catch (err) {
       if (Number.isFinite(Number(err?.retry_after_seconds)) && Number(err.retry_after_seconds) > 0) {
         setForgotCooldown(Number(err.retry_after_seconds));
       }
-      notify.error(err.message || "Unable to send verification code.");
+      notify.error(err.message || "Không gửi được mã xác thực.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -359,9 +359,9 @@ export default function LoginPage({ onLoginSuccess }) {
         },
       });
       setForgotStep(3);
-      notify.success(data.message || "Verification code confirmed.");
+      notify.success(data.message || "Xác thực mã thành công.");
     } catch (err) {
-      notify.error(err.message || "Verification failed.");
+      notify.error(err.message || "Xác thực thất bại.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -383,12 +383,12 @@ export default function LoginPage({ onLoginSuccess }) {
           confirmPassword: forgotState.confirmPassword,
         },
       });
-      notify.success(data.message || "Password reset successful.");
+      notify.success(data.message || "Đặt lại mật khẩu thành công.");
       setEmail(forgotState.email);
       setPassword("");
       resetForgotFlow();
     } catch (err) {
-      notify.error(err.message || "Unable to reset password.");
+      notify.error(err.message || "Không đặt lại được mật khẩu.");
     } finally {
       setForgotSubmitting(false);
     }
@@ -396,7 +396,8 @@ export default function LoginPage({ onLoginSuccess }) {
 
   const emailError = touched.email ? fieldErrors.email : "";
   const passwordError = touched.password ? fieldErrors.password : "";
-  const formIsValid = !fieldErrors.email && !fieldErrors.password && email && password;
+  const liveErrors = validateCredentials(email, password);
+  const formIsValid = !liveErrors.email && !liveErrors.password;
   // delay âm để 4 ảnh trải đều trên quỹ đạo ngay từ khung hình đầu
   const heroImages = [
     { src: "/anh DN 1.png", delay: "0s" },
@@ -465,7 +466,7 @@ export default function LoginPage({ onLoginSuccess }) {
         >
           <div
             role="region"
-            aria-label="Sign in"
+            aria-label="Đăng nhập"
             className="flex min-h-[520px] w-full max-w-[420px] flex-col justify-start rounded-[18px] bg-white p-[34px] text-center
                        shadow-[0_20px_60px_rgba(15,23,42,0.12)]
                        dark:border dark:border-white/10 dark:bg-[#161922] dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)]
@@ -473,14 +474,14 @@ export default function LoginPage({ onLoginSuccess }) {
           >
             <Logo className="mx-auto mb-[18px] block h-20 w-20 rounded-full border border-gray-200 bg-white object-contain p-2 shadow-sm dark:border-white/10 dark:bg-white/5" />
             <h2 id="signin-heading" className="mb-4 text-[22px] font-bold text-[#16223b] dark:text-[#e6e8ef]">
-              Staff sign in
+              Đăng nhập nhân viên
             </h2>
             <p className="mt-3 text-[13px] leading-normal text-[#5c6b77] dark:text-[#a9afc0]">
-              Use a pre-provisioned account only. New users cannot register themselves.
+              Chỉ dùng tài khoản do công ty cấp. Người dùng không thể tự đăng ký.
             </p>
 
             <div className="mt-2 flex flex-col items-stretch gap-2.5">
-              <div className="text-left text-[13px] font-semibold text-[#2d3a4f] dark:text-[#c7ccd8]">Google Login</div>
+              <div className="text-left text-[13px] font-semibold text-[#2d3a4f] dark:text-[#c7ccd8]">Đăng nhập Google</div>
               <div ref={googleButtonRef} className="flex min-h-12 justify-center" aria-live="polite" />
               {!googleReady && !googleError && (
                 <LoadingState label="Đang tải đăng nhập Google..." size="sm" className="py-2 justify-start" />
@@ -494,7 +495,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
             <div className="my-[18px] mb-2 flex items-center gap-3 text-xs uppercase tracking-[0.12em] text-[#7d8794] dark:text-[#8b93a5]">
               <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
-              <span className="whitespace-nowrap">or sign in with email</span>
+              <span className="whitespace-nowrap">hoặc đăng nhập bằng email</span>
               <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
             </div>
 
@@ -510,7 +511,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 value={email}
                 onValueChange={(nextEmail) => {
                   setEmail(nextEmail);
-                  if (touched.email) syncFieldErrors(nextEmail, password);
+                  syncFieldErrors(nextEmail, password);
                 }}
                 onBlur={() => {
                   setTouched((current) => ({ ...current, email: true }));
@@ -522,15 +523,15 @@ export default function LoginPage({ onLoginSuccess }) {
 
               <Input
                 isRequired
-                label="Password"
+                label="Mật khẩu"
                 labelPlacement="outside"
                 variant="bordered"
                 type={showPassword ? "text" : "password"}
-                placeholder="At least 6 characters"
+                placeholder="Ít nhất 6 ký tự"
                 value={password}
                 onValueChange={(nextPassword) => {
                   setPassword(nextPassword);
-                  if (touched.password) syncFieldErrors(email, nextPassword);
+                  syncFieldErrors(email, nextPassword);
                 }}
                 onBlur={() => {
                   setTouched((current) => ({ ...current, password: true }));
@@ -554,7 +555,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
               <div className="mt-1 flex items-center justify-between">
                 <Checkbox size="sm" isSelected={remember} onValueChange={setRemember}>
-                  <span className="text-[13px] text-[#555] dark:text-[#a9afc0]">Remember me</span>
+                  <span className="text-[13px] text-[#555] dark:text-[#a9afc0]">Ghi nhớ đăng nhập</span>
                 </Checkbox>
                 <button
                   type="button"
@@ -566,7 +567,7 @@ export default function LoginPage({ onLoginSuccess }) {
                     setForgotOpen(true);
                   }}
                 >
-                  Forgot password?
+                  Quên mật khẩu?
                 </button>
               </div>
 
@@ -585,10 +586,10 @@ export default function LoginPage({ onLoginSuccess }) {
                 isDisabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
               >
                 {submitting
-                  ? "Signing in..."
+                  ? "Đang đăng nhập..."
                   : loginCooldown > 0
-                    ? `Try again in ${formatCooldown(loginCooldown)}`
-                    : "Sign in"}
+                    ? `Thử lại sau ${formatCooldown(loginCooldown)}`
+                    : "Đăng nhập"}
               </Button>
             </form>
           </div>
@@ -597,11 +598,11 @@ export default function LoginPage({ onLoginSuccess }) {
 
       <Modal isOpen={forgotOpen} onOpenChange={(open) => !open && resetForgotFlow()}>
         <ModalContent>
-          <ModalHeader>Forgot password</ModalHeader>
+          <ModalHeader>Quên mật khẩu</ModalHeader>
           <ModalBody className="pb-6">
         {forgotStep === 1 && (
           <FieldStack>
-            <p>Enter your email. If the account exists, we will send a 6-character verification code.</p>
+            <p>Nhập email của bạn. Nếu tài khoản tồn tại, hệ thống sẽ gửi mã xác thực gồm 6 ký tự.</p>
             <Input
               type="email"
               placeholder="you@example.com"
@@ -612,16 +613,16 @@ export default function LoginPage({ onLoginSuccess }) {
             />
             {forgotErrors.email && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.email}</div>}
             <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotRequest}>
-              Send verification code
+              Gửi mã xác thực
             </Button>
           </FieldStack>
         )}
 
         {forgotStep === 2 && (
           <FieldStack>
-            <p>We sent a 6-character code to <strong>{forgotState.email}</strong>.</p>
+            <p>Đã gửi mã xác thực 6 ký tự tới <strong>{forgotState.email}</strong>.</p>
             <Input
-              placeholder="Enter verification code"
+              placeholder="Nhập mã xác thực"
               value={forgotState.code}
               maxLength={6}
               onChange={(event) => updateForgotField("code", event.target.value.toUpperCase())}
@@ -634,10 +635,10 @@ export default function LoginPage({ onLoginSuccess }) {
                 isDisabled={forgotSubmitting || forgotCooldown > 0}
                 onPress={handleForgotRequest}
               >
-                {forgotCooldown > 0 ? `Resend after ${forgotCooldown}s` : "Resend code"}
+                {forgotCooldown > 0 ? `Gửi lại sau ${forgotCooldown}s` : "Gửi lại mã"}
               </Button>
               <Button color="primary" isLoading={forgotSubmitting} onPress={handleForgotVerify}>
-                Verify code
+                Xác thực mã
               </Button>
             </div>
           </FieldStack>
@@ -645,10 +646,10 @@ export default function LoginPage({ onLoginSuccess }) {
 
         {forgotStep === 3 && (
           <FieldStack>
-            <p>Enter your new password for <strong>{forgotState.email}</strong>.</p>
+            <p>Nhập mật khẩu mới cho <strong>{forgotState.email}</strong>.</p>
             <Input
               type="password"
-              placeholder="New password"
+              placeholder="Mật khẩu mới"
               value={forgotState.newPassword}
               onChange={(event) => updateForgotField("newPassword", event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
@@ -657,7 +658,7 @@ export default function LoginPage({ onLoginSuccess }) {
             {forgotErrors.newPassword && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.newPassword}</div>}
             <Input
               type="password"
-              placeholder="Confirm new password"
+              placeholder="Xác nhận mật khẩu mới"
               value={forgotState.confirmPassword}
               onChange={(event) => updateForgotField("confirmPassword", event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
@@ -665,7 +666,7 @@ export default function LoginPage({ onLoginSuccess }) {
             />
             {forgotErrors.confirmPassword && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.confirmPassword}</div>}
             <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotReset}>
-              Save new password
+              Lưu mật khẩu mới
             </Button>
           </FieldStack>
         )}
