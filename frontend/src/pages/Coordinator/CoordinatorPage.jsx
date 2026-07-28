@@ -10,7 +10,6 @@ import {
   RiCalendarCheckLine,
   RiWalletLine,
 } from "react-icons/ri";
-import "../../styles/shared-ui.css";
 
 import { Sidebar } from "../../components/shared-ui/Sidebar";
 import { TopBar } from "../../components/shared-ui/TopBar";

@@ -6,7 +6,6 @@ import {
   RiCalendarCheckLine, RiTruckLine, RiEqualizerLine, RiCalendarEventLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
-import "../../styles/accountant.css";
 
 import { Sidebar } from "../../components/shared-ui/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
