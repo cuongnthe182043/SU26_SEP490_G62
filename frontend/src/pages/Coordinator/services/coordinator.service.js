@@ -56,6 +56,11 @@ export const coordinatorService = {
   rejectReceiptRequest: (id, notes) => apiRequest(`${BASE}/receipt-requests/${id}/reject`, { method: "POST", body: { notes } }),
   scanReceiptExpenses: (id) => apiRequest(`${BASE}/receipt-requests/${id}/scan-expenses`),
 
+  // ─── Chi phí tài xế (coordinator là người duyệt/từ chối duy nhất) ────────
+  getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+  approveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/approve`, { method: "PATCH" }),
+  rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
+
   // ─── Customers (shared with Manager) ─────────────────────────────────────
   getCustomers: (params) => apiRequest(`/api/customers?${new URLSearchParams(params)}`),
   createCustomer: (data) => apiRequest("/api/customers", { method: "POST", body: data }),

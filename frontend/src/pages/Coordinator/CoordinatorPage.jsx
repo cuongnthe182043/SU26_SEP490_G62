@@ -8,6 +8,7 @@ import {
   RiTrophyLine,
   RiDashboardLine,
   RiCalendarCheckLine,
+  RiWalletLine,
 } from "react-icons/ri";
 import "../../styles/shared-ui.css";
 
@@ -24,6 +25,7 @@ import ReceiptsView from "./views/ReceiptsView";
 import CustomersView from "./views/CustomersView";
 import KpiView from "./views/KpiView";
 import AttendanceView from "./views/AttendanceView";
+import ExpensesView from "./views/ExpensesView";
 
 const NAV_GROUPS = [
   {
@@ -38,6 +40,7 @@ const NAV_GROUPS = [
       { key: "orders", label: "Đơn hàng", icon: RiTruckLine },
       { key: "incidents", label: "Sự cố", icon: RiAlertLine },
       { key: "receipts", label: "Phiếu thu", icon: RiFileList3Line },
+      { key: "expenses", label: "Chi phí tài xế", icon: RiWalletLine },
       { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
       { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
       { key: "attendance", label: "Chấm công", icon: RiCalendarCheckLine },
@@ -66,6 +69,11 @@ const VIEW_META = {
     subtitle: "Theo dõi yêu cầu, phiếu thu đã tạo và lọc nhanh theo trạng thái, ngày, khách hàng.",
     searchPlaceholder: "Tìm theo đơn, tài xế, khách hàng, trạng thái",
   },
+  expenses: {
+    title: "Chi phí tài xế",
+    subtitle: "Duyệt / từ chối chi phí tài xế khai (toll, đỗ xe, sửa xe...). Đơn không thu tiền mặt tự động duyệt.",
+    searchPlaceholder: "",
+  },
   customers: {
     title: "Quản lý khách hàng",
     subtitle: "Quản lý thông tin khách hàng thuê vận chuyển.",
@@ -93,8 +101,7 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   receipt_requests: "receipts",
   receipt: "receipts",
   vehicle_groups: "orders",
-  expenses: "incidents",
-  payment_vouchers: "incidents",
+  expenses: "expenses",
 };
 
 const VIEW_STORAGE_KEY = "coordinator_active_view";
@@ -218,6 +225,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 onReceiptPublished={() => setOrdersRefreshKey((k) => k + 1)}
               />
             )}
+            {activeView === "expenses" && <ExpensesView />}
             {activeView === "customers" && <CustomersView />}
             {activeView === "kpi" && <KpiView />}
             {activeView === "attendance" && <AttendanceView />}
