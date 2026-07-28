@@ -39,15 +39,21 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     await expenseRepository.addExpenseAttachment(expense.id, receiptUrl);
 
-    // Không ghi sổ FT ở đây — expense đang pending, FT được ghi khi coordinator duyệt
+    // Đơn không phải cash (chuyển khoản/công nợ) không bao giờ đi qua luồng chốt
+    // phiếu thu — không có điểm nào để coordinator duyệt thủ công, nên tự động
+    // duyệt ngay khi tạo để không kẹt "pending" vĩnh viễn. Đơn cash vẫn giữ pending,
+    // chờ coordinator duyệt/từ chối thủ công (không auto).
+    const orderPaymentType = await tripRepository.getOrderPaymentType(shipment.order_id);
+    if (orderPaymentType !== 'cash') {
+        await expenseRepository.approveExpense(expense.id, null);
+    }
 
     const driver = await profileRepository.getProfileById(driverId);
-    const [coordinatorIds, managerIds] = await Promise.all([
-        roleRepository.getUserIdsByRole('coordinator'),
-        roleRepository.getUserIdsByRole('manager'),
-    ]);
-    notificationService.createForUsers([...coordinatorIds, ...managerIds], {
-        title: 'Chi phí mới chờ duyệt',
+    // Chỉ coordinator duyệt chi phí tài xế — Manager không còn vai trò này,
+    // màn "Quản lý chi phí" bên Manager chỉ để xem lịch sử.
+    const coordinatorIds = await roleRepository.getUserIdsByRole('coordinator');
+    notificationService.createForUsers(coordinatorIds, {
+        title: orderPaymentType === 'cash' ? 'Chi phí mới chờ duyệt' : 'Chi phí mới (đơn không thu tiền mặt — đã tự duyệt)',
         message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${Number(amount).toLocaleString('vi-VN')}đ cho chuyến #${shipmentId}.`,
         type: 'EXPENSE_SUBMITTED',
         entityType: 'expenses',

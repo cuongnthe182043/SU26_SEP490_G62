@@ -318,28 +318,6 @@ const revertPayroll = async (req, res) => {
     }
 };
 
-const approveExpense = async (req, res) => {
-    try {
-        const expenseId = parseId(req.params.id, 'Expense ID');
-        const expenseService = require('../services/expenseService');
-        const expense = await expenseService.approveExpense(expenseId, req.user.userId);
-        res.json({ message: 'Đã duyệt chi phí', expense });
-    } catch (err) {
-        sendError(res, err);
-    }
-};
-
-const rejectExpense = async (req, res) => {
-    try {
-        const expenseId = parseId(req.params.id, 'Expense ID');
-        const expenseService = require('../services/expenseService');
-        const expense = await expenseService.rejectExpense(expenseId, req.user.userId, req.body?.reason);
-        res.json({ message: 'Đã từ chối chi phí', expense });
-    } catch (err) {
-        sendError(res, err);
-    }
-};
-
 const getIncidents = async (req, res) => {
     try {
         const { status, severity_level, search, sort, page, limit } = req.query;
@@ -403,8 +381,6 @@ module.exports = {
     getPayrolls,
     reviewPayroll,
     revertPayroll,
-    approveExpense,
-    rejectExpense,
     cancelShipment,
     reassignShipment,
     getIncidents,

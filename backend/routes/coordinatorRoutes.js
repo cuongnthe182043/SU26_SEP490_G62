@@ -26,7 +26,9 @@ router.post('/receipt-requests/:id/approve',        coordinatorController.approv
 router.post('/receipt-requests/:id/reject',         coordinatorController.rejectReceiptRequest);
 router.get('/receipt-requests/:id/scan-expenses',   coordinatorController.scanReceiptExpenses);
 
-// Duyệt / từ chối chi phí driver khai (luồng duyệt độc lập ngoài phiếu thu)
+// Chi phí driver khai — coordinator là người duyệt/từ chối duy nhất (thay Manager)
+const spendingController = require('../controllers/spendingController');
+router.get('/expenses',               spendingController.listExpenses);
 router.patch('/expenses/:id/approve', coordinatorController.approveExpense);
 router.patch('/expenses/:id/reject',  coordinatorController.rejectExpense);
 
