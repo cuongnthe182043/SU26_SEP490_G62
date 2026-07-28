@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
+  Checkbox,
+  HeroUIProvider,
   Input,
   Modal,
   ModalBody,
@@ -12,7 +14,6 @@ import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
 import LoadingState from "../../components/LoadingState";
 import { notify } from "../../components/shared-ui/Toast";
-import { HeroUIProvider } from "@heroui/react";
 import ThemeToggle from "../../theme/ThemeToggle";
 import Logo from "../../theme/Logo";
 import { RiEyeLine, RiEyeOffLine } from "react-icons/ri";
@@ -396,149 +397,169 @@ export default function LoginPage({ onLoginSuccess }) {
   const emailError = touched.email ? fieldErrors.email : "";
   const passwordError = touched.password ? fieldErrors.password : "";
   const formIsValid = !fieldErrors.email && !fieldErrors.password && email && password;
+  // delay âm để 4 ảnh trải đều trên quỹ đạo ngay từ khung hình đầu
   const heroImages = [
-    { src: "/anh DN 1.png", className: "hero-image hero-image-1" },
-    { src: "/anh DN 2.png", className: "hero-image hero-image-2" },
-    { src: "/anh DN 3.jpg", className: "hero-image hero-image-3" },
-    { src: "/anh DN 4.jpg", className: "hero-image hero-image-4" },
+    { src: "/anh DN 1.png", delay: "0s" },
+    { src: "/anh DN 2.png", delay: "-7s" },
+    { src: "/anh DN 3.jpg", delay: "-14s" },
+    { src: "/anh DN 4.jpg", delay: "-21s" },
   ];
 
   return (
     <HeroUIProvider>
-      <main className="login-root" role="main">
+      <main
+        role="main"
+        className="flex min-h-screen flex-col bg-[#f4f7ff] dark:bg-[#0e1016] lg:flex-row"
+      >
         <div className="fixed top-4 right-4 z-50">
           <ThemeToggle className="h-10 w-10 rounded-full border border-gray-200 dark:border-white/15 bg-white/80 dark:bg-white/10 shadow-lg backdrop-blur-md" />
         </div>
-        <aside className="login-left" aria-hidden="true">
-          <div className="login-hero">
-            <div className="login-hero-orbit">
-              {heroImages.map((image) => (
-                <div key={image.src} className={image.className}>
-                  <img src={encodeURI(image.src)} alt="" aria-hidden="true" />
-                </div>
-              ))}
-            </div>
-            <div className="login-hero-center">
-              <Logo alt="" aria-hidden="true" />
+
+        <aside
+          aria-hidden="true"
+          className="relative flex min-h-[34vh] shrink-0 items-center justify-center overflow-hidden
+                     bg-gradient-to-br from-[#f2f7ff] via-[#dbe7ff] to-[#bed2ff] p-[18px]
+                     dark:from-[#0e1016] dark:via-[#12141d] dark:to-[#171a26]
+                     sm:min-h-[42vh] sm:p-6 lg:min-h-screen lg:flex-[1.15] lg:p-8"
+        >
+          {/* 2 khối tròn mờ trang trí (trước là ::before/::after) */}
+          <span className="pointer-events-none absolute -bottom-[120px] -left-[110px] h-[420px] w-[420px] rounded-full bg-white/20 blur-[2px] dark:bg-white/5" />
+          <span className="pointer-events-none absolute -top-20 -right-[70px] h-[260px] w-[260px] rounded-full bg-white/[0.16] dark:bg-white/5" />
+
+          <div className="login-hero relative flex aspect-square w-[min(360px,100%)] items-center justify-center sm:w-[min(440px,100%)] lg:w-[min(560px,92%)]">
+            {/* 2 vòng tròn quỹ đạo */}
+            <span className="pointer-events-none absolute inset-[14%] rounded-full border border-[rgba(37,60,110,0.10)] shadow-[0_18px_50px_rgba(25,40,72,0.06)] dark:border-white/10 dark:shadow-none" />
+            <span className="pointer-events-none absolute inset-[28%] rounded-full border border-dashed border-[rgba(37,60,110,0.08)] dark:border-white/10" />
+
+            {heroImages.map((image) => (
+              <div
+                key={image.src}
+                style={{ animationDelay: image.delay }}
+                className="login-orbit-item absolute top-1/2 left-1/2 overflow-hidden rounded-full border-[5px] border-white/[0.78] bg-white
+                           shadow-[0_18px_40px_rgba(25,40,72,0.18)]
+                           h-[clamp(70px,20vw,96px)] w-[clamp(70px,20vw,96px)]
+                           sm:h-[clamp(88px,20vw,120px)] sm:w-[clamp(88px,20vw,120px)] sm:border-6
+                           lg:h-[clamp(110px,18vw,160px)] lg:w-[clamp(110px,18vw,160px)] lg:border-8
+                           dark:border-white/10 dark:bg-white/5"
+              >
+                <img src={encodeURI(image.src)} alt="" aria-hidden="true" className="block h-full w-full object-cover" />
+              </div>
+            ))}
+
+            <div
+              className="relative z-[3] flex shrink-0 items-center justify-center rounded-full border-[7px] border-white/[0.82] bg-white/90
+                         shadow-[0_28px_70px_rgba(25,40,72,0.22)]
+                         h-[clamp(112px,34vw,150px)] w-[clamp(112px,34vw,150px)]
+                         sm:h-[clamp(130px,30vw,180px)] sm:w-[clamp(130px,30vw,180px)] sm:border-8
+                         lg:h-[clamp(150px,22vw,210px)] lg:w-[clamp(150px,22vw,210px)] lg:border-[10px]
+                         dark:border-white/10 dark:bg-white/5"
+            >
+              <Logo alt="" aria-hidden="true" className="block h-auto w-[78%]" />
             </div>
           </div>
         </aside>
 
-        <section className="login-right" aria-labelledby="signin-heading">
-          <div className="login-card" role="region" aria-label="Sign in">
+        <section
+          aria-labelledby="signin-heading"
+          className="flex flex-1 items-center justify-center bg-[#eef2f7] p-6 dark:bg-[#0e1016] lg:flex-[0.9]"
+        >
+          <div
+            role="region"
+            aria-label="Sign in"
+            className="flex min-h-[520px] w-full max-w-[420px] flex-col justify-start rounded-[18px] bg-white p-[34px] text-center
+                       shadow-[0_20px_60px_rgba(15,23,42,0.12)]
+                       dark:border dark:border-white/10 dark:bg-[#161922] dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)]
+                       lg:max-w-[460px]"
+          >
             <Logo className="mx-auto mb-[18px] block h-20 w-20 rounded-full border border-gray-200 bg-white object-contain p-2 shadow-sm dark:border-white/10 dark:bg-white/5" />
-            <h2 id="signin-heading">Staff sign in</h2>
-            <p className="login-help">
+            <h2 id="signin-heading" className="mb-4 text-[22px] font-bold text-[#16223b] dark:text-[#e6e8ef]">
+              Staff sign in
+            </h2>
+            <p className="mt-3 text-[13px] leading-normal text-[#5c6b77] dark:text-[#a9afc0]">
               Use a pre-provisioned account only. New users cannot register themselves.
             </p>
 
-            <div className="google-login-block">
-              <div className="google-login-label">Google Login</div>
-              <div
-                ref={googleButtonRef}
-                className="google-button-container"
-                aria-live="polite"
-              />
+            <div className="mt-2 flex flex-col items-stretch gap-2.5">
+              <div className="text-left text-[13px] font-semibold text-[#2d3a4f] dark:text-[#c7ccd8]">Google Login</div>
+              <div ref={googleButtonRef} className="flex min-h-12 justify-center" aria-live="polite" />
               {!googleReady && !googleError && (
                 <LoadingState label="Đang tải đăng nhập Google..." size="sm" className="py-2 justify-start" />
               )}
               {googleError && (
-                <div className="login-error" role="alert">
+                <div className="px-0.5 text-left text-sm text-[#b00020] dark:text-[#ff6b6b]" role="alert">
                   {googleError}
                 </div>
               )}
             </div>
 
-            <div className="login-divider">
-              <span>or sign in with email</span>
+            <div className="my-[18px] mb-2 flex items-center gap-3 text-xs uppercase tracking-[0.12em] text-[#7d8794] dark:text-[#8b93a5]">
+              <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
+              <span className="whitespace-nowrap">or sign in with email</span>
+              <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
             </div>
 
-            <form onSubmit={handleSubmit} className="login-form" noValidate>
-              <label className="field">
-                <span className="label-text">Email</span>
-                <input
-                  autoFocus
-                  aria-label="Email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(event) => {
-                    const nextEmail = event.target.value;
-                    setEmail(nextEmail);
-                    if (touched.email) {
-                      syncFieldErrors(nextEmail, password);
-                    }
-                  }}
-                  onBlur={() => {
-                    setTouched((current) => ({ ...current, email: true }));
-                    syncFieldErrors(email, password);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  className={emailError ? "input-error" : ""}
-                  required
-                />
-                {emailError && <div className="field-error">{emailError}</div>}
-              </label>
+            <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-[18px] text-left" noValidate>
+              <Input
+                autoFocus
+                isRequired
+                label="Email"
+                labelPlacement="outside"
+                type="email"
+                variant="bordered"
+                placeholder="you@example.com"
+                value={email}
+                onValueChange={(nextEmail) => {
+                  setEmail(nextEmail);
+                  if (touched.email) syncFieldErrors(nextEmail, password);
+                }}
+                onBlur={() => {
+                  setTouched((current) => ({ ...current, email: true }));
+                  syncFieldErrors(email, password);
+                }}
+                isInvalid={Boolean(emailError)}
+                errorMessage={emailError}
+              />
 
-              <label className="field">
-                <span className="label-text">Password</span>
-                <div className="password-input-wrap">
-                  <input
-                    aria-label="Password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="At least 6 characters"
-                    value={password}
-                    onChange={(event) => {
-                      const nextPassword = event.target.value;
-                      setPassword(nextPassword);
-                      if (touched.password) {
-                        syncFieldErrors(email, nextPassword);
-                      }
-                    }}
-                    onBlur={() => {
-                      setTouched((current) => ({ ...current, password: true }));
-                      syncFieldErrors(email, password);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                    className={passwordError ? "input-error" : ""}
-                    required
-                  />
+              <Input
+                isRequired
+                label="Password"
+                labelPlacement="outside"
+                variant="bordered"
+                type={showPassword ? "text" : "password"}
+                placeholder="At least 6 characters"
+                value={password}
+                onValueChange={(nextPassword) => {
+                  setPassword(nextPassword);
+                  if (touched.password) syncFieldErrors(email, nextPassword);
+                }}
+                onBlur={() => {
+                  setTouched((current) => ({ ...current, password: true }));
+                  syncFieldErrors(email, password);
+                }}
+                isInvalid={Boolean(passwordError)}
+                errorMessage={passwordError}
+                endContent={
                   <button
                     type="button"
-                    className="password-eye-btn"
                     aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                     title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => setShowPassword((current) => !current)}
+                    className="text-default-400 hover:text-default-600 focus:outline-none"
                   >
                     {showPassword ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}
                   </button>
-                </div>
-                {passwordError && <div className="field-error">{passwordError}</div>}
-              </label>
+                }
+              />
 
-              <div className="login-row">
-                <label className="remember">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(event) => setRemember(event.target.checked)}
-                  />
-                  Remember me
-                </label>
-                <a
-                  className="forgot"
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault();
+              <div className="mt-1 flex items-center justify-between">
+                <Checkbox size="sm" isSelected={remember} onValueChange={setRemember}>
+                  <span className="text-[13px] text-[#555] dark:text-[#a9afc0]">Remember me</span>
+                </Checkbox>
+                <button
+                  type="button"
+                  className="text-[13px] text-[#1976d2] hover:underline dark:text-[#8b97ff]"
+                  onClick={() => {
                     setForgotState((current) => ({ ...defaultForgotState, email }));
                     setForgotErrors({});
                     setForgotStep(1);
@@ -546,27 +567,29 @@ export default function LoginPage({ onLoginSuccess }) {
                   }}
                 >
                   Forgot password?
-                </a>
+                </button>
               </div>
 
               {error && (
-                <div className="login-error" role="alert">
+                <div className="px-0.5 text-left text-sm text-[#b00020] dark:text-[#ff6b6b]" role="alert">
                   {error}
                 </div>
               )}
 
-              <button
+              <Button
                 type="submit"
-                className="login-btn"
-                disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
-                aria-disabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
+                color="primary"
+                size="lg"
+                className="mt-2 font-semibold"
+                isLoading={submitting}
+                isDisabled={submitting || !formIsValid || googleLoading || loginCooldown > 0}
               >
                 {submitting
                   ? "Signing in..."
                   : loginCooldown > 0
                     ? `Try again in ${formatCooldown(loginCooldown)}`
                     : "Sign in"}
-              </button>
+              </Button>
             </form>
           </div>
         </section>
@@ -587,7 +610,7 @@ export default function LoginPage({ onLoginSuccess }) {
               onKeyDown={(event) => event.key === "Enter" && handleForgotRequest()}
               isInvalid={Boolean(forgotErrors.email)}
             />
-            {forgotErrors.email && <div className="field-error">{forgotErrors.email}</div>}
+            {forgotErrors.email && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.email}</div>}
             <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotRequest}>
               Send verification code
             </Button>
@@ -605,7 +628,7 @@ export default function LoginPage({ onLoginSuccess }) {
               onKeyDown={(event) => event.key === "Enter" && handleForgotVerify()}
               isInvalid={Boolean(forgotErrors.code)}
             />
-            {forgotErrors.code && <div className="field-error">{forgotErrors.code}</div>}
+            {forgotErrors.code && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.code}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, width: "100%" }}>
               <Button
                 isDisabled={forgotSubmitting || forgotCooldown > 0}
@@ -631,7 +654,7 @@ export default function LoginPage({ onLoginSuccess }) {
               onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
               isInvalid={Boolean(forgotErrors.newPassword)}
             />
-            {forgotErrors.newPassword && <div className="field-error">{forgotErrors.newPassword}</div>}
+            {forgotErrors.newPassword && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.newPassword}</div>}
             <Input
               type="password"
               placeholder="Confirm new password"
@@ -640,7 +663,7 @@ export default function LoginPage({ onLoginSuccess }) {
               onKeyDown={(event) => event.key === "Enter" && handleForgotReset()}
               isInvalid={Boolean(forgotErrors.confirmPassword)}
             />
-            {forgotErrors.confirmPassword && <div className="field-error">{forgotErrors.confirmPassword}</div>}
+            {forgotErrors.confirmPassword && <div className="mt-2 text-[13px] text-[#d14343] dark:text-[#ff8080]">{forgotErrors.confirmPassword}</div>}
             <Button color="primary" fullWidth isLoading={forgotSubmitting} onPress={handleForgotReset}>
               Save new password
             </Button>
