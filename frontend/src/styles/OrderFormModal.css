@@ -1,119 +1,13 @@
-.accountant-order-drawer .ant-drawer-body {
-  padding: 20px 24px 90px;
-  background: #f1f5f9;
-}
-
 .accountant-order-shell {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ── Shared input / select base size ── */
-.accountant-order-shell .ant-input,
-.accountant-order-shell .ant-input-affix-wrapper,
-.accountant-order-shell .ant-select-selector,
-.accountant-order-shell .ant-picker,
-.accountant-order-shell .ant-input-number {
-  height: 42px !important;
-  font-size: 14px !important;
-  border-radius: 10px !important;
-}
-
-.accountant-order-shell .ant-select-selection-search-input {
-  height: 40px !important;
-}
-
-.accountant-order-shell .ant-input[disabled],
-.accountant-order-shell .ant-select-disabled .ant-select-selector {
-  background: #f8fafc !important;
-  color: #475569 !important;
-  font-weight: 500;
-}
-
-/* ── Select dropdown arrow ── */
-.accountant-order-shell .ant-select-arrow {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* ── Input number ── */
-.accountant-order-shell .ant-input-number {
-  padding: 0 12px;
-}
-
-/* ── DatePicker ── */
-.accountant-order-shell .ant-picker {
-  padding: 0 12px;
-}
-
-.accountant-order-shell .ant-picker input {
-  font-size: 14px !important;
-}
-
-/* ── TextArea ── */
-.accountant-order-shell .ant-input-textarea textarea {
-  font-size: 14px !important;
-  min-height: 64px !important;
-  border-radius: 10px !important;
-  padding: 10px 12px !important;
-}
-
 /* ── Order info card ── */
 .order-info-card {
   border-radius: 16px;
   box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
-}
-
-.order-info-card .ant-card-head {
-  border-radius: 16px 16px 0 0;
-  background: linear-gradient(135deg, #1a2680 0%, #2d3599 100%);
-  border-bottom: none;
-  min-height: 50px;
-}
-
-.order-info-card .ant-card-head-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: 0.3px;
-}
-
-.order-info-card .ant-card-body {
-  padding: 20px 20px 16px;
-}
-
-.order-info-card .ant-form-item {
-  margin-bottom: 0;
-}
-
-.order-info-card .ant-form-item-label > label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 4px;
-}
-
-.order-info-card .ant-form-item-label {
-  padding-bottom: 0 !important;
-  line-height: 1.2;
-}
-
-/* ── Statistic ── */
-.order-info-card .ant-statistic-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 2px;
-}
-
-.order-info-card .ant-statistic-content {
-  font-size: 22px !important;
-  font-weight: 800;
 }
 
 /* ── Shipments ── */
@@ -129,42 +23,6 @@
   border: 1px solid #e2e8f0;
 }
 
-.shipment-card .ant-card-head {
-  background: #ffffff;
-  border-radius: 16px 16px 0 0;
-  min-height: 54px;
-  border-bottom: 1px solid #f1f5f9;
-  padding: 0 20px;
-}
-
-.shipment-card .ant-card-head .ant-badge .ant-badge-count {
-  font-size: 11px;
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.shipment-card .ant-card-body {
-  padding: 18px 20px 16px;
-}
-
-.shipment-card .ant-form-item {
-  margin-bottom: 0;
-}
-
-.shipment-card .ant-form-item-label > label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 4px;
-}
-
-.shipment-card .ant-form-item-label {
-  padding-bottom: 0 !important;
-  line-height: 1.2;
-}
-
 /* ── Payment section ── */
 .shipment-card .payment-section {
   background: #f8fafc;
@@ -172,19 +30,6 @@
   border-radius: 12px;
   padding: 16px;
   margin-top: 4px;
-}
-
-.shipment-card .payment-section .ant-form-item {
-  margin-bottom: 0;
-}
-
-.shipment-card .payment-section .ant-form-item-label > label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 4px;
 }
 
 /* ── Expenses ── */
@@ -200,64 +45,6 @@
   border-radius: 16px;
   box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
   border: 1px solid #e2e8f0;
-}
-
-.summary-card .ant-card-head {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border-radius: 16px 16px 0 0;
-  border-bottom: none;
-  min-height: 50px;
-}
-
-.summary-card .ant-card-head-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #166534;
-}
-
-.summary-card .ant-statistic-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-/* ── Radio button text ── */
-.ant-radio-button-wrapper {
-  font-size: 13px;
-  font-weight: 600;
-  height: 42px !important;
-  line-height: 40px !important;
-  padding: 0 16px !important;
-  border-radius: 10px !important;
-}
-
-/* ── Tag styling ── */
-.ant-tag {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 8px;
-}
-
-.ant-tag-blue {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.ant-tag-orange {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #c2410c;
-}
-
-/* ── Alert ── */
-.ant-alert {
-  border-radius: 10px;
-  font-size: 13px;
-  padding: 10px 14px;
 }
 
 /* ── Add shipment button ── */
@@ -285,31 +72,4 @@
   background: #ffffff;
   border-top: 1px solid #e5e7eb;
   border-radius: 0 0 14px 14px;
-}
-
-.drawer-footer-actions .ant-btn-primary {
-  background: #1a2680;
-  border-color: #1a2680;
-  font-weight: 700;
-  font-size: 15px;
-  box-shadow: 0 4px 14px rgba(26, 38, 128, 0.35);
-  height: 44px;
-  padding: 0 32px;
-  border-radius: 10px;
-}
-
-.drawer-footer-actions .ant-btn-primary:hover {
-  background: #2d3599 !important;
-  border-color: #2d3599 !important;
-}
-
-/* ── Form required asterisk ── */
-.ant-form-item-required::before {
-  color: #dc2626 !important;
-}
-
-@media (max-width: 900px) {
-  .accountant-order-drawer .ant-drawer-content-wrapper {
-    width: 100% !important;
-  }
 }
