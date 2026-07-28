@@ -12,6 +12,7 @@ import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
 import LoadingState from "../../components/LoadingState";
 import { notify } from "../../components/shared-ui/Toast";
+import { HeroUIProvider } from "@heroui/react";
 import ThemeToggle from "../../theme/ThemeToggle";
 import Logo from "../../theme/Logo";
 import { RiEyeLine, RiEyeOffLine } from "react-icons/ri";
@@ -403,10 +404,10 @@ export default function LoginPage({ onLoginSuccess }) {
   ];
 
   return (
-    <>
+    <HeroUIProvider>
       <main className="login-root" role="main">
-        <div style={{ position: "fixed", top: 16, right: 16, zIndex: 50 }}>
-          <ThemeToggle />
+        <div className="fixed top-4 right-4 z-50">
+          <ThemeToggle className="h-10 w-10 rounded-full border border-gray-200 dark:border-white/15 bg-white/80 dark:bg-white/10 shadow-lg backdrop-blur-md" />
         </div>
         <aside className="login-left" aria-hidden="true">
           <div className="login-hero">
@@ -648,6 +649,6 @@ export default function LoginPage({ onLoginSuccess }) {
           </ModalBody>
         </ModalContent>
       </Modal>
-    </>
+    </HeroUIProvider>
   );
 }

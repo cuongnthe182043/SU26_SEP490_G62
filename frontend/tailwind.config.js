@@ -9,6 +9,8 @@ module.exports = {
     path.join(__dirname, "src/pages/Manager/**/*.{js,jsx,ts,tsx}"),
     path.join(__dirname, "src/components/**/*.{js,jsx,ts,tsx}"),
     path.join(__dirname, "src/hooks/**/*.{js,jsx,ts,tsx}"),
+    path.join(__dirname, "src/theme/**/*.{js,jsx,ts,tsx}"),
+    path.join(__dirname, "src/pages/auth/**/*.{js,jsx,ts,tsx}"),
     path.join(__dirname, "node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}"),
   ],
   darkMode: "class",
