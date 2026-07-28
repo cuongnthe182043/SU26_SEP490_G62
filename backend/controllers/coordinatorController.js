@@ -83,7 +83,9 @@ const approveReceiptRequest = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('đã được duyệt') || err.message.includes('đã bị từ chối') ? 409
-            : err.message.includes('không hợp lệ') || err.message.includes('lớn hơn 0') ? 422
+            : err.message.includes('không hợp lệ') || err.message.includes('lớn hơn 0')
+                || err.message.includes('chưa được xác nhận') || err.message.includes('chưa có số km')
+                || err.message.includes('chưa duyệt hoặc từ chối') ? 422
             : 500;
         res.status(code).json({ error: err.message });
     }
