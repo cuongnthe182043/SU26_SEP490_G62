@@ -426,7 +426,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
         <section className="login-right" aria-labelledby="signin-heading">
           <div className="login-card" role="region" aria-label="Sign in">
-            <Logo className="login-logo" />
+            <Logo className="mx-auto mb-[18px] block h-20 w-20 rounded-full border border-gray-200 bg-white object-contain p-2 shadow-sm dark:border-white/10 dark:bg-white/5" />
             <h2 id="signin-heading">Staff sign in</h2>
             <p className="login-help">
               Use a pre-provisioned account only. New users cannot register themselves.

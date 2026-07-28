@@ -187,50 +187,12 @@
   margin-bottom: 4px;
 }
 
-/* ── Pickup addresses ── */
-.pickup-address-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #fafbfc;
-}
-
-.pickup-address-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-
 /* ── Expenses ── */
-.expenses-section {
-  padding: 14px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #fafbfc;
-}
-
 .expense-row {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
-}
-
-/* ── Fee summary ── */
-.fee-summary {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  padding: 12px 14px;
-  text-align: center;
-}
-
-.fee-summary .ant-typography {
-  font-size: 14px;
 }
 
 /* ── Summary card ── */
@@ -344,14 +306,6 @@
 /* ── Form required asterisk ── */
 .ant-form-item-required::before {
   color: #dc2626 !important;
-}
-
-/* ── Driver locked hint ── */
-.driver-locked-hint {
-  font-size: 11px;
-  color: #16a34a;
-  margin-top: 4px;
-  font-weight: 500;
 }
 
 @media (max-width: 900px) {

@@ -148,7 +148,6 @@
 }
 .login-help{margin-top:12px;font-size:13px;color:#5c6b77;line-height:1.5}
 .login-card h2{margin:0 0 16px 0;font-size:22px;font-weight:700;color:#16223b}
-.login-logo{width:80px;height:auto;margin:0 auto 18px auto;display:block}
 .google-login-block{display:flex;flex-direction:column;gap:10px;align-items:stretch;margin-top:8px}
 .google-login-label{font-size:13px;font-weight:600;color:#2d3a4f;text-align:left}
 .google-button-container{display:flex;justify-content:center;min-height:48px}
