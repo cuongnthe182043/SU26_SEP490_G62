@@ -196,6 +196,20 @@ function MaintenanceCard({
                             </XStack>
                         )}
 
+                        {/* Bị quản lý trả về làm lại chứng từ: record quay lại 'open'
+                            nhưng vẫn giữ reject_reason để tài xế biết phải sửa gì */}
+                        {isOpen && record.reject_reason && (
+                            <XStack
+                                padding={12} borderRadius={appTheme.radius.sm}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                alignItems="flex-start" gap={10}
+                            >
+                                <Text flex={1} fontSize={13} color={appTheme.colors.dangerText}>
+                                    Chứng từ bị từ chối: {record.reject_reason}. Hãy chụp lại hoá đơn và nhập lại chi phí.
+                                </Text>
+                            </XStack>
+                        )}
+
                         {/* Cost row */}
                         {!isRequested && !isRejected && (
                         <YStack gap={6}>
