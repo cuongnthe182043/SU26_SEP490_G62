@@ -5,7 +5,7 @@ import {
   Button, Input, Select, SelectItem, Chip, Spinner, Textarea,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Tooltip,
 } from "@heroui/react";
 import {
   RiSearchLine, RiAddLine, RiMore2Line, RiToolsLine,
@@ -210,6 +210,13 @@ export default function VehiclesView({ user }) {
     notify.success("Đã xác minh bảo dưỡng.");
   };
 
+  const submitRejectMaintenance = async (values) => {
+    await managerService.rejectVehicleMaintenance(verifyTarget.id, values);
+    setVerifyTarget(null);
+    await loadVehicles();
+    notify.success(values.mode === "cancel" ? "Đã huỷ bảo dưỡng." : "Đã yêu cầu tài xế làm lại chứng từ.");
+  };
+
   const submitBroken = async (values) => {
     await managerService.markVehicleBroken(brokenTarget.id, values);
     setBrokenTarget(null);
@@ -332,6 +339,10 @@ export default function VehiclesView({ user }) {
         <div className="grid grid-cols-3 gap-3">
           {vehicleGroups.map((g) => {
             const isHidden = g.status === "hidden";
+            // Xe 'retired' để lại trong nhóm ẩn thì vô hại; xe còn đang dùng mà bỏ
+            // quên sẽ thành "xe ma" — active nhưng coordinator không chọn được nhóm
+            // nên vĩnh viễn không có việc. Backend chặn, ở đây chặn sớm cho đỡ hụt.
+            const inUseCount = Number(g.vehicle_count || 0) - Number(g.retired_vehicle_count || 0);
             return (
               <div
                 key={g.id}
@@ -361,7 +372,14 @@ export default function VehiclesView({ user }) {
                   ) : (
                     <>
                       <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
-                      <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                      <Tooltip
+                        content={inUseCount > 0 ? `Còn ${inUseCount} xe đang dùng trong nhóm. Hãy chuyển xe sang nhóm khác hoặc thu hồi xe trước.` : "Ẩn nhóm xe"}
+                        placement="top"
+                      >
+                        <span>
+                          <Button size="sm" variant="flat" color="danger" isDisabled={inUseCount > 0} startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                        </span>
+                      </Tooltip>
                     </>
                   )}
                 </div>
@@ -571,7 +589,7 @@ export default function VehiclesView({ user }) {
         onClose={() => { setMaintenanceTarget(null); setMaintenanceDriverOptions([]); }}
         onSubmit={submitMaintenance}
       />
-      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} />
+      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} onReject={submitRejectMaintenance} />
       <MarkBrokenModal open={!!brokenTarget} vehicle={brokenTarget} onClose={() => setBrokenTarget(null)} onSubmit={submitBroken} />
       <RestoreVehicleModal open={!!restoreTarget} vehicle={restoreTarget} onClose={() => setRestoreTarget(null)} onSubmit={submitRestore} />
       <RetireVehicleModal open={!!retireTarget} vehicle={retireTarget} onClose={() => setRetireTarget(null)} onSubmit={submitRetire} />

@@ -273,6 +273,19 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     const existingVehicleGroup = await vehicleManagementRepository.getVehicleGroupById(id);
     if (!existingVehicleGroup) throw createError('Vehicle group not found', 404);
 
+    // Ẩn nhóm mà bỏ quên xe bên trong sẽ tạo ra "xe ma": xe vẫn active, vẫn có
+    // tài xế, nhưng coordinator không còn chọn được nhóm nên xe vĩnh viễn không
+    // có việc mới. Bắt chuyển xe sang nhóm khác (hoặc thu hồi xe) trước.
+    const inUseVehicles = await vehicleManagementRepository.listInUseVehiclesInGroup(id);
+    if (inUseVehicles.length > 0) {
+        const plates = inUseVehicles.map((v) => v.plate_number).join(', ');
+        throw createError(
+            `Không thể ẩn nhóm xe vì còn ${inUseVehicles.length} xe đang dùng: ${plates}. `
+            + 'Hãy chuyển các xe này sang nhóm khác hoặc thu hồi xe trước khi ẩn nhóm.',
+            409,
+        );
+    }
+
     try {
         await vehicleManagementRepository.deleteVehicleGroup(id);
     } catch (err) {
@@ -695,6 +708,75 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
     return updatedVehicle;
 };
 
+// Manager từ chối bản ghi bảo dưỡng đang chờ xác nhận. Đây là đối trọng của
+// verifyMaintenance: không có nó thì hoá đơn khống / số tiền sai chỉ còn hai lối
+// là duyệt bừa hoặc để treo vĩnh viễn.
+const REJECT_MAINTENANCE_MODES = ['redo', 'cancel'];
+
+const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
+    const vehicle = await getVehicleOrThrow(vehicleId);
+    ensureVehicleStatus(vehicle, ['maintenance'], 'Reject maintenance');
+
+    if (!vehicle.active_maintenance_id) {
+        throw createError('Xe này không có bản ghi bảo dưỡng nào đang mở', 404);
+    }
+    if (vehicle.active_maintenance_status !== 'pending_verification') {
+        throw createError('Chỉ từ chối được bảo dưỡng đang chờ xác nhận', 409);
+    }
+
+    const mode = normalizeString(payload.mode) || 'redo';
+    if (!REJECT_MAINTENANCE_MODES.includes(mode)) {
+        throw createError(`mode phải là một trong: ${REJECT_MAINTENANCE_MODES.join(', ')}`, 400);
+    }
+
+    const reason = normalizeString(payload.reason);
+    if (!reason) {
+        throw createError('Cần ghi lý do từ chối bảo dưỡng', 400);
+    }
+
+    let rejected;
+    try {
+        rejected = await vehicleManagementRepository.rejectPendingMaintenanceRecord({
+            vehicleId: vehicle.id,
+            maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
+            managerId: parsePositiveInteger(managerId, 'manager_id'),
+            reason,
+            mode,
+        });
+    } catch (err) {
+        if (err.code === 'PENDING_MAINTENANCE_NOT_FOUND') {
+            throw createError('Không tìm thấy bảo dưỡng đang chờ xác nhận. Hãy tải lại trang.', 409);
+        }
+        throw err;
+    }
+
+    const notifyTarget = rejected?.performedBy ?? rejected?.requestedBy ?? null;
+    if (notifyTarget) {
+        const isCancel = mode === 'cancel';
+        try {
+            await notificationService.createForUser(notifyTarget, {
+                title: isCancel ? 'Bảo dưỡng bị huỷ' : 'Cần làm lại chứng từ bảo dưỡng',
+                message: isCancel
+                    ? `Bảo dưỡng xe của bạn bị huỷ: ${reason}. Nếu vẫn cần bảo dưỡng, hãy gửi yêu cầu mới.`
+                    : `Chứng từ bảo dưỡng bị từ chối: ${reason}. Hãy chụp lại hoá đơn và nhập lại chi phí.`,
+                type: 'MAINTENANCE_REJECTED',
+                entityType: 'maintenance_record',
+                entityId: rejected.maintenanceId,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(notifyTarget, {
+                type: 'maintenance.assigned',
+                vehicleId: vehicle.id,
+                maintenanceRecordId: rejected.maintenanceId,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange(mode === 'cancel' ? 'maintenance_cancelled' : 'maintenance_rework', updatedVehicle);
+    return updatedVehicle;
+};
+
 // OCR gợi ý cho manager khi xác nhận bảo dưỡng — chỉ mang tính tham khảo,
 // giống cơ chế scan hóa đơn chi phí của coordinator (không tự động duyệt).
 const scanMaintenanceBill = async (vehicleId) => {
@@ -953,6 +1035,7 @@ module.exports = {
     rejectMaintenanceRequest,
     completeMaintenance,
     verifyMaintenance,
+    rejectMaintenance,
     scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,

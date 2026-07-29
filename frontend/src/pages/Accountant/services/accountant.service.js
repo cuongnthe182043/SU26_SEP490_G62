@@ -292,6 +292,10 @@ export const accountantService = {
   verifyVehicleMaintenance: (id, payload = {}) =>
     apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
 
+  // mode: 'redo' (bắt tài xế làm lại chứng từ) | 'cancel' (huỷ hẳn, xe về hoạt động)
+  rejectVehicleMaintenance: (id, payload = {}) =>
+    apiRequest(`/api/admin/vehicles/${id}/reject-maintenance`, { method: "POST", body: payload }),
+
   markVehicleBroken: (id, payload) =>
     apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),
 
