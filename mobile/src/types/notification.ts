@@ -11,6 +11,7 @@ export type NotificationType =
   | 'PAYSLIP_PUBLISHED'
   | 'MAINTENANCE_ASSIGNED'
   | 'MAINTENANCE_COMPLETED'
+  | 'MAINTENANCE_REJECTED'
   | 'SYSTEM_ALERT';
 
 export type AppNotification = {

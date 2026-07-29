@@ -136,6 +136,18 @@ const verifyMaintenance = async (req, res) => {
     }
 };
 
+const rejectMaintenance = async (req, res) => {
+    try {
+        const vehicle = await vehicleManagementService.rejectMaintenance(req.params.id, req.user.userId, req.body);
+        const message = req.body?.mode === 'cancel'
+            ? 'Đã huỷ bảo dưỡng'
+            : 'Đã yêu cầu tài xế làm lại chứng từ bảo dưỡng';
+        res.json({ message, vehicle });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
 const scanMaintenanceBill = async (req, res) => {
     try {
         const data = await vehicleManagementService.scanMaintenanceBill(req.params.id);
@@ -250,6 +262,7 @@ module.exports = {
     sendVehicleToMaintenance,
     completeMaintenance,
     verifyMaintenance,
+    rejectMaintenance,
     scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,

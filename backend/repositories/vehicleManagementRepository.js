@@ -954,6 +954,141 @@ const completeMaintenanceRecordAndSetStatus = async ({
     }
 };
 
+// Manager từ chối bản ghi đang chờ xác nhận (hóa đơn khống, số tiền không hợp lệ).
+// mode = 'redo'   → trả về 'open', xe vẫn ở maintenance, tài xế làm lại chứng từ.
+// mode = 'cancel' → 'rejected', xe về 'active', tài xế phải gửi yêu cầu mới.
+// Chưa có expense nào được sinh ở bước pending_verification nên không cần đảo sổ.
+const rejectPendingMaintenanceRecord = async ({
+    vehicleId,
+    maintenanceRecordId,
+    managerId,
+    reason,
+    mode,
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId];
+        let idClause = '';
+        if (maintenanceRecordId !== null) {
+            params.push(maintenanceRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const recordResult = await client.query(
+            `SELECT id, performed_by, requested_by
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status = 'pending_verification'
+               ${idClause}
+             ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = recordResult.rows[0];
+        if (!record) {
+            const err = new Error('Maintenance record awaiting verification not found');
+            err.code = 'PENDING_MAINTENANCE_NOT_FOUND';
+            throw err;
+        }
+
+        if (mode === 'cancel') {
+            await client.query(
+                `UPDATE maintenance_records
+                 SET status = 'rejected',
+                     reject_reason = $2,
+                     verified_by = $3,
+                     verified_at = NOW(),
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [record.id, reason, managerId],
+            );
+
+            await client.query(
+                `UPDATE vehicles
+                 SET status = 'active',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [vehicleId],
+            );
+
+            await client.query(
+                `INSERT INTO vehicle_status_history (
+                    vehicle_id,
+                    action_type,
+                    from_status,
+                    to_status,
+                    reference_type,
+                    reference_id,
+                    note,
+                    created_by
+                )
+                VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
+                [vehicleId, vehicle.status, record.id, `Huỷ bảo dưỡng: ${reason}`, managerId],
+            );
+        } else {
+            // Xoá chứng từ và chi phí cũ để tài xế buộc phải khai lại từ đầu,
+            // tránh việc chỉ sửa số tiền mà giữ nguyên ảnh hoá đơn không hợp lệ.
+            await client.query(
+                `UPDATE maintenance_records
+                 SET status = 'open',
+                     reject_reason = $2,
+                     bill_pics = '[]'::jsonb,
+                     cost = NULL,
+                     completed_at = NULL,
+                     completed_by = NULL,
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [record.id, reason],
+            );
+
+            await client.query(
+                `INSERT INTO vehicle_status_history (
+                    vehicle_id,
+                    action_type,
+                    from_status,
+                    to_status,
+                    reference_type,
+                    reference_id,
+                    note,
+                    created_by
+                )
+                VALUES ($1, 'send_to_maintenance', $2, $2, 'maintenance_record', $3, $4, $5)`,
+                [vehicleId, vehicle.status, record.id, `Yêu cầu làm lại chứng từ bảo dưỡng: ${reason}`, managerId],
+            );
+        }
+
+        await client.query('COMMIT');
+        return {
+            maintenanceId: record.id,
+            performedBy: record.performed_by,
+            requestedBy: record.requested_by,
+            previousStatus: vehicle.status,
+            mode,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const verifyMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
@@ -1656,6 +1791,7 @@ module.exports = {
     moveBrokenVehicleToMaintenance,
     completeMaintenanceRecordAndSetStatus,
     verifyMaintenanceRecordAndSetStatus,
+    rejectPendingMaintenanceRecord,
     createFailureRecordAndSetStatus,
     resolveFailureRecordAndSetStatus,
     retireVehicle,

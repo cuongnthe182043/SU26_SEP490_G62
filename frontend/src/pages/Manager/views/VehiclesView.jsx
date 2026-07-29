@@ -210,6 +210,13 @@ export default function VehiclesView({ user }) {
     notify.success("Đã xác minh bảo dưỡng.");
   };
 
+  const submitRejectMaintenance = async (values) => {
+    await managerService.rejectVehicleMaintenance(verifyTarget.id, values);
+    setVerifyTarget(null);
+    await loadVehicles();
+    notify.success(values.mode === "cancel" ? "Đã huỷ bảo dưỡng." : "Đã yêu cầu tài xế làm lại chứng từ.");
+  };
+
   const submitBroken = async (values) => {
     await managerService.markVehicleBroken(brokenTarget.id, values);
     setBrokenTarget(null);
@@ -571,7 +578,7 @@ export default function VehiclesView({ user }) {
         onClose={() => { setMaintenanceTarget(null); setMaintenanceDriverOptions([]); }}
         onSubmit={submitMaintenance}
       />
-      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} />
+      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} onReject={submitRejectMaintenance} />
       <MarkBrokenModal open={!!brokenTarget} vehicle={brokenTarget} onClose={() => setBrokenTarget(null)} onSubmit={submitBroken} />
       <RestoreVehicleModal open={!!restoreTarget} vehicle={restoreTarget} onClose={() => setRestoreTarget(null)} onSubmit={submitRestore} />
       <RetireVehicleModal open={!!retireTarget} vehicle={retireTarget} onClose={() => setRetireTarget(null)} onSubmit={submitRetire} />
