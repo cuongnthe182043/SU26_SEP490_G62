@@ -224,7 +224,8 @@ const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existin
     };
 };
 
-const listVehicleGroups = async () => vehicleManagementRepository.listVehicleGroups();
+const listVehicleGroups = async ({ includeHidden = false } = {}) =>
+    vehicleManagementRepository.listVehicleGroups({ includeHidden });
 
 const getVehicleGroupDetail = async (vehicleGroupId) => {
     const id = parsePositiveInteger(vehicleGroupId, 'vehicle_group_id');
@@ -289,6 +290,26 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
         entityId: id,
     }, { displayMode: 'toast' });
     return { id };
+};
+
+// Bỏ ẩn nhóm xe — đối xứng với deleteVehicleGroup (ẩn), để thao tác ẩn đảo ngược được.
+const restoreVehicleGroup = async (vehicleGroupId) => {
+    const id = parsePositiveInteger(vehicleGroupId, 'vehicle_group_id');
+    const existing = await vehicleManagementRepository.getVehicleGroupById(id);
+    if (!existing) throw createError('Vehicle group not found', 404);
+    if (existing.status === 'active') throw createError('Nhóm xe đang hiển thị, không cần bỏ ẩn', 409);
+
+    await vehicleManagementRepository.restoreVehicleGroup(id);
+
+    notifyRolesSafe(['manager', 'accountant', 'coordinator'], {
+        title: 'Nhóm xe đã được bỏ ẩn',
+        message: `Nhóm xe "${existing.name || `#${id}`}" đã hiển thị trở lại.`,
+        type: 'VEHICLE_GROUP_RESTORED',
+        entityType: 'vehicle_groups',
+        entityId: id,
+    }, { displayMode: 'toast' });
+
+    return vehicleManagementRepository.getVehicleGroupById(id);
 };
 
 const listVehicles = async (query = {}) => {
@@ -737,7 +758,21 @@ const markVehicleAsBroken = async (vehicleId, managerId, payload = {}) => {
 
 const restoreVehicle = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
-    ensureVehicleStatus(vehicle, ['broken'], 'Restore vehicle');
+    ensureVehicleStatus(vehicle, ['broken', 'retired'], 'Restore vehicle');
+
+    // Xe đã thu hồi (ẩn) → chỉ cần bật lại 'active', không có sự cố nào để đóng.
+    // Trước đây chỉ cho khôi phục xe 'broken' nên xe thu hồi không có đường quay lại,
+    // khiến thao tác "ẩn xe" trở thành xoá vĩnh viễn.
+    if (vehicle.status === 'retired') {
+        await vehicleManagementRepository.unretireVehicle({
+            vehicleId: vehicle.id,
+            managerId: parsePositiveInteger(managerId, 'manager_id'),
+            note: normalizeString(payload.resolution_note) || normalizeString(payload.note),
+        });
+        const restored = await getVehicleDetail(vehicle.id);
+        broadcastManagerVehicleChange('restored', restored);
+        return restored;
+    }
 
     await vehicleManagementRepository.resolveFailureRecordAndSetStatus({
         vehicleId: vehicle.id,
@@ -906,6 +941,7 @@ module.exports = {
     createVehicleGroup,
     updateVehicleGroup,
     deleteVehicleGroup,
+    restoreVehicleGroup,
     listVehicles,
     getVehicleDetail,
     createVehicle,
