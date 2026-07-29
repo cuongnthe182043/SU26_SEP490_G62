@@ -954,9 +954,10 @@ const getOrderWithShipments = async (orderId, driverId) => {
     };
 };
 
+// Dùng cho bộ lọc nhóm xe ở màn trip pool của tài xế — nhóm đã ẩn không cần hiện
 const getAllVehicleGroups = async () => {
     const result = await pool.query(
-        `SELECT id, name FROM vehicle_groups ORDER BY id ASC`,
+        `SELECT id, name FROM vehicle_groups WHERE status = 'active' ORDER BY id ASC`,
     );
     return result.rows;
 };

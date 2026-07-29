@@ -97,12 +97,14 @@ const VEHICLE_DETAIL_SELECT = `
     ) li ON TRUE
 `;
 
-const listVehicleGroups = async () => {
+// includeHidden=true dùng cho màn Quản lý xe để Manager còn thấy nhóm đã ẩn mà bỏ ẩn.
+// Mặc định vẫn chỉ trả nhóm 'active' để các form chọn nhóm xe không hiện nhóm đã ẩn.
+const listVehicleGroups = async ({ includeHidden = false } = {}) => {
     const result = await pool.query(
         `${VEHICLE_GROUP_DETAIL_SELECT}
-         WHERE vg.status = 'active'
+         ${includeHidden ? '' : "WHERE vg.status = 'active'"}
          GROUP BY vg.id
-         ORDER BY vg.name ASC, vg.id ASC`,
+         ORDER BY vg.status ASC, vg.name ASC, vg.id ASC`,
     );
     return result.rows;
 };
@@ -200,6 +202,18 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     const result = await pool.query(
         `UPDATE vehicle_groups
          SET status = 'hidden'
+         WHERE id = $1
+         RETURNING id`,
+        [vehicleGroupId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Bỏ ẩn nhóm xe — ẩn phải đảo ngược được, nếu không thì "ẩn" trở thành xoá vĩnh viễn.
+const restoreVehicleGroup = async (vehicleGroupId) => {
+    const result = await pool.query(
+        `UPDATE vehicle_groups
+         SET status = 'active'
          WHERE id = $1
          RETURNING id`,
         [vehicleGroupId],
@@ -1263,6 +1277,40 @@ const resolveFailureRecordAndSetStatus = async ({
     }
 };
 
+// Đưa xe đã thu hồi (retired) trở lại hoạt động. Không tự gán lại tài xế — việc gán
+// do Manager làm riêng sau đó, tránh khôi phục nhầm gán lại người đã chuyển xe khác.
+const unretireVehicle = async ({ vehicleId, managerId, note = null }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [vehicle] } = await client.query(
+            `SELECT id, status FROM vehicles WHERE id = $1 FOR UPDATE`,
+            [vehicleId],
+        );
+        if (!vehicle) { await client.query('ROLLBACK'); return null; }
+
+        await client.query(
+            `UPDATE vehicles SET status = 'active', updated_at = NOW() WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id, action_type, from_status, to_status, note, created_by
+            ) VALUES ($1, 'restore_vehicle', $2, 'active', $3, $4)`,
+            [vehicleId, vehicle.status, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const retireVehicle = async ({ vehicleId, managerId, note = null }) => {
     const client = await pool.connect();
     try {
@@ -1592,6 +1640,7 @@ module.exports = {
     createVehicleGroup,
     updateVehicleGroup,
     deleteVehicleGroup,
+    restoreVehicleGroup,
     listVehicles,
     getVehicleById,
     getVehicleByPlateNumber,
@@ -1610,6 +1659,7 @@ module.exports = {
     createFailureRecordAndSetStatus,
     resolveFailureRecordAndSetStatus,
     retireVehicle,
+    unretireVehicle,
     listVehicleStatusHistory,
     getActiveMaintenanceRecordForDriver,
     getMaintenanceRecordsForDriver,
