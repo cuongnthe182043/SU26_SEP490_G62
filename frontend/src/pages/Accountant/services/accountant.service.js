@@ -240,7 +240,9 @@ export const accountantService = {
     apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
 
   // ─── Nhóm xe ──────────────────────────────────────────────────────────────
-  getVehicleGroups: () => apiRequest("/api/admin/vehicle-groups"),
+  // includeHidden: màn Quản lý xe cần thấy cả nhóm đã ẩn để bỏ ẩn lại
+  getVehicleGroups: (includeHidden = false) =>
+    apiRequest(`/api/admin/vehicle-groups${includeHidden ? "?include_hidden=1" : ""}`),
 
   getVehicleGroupDetail: (id) => apiRequest(`/api/admin/vehicle-groups/${id}`),
 
@@ -252,6 +254,9 @@ export const accountantService = {
 
   deleteVehicleGroup: (id) =>
     apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "DELETE" }),
+
+  restoreVehicleGroup: (id) =>
+    apiRequest(`/api/admin/vehicle-groups/${id}/restore`, { method: "POST" }),
 
   // ─── Quản lý xe + gán tài xế ────────────────────────────────────────────────
   getVehicles: (params = {}) => {

@@ -13,6 +13,7 @@ router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
 router.get('/vehicle-groups/:id', vehicleManagementController.getVehicleGroupDetail);
 router.put('/vehicle-groups/:id', vehicleManagementController.updateVehicleGroup);
 router.delete('/vehicle-groups/:id', vehicleManagementController.deleteVehicleGroup);
+router.post('/vehicle-groups/:id/restore', vehicleManagementController.restoreVehicleGroup);
 
 router.get('/vehicles/driver-options', vehicleManagementController.listAssignableDrivers);
 router.get('/vehicles', vehicleManagementController.listVehicles);
