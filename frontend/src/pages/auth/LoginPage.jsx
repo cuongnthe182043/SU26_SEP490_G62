@@ -421,7 +421,7 @@ export default function LoginPage({ onLoginSuccess }) {
           className="relative flex min-h-[34vh] shrink-0 items-center justify-center overflow-hidden
                      bg-gradient-to-br from-[#f2f7ff] via-[#dbe7ff] to-[#bed2ff] p-[18px]
                      dark:from-[#0e1016] dark:via-[#12141d] dark:to-[#171a26]
-                     sm:min-h-[42vh] sm:p-6 lg:min-h-screen lg:flex-[1.15] lg:p-8"
+                     sm:min-h-[42vh] sm:p-6 lg:min-h-screen lg:flex-1 lg:p-8"
         >
           {/* 2 khối tròn mờ trang trí (trước là ::before/::after) */}
           <span className="pointer-events-none absolute -bottom-[120px] -left-[110px] h-[420px] w-[420px] rounded-full bg-white/20 blur-[2px] dark:bg-white/5" />
@@ -462,15 +462,15 @@ export default function LoginPage({ onLoginSuccess }) {
 
         <section
           aria-labelledby="signin-heading"
-          className="flex flex-1 items-center justify-center bg-[#eef2f7] p-6 dark:bg-[#0e1016] lg:flex-[0.9]"
+          className="flex flex-1 items-center justify-center bg-[#eef2f7] p-6 dark:bg-[#0e1016]"
         >
           <div
             role="region"
             aria-label="Đăng nhập"
-            className="flex min-h-[520px] w-full max-w-[420px] flex-col justify-start rounded-[18px] bg-white p-[34px] text-center
+            className="flex min-h-[520px] w-full max-w-[460px] flex-col justify-start rounded-[18px] bg-white p-[34px] text-center
                        shadow-[0_20px_60px_rgba(15,23,42,0.12)]
                        dark:border dark:border-white/10 dark:bg-[#161922] dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)]
-                       lg:max-w-[460px]"
+                       lg:max-w-[500px]"
           >
             <Logo className="mx-auto mb-[18px] block h-20 w-20 rounded-full border border-gray-200 bg-white object-contain p-2 shadow-sm dark:border-white/10 dark:bg-white/5" />
             <h2 id="signin-heading" className="mb-4 text-[22px] font-bold text-[#16223b] dark:text-[#e6e8ef]">
@@ -500,58 +500,72 @@ export default function LoginPage({ onLoginSuccess }) {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-[18px] text-left" noValidate>
-              <Input
-                autoFocus
-                isRequired
-                label="Email"
-                labelPlacement="outside"
-                type="email"
-                variant="bordered"
-                placeholder="you@example.com"
-                value={email}
-                onValueChange={(nextEmail) => {
-                  setEmail(nextEmail);
-                  syncFieldErrors(nextEmail, password);
-                }}
-                onBlur={() => {
-                  setTouched((current) => ({ ...current, email: true }));
-                  syncFieldErrors(email, password);
-                }}
-                isInvalid={Boolean(emailError)}
-                errorMessage={emailError}
-              />
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="login-email" className="text-sm font-medium text-[#2d3a4f] dark:text-[#c7ccd8]">
+                  Email
+                </label>
+                <Input
+                  id="login-email"
+                  autoFocus
+                  isRequired
+                  aria-label="Email"
+                  name="email"
+                  autoComplete="email"
+                  type="email"
+                  variant="bordered"
+                  placeholder="you@example.com"
+                  value={email}
+                  onValueChange={(nextEmail) => {
+                    setEmail(nextEmail);
+                    syncFieldErrors(nextEmail, password);
+                  }}
+                  onBlur={() => {
+                    setTouched((current) => ({ ...current, email: true }));
+                    syncFieldErrors(email, password);
+                  }}
+                  isInvalid={Boolean(emailError)}
+                  errorMessage={emailError}
+                />
+              </div>
 
-              <Input
-                isRequired
-                label="Mật khẩu"
-                labelPlacement="outside"
-                variant="bordered"
-                type={showPassword ? "text" : "password"}
-                placeholder="Ít nhất 6 ký tự"
-                value={password}
-                onValueChange={(nextPassword) => {
-                  setPassword(nextPassword);
-                  syncFieldErrors(email, nextPassword);
-                }}
-                onBlur={() => {
-                  setTouched((current) => ({ ...current, password: true }));
-                  syncFieldErrors(email, password);
-                }}
-                isInvalid={Boolean(passwordError)}
-                errorMessage={passwordError}
-                endContent={
-                  <button
-                    type="button"
-                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                    title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => setShowPassword((current) => !current)}
-                    className="text-default-400 hover:text-default-600 focus:outline-none"
-                  >
-                    {showPassword ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}
-                  </button>
-                }
-              />
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="login-password" className="text-sm font-medium text-[#2d3a4f] dark:text-[#c7ccd8]">
+                  Mật khẩu
+                </label>
+                <Input
+                  id="login-password"
+                  isRequired
+                  aria-label="Mật khẩu"
+                  name="password"
+                  autoComplete="current-password"
+                  variant="bordered"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Ít nhất 6 ký tự"
+                  value={password}
+                  onValueChange={(nextPassword) => {
+                    setPassword(nextPassword);
+                    syncFieldErrors(email, nextPassword);
+                  }}
+                  onBlur={() => {
+                    setTouched((current) => ({ ...current, password: true }));
+                    syncFieldErrors(email, password);
+                  }}
+                  isInvalid={Boolean(passwordError)}
+                  errorMessage={passwordError}
+                  endContent={
+                    <button
+                      type="button"
+                      aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                      title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setShowPassword((current) => !current)}
+                      className="text-default-400 hover:text-default-600 focus:outline-none"
+                    >
+                      {showPassword ? <RiEyeOffLine size={18} /> : <RiEyeLine size={18} />}
+                    </button>
+                  }
+                />
+              </div>
 
               <div className="mt-1 flex items-center justify-between">
                 <Checkbox size="sm" isSelected={remember} onValueChange={setRemember}>
