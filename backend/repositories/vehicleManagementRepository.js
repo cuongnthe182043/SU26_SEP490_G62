@@ -198,6 +198,20 @@ const updateVehicleGroup = async (
     return result.rows[0] ?? null;
 };
 
+// Xe còn đang dùng trong nhóm — dùng để chặn ẩn nhóm. Xe 'retired' không tính
+// vì đã ngừng khai thác, để lại trong nhóm ẩn cũng không sinh hệ luỵ.
+const listInUseVehiclesInGroup = async (vehicleGroupId) => {
+    const result = await pool.query(
+        `SELECT id, plate_number, status
+         FROM vehicles
+         WHERE vehicle_group_id = $1
+           AND status <> 'retired'
+         ORDER BY plate_number ASC`,
+        [vehicleGroupId],
+    );
+    return result.rows;
+};
+
 const deleteVehicleGroup = async (vehicleGroupId) => {
     const result = await pool.query(
         `UPDATE vehicle_groups
@@ -1776,6 +1790,7 @@ module.exports = {
     updateVehicleGroup,
     deleteVehicleGroup,
     restoreVehicleGroup,
+    listInUseVehiclesInGroup,
     listVehicles,
     getVehicleById,
     getVehicleByPlateNumber,

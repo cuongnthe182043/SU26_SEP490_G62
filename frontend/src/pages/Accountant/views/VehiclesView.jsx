@@ -5,7 +5,7 @@ import {
   Button, Input, Select, SelectItem, Chip, Spinner, Textarea,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Tooltip,
 } from "@heroui/react";
 import {
   RiSearchLine, RiAddLine, RiMore2Line, RiToolsLine,
@@ -328,6 +328,10 @@ export default function VehiclesView({ user }) {
         <div className="grid grid-cols-3 gap-3">
           {vehicleGroups.map((g) => {
             const isHidden = g.status === "hidden";
+            // Xe 'retired' để lại trong nhóm ẩn thì vô hại; xe còn đang dùng mà bỏ
+            // quên sẽ thành "xe ma" — active nhưng coordinator không chọn được nhóm
+            // nên vĩnh viễn không có việc. Backend chặn, ở đây chặn sớm cho đỡ hụt.
+            const inUseCount = Number(g.vehicle_count || 0) - Number(g.retired_vehicle_count || 0);
             return (
               <div
                 key={g.id}
@@ -357,7 +361,14 @@ export default function VehiclesView({ user }) {
                   ) : (
                     <>
                       <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
-                      <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                      <Tooltip
+                        content={inUseCount > 0 ? `Còn ${inUseCount} xe đang dùng trong nhóm. Hãy chuyển xe sang nhóm khác hoặc thu hồi xe trước.` : "Ẩn nhóm xe"}
+                        placement="top"
+                      >
+                        <span>
+                          <Button size="sm" variant="flat" color="danger" isDisabled={inUseCount > 0} startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                        </span>
+                      </Tooltip>
                     </>
                   )}
                 </div>

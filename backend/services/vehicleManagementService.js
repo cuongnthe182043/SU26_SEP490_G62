@@ -273,6 +273,19 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     const existingVehicleGroup = await vehicleManagementRepository.getVehicleGroupById(id);
     if (!existingVehicleGroup) throw createError('Vehicle group not found', 404);
 
+    // Ẩn nhóm mà bỏ quên xe bên trong sẽ tạo ra "xe ma": xe vẫn active, vẫn có
+    // tài xế, nhưng coordinator không còn chọn được nhóm nên xe vĩnh viễn không
+    // có việc mới. Bắt chuyển xe sang nhóm khác (hoặc thu hồi xe) trước.
+    const inUseVehicles = await vehicleManagementRepository.listInUseVehiclesInGroup(id);
+    if (inUseVehicles.length > 0) {
+        const plates = inUseVehicles.map((v) => v.plate_number).join(', ');
+        throw createError(
+            `Không thể ẩn nhóm xe vì còn ${inUseVehicles.length} xe đang dùng: ${plates}. `
+            + 'Hãy chuyển các xe này sang nhóm khác hoặc thu hồi xe trước khi ẩn nhóm.',
+            409,
+        );
+    }
+
     try {
         await vehicleManagementRepository.deleteVehicleGroup(id);
     } catch (err) {
