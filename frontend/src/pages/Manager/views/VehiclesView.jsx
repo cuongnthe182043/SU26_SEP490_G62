@@ -71,7 +71,9 @@ export default function VehiclesView({ user }) {
 
   const loadVehicleGroups = async () => {
     try {
-      const data = await managerService.getVehicleGroups();
+      // includeHidden: màn này là nơi duy nhất quản lý nhóm xe nên phải thấy cả
+      // nhóm đã ẩn, nếu không thì ẩn xong là mất luôn không bỏ ẩn lại được.
+      const data = await managerService.getVehicleGroups(true);
       setVehicleGroups(data.vehicleGroups || []);
     } catch (err) { notify.error(err.message); }
   };
@@ -132,7 +134,15 @@ export default function VehiclesView({ user }) {
       await managerService.deleteVehicleGroup(groupDeleteTarget.id);
       setGroupDeleteTarget(null);
       await loadVehicleGroups();
-      notify.success("Đã xóa nhóm xe.");
+      notify.success("Đã ẩn nhóm xe.");
+    } catch (err) { notify.error(err.message); }
+  };
+
+  const handleGroupRestore = async (group) => {
+    try {
+      await managerService.restoreVehicleGroup(group.id);
+      await loadVehicleGroups();
+      notify.success("Đã bỏ ẩn nhóm xe.");
     } catch (err) { notify.error(err.message); }
   };
 
@@ -277,14 +287,29 @@ export default function VehiclesView({ user }) {
         { key: "restore", label: "Khôi phục", icon: RiCheckboxCircleLine, color: "success", onPress: () => setRestoreTarget(vehicle) },
       );
     }
+    // Xe đã thu hồi vẫn phải đưa lại được vào hoạt động — nếu không thì "thu hồi"
+    // thành xoá vĩnh viễn.
+    if (vehicle.status === "retired") {
+      items.push({
+        key: "restore",
+        label: "Đưa lại hoạt động",
+        icon: RiCheckboxCircleLine,
+        color: "success",
+        onPress: () => setRestoreTarget(vehicle),
+      });
+    }
     return items;
   };
 
+  // Danh sách nhóm ở trên hiện cả nhóm đã ẩn (để bỏ ẩn), nhưng form tạo/sửa xe thì
+  // KHÔNG được cho chọn nhóm đã ẩn — trừ nhóm mà xe đang sửa vốn thuộc về, giữ lại
+  // để không bị mất giá trị đang chọn.
+  const activeVehicleGroups = vehicleGroups.filter((g) => g.status !== "hidden");
   const currentEditingGroupMissing = editingVehicle?.vehicle_group_id
-    && !vehicleGroups.some((g) => Number(g.id) === Number(editingVehicle.vehicle_group_id));
+    && !activeVehicleGroups.some((g) => Number(g.id) === Number(editingVehicle.vehicle_group_id));
   const selectableVehicleGroups = currentEditingGroupMissing
-    ? [...vehicleGroups, { id: editingVehicle.vehicle_group_id, name: editingVehicle.vehicle_group_name || `Nhóm #${editingVehicle.vehicle_group_id}` }]
-    : vehicleGroups;
+    ? [...activeVehicleGroups, { id: editingVehicle.vehicle_group_id, name: editingVehicle.vehicle_group_name || `Nhóm #${editingVehicle.vehicle_group_id}` }]
+    : activeVehicleGroups;
 
   return (
     <div className="flex flex-col gap-5">
@@ -293,32 +318,56 @@ export default function VehiclesView({ user }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Nhóm xe</div>
-            <div className="text-xs text-gray-400 dark:text-gray-400">{vehicleGroups.length} nhóm xe</div>
+            <div className="text-xs text-gray-400 dark:text-gray-400">
+              {activeVehicleGroups.length} nhóm đang dùng
+              {vehicleGroups.length > activeVehicleGroups.length
+                ? ` · ${vehicleGroups.length - activeVehicleGroups.length} đã ẩn`
+                : ""}
+            </div>
           </div>
           <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingGroup(null); setGroupModalOpen(true); }}>
             Thêm nhóm xe
           </Button>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          {vehicleGroups.map((g) => (
-            <div key={g.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-4 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{g.name}</span>
-                <span className="text-xs text-gray-400 dark:text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
+          {vehicleGroups.map((g) => {
+            const isHidden = g.status === "hidden";
+            return (
+              <div
+                key={g.id}
+                className={`rounded-xl border p-4 flex flex-col gap-2 ${
+                  isHidden
+                    ? "border-dashed border-gray-300 dark:border-white/20 bg-gray-50 dark:bg-white/5 opacity-75"
+                    : "border-gray-100 dark:border-white/10"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{g.name}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isHidden && <Chip size="sm" variant="flat" color="default">Đã ẩn</Chip>}
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
+                <div className="flex flex-wrap gap-1">
+                  <Chip size="sm" variant="flat" color="primary">{g.vehicle_count} tổng</Chip>
+                  <Chip size="sm" variant="flat" color="success">{g.active_vehicle_count} hoạt động</Chip>
+                  <Chip size="sm" variant="flat" color="warning">{g.maintenance_vehicle_count} bảo trì</Chip>
+                  <Chip size="sm" variant="flat" color="danger">{g.broken_vehicle_count} hỏng</Chip>
+                </div>
+                <div className="flex gap-1 justify-end mt-1">
+                  {isHidden ? (
+                    <Button size="sm" variant="flat" color="success" startContent={<RiCheckboxCircleLine size={13} />} onPress={() => handleGroupRestore(g)}>Bỏ ẩn</Button>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
+                      <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
-              <div className="flex flex-wrap gap-1">
-                <Chip size="sm" variant="flat" color="primary">{g.vehicle_count} tổng</Chip>
-                <Chip size="sm" variant="flat" color="success">{g.active_vehicle_count} hoạt động</Chip>
-                <Chip size="sm" variant="flat" color="warning">{g.maintenance_vehicle_count} bảo trì</Chip>
-                <Chip size="sm" variant="flat" color="danger">{g.broken_vehicle_count} hỏng</Chip>
-              </div>
-              <div className="flex gap-1 justify-end mt-1">
-                <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
-                <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -388,7 +437,11 @@ export default function VehiclesView({ user }) {
             <SelectItem key="retired">Đã thu hồi</SelectItem>
           </Select>
           <Select selectedKeys={groupFilter ? [groupFilter] : []} onSelectionChange={(k) => setGroupFilter([...k][0] ?? "")} placeholder="Tất cả nhóm xe" variant="bordered" size="sm">
-            {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{g.name}</SelectItem>)}
+            {vehicleGroups.map((g) => (
+              <SelectItem key={String(g.id)} textValue={g.name}>
+                {g.status === "hidden" ? `${g.name} (đã ẩn)` : g.name}
+              </SelectItem>
+            ))}
           </Select>
           <Select selectedKeys={new Set([sortBy])} onSelectionChange={(k) => setSortBy([...k][0] ?? "")} placeholder="Sắp xếp" variant="bordered" size="sm">
             <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
