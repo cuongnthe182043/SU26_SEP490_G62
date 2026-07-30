@@ -184,6 +184,16 @@ CREATE TABLE order_shipments (
     notes                 TEXT,
     cancel_reason         TEXT,
 
+    return_charge_type    TEXT
+                              CHECK (return_charge_type IN (
+                                  'no_charge',
+                                  'return_fee',
+                                  'full_fare'
+                              )),
+    return_fee            NUMERIC(12,2) CHECK (return_fee IS NULL OR return_fee >= 0),
+    failed_resolved_by    INT REFERENCES profiles(id),
+    failed_resolved_at    TIMESTAMPTZ,
+
     claimed_at            TIMESTAMPTZ,
     picking_at            TIMESTAMPTZ,
     transit_at            TIMESTAMPTZ,

@@ -10,10 +10,11 @@ type State = {
 export function useTripLifecycle(onSuccess?: (trip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isLoading: false, error: null });
 
-    const advance = async (tripId: number, nextStatus: TripStatus) => {
+    // reason: bắt buộc khi nextStatus = 'failed' (BE trả 422 nếu thiếu)
+    const advance = async (tripId: number, nextStatus: TripStatus, reason?: string) => {
         setState({ isLoading: true, error: null });
         try {
-            const { trip } = await tripService.updateStatus(tripId, nextStatus);
+            const { trip } = await tripService.updateStatus(tripId, nextStatus, reason);
             setState({ isLoading: false, error: null });
             onSuccess?.(trip);
             return trip;
