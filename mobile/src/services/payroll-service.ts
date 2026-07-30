@@ -24,6 +24,9 @@ export type Payroll = {
     advance_deduction: string;
     absence_penalty: string;
     other_deduction: string;
+    // BE trả trường này ở cả bảng lương lịch sử (payrollRepository) nhưng type
+    // thiếu khai báo, khiến payroll-screen dùng tới nó bị lỗi TS2339
+    expense_reimbursement: string;
     gross_salary: string;
     net_salary: string;
     status: PayrollStatus;
