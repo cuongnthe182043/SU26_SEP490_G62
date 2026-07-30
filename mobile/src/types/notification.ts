@@ -40,6 +40,7 @@ export type NotificationEvent =
   | { type: 'notification.created'; notification: AppNotification }
   | { type: 'maintenance.assigned'; vehicleId: number; maintenanceRecordId: number | null }
   | { type: 'maintenance.completed'; vehicleId: number; maintenanceRecordId: number }
+  | { type: 'trip.cancelled'; shipmentId: number; orderId: number | null; reason: string }
   | { type: 'pong' };
 
 export type MarkNotificationReadResponse = {

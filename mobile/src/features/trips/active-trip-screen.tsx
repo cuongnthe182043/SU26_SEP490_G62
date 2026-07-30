@@ -17,6 +17,7 @@ import { ScreenHeader }         from '@/components/screen-header';
 import { TripStatusBadge }      from '@/components/trip-status-badge';
 import { ActiveTripSkeleton }   from '@/components/skeleton';
 import { appTheme }             from '@/theme/app-theme';
+import { appEvents }            from '@/lib/app-events';
 import { useActiveTrip }        from '@/hooks/use-active-trip';
 import { useCompletionProof }   from '@/hooks/use-completion-proof';
 import { useLoadingProof }      from '@/hooks/use-loading-proof';
@@ -24,7 +25,7 @@ import { useReturnComplete }    from '@/hooks/use-return-complete';
 import { useReleaseTrip }       from '@/hooks/use-release-trip';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
-import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
+import { useToast, useAppAlert } from '@/providers/ui-provider';
 import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
@@ -502,7 +503,6 @@ function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequ
 function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () => void }) {
     const { showToast }   = useToast();
     const { showAlert }   = useAppAlert();
-    const { showConfirm } = useConfirm();
 
     const { isLoading: lifecycleLoading, advance } = useTripLifecycle((updatedTrip) => {
         const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
@@ -519,6 +519,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [cameraTarget, setCameraTarget] = useState<'proof' | 'loading' | 'return' | null>(null);
 
     const [showRelease, setShowRelease] = useState(false);
+    const [showMarkFailed, setShowMarkFailed] = useState(false);
     const [showExpense, setShowExpense] = useState(false);
 
     // Flag để trigger navigation sau khi hoàn thành chuyến (qua useEffect để đảm bảo render cycle)
@@ -566,6 +567,22 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const { expenses, load: loadExpenses }            = useShipmentExpenses(trip.id);
 
     useEffect(() => { void loadExpenses(); }, [loadExpenses]);
+
+    // Điều phối viên hủy chuyến khi tài đang chạy: phải thoát khỏi màn này ngay.
+    // Nếu ở lại, mọi nút cập nhật trạng thái đều ăn lỗi "không thể chuyển trạng
+    // thái từ cancelled" mà tài không hiểu vì sao.
+    useEffect(() => appEvents.on('trip.cancelled', (payload) => {
+        const event = payload as { shipmentId?: number; reason?: string };
+        if (Number(event?.shipmentId) !== Number(trip.id)) return;
+        router.replace('/(tabs)');
+        showAlert({
+            type: 'warning',
+            title: 'Chuyến đã bị Điều phối viên hủy',
+            message: event?.reason
+                ? `Lý do: ${event.reason}`
+                : 'Chuyến này đã bị hủy. Bạn có thể nhận chuyến mới từ danh sách chuyến khả dụng.',
+        });
+    }), [trip.id, showAlert]);
 
     // Handlers cho multi-stop flow: gọi transit/complete không cần ảnh (proof đã capture per-stop)
     const [transitingViaStops, setTransitingViaStops]     = useState(false);
@@ -631,16 +648,11 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         setCameraTarget(target);
     };
 
-    const handleMarkFailed = async () => {
-        const ok = await showConfirm({
-            title: 'Xác nhận giao thất bại?',
-            message: 'Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
-            confirmLabel: 'Xác nhận thất bại',
-            cancelLabel: 'Hủy',
-            danger: true,
-        });
-        if (!ok) return;
-        await advance(trip.id, 'failed');
+    // BE bắt buộc lý do khi chuyển sang 'failed' — phải nhập, không dùng confirm trống
+    // (thiếu reason là 422 và toàn bộ luồng hoàn hàng phía sau không vào được)
+    const handleMarkFailed = async (reason: string) => {
+        setShowMarkFailed(false);
+        await advance(trip.id, 'failed', reason);
     };
 
     const expenseBadge = expenses.length > 0
@@ -902,7 +914,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 {/* ── Secondary actions row ── */}
                 <XStack gap={8}>
                     {isArrived ? (
-                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={handleMarkFailed}>
+                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={() => setShowMarkFailed(true)}>
                             <XCircle size={14} color={appTheme.colors.danger} />
                             <Text fontSize={12} fontWeight="700" color={appTheme.colors.danger}>Thất bại</Text>
                         </Pressable>
@@ -950,6 +962,18 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 confirmDanger
                 onConfirm={(reason) => { setShowRelease(false); void releaseTrip(trip.id, reason || undefined); }}
                 onClose={() => setShowRelease(false)}
+            />
+
+            <ReasonModal
+                visible={showMarkFailed}
+                title="Giao hàng thất bại"
+                description="Ghi rõ lý do không giao được. Sau bước này bạn sẽ phải hoàn hàng về điểm lấy ban đầu."
+                placeholder="VD: khách từ chối nhận, không liên lạc được khách..."
+                required
+                confirmLabel="Xác nhận thất bại"
+                confirmDanger
+                onConfirm={(reason) => { void handleMarkFailed(reason); }}
+                onClose={() => setShowMarkFailed(false)}
             />
 
             <ExpenseFormModal
