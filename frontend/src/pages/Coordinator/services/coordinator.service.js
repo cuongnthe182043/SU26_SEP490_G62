@@ -60,6 +60,8 @@ export const coordinatorService = {
   getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
   approveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/approve`, { method: "PATCH" }),
   rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
+  // Gỡ duyệt: đưa chi phí đã duyệt về chờ duyệt để tài xế sửa lại
+  unapproveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/unapprove`, { method: "PATCH" }),
 
   // ─── Customers (shared with Manager) ─────────────────────────────────────
   getCustomers: (params) => apiRequest(`/api/customers?${new URLSearchParams(params)}`),

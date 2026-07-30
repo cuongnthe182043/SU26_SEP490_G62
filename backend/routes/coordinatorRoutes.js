@@ -31,5 +31,7 @@ const spendingController = require('../controllers/spendingController');
 router.get('/expenses',               spendingController.listExpenses);
 router.patch('/expenses/:id/approve', coordinatorController.approveExpense);
 router.patch('/expenses/:id/reject',  coordinatorController.rejectExpense);
+// Gỡ duyệt: cứu chi phí đã duyệt nhưng sai số tiền (tài xế không tự sửa được)
+router.patch('/expenses/:id/unapprove', coordinatorController.unapproveExpense);
 
 module.exports = router;

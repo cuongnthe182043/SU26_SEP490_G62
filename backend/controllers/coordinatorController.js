@@ -178,6 +178,20 @@ const rejectExpense = async (req, res) => {
 };
 
 // PATCH /api/coordinator/trips/:id/cancel  Body: { reason }
+// PATCH /api/coordinator/expenses/:id/unapprove — gỡ duyệt để tài xế khai lại
+const unapproveExpense = async (req, res) => {
+    try {
+        const expenseId = Number(req.params.id);
+        if (!expenseId) return res.status(400).json({ error: 'Expense ID không hợp lệ' });
+        const expenseService = require('../services/expenseService');
+        const expense = await expenseService.unapproveExpense(expenseId, req.user.userId);
+        res.json({ message: 'Đã gỡ duyệt chi phí — tài xế có thể sửa lại', expense });
+    } catch (err) {
+        const code = err.message.includes('Không gỡ duyệt được') ? 409 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 const cancelShipment = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
@@ -228,6 +242,7 @@ module.exports = {
     scanReceiptExpenses,
     approveExpense,
     rejectExpense,
+    unapproveExpense,
     cancelShipment,
     reassignShipment,
 };
