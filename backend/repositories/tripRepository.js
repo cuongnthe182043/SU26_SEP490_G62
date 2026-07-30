@@ -394,6 +394,154 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     }
 };
 
+// Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
+//
+// Cách hoạt động: ghi shipment_assignment_history (⇒ v_shipment_current.owner_driver_id
+// trỏ về tài) nhưng GIỮ os.status = 'available' cho các chuyến sau. Chuyến có
+// shipment_index nhỏ nhất được đưa lên 'claimed' luôn để tài chạy ngay; xong chuyến đó
+// thì activateNextShipment tự kích hoạt chuyến kế tiếp. Nhờ vậy tài chỉ có 1 chuyến
+// active tại một thời điểm (giữ BR-005) nhưng vẫn "nhận" cả 2/3/4 chuyến của đơn.
+//
+// getAvailableShipments lọc owner_driver_id IS NULL nên các chuyến đã pre-assign tự
+// biến khỏi trip pool của tài khác — không cần đổi gì ở đó.
+//
+// Ràng buộc: chỉ gán nhiều chuyến trong CÙNG order. Nếu tài đang vướng chuyến của
+// order khác (đang chạy hoặc đã được pre-assign) thì chặn.
+const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, vehicleId, coordinatorId }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Cùng advisory lock với claimShipment — nếu không, tài xế tự claim đúng lúc
+        // coordinator đang gán thì hai bên cùng đọc "chưa có chuyến nào" rồi cùng ghi.
+        await lockClaimResources(client, driverId, vehicleId);
+
+        // Khoá toàn bộ chuyến của order để hai coordinator không gán chồng nhau
+        const lockedResult = await client.query(
+            `SELECT os.id, os.shipment_index, os.status, os.vehicle_group_id,
+                    sc.owner_driver_id
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.order_id = $1
+             ORDER BY os.shipment_index ASC
+             FOR UPDATE OF os`,
+            [orderId],
+        );
+        const orderShipments = lockedResult.rows;
+        if (orderShipments.length === 0) {
+            await client.query('ROLLBACK');
+            throw new Error('ORDER_NOT_FOUND');
+        }
+
+        const byId = new Map(orderShipments.map((s) => [Number(s.id), s]));
+        const targets = [];
+        for (const rawId of shipmentIds) {
+            const shipment = byId.get(Number(rawId));
+            if (!shipment) {
+                await client.query('ROLLBACK');
+                throw new Error('SHIPMENT_NOT_IN_ORDER');
+            }
+            if (shipment.status !== SHIPMENT_STATUS.AVAILABLE || shipment.owner_driver_id !== null) {
+                await client.query('ROLLBACK');
+                throw new Error('SHIPMENT_NOT_ASSIGNABLE');
+            }
+            targets.push(shipment);
+        }
+
+        // Xe của tài phải đúng nhóm xe mà chuyến yêu cầu (BR-003)
+        const vehicleGroupResult = await client.query(
+            `SELECT vehicle_group_id FROM vehicles WHERE id = $1`,
+            [vehicleId],
+        );
+        const driverGroupId = vehicleGroupResult.rows[0]?.vehicle_group_id ?? null;
+        const groupMismatch = targets.some((s) => s.vehicle_group_id !== null
+            && Number(s.vehicle_group_id) !== Number(driverGroupId));
+        if (groupMismatch) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_GROUP_MISMATCH');
+        }
+
+        // Vướng order khác: đang chạy, HOẶC đã được pre-assign (available + có owner)
+        const otherOrderResult = await client.query(
+            `SELECT os.order_id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = $1
+               AND os.order_id <> $2
+               AND (os.status = ANY($3::text[]) OR os.status = 'available')
+             LIMIT 1`,
+            [driverId, orderId, ACTIVE_STATUSES],
+        );
+        if (otherOrderResult.rows[0]) {
+            await client.query('ROLLBACK');
+            const err = new Error('OTHER_ORDER_ACTIVE');
+            err.conflictingOrderId = otherOrderResult.rows[0].order_id;
+            throw err;
+        }
+
+        // Xe đang chạy chuyến của order khác (tài khác cầm xe này)
+        const vehicleBusyResult = await client.query(
+            `SELECT os.order_id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.vehicle_id = $1
+               AND os.order_id <> $2
+               AND os.status = ANY($3::text[])
+             LIMIT 1`,
+            [vehicleId, orderId, ACTIVE_STATUSES],
+        );
+        if (vehicleBusyResult.rows[0]) {
+            await client.query('ROLLBACK');
+            const err = new Error('VEHICLE_BUSY_OTHER_ORDER');
+            err.conflictingOrderId = vehicleBusyResult.rows[0].order_id;
+            throw err;
+        }
+
+        for (const shipment of targets) {
+            await insertAssignmentHistory(client, {
+                shipmentId: shipment.id,
+                toDriverId: driverId,
+                toVehicleId: vehicleId,
+                changedBy: coordinatorId,
+                changeReason: 'initial_assign',
+                notes: 'Điều phối viên gán trước chuyến trong đơn',
+            });
+        }
+
+        // Chỉ kích hoạt ngay nếu tài chưa có chuyến nào đang chạy trong đơn này —
+        // giữ đúng nguyên tắc 1 chuyến active tại một thời điểm.
+        const hasActiveInOrder = orderShipments.some((s) => ACTIVE_STATUSES.includes(s.status)
+            && Number(s.owner_driver_id) === Number(driverId));
+
+        let activated = null;
+        if (!hasActiveInOrder) {
+            const first = targets.reduce(
+                (min, s) => (min === null || s.shipment_index < min.shipment_index ? s : min),
+                null,
+            );
+            const activateResult = await client.query(
+                `UPDATE order_shipments
+                 SET status = $1, claimed_at = NOW(), version = version + 1, updated_at = NOW()
+                 WHERE id = $2
+                 RETURNING *`,
+                [SHIPMENT_STATUS.CLAIMED, first.id],
+            );
+            activated = activateResult.rows[0];
+        }
+
+        await client.query('COMMIT');
+        return {
+            assignedShipmentIds: targets.map((s) => Number(s.id)),
+            activatedShipmentId: activated ? Number(activated.id) : null,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const activateNextShipment = async (completedShipmentId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
@@ -1582,6 +1730,7 @@ module.exports = {
     createOrderReceiptRequest,
     getOrderReceiptRequestByOrderId,
     claimShipment,
+    assignOrderShipmentsToDriver,
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,

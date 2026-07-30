@@ -973,6 +973,81 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
     return reassigned;
 };
 
+// Coordinator gán trước nhiều chuyến của CÙNG một đơn cho một tài xế.
+// Ràng buộc nghiệp vụ: chỉ trong cùng đơn. Tài đang vướng đơn khác thì không gán được.
+const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const driverRepository = require('../repositories/driverRepository');
+    const notificationService = require('./notificationService');
+
+    const parsedOrderId = Number(orderId);
+    const parsedDriverId = Number(driverId);
+    if (!parsedOrderId) throw new Error('Đơn hàng không hợp lệ');
+    if (!parsedDriverId) throw new Error('Tài xế là bắt buộc');
+
+    const ids = Array.isArray(shipmentIds) ? shipmentIds.map(Number).filter(Boolean) : [];
+    if (ids.length === 0) throw new Error('Phải chọn ít nhất 1 chuyến để gán');
+    const uniqueIds = [...new Set(ids)];
+
+    const driver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedDriverId);
+    if (!driver) throw new Error('Tài xế không tồn tại');
+    if (!driver.vehicle_id) throw new Error('Tài xế chưa được gán xe');
+
+    // Cùng ràng buộc như khi tài tự nhận chuyến: chưa xong nghĩa vụ phiếu thu của
+    // chuyến trước thì không được nhận việc mới — nếu bỏ ở đây thì coordinator gán
+    // tay trở thành đường lách guard đó.
+    const pendingReceipt = await tripRepository.getPendingReceiptOrder(parsedDriverId);
+    if (pendingReceipt) {
+        throw new Error(
+            `Tài xế còn chuyến #${pendingReceipt.shipment_id} (đơn #${pendingReceipt.order_id}) chưa nhập km thực tế / chưa gửi yêu cầu tạo phiếu thu. Không thể gán chuyến mới.`,
+        );
+    }
+
+    let result;
+    try {
+        result = await tripRepository.assignOrderShipmentsToDriver({
+            orderId: parsedOrderId,
+            shipmentIds: uniqueIds,
+            driverId: parsedDriverId,
+            vehicleId: Number(driver.vehicle_id),
+            coordinatorId: Number(actorId),
+        });
+    } catch (err) {
+        const messages = {
+            ORDER_NOT_FOUND: 'Đơn hàng không tồn tại hoặc chưa có chuyến nào',
+            SHIPMENT_NOT_IN_ORDER: 'Có chuyến không thuộc đơn hàng này',
+            SHIPMENT_NOT_ASSIGNABLE: 'Có chuyến đã được tài xế khác nhận hoặc đã bắt đầu chạy — hãy tải lại danh sách',
+            VEHICLE_GROUP_MISMATCH: 'Xe của tài xế không thuộc nhóm xe mà chuyến yêu cầu',
+            OTHER_ORDER_ACTIVE: `Tài xế đang có chuyến thuộc đơn #${err.conflictingOrderId} — chỉ gán được nhiều chuyến trong cùng một đơn`,
+            VEHICLE_BUSY_OTHER_ORDER: `Xe của tài xế đang chạy chuyến thuộc đơn #${err.conflictingOrderId}`,
+        };
+        if (messages[err.message]) throw new Error(messages[err.message]);
+        throw err;
+    }
+
+    const count = result.assignedShipmentIds.length;
+    notificationService.createForUser(parsedDriverId, {
+        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
+        message: count > 1
+            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
+            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    try {
+        notificationGateway.broadcastToUser(parsedDriverId, {
+            type: 'trip.assigned',
+            orderId: parsedOrderId,
+            shipmentIds: result.assignedShipmentIds,
+            activatedShipmentId: result.activatedShipmentId,
+        });
+    } catch { /* realtime failure must not abort the assignment */ }
+
+    return result;
+};
+
 // Tổng quan cho Coordinator — số đơn/trip đang xử lý, sự cố mở, phiếu thu/chi phí chờ duyệt
 const getDashboard = async () => {
     const overview = await coordinatorRepository.getDashboardStats();
@@ -996,5 +1071,6 @@ module.exports = {
     rejectReceiptRequest,
     cancelShipment,
     reassignShipment,
+    assignOrderShipments,
     getDashboard,
 };
