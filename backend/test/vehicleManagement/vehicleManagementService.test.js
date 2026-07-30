@@ -648,23 +648,39 @@ describe('Vehicle Management Service', () => {
 
     it('should delete vehicle group successfully', async () => {
         mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1 }));
+        mock.method(vehicleManagementRepository, 'listInUseVehiclesInGroup', async () => []);
         mock.method(vehicleManagementRepository, 'deleteVehicleGroup', async () => ({}));
-        
+
         const result = await vehicleManagementService.deleteVehicleGroup(1);
         assert.strictEqual(result.id, 1);
     });
 
     it('should reject delete vehicle group if referenced', async () => {
         mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1 }));
+        mock.method(vehicleManagementRepository, 'listInUseVehiclesInGroup', async () => []);
         mock.method(vehicleManagementRepository, 'deleteVehicleGroup', async () => {
             const err = new Error('foreign key constraint');
             err.code = '23503';
             throw err;
         });
-        
+
         await assert.rejects(
             () => vehicleManagementService.deleteVehicleGroup(1),
             (err) => err.statusCode === 409 && err.message.includes('referenced by other records')
+        );
+    });
+
+    // Nhóm còn xe đang dùng thì phải chặn ẩn, nếu không xe thành "xe ma":
+    // vẫn active nhưng coordinator không chọn được nhóm nên không bao giờ có việc
+    it('should reject hiding a vehicle group that still has in-use vehicles', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1, name: 'Xe 5m2' }));
+        mock.method(vehicleManagementRepository, 'listInUseVehiclesInGroup', async () => ([
+            { id: 10, plate_number: '51E-246.80', status: 'active' },
+        ]));
+
+        await assert.rejects(
+            () => vehicleManagementService.deleteVehicleGroup(1),
+            (err) => err.statusCode === 409 && err.message.includes('51E-246.80'),
         );
     });
 

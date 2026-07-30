@@ -19,6 +19,13 @@ router.get('/trip-pool', tripController.getTripPool);
 router.patch('/trips/:id/cancel',   coordinatorController.cancelShipment);
 router.patch('/trips/:id/reassign', coordinatorController.reassignShipment);
 
+// Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế — chạy tuần tự, chuyến sau
+// tự mở khi chuyến trước hoàn thành. Chặn nếu tài đang vướng đơn khác.
+router.post('/orders/:id/assign-driver', coordinatorController.assignOrderShipments);
+
+// Xử lý chuyến giao thất bại: giao lại hay hoàn hàng, và khách có phải trả tiền
+router.post('/trips/:id/resolve-failed', coordinatorController.resolveFailedShipment);
+
 // Receipt request management (driver yêu cầu → coordinator xử lý)
 router.get('/receipt-requests',          coordinatorController.getReceiptRequests);
 router.get('/receipt-requests/:id',      coordinatorController.getReceiptRequestDetail);
@@ -31,5 +38,7 @@ const spendingController = require('../controllers/spendingController');
 router.get('/expenses',               spendingController.listExpenses);
 router.patch('/expenses/:id/approve', coordinatorController.approveExpense);
 router.patch('/expenses/:id/reject',  coordinatorController.rejectExpense);
+// Gỡ duyệt: cứu chi phí đã duyệt nhưng sai số tiền (tài xế không tự sửa được)
+router.patch('/expenses/:id/unapprove', coordinatorController.unapproveExpense);
 
 module.exports = router;

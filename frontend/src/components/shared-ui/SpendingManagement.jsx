@@ -8,7 +8,7 @@ import {
 } from "@heroui/react";
 import {
   RiRefreshLine, RiCheckLine, RiCloseLine, RiAddLine, RiMoneyDollarCircleLine, RiWalletLine,
-  RiCheckboxCircleLine, RiCloseCircleLine, RiHandCoinLine, RiTimeLine,
+  RiCheckboxCircleLine, RiCloseCircleLine, RiHandCoinLine, RiTimeLine, RiArrowGoBackLine,
 } from "react-icons/ri";
 import { StatCard } from "./StatCard";
 import { PaginationBar } from "./PaginationBar";
@@ -182,6 +182,24 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       loadExpenses();
     } catch (e) {
       notify.error(e.message || "Lỗi duyệt chi phí");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleUnapproveExpense = async (r) => {
+    if (!(await confirmDialog({
+      title: "Gỡ duyệt chi phí",
+      description: `Gỡ duyệt khoản ${fmt(r.amount)} của ${r.driver_name || "tài xế"}? Khoản này về trạng thái chờ duyệt và tài xế sẽ sửa/xoá được.`,
+      confirmLabel: "Gỡ duyệt",
+    }))) return;
+    setActing(true);
+    try {
+      await api.unapproveExpense(r.id);
+      notify.success("Đã gỡ duyệt chi phí.");
+      loadExpenses();
+    } catch (e) {
+      notify.error(e.message || "Lỗi gỡ duyệt chi phí");
     } finally {
       setActing(false);
     }
@@ -427,6 +445,13 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                         <div className="flex gap-1 justify-end">
                           <Button size="sm" color="primary" isDisabled={acting} startContent={<RiCheckLine size={13} />} onPress={() => handleApproveExpense(r)}>Duyệt</Button>
                           <Button size="sm" variant="light" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setExpenseRejectTarget(r); setExpenseRejectReason(""); }}>Từ chối</Button>
+                        </div>
+                      )}
+                      {/* Gỡ duyệt: chi phí đã duyệt thì tài xế không sửa được nữa,
+                          nên duyệt sai số tiền là bế tắc nếu không có đường lùi này */}
+                      {canModerateExpense && api.unapproveExpense && r.status === "approved" && (
+                        <div className="flex gap-1 justify-end">
+                          <Button size="sm" variant="light" color="warning" isDisabled={acting} startContent={<RiArrowGoBackLine size={13} />} onPress={() => handleUnapproveExpense(r)}>Gỡ duyệt</Button>
                         </div>
                       )}
                     </TableCell>
