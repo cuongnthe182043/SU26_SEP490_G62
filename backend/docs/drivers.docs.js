@@ -159,14 +159,22 @@
  *     responses:
  *       200:
  *         description: Đã upload hóa đơn
+ *       422:
+ *         description: >
+ *           Ảnh không đọc được số tiền, hoặc tổng hóa đơn không khớp chi phí đã lưu.
+ *           Ảnh KHÔNG được lưu — driver phải chụp/chọn ảnh khác.
  */
 
 /**
  * @swagger
- * /api/drivers/maintenance/{vehicleId}/complete:
- *   post:
+ * /api/drivers/maintenance/{vehicleId}/cost:
+ *   patch:
  *     tags: [Drivers]
- *     summary: Driver báo hoàn tất bảo dưỡng — chờ coordinator xác nhận
+ *     summary: Lưu chi phí bảo dưỡng (Driver only) — gọi TRƯỚC khi upload hóa đơn
+ *     description: >
+ *       Server đối chiếu ảnh hóa đơn với chi phí ngay tại bước upload. Nếu chi phí chưa
+ *       được lưu thì phép đối chiếu đó bị bỏ qua, nên client phải lưu số tiền trước rồi
+ *       mới gửi ảnh. Bước hoàn tất vẫn kiểm tra lại lần nữa giữa số tiền và ảnh.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -174,7 +182,46 @@
  *         name: vehicleId
  *         required: true
  *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [cost]
+ *             properties:
+ *               cost: { type: number, minimum: 0 }
  *     responses:
  *       200:
- *         description: Đánh dấu ready for verification — coordinator sẽ kiểm tra
+ *         description: Đã lưu chi phí bảo dưỡng
+ */
+
+/**
+ * @swagger
+ * /api/drivers/maintenance/{vehicleId}/complete:
+ *   post:
+ *     tags: [Drivers]
+ *     summary: Driver báo hoàn tất bảo dưỡng — chờ manager xác nhận
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: vehicleId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [cost]
+ *             properties:
+ *               cost: { type: number, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Đánh dấu ready for verification — manager sẽ kiểm tra
+ *       422:
+ *         description: >
+ *           Chi phí khai không khớp tổng tiền đọc được trên các ảnh hóa đơn đã tải lên.
  */

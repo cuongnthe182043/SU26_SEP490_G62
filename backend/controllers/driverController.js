@@ -65,6 +65,20 @@ const uploadMaintenanceBill = async (req, res) => {
     }
 };
 
+// PATCH /api/drivers/maintenance/:vehicleId/cost
+// Lưu chi phí TRƯỚC khi tải hóa đơn để bước quét lúc upload có số tiền mà đối chiếu
+// (nếu không, ảnh nào cũng qua rồi tài xế khai số tuỳ ý sau).
+const updateMaintenanceCost = async (req, res) => {
+    try {
+        const result = await driverService.updateMaintenanceCost(
+            req.user.userId, req.params.vehicleId, req.body?.cost,
+        );
+        res.json({ message: 'Đã lưu chi phí bảo dưỡng', ...result });
+    } catch (err) {
+        res.status(err.statusCode || 500).json({ error: err.message });
+    }
+};
+
 const completeMaintenance = async (req, res) => {
     try {
         const result = await driverService.completeMaintenance(req.user.userId, req.params.vehicleId, req.body);
@@ -74,4 +88,4 @@ const completeMaintenance = async (req, res) => {
     }
 };
 
-module.exports = { getAllDrivers, getMyVehicle, getMyAssignmentHistory, requestMaintenance, listMaintenance, uploadMaintenanceBill, completeMaintenance };
+module.exports = { getAllDrivers, getMyVehicle, getMyAssignmentHistory, requestMaintenance, listMaintenance, uploadMaintenanceBill, updateMaintenanceCost, completeMaintenance };

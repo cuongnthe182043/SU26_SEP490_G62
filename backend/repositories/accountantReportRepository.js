@@ -156,6 +156,11 @@ const _getTopPartners = async () => {
 // cho các đường tạo debt cũ chưa set due_date (ví dụ createCustomerDebtForTrip,
 // record-collection client_credit...). Nợ chưa tới hạn (due_date ở tương lai)
 // được gộp vào bucket đầu (0-30) qua GREATEST(...,0) thay vì báo âm ngày quá hạn.
+//
+// Phạm vi và mốc thời gian PHẢI khớp _debtAging của managerReportRepository (nợ khách
+// + nợ đối tác, cắt ngày theo giờ VN): cùng một widget "nợ theo tuổi" hiện ở cả
+// Dashboard Manager (dùng hàm này) lẫn Báo cáo kinh doanh (dùng hàm kia) — lệch phạm vi
+// hoặc lệch múi giờ là hai con số khác nhau cho cùng một thứ.
 const _getDebtAging = async () => {
     const { rows } = await pool.query(`
         WITH dp_agg AS (
@@ -166,10 +171,14 @@ const _getDebtAging = async () => {
             SELECT
                 d.id,
                 GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) AS remaining,
-                GREATEST(NOW()::date - COALESCE(d.due_date, d.created_at::date), 0) AS overdue_days
+                GREATEST(
+                    (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                    - COALESCE(d.due_date, (d.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date), 0
+                ) AS overdue_days
             FROM debts d
             LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
-            WHERE d.debt_type = 'customer'
+            WHERE d.debt_type IN ('customer', 'partner')
+              AND (d.customer_id IS NOT NULL OR d.partner_id IS NOT NULL)
         )
         SELECT
             COALESCE(SUM(remaining) FILTER (WHERE overdue_days <= 30), 0)::float AS d0_30,

@@ -397,12 +397,12 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
     const shipments = [];
     for (const shipment of rawShipments) {
         const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
-        // Chỉ chi phí ĐÃ DUYỆT mới được tính vào tổng tiền — 'pending' KHÔNG được coi
-        // như đã duyệt (trước đây tính cả pending, khiến số hiện ra ở màn xem trước
-        // không khớp với số thật sự chốt nếu sau đó bị từ chối). approveReceiptRequest
-        // đã chặn chốt phiếu thu khi còn pass-through pending, nên tới đây chỉ còn
-        // approved/rejected — nhưng vẫn lọc chặt ở đây để phòng hờ chỗ gọi khác.
-        const countableExpenses = expenses.filter((expense) => expense.status === 'approved');
+        // Tính cả 'pending' lẫn 'approved', chỉ bỏ 'rejected'. Chi phí tài xế khai KHÔNG
+        // cần một bước duyệt riêng: phát hành phiếu thu CHÍNH LÀ hành động duyệt
+        // (autoApproveOrderExpenses trong approveReceiptRequest). Khoản 'pending' vì thế
+        // chắc chắn nằm trong phiếu, nên màn xem trước phải hiện đúng con số đó — lọc bỏ
+        // pending sẽ khiến coordinator xem 0đ rồi chốt ra số khác.
+        const countableExpenses = expenses.filter((expense) => expense.status !== 'rejected');
         const totalExpenses = countableExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
         const passThroughExpenses = countableExpenses.reduce((sum, expense) => (
             PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
@@ -707,24 +707,27 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        // Duyệt các chi phí tài xế còn 'pending' của đơn NGAY ĐẦU giao dịch. Chi phí đi
+        // vào phiếu thu không cần một bước duyệt riêng của manager/coordinator: phát hành
+        // phiếu thu chính là lúc chúng được duyệt.
+        //
+        // Trước đây bước này nằm ở CUỐI, nên phải chặn cứng việc chốt phiếu khi đơn còn
+        // khoản chi hộ khách 'pending' (nếu không thì khoản đó có thể bị tính vào tiền
+        // khách rồi sau lại bị từ chối → tài xế đã ứng tiền thật mà không được hoàn).
+        // Duyệt ngay từ đầu khiến tình huống đó không còn tồn tại: mọi khoản không bị
+        // 'rejected' đều được duyệt và ghi nợ hoàn cho tài xế (reimbursement_status =
+        // 'pending') trong CÙNG giao dịch với số tiền phiếu thu.
+        //
+        // Lưu ý: snapshot bên dưới đọc expenses qua pool (ngoài giao dịch) nên KHÔNG
+        // thấy thay đổi này; việc tính đúng số tiền dựa vào bộ lọc "khác 'rejected'"
+        // trong getOrderShipmentsForReceipt, không dựa vào thứ tự hai câu lệnh.
+        await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
+
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
 
-        // Chặn chốt phiếu thu nếu còn chi phí CHI HỘ KHÁCH (toll/parking/etc) đang
-        // 'pending' chưa được coordinator duyệt/từ chối. Lý do: số tiền phiếu thu
-        // được TÍNH VÀ KHOÁ CỨNG ngay lúc chốt — nếu 1 khoản pending bị tính vào rồi
-        // sau đó mới bị từ chối, khách đã bị thu tiền đó nhưng tài xế (người đã ứng
-        // tiền thật ở trạm) lại không được hoàn (chỉ hoàn khi expense 'approved') →
-        // công ty giữ luôn khoản chênh lệch, tài xế chịu thiệt. Bắt xử lý dứt điểm
-        // (duyệt hoặc từ chối) TRƯỚC khi số tiền được khoá, để không còn tình huống
-        // "tính như đã duyệt nhưng sau lại từ chối".
-        const pendingPassThrough = (pricingSnapshot.shipments || [])
-            .flatMap((shipment) => shipment.expenses || [])
-            .filter((expense) => expense.status === 'pending' && PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim()));
-        if (pendingPassThrough.length > 0) {
-            throw new Error('Đơn còn chi phí chi hộ khách (BOT/vé/ETC...) chưa được duyệt hoặc từ chối. Vui lòng xử lý các chi phí này ở màn "Chi phí tài xế" trước khi chốt phiếu thu.');
-        }
         const requestActualKm = Number(req.actual_km);
         if (Number.isFinite(requestActualKm) && requestActualKm > 0) {
             await coordinatorRepository.updateShipmentActualDistance(client, targetShipment.id, requestActualKm);
@@ -785,10 +788,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 refType: 'shipment', refId: shipmentSummary.shipment_id, actorId: coordinatorId,
             });
         }
-
-        // Duyệt phiếu thu = duyệt luôn các chi phí pending mà driver đã khai trong đơn.
-        // Không ghi sổ tại đây — khoản tài ứng chuyển sang 'pending' chờ hoàn.
-        await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
 
         // Cập nhật trạng thái request → approved
         await coordinatorRepository.markReceiptRequestApproved(client, { coordinatorId, requestId, notes });

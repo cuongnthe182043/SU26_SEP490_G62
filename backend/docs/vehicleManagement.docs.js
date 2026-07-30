@@ -254,6 +254,50 @@
 
 /**
  * @swagger
+ * /api/admin/vehicles/{id}/reject-maintenance:
+ *   post:
+ *     tags: [Vehicles]
+ *     summary: Từ chối / huỷ bảo dưỡng (đối trọng của verify-maintenance)
+ *     description: >
+ *       Dùng khi chứng từ không hợp lệ (hóa đơn khống, số tiền sai) hoặc đợt bảo dưỡng
+ *       được mở sai.
+ *       `mode=redo` — chỉ áp cho bản ghi đang `pending_verification`: xoá ảnh hóa đơn và
+ *       chi phí đã khai, xe VẪN ở trạng thái bảo dưỡng, tài xế phải khai lại từ đầu.
+ *       `mode=cancel` — áp cho cả bản ghi `open` (tài xế chưa nộp): đóng bản ghi
+ *       (`rejected`), xe trở về `active`, tài xế muốn bảo dưỡng phải gửi yêu cầu mới.
+ *       Chưa có bút toán nào được ghi trước bước verify nên không cần đảo sổ.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [redo, cancel]
+ *                 default: redo
+ *               reason: { type: string, description: Bắt buộc — ghi vào reject_reason và thông báo cho tài xế }
+ *               maintenance_record_id: { type: integer, description: Không bắt buộc — mặc định lấy bản ghi đang mở gần nhất }
+ *     responses:
+ *       200:
+ *         description: Đã từ chối / huỷ bảo dưỡng
+ *       409:
+ *         description: >
+ *           Trạng thái bản ghi không cho phép mode đã chọn (VD `redo` khi tài xế chưa nộp
+ *           chứng từ), hoặc xe không ở trạng thái bảo dưỡng.
+ */
+
+/**
+ * @swagger
  * /api/admin/vehicles/{id}/mark-broken:
  *   post:
  *     tags: [Vehicles]

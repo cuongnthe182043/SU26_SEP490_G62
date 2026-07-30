@@ -284,7 +284,7 @@ export default function VehiclesView({ user }) {
       );
     }
     if (vehicle.status === "maintenance") {
-      items.push({ key: "verify", label: "Xác nhận bảo dưỡng", icon: RiCheckboxCircleLine, color: "success", onPress: () => handleVerifyMaintenance(vehicle) });
+      items.push({ key: "verify", label: "Xác nhận / huỷ bảo dưỡng", icon: RiCheckboxCircleLine, color: "success", onPress: () => handleVerifyMaintenance(vehicle) });
     }
     if (vehicle.status === "broken") {
       items.push(
