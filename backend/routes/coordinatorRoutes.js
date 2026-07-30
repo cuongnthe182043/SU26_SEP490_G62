@@ -23,6 +23,9 @@ router.patch('/trips/:id/reassign', coordinatorController.reassignShipment);
 // tự mở khi chuyến trước hoàn thành. Chặn nếu tài đang vướng đơn khác.
 router.post('/orders/:id/assign-driver', coordinatorController.assignOrderShipments);
 
+// Xử lý chuyến giao thất bại: giao lại hay hoàn hàng, và khách có phải trả tiền
+router.post('/trips/:id/resolve-failed', coordinatorController.resolveFailedShipment);
+
 // Receipt request management (driver yêu cầu → coordinator xử lý)
 router.get('/receipt-requests',          coordinatorController.getReceiptRequests);
 router.get('/receipt-requests/:id',      coordinatorController.getReceiptRequestDetail);
