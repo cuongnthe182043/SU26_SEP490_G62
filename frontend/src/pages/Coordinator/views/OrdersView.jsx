@@ -76,8 +76,11 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       const dbTrips = (data.orders || []).map(buildTripFromOrder);
       setTrips(dbTrips);
       setPagination(data.pagination || { page, limit: pagination.limit, total: dbTrips.length, totalPages: 1 });
+      // Trả về danh sách để chỗ gọi lấy lại đúng đơn đang mở trong modal chi tiết
+      return dbTrips;
     } catch (error) {
       console.error(error);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -294,6 +297,21 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       notify.error(error.message || "Không thể điều chuyển chuyến.");
     } finally {
       setReassignBusy(false);
+    }
+  };
+
+  // Gán trước chuyến cho tài xế từ modal chi tiết đơn. Ném lỗi lên lại để panel
+  // giữ nguyên lựa chọn khi thất bại (VD tài đang vướng đơn khác).
+  const submitAssignShipments = async ({ shipmentIds, driverId }) => {
+    try {
+      const res = await coordinatorService.assignOrderShipments(detailOrder.orderId, { shipmentIds, driverId });
+      const refreshed = await loadOrders(pagination.page);
+      const updated = (refreshed ?? []).find((o) => Number(o.orderId) === Number(detailOrder.orderId));
+      if (updated) setDetailOrder(updated);
+      notify.success(res.message || "Đã gán chuyến cho tài xế.");
+    } catch (error) {
+      notify.error(error.message || "Không thể gán chuyến.");
+      throw error;
     }
   };
 
@@ -523,6 +541,8 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         open={!!detailOrder}
         order={detailOrder}
         onClose={() => setDetailOrder(null)}
+        drivers={drivers}
+        onAssignShipments={submitAssignShipments}
       />
 
       <Modal isOpen={!!reassignTarget} onOpenChange={(isOpen) => !isOpen && closeReassignModal()} size="sm">

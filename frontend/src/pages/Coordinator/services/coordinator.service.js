@@ -32,6 +32,13 @@ export const coordinatorService = {
     apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) =>
     apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+
+  // Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế (chạy tuần tự)
+  assignOrderShipments: (orderId, { shipmentIds, driverId }) =>
+    apiRequest(`${BASE}/orders/${orderId}/assign-driver`, {
+      method: "POST",
+      body: { shipment_ids: shipmentIds, driver_id: driverId },
+    }),
   getTripPool: (params) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
 
   // ─── Lookups ──────────────────────────────────────────────────────────────
