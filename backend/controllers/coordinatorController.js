@@ -218,6 +218,33 @@ const assignOrderShipments = async (req, res) => {
     }
 };
 
+// POST /api/coordinator/trips/:id/resolve-failed
+// Body: { action: 'redeliver'|'return', charge_type?, return_fee? }
+const resolveFailedShipment = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
+
+        const shipment = await coordinatorService.resolveFailedShipment(shipmentId, {
+            action: req.body?.action,
+            chargeType: req.body?.charge_type,
+            returnFee: req.body?.return_fee,
+        }, req.user.userId);
+
+        const message = req.body?.action === 'redeliver'
+            ? 'Đã cho giao lại chuyến'
+            : 'Đã chuyển chuyến sang hoàn hàng';
+        res.json({ message, shipment });
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('Chỉ xử lý được') ? 409
+            : err.message.includes('phải là') || err.message.includes('không hợp lệ')
+                || err.message.includes('lớn hơn 0') ? 400
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 const cancelShipment = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
@@ -272,4 +299,5 @@ module.exports = {
     cancelShipment,
     reassignShipment,
     assignOrderShipments,
+    resolveFailedShipment,
 };

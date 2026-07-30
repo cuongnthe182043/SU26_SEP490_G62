@@ -500,6 +500,41 @@ const computeReceiptAmount = (pricingSnapshot) => {
             };
         }
 
+        // Chuyến phải HOÀN HÀNG (returning_at có giá trị — kể cả khi đã sang
+        // 'completed' vì hàng đã về kho). Số tiền khách phải trả do coordinator chốt
+        // lúc xử lý chuyến thất bại, KHÔNG được tính lại theo km như chuyến giao
+        // thành công. Trước đây returnComplete đặt status='completed' nên nhánh
+        // 'failed' ở trên không bao giờ chạy → khách bị thu đủ cước cho hàng chưa
+        // từng giao.
+        if (shipment.returning_at) {
+            const chargeType = shipment.return_charge_type;
+            if (chargeType === 'no_charge') {
+                return {
+                    shipment_id: shipment.id,
+                    actual_km: 0,
+                    price_per_km: pricePerKm,
+                    actual_income: 0,
+                    is_price_manual: false,
+                    is_returned: true,
+                };
+            }
+            if (chargeType === 'return_fee') {
+                const fee = Number(shipment.return_fee);
+                if (!Number.isFinite(fee) || fee < 0) {
+                    throw new Error(`Chuyến #${shipment.id} hoàn hàng nhưng chưa có phí hoàn hàng hợp lệ`);
+                }
+                return {
+                    shipment_id: shipment.id,
+                    actual_km: 0,
+                    price_per_km: pricePerKm,
+                    actual_income: fee,
+                    is_price_manual: false,
+                    is_returned: true,
+                };
+            }
+            // full_fare → rơi xuống tính như chuyến bình thường (khách trả đủ cước)
+        }
+
         // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe — BẮT BUỘC phải là km THẬT của
         // chính chuyến đó (actual_distance_km), KHÔNG được lặng lẽ dùng km ước tính
         // lúc tạo đơn thay thế. Nếu chuyến này chưa có km thật (tài xế của chuyến đó
@@ -978,6 +1013,80 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
     return reassigned;
 };
 
+// Coordinator xử lý chuyến giao thất bại: liên hệ khách rồi chọn giao lại hoặc
+// hoàn hàng, kèm chốt khách có phải trả tiền hay không.
+const resolveFailedShipment = async (shipmentId, { action, chargeType, returnFee }, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const notificationService = require('./notificationService');
+    const { RETURN_CHARGE_TYPES } = require('../constants/tripConstants');
+
+    const parsedId = Number(shipmentId);
+    if (!parsedId) throw new Error('Chuyến không hợp lệ');
+    if (!['redeliver', 'return'].includes(action)) {
+        throw new Error('action phải là "redeliver" (giao lại) hoặc "return" (hoàn hàng)');
+    }
+
+    let normalizedFee = null;
+    if (action === 'return') {
+        if (!RETURN_CHARGE_TYPES.includes(chargeType)) {
+            throw new Error(`Cách tính tiền phải là một trong: ${RETURN_CHARGE_TYPES.join(', ')}`);
+        }
+        if (chargeType === 'return_fee') {
+            normalizedFee = Number(returnFee);
+            if (!Number.isFinite(normalizedFee) || normalizedFee <= 0) {
+                throw new Error('Phí hoàn hàng phải lớn hơn 0');
+            }
+        }
+    }
+
+    const shipment = await tripRepository.getTripById(parsedId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+
+    let updated;
+    try {
+        updated = await tripRepository.resolveFailedShipment({
+            shipmentId: parsedId,
+            action,
+            chargeType: action === 'return' ? chargeType : null,
+            returnFee: normalizedFee,
+            coordinatorId: Number(actorId),
+        });
+    } catch (err) {
+        if (err.message === 'SHIPMENT_NOT_FOUND') throw new Error('Chuyến không tồn tại');
+        if (err.message === 'NOT_FAILED') throw new Error('Chỉ xử lý được chuyến đang ở trạng thái giao thất bại');
+        throw err;
+    }
+
+    if (shipment.owner_driver_id) {
+        const chargeLabel = {
+            no_charge: 'khách không phải trả tiền',
+            return_fee: `khách trả phí hoàn hàng ${Number(normalizedFee).toLocaleString('vi-VN')}đ`,
+            full_fare: 'khách trả đủ cước',
+        }[chargeType];
+
+        notificationService.createForUser(shipment.owner_driver_id, {
+            title: action === 'redeliver' ? 'Giao lại chuyến' : 'Chuyển sang hoàn hàng',
+            message: action === 'redeliver'
+                ? `Điều phối viên đã liên hệ khách — chuyến #${parsedId} được giao lại. Hãy tiếp tục đến điểm giao.`
+                : `Chuyến #${parsedId} chuyển sang hoàn hàng (${chargeLabel}). Hãy chở hàng về điểm lấy và chụp ảnh xác nhận khi trả hàng.`,
+            type: 'TRIP_STATUS_UPDATED',
+            entityType: 'shipments',
+            entityId: parsedId,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        try {
+            notificationGateway.broadcastToUser(shipment.owner_driver_id, {
+                type: 'trip.failed_resolved',
+                shipmentId: parsedId,
+                action,
+                status: updated.status,
+            });
+        } catch { /* realtime failure must not abort the resolution */ }
+    }
+
+    return updated;
+};
+
 // Coordinator gán trước nhiều chuyến của CÙNG một đơn cho một tài xế.
 // Ràng buộc nghiệp vụ: chỉ trong cùng đơn. Tài đang vướng đơn khác thì không gán được.
 const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId) => {
@@ -1077,5 +1186,6 @@ module.exports = {
     cancelShipment,
     reassignShipment,
     assignOrderShipments,
+    resolveFailedShipment,
     getDashboard,
 };

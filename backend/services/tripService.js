@@ -153,6 +153,30 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
 
     fireStatusNotif(driverId, tripId, newStatus);
 
+    // Giao thất bại là việc phải có người xử lý ngay: coordinator liên hệ khách rồi
+    // quyết định giao lại hay trả hàng về, và khách có phải trả tiền hay không.
+    // Trước đây chỉ báo cho chính tài xế (silent) nên coordinator không hề biết.
+    if (newStatus === SHIPMENT_STATUS.FAILED) {
+        const coordinatorIds = await notificationService.getUserIdsByRole('coordinator');
+        notificationService.createForUsers(coordinatorIds, {
+            title: 'Giao hàng thất bại — cần xử lý',
+            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Hãy liên hệ khách rồi chọn giao lại hoặc hoàn hàng.`,
+            type: 'TRIP_STATUS_UPDATED',
+            entityType: 'shipments',
+            entityId: tripId,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        try {
+            notificationGateway.broadcastToRole('coordinator', {
+                type: 'coordinator.shipment.failed',
+                action: 'failed',
+                shipmentId: Number(tripId),
+                orderId: trip.order_id ?? null,
+                reason: reason.trim(),
+            });
+        } catch { /* realtime failure must not abort the status change */ }
+    }
+
     // RETURNING → COMPLETED: hàng đã về kho, KHÔNG auto-activate leg tiếp theo
     // Successful delivery COMPLETED được xử lý qua completeTrip (POST /complete)
 
@@ -317,10 +341,12 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.RETURNING) throw new Error('Chuyến phải ở trạng thái "returning" để xác nhận hoàn hàng');
 
-    // Photo is optional for return completion
-    if (proofFileUrl) {
-        await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
+    // Ảnh BẮT BUỘC: đây là bằng chứng duy nhất chứng minh hàng đã thực sự về kho.
+    // Trước đây ảnh tuỳ chọn nên không có gì xác nhận hàng đã được trả lại.
+    if (!proofFileUrl) {
+        throw new Error('Ảnh xác nhận đã trả hàng về điểm lấy là bắt buộc');
     }
+    await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
     const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
 

@@ -394,6 +394,108 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     }
 };
 
+// Coordinator xử lý chuyến giao thất bại.
+//
+// action='redeliver' → về TRANSIT, tài đi giao lại (xoá dấu thất bại để chuyến chạy
+//                      lại bình thường; cancel_reason giữ nguyên làm vết audit).
+// action='return'    → sang RETURNING kèm cách tính tiền khách đã chốt:
+//                      no_charge  → actual_price = 0 (DN chịu)
+//                      return_fee → actual_price = phí hoàn hàng coordinator nhập
+//                      full_fare  → actual_price = NULL, để computeReceiptAmount tính
+//                                   như chuyến bình thường (khách trả đủ cước)
+//
+// Ghi actual_price ngay tại đây khiến KPI tự đúng: kpiRepository dùng
+// COALESCE(actual_price, estimated_price, 0) nên 0 hoặc phí hoàn hàng sẽ được dùng
+// thay cho giá cước đầy đủ, mà không phải sửa câu KPI.
+const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee, coordinatorId }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const lockedResult = await client.query(
+            `SELECT id, status, order_id FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            [shipmentId],
+        );
+        const shipment = lockedResult.rows[0];
+        if (!shipment) {
+            await client.query('ROLLBACK');
+            throw new Error('SHIPMENT_NOT_FOUND');
+        }
+        if (shipment.status !== SHIPMENT_STATUS.FAILED) {
+            await client.query('ROLLBACK');
+            throw new Error('NOT_FAILED');
+        }
+
+        let updated;
+        if (action === 'redeliver') {
+            const res = await client.query(
+                `UPDATE order_shipments
+                 SET status = $2,
+                     failed_at = NULL,
+                     failed_resolved_by = $3,
+                     failed_resolved_at = NOW(),
+                     version = version + 1,
+                     updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING *`,
+                [shipmentId, SHIPMENT_STATUS.TRANSIT, coordinatorId],
+            );
+            updated = res.rows[0];
+        } else {
+            const actualPrice = chargeType === 'no_charge' ? 0
+                : chargeType === 'return_fee' ? Number(returnFee)
+                : null;
+            const res = await client.query(
+                `UPDATE order_shipments
+                 SET status = $2,
+                     returning_at = NOW(),
+                     return_charge_type = $3,
+                     return_fee = $4,
+                     actual_price = CASE WHEN $5::boolean THEN $6::numeric ELSE actual_price END,
+                     failed_resolved_by = $7,
+                     failed_resolved_at = NOW(),
+                     version = version + 1,
+                     updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING *`,
+                [
+                    shipmentId,
+                    SHIPMENT_STATUS.RETURNING,
+                    chargeType,
+                    chargeType === 'return_fee' ? Number(returnFee) : null,
+                    actualPrice !== null,
+                    actualPrice,
+                    coordinatorId,
+                ],
+            );
+            updated = res.rows[0];
+        }
+
+        await client.query('COMMIT');
+
+        // Audit cùng cơ chế với updateTripStatus (không có bảng shipment_status_history)
+        activityLogRepository.logSafe({
+            userId: coordinatorId,
+            action: 'trip_failed_resolved',
+            entityType: 'shipment',
+            entityId: shipmentId,
+            oldData: { status: SHIPMENT_STATUS.FAILED },
+            newData: {
+                status: updated.status,
+                resolution: action,
+                ...(action === 'return' ? { return_charge_type: chargeType, return_fee: updated.return_fee } : {}),
+            },
+        });
+
+        return updated;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 // Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
 //
 // Cách hoạt động: ghi shipment_assignment_history (⇒ v_shipment_current.owner_driver_id
@@ -1731,6 +1833,7 @@ module.exports = {
     getOrderReceiptRequestByOrderId,
     claimShipment,
     assignOrderShipmentsToDriver,
+    resolveFailedShipment,
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,
