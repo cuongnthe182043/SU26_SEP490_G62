@@ -39,11 +39,16 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     await expenseRepository.addExpenseAttachment(expense.id, receiptUrl);
 
-    // Mọi chi phí đều giữ 'pending' chờ coordinator duyệt — kể cả đơn không thu
-    // tiền mặt. Trước đây đơn non-cash được auto-duyệt ngay để không kẹt pending
-    // vĩnh viễn, nhưng auto-duyệt lại khoá luôn quyền sửa của tài xế (không sửa
-    // được chi phí đã approved) nên tài gõ sai số tiền là hết đường. Giờ chi phí
-    // pending KHÔNG còn chặn việc chốt phiếu thu nữa nên không có gì bị kẹt.
+    // Mọi chi phí đều giữ 'pending', kể cả đơn không thu tiền mặt.
+    //
+    // Đơn cash: được duyệt TỰ ĐỘNG khi coordinator phát hành phiếu thu
+    // (autoApproveOrderExpenses trong approveReceiptRequest).
+    //
+    // Đơn non-cash: trước đây auto-duyệt ngay lúc tạo để không kẹt 'pending' vĩnh
+    // viễn (vì không đi qua luồng phiếu thu). Nhưng 'approved' khoá luôn quyền sửa
+    // của tài xế, nên tài gõ sai số tiền là hết đường — đúng bug đã báo. Giờ để
+    // 'pending' và coordinator duyệt tay ở màn "Chi phí tài xế"; chi phí pending
+    // không còn chặn gì nên cũng không kẹt.
     const driver = await profileRepository.getProfileById(driverId);
     // Chỉ coordinator duyệt chi phí tài xế — Manager không còn vai trò này,
     // màn "Quản lý chi phí" bên Manager chỉ để xem lịch sử.

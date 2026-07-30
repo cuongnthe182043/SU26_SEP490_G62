@@ -22,13 +22,47 @@ const inPeriodCompleted = `
     AND (os.completed_at AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
 `;
 
+// Nợ PHẢI THU của công ty gồm cả nợ khách lẻ/doanh nghiệp ('customer') lẫn nợ đối tác
+// giao việc ('partner') — cả hai đều là tiền bên mua dịch vụ còn nợ. Doanh thu ở trên
+// tính TẤT CẢ chuyến hoàn thành (cả đơn đối tác), nên nếu phần công nợ chỉ lấy
+// 'customer' thì DSO và tỷ lệ thu hồi bị bóp méo: mẫu số có doanh thu đối tác mà tử số
+// không có nợ/tiền thu của đối tác. Dùng chung hằng số này ở MỌI query công nợ để các
+// con số trong báo cáo cộng khớp nhau.
+const RECEIVABLE_DEBT_TYPES = "('customer','partner')";
+
+// Bên nợ (khách hoặc đối tác) — chuẩn hoá tên + loại để bảng chi tiết và bảng rủi ro
+// hiển thị cùng một tập dữ liệu với phần tổng hợp.
+const RECEIVABLE_PARTY_JOIN = `
+    LEFT JOIN customers c ON c.id = d.customer_id
+    LEFT JOIN partners  pt ON pt.id = d.partner_id
+`;
+// Ưu tiên partner giống RECEIVABLE_PARTY_TYPE (một dòng nợ chỉ set 1 trong 2 id, nhưng
+// để hai biểu thức không thể lệch nhau nếu dữ liệu bẩn).
+const RECEIVABLE_PARTY_KEY = `COALESCE('p' || d.partner_id, 'c' || d.customer_id)`;
+const RECEIVABLE_PARTY_NAME = `
+    COALESCE(c.full_name, c.company_name, pt.company_name, pt.short_name, 'Không tên')
+`;
+const RECEIVABLE_PARTY_TYPE = `CASE WHEN d.partner_id IS NOT NULL THEN 'partner' ELSE 'customer' END`;
+// Nợ không gắn được vào khách/đối tác nào thì bảng chi tiết không thể hiện được →
+// loại luôn khỏi phần tổng để tổng và chi tiết không lệch nhau.
+const RECEIVABLE_HAS_PARTY = '(d.customer_id IS NOT NULL OR d.partner_id IS NOT NULL)';
+
 // A. Doanh thu cước thuần + số chuyến hoàn thành trong kỳ.
+//
+// revenue_credit tách riêng phần doanh thu BÁN CHỊU (payment_type = 'client_credit') —
+// chỉ phần này mới sinh ra nợ phải thu. Đơn tiền mặt/chuyển khoản thu ngay tại chuyến
+// (tiền qua tay tài xế, theo dõi ở "tiền tài xế đang cầm"), không bao giờ nằm trong
+// bảng công nợ khách. Dùng revenue_credit làm mẫu số cho DSO và tỷ lệ thu hồi để hai
+// chỉ số này cùng một cơ sở với tử số, thay vì chia cho tổng doanh thu.
 const _revenue = async (year, month) => {
     const { rows } = await pool.query(`
         SELECT
             COALESCE(SUM(os.actual_price), 0)::float AS revenue,
+            COALESCE(SUM(os.actual_price) FILTER (WHERE o.payment_type = 'client_credit'), 0)::float
+                                                     AS revenue_credit,
             COUNT(*)::int                            AS trips
         FROM order_shipments os
+        JOIN orders o ON o.id = os.order_id
         WHERE ${inPeriodCompleted}
     `, [year, month]);
     return rows[0];
@@ -52,6 +86,11 @@ const _operatingCost = async (year, month) => {
             SELECT COALESCE(SUM(amount), 0)::float AS amount
             FROM payment_vouchers
             WHERE status IN ('approved','paid')
+              -- prepaid_refund là TRẢ LẠI tiền khách ứng trước cho đơn đã huỷ, không phải
+              -- chi phí vận hành: sổ tài chính ghi nó vào 131 (phải thu) với event
+              -- 'prepaid_refunded', không phải 'expense_recorded'. Tính vào đây sẽ đội
+              -- chi phí và làm lợi nhuận gộp thấp giả tạo.
+              AND voucher_type <> 'prepaid_refund'
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
         `, [year, month]),
@@ -83,12 +122,14 @@ const _pnlForPeriod = async (year, month) => {
         _payrollCost(year, month),
     ]);
     const revenue        = rev.revenue;
+    const revenue_credit = rev.revenue_credit;
     const operating_cost = cost.total;
     const payroll_cost   = pay.cost;
     const gross_profit   = revenue - operating_cost - payroll_cost;
     const margin_pct     = revenue > 0 ? (gross_profit / revenue) * 100 : 0;
     return {
         revenue,
+        revenue_credit,
         operating_cost,
         operating_cost_vehicle: cost.vehicle,
         operating_cost_office:  cost.office,
@@ -158,22 +199,26 @@ const _drivers = async (year, month) => {
     return rows;
 };
 
-// C. Tiền khách thanh toán đã xác nhận trong kỳ (để tính tỷ lệ thu hồi).
+// C. Tiền bên mua dịch vụ (khách + đối tác) đã thanh toán và được xác nhận trong kỳ,
+// dùng làm tử số của tỷ lệ thu hồi. Cùng phạm vi công nợ với _debtAging.
 const _collectedInPeriod = async (year, month) => {
     const { rows } = await pool.query(`
         SELECT COALESCE(SUM(dp.amount), 0)::float AS collected
         FROM debt_payments dp
         JOIN debts d ON d.id = dp.debt_id
         WHERE dp.status = 'confirmed'
-          AND d.debt_type = 'customer'
+          AND d.debt_type IN ${RECEIVABLE_DEBT_TYPES}
+          AND ${RECEIVABLE_HAS_PARTY}
           AND (dp.confirmed_at AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
           AND (dp.confirmed_at AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
     `, [year, month]);
     return rows[0].collected;
 };
 
-// C. Phân tích nợ khách theo tuổi — thời điểm HIỆN TẠI (không theo kỳ). Tính theo
+// C. Phân tích nợ phải thu theo tuổi — thời điểm HIỆN TẠI (không theo kỳ). Tính theo
 // due_date thực tế, fallback created_at; chưa tới hạn gộp vào bucket đầu.
+// Phạm vi (loại nợ + điều kiện có bên nợ) PHẢI giống _receivableDetail/_riskyParties,
+// nếu không thì ô "Nợ phải thu" và dòng TỔNG CỘNG của bảng chi tiết sẽ lệch nhau.
 const _debtAging = async () => {
     const { rows } = await pool.query(`
         WITH dp_agg AS (
@@ -189,7 +234,8 @@ const _debtAging = async () => {
                 ) AS overdue_days
             FROM debts d
             LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
-            WHERE d.debt_type = 'customer'
+            WHERE d.debt_type IN ${RECEIVABLE_DEBT_TYPES}
+              AND ${RECEIVABLE_HAS_PARTY}
         )
         SELECT
             COALESCE(SUM(remaining) FILTER (WHERE overdue_days <= 30), 0)::float AS d0_30,
@@ -225,29 +271,36 @@ const _driverHoldings = async () => {
     return rows;
 };
 
-// E. Top khách hàng theo doanh thu TRONG KỲ. Doanh thu gộp theo order trước khi
-// join customers để tránh Cartesian product (đơn nhiều chuyến).
+// E. Top bên mua dịch vụ theo doanh thu TRONG KỲ (khách hàng + đối tác giao việc).
+// Doanh thu gộp theo order trước khi join để tránh Cartesian product (đơn nhiều chuyến).
+// Trước đây loại hẳn đơn có partner_id, nên doanh thu đơn đối tác biến mất khỏi bảng
+// này dù vẫn nằm trong ô "Doanh thu" — hai con số không bao giờ đối chiếu được.
 const _topCustomers = async (year, month) => {
     const { rows } = await pool.query(`
         WITH order_rev AS (
             SELECT
                 o.id AS order_id,
                 o.customer_id,
+                o.partner_id,
                 COALESCE(SUM(os.actual_price) FILTER (WHERE ${inPeriodCompleted}), 0) AS revenue,
                 COUNT(*) FILTER (WHERE ${inPeriodCompleted})                          AS trips
             FROM orders o
             JOIN order_shipments os ON os.order_id = o.id
-            WHERE o.partner_id IS NULL
-            GROUP BY o.id, o.customer_id
+            GROUP BY o.id, o.customer_id, o.partner_id
         )
         SELECT
-            COALESCE(c.full_name, c.company_name, 'Không tên') AS name,
-            c.company_name,
+            COALESCE(pt.company_name, pt.short_name, c.full_name, c.company_name, 'Không tên') AS name,
+            COALESCE(pt.company_name, c.company_name) AS company_name,
+            CASE WHEN orv.partner_id IS NOT NULL THEN 'partner' ELSE 'customer' END AS party_type,
             COUNT(*) FILTER (WHERE orv.trips > 0)::int AS total_orders,
             COALESCE(SUM(orv.revenue), 0)::float       AS total_revenue
-        FROM customers c
-        JOIN order_rev orv ON orv.customer_id = c.id
-        GROUP BY c.id, c.full_name, c.company_name
+        FROM order_rev orv
+        LEFT JOIN customers c ON c.id = orv.customer_id
+        LEFT JOIN partners  pt ON pt.id = orv.partner_id
+        WHERE orv.customer_id IS NOT NULL OR orv.partner_id IS NOT NULL
+        GROUP BY COALESCE('p' || orv.partner_id, 'c' || orv.customer_id),
+                 pt.company_name, pt.short_name, c.full_name, c.company_name,
+                 CASE WHEN orv.partner_id IS NOT NULL THEN 'partner' ELSE 'customer' END
         HAVING COALESCE(SUM(orv.revenue), 0) > 0
         ORDER BY total_revenue DESC
         LIMIT 8
@@ -255,16 +308,20 @@ const _topCustomers = async (year, month) => {
     return rows;
 };
 
-// E. Khách hàng rủi ro — dư nợ hiện tại, ưu tiên nợ quá hạn cao nhất.
+// E. Bên nợ rủi ro — dư nợ hiện tại, ưu tiên nợ quá hạn cao nhất. Cùng phạm vi công nợ
+// với _debtAging / _receivableDetail.
 const _riskyCustomers = async () => {
     const { rows } = await pool.query(`
         WITH dp_agg AS (
             SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
             FROM debt_payments GROUP BY debt_id
         ),
-        per_customer AS (
+        per_party AS (
             SELECT
-                d.customer_id,
+                ${RECEIVABLE_PARTY_KEY} AS party_key,
+                ${RECEIVABLE_PARTY_NAME} AS name,
+                COALESCE(c.company_name, pt.company_name) AS company_name,
+                ${RECEIVABLE_PARTY_TYPE} AS party_type,
                 SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)) AS outstanding,
                 SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)) FILTER (
                     WHERE (NOW() AT TIME ZONE '${TZ}')::date
@@ -272,24 +329,24 @@ const _riskyCustomers = async () => {
                 ) AS overdue
             FROM debts d
             LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
-            WHERE d.debt_type = 'customer' AND d.customer_id IS NOT NULL
-            GROUP BY d.customer_id
+            ${RECEIVABLE_PARTY_JOIN}
+            WHERE d.debt_type IN ${RECEIVABLE_DEBT_TYPES}
+              AND ${RECEIVABLE_HAS_PARTY}
+            GROUP BY ${RECEIVABLE_PARTY_KEY}, ${RECEIVABLE_PARTY_NAME},
+                     COALESCE(c.company_name, pt.company_name), ${RECEIVABLE_PARTY_TYPE}
         )
-        SELECT
-            COALESCE(c.full_name, c.company_name, 'Không tên') AS name,
-            c.company_name,
-            pc.outstanding::float AS outstanding,
-            pc.overdue::float     AS overdue
-        FROM per_customer pc
-        JOIN customers c ON c.id = pc.customer_id
-        WHERE pc.outstanding > 0.01
-        ORDER BY pc.overdue DESC, pc.outstanding DESC
+        SELECT name, company_name, party_type,
+               outstanding::float AS outstanding,
+               COALESCE(overdue, 0)::float AS overdue
+        FROM per_party
+        WHERE outstanding > 0.01
+        ORDER BY overdue DESC NULLS LAST, outstanding DESC
         LIMIT 8
     `);
     return rows;
 };
 
-// C. Công nợ CHI TIẾT từng khách hàng — dư nợ hiện tại tách theo tuổi nợ
+// C. Công nợ CHI TIẾT từng bên nợ — dư nợ hiện tại tách theo tuổi nợ
 // (0-30 / 31-60 / 61-90 / >90 ngày, theo due_date fallback created_at, giờ VN) +
 // số đơn chưa thu. Dùng chung định nghĩa với _debtAging để tổng khớp nhau.
 const _customerDebtDetail = async () => {
@@ -300,7 +357,11 @@ const _customerDebtDetail = async () => {
         ),
         open_debt AS (
             SELECT
-                d.customer_id,
+                ${RECEIVABLE_PARTY_KEY} AS party_key,
+                ${RECEIVABLE_PARTY_NAME} AS name,
+                COALESCE(c.company_name, pt.company_name) AS company_name,
+                COALESCE(c.phone, pt.phone) AS phone,
+                ${RECEIVABLE_PARTY_TYPE} AS party_type,
                 d.order_id,
                 GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) AS remaining,
                 GREATEST(
@@ -309,12 +370,15 @@ const _customerDebtDetail = async () => {
                 ) AS overdue_days
             FROM debts d
             LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
-            WHERE d.debt_type = 'customer' AND d.customer_id IS NOT NULL
+            ${RECEIVABLE_PARTY_JOIN}
+            WHERE d.debt_type IN ${RECEIVABLE_DEBT_TYPES}
+              AND ${RECEIVABLE_HAS_PARTY}
         )
         SELECT
-            COALESCE(c.full_name, c.company_name, 'Không tên') AS name,
-            c.company_name,
-            c.phone,
+            od.name,
+            od.company_name,
+            od.phone,
+            od.party_type,
             COALESCE(SUM(od.remaining), 0)::float AS outstanding,
             COALESCE(SUM(od.remaining) FILTER (WHERE od.overdue_days <= 30), 0)::float AS d0_30,
             COALESCE(SUM(od.remaining) FILTER (WHERE od.overdue_days > 30 AND od.overdue_days <= 60), 0)::float AS d30_60,
@@ -322,8 +386,7 @@ const _customerDebtDetail = async () => {
             COALESCE(SUM(od.remaining) FILTER (WHERE od.overdue_days > 90), 0)::float AS d90_plus,
             COUNT(DISTINCT od.order_id) FILTER (WHERE od.remaining > 0.01)::int AS unpaid_orders
         FROM open_debt od
-        JOIN customers c ON c.id = od.customer_id
-        GROUP BY c.id, c.full_name, c.company_name, c.phone
+        GROUP BY od.party_key, od.name, od.company_name, od.phone, od.party_type
         HAVING COALESCE(SUM(od.remaining), 0) > 0.01
         ORDER BY outstanding DESC
         LIMIT 50
@@ -360,10 +423,13 @@ const getBusinessReport = async ({ year, month }) => {
         Number(debtAging.d0_30) + Number(debtAging.d30_60) +
         Number(debtAging.d60_90) + Number(debtAging.d90_plus);
 
-    // DSO ≈ (dư nợ phải thu / doanh thu kỳ) × số ngày trong kỳ.
-    const dso = pnl.revenue > 0 ? (receivableTotal / pnl.revenue) * daysInMonth : 0;
+    // DSO và tỷ lệ thu hồi lấy MẪU SỐ là doanh thu bán chịu, không phải tổng doanh thu:
+    // chỉ doanh thu bán chịu mới sinh nợ phải thu (tử số). Chia cho tổng doanh thu sẽ
+    // làm cả hai chỉ số méo theo tỷ trọng đơn tiền mặt trong kỳ.
+    const creditRevenue = Number(pnl.revenue_credit || 0);
+    const dso = creditRevenue > 0 ? (receivableTotal / creditRevenue) * daysInMonth : 0;
     const driverHoldingsTotal = driverHoldings.reduce((s, d) => s + Number(d.holding || 0), 0);
-    const collectionRate = pnl.revenue > 0 ? (collected / pnl.revenue) * 100 : 0;
+    const collectionRate = creditRevenue > 0 ? (collected / creditRevenue) * 100 : 0;
 
     return {
         period: { year, month, days_in_month: daysInMonth },
@@ -380,6 +446,7 @@ const getBusinessReport = async ({ year, month }) => {
         cashflow: {
             debt_aging: debtAging,
             receivable_total: receivableTotal,
+            credit_revenue: creditRevenue,
             dso,
             collected,
             collection_rate: collectionRate,
