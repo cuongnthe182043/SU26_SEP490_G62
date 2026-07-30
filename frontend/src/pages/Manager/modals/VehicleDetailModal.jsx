@@ -3,6 +3,7 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from
 import { RiPencilLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
+import { MaintenanceRecordsPanel } from "../../../components/shared-ui/MaintenanceRecordsPanel";
 import { managerService } from "../services/manager.service";
 
 const formatDateTime = (value) => {
@@ -105,7 +106,11 @@ export default function VehicleDetailModal({ open, vehicle, assignmentHistory, v
           </div>
 
           <div>
-            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">Lịch sử bảo dưỡng</div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">Chi tiết bảo dưỡng &amp; hóa đơn</div>
+            <MaintenanceRecordsPanel records={vehicle.maintenance_records} />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">Lịch sử chuyển trạng thái bảo dưỡng</div>
             <HistoryTimeline items={maintenanceHistory} emptyText="Chưa có lịch sử bảo dưỡng." />
           </div>
           <div>

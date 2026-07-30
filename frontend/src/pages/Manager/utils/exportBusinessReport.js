@@ -90,6 +90,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
       ["Chỉ tiêu", "Kỳ này", "Kỳ trước", "Thay đổi"], [30, 20, 20, 14]);
     writeRows(ws, [
       ["Doanh thu", num(pnl.revenue), num(prev.revenue), pctDelta(pnl.revenue, prev.revenue)],
+      ["— trong đó doanh thu bán chịu", num(pnl.revenue_credit), num(prev.revenue_credit), pctDelta(pnl.revenue_credit, prev.revenue_credit)],
       ["Chi phí vận hành", num(pnl.operating_cost), num(prev.operating_cost), pctDelta(pnl.operating_cost, prev.operating_cost)],
       ["Chi phí lương", num(pnl.payroll_cost), num(prev.payroll_cost), pctDelta(pnl.payroll_cost, prev.payroll_cost)],
       ["Tổng chi phí", totalCost, prevCost, pctDelta(totalCost, prevCost)],
@@ -140,9 +141,10 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     const aging = cash.debt_aging ?? {};
     const h = titleAndHeader(ws, "Dòng tiền & công nợ", ["Chỉ tiêu", "Giá trị"], [34, 24]);
     const kpiRows = [
-      ["Nợ phải thu (tổng)", num(cash.receivable_total)],
+      ["Nợ phải thu (khách + đối tác)", num(cash.receivable_total)],
+      ["Doanh thu bán chịu trong kỳ (mẫu số DSO / tỷ lệ thu hồi)", num(cash.credit_revenue)],
       ["DSO — số ngày thu tiền bình quân", `${num(cash.dso).toFixed(0)} ngày`],
-      ["Tỷ lệ thu hồi trong kỳ", `${num(cash.collection_rate).toFixed(0)}%`],
+      ["Tỷ lệ thu hồi công nợ trong kỳ", `${num(cash.collection_rate).toFixed(0)}%`],
       ["Đã thu trong kỳ", num(cash.collected)],
       ["Nợ 0–30 ngày", num(aging.d0_30)],
       ["Nợ 31–60 ngày", num(aging.d30_60)],
@@ -168,29 +170,31 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
       writeRows(ws, holdings.map((d) => [d.driver_name, num(d.holding)]), new Set([1]), start + 2);
     }
 
-    // Bảng con: công nợ chi tiết khách hàng (theo tuổi nợ) — gộp chung sheet dòng tiền
+    // Bảng con: công nợ phải thu chi tiết (khách + đối tác, theo tuổi nợ) — gộp chung
+    // sheet dòng tiền. Cùng phạm vi với KPI "Nợ phải thu" ở trên nên TỔNG CỘNG khớp.
     const debts = data?.customer_debts ?? [];
     if (debts.length) {
-      [16, 15, 15, 15, 15, 13].forEach((w, i) => {
+      [14, 16, 15, 15, 15, 15, 13].forEach((w, i) => {
         const col = ws.getColumn(i + 2);
         col.width = Math.max(col.width || 0, w);
       });
       const start = ws.lastRow.number + 2;
-      ws.getCell(start, 1).value = "Công nợ chi tiết khách hàng (theo tuổi nợ)";
+      ws.getCell(start, 1).value = "Công nợ phải thu chi tiết — khách hàng & đối tác (theo tuổi nợ)";
       ws.getCell(start, 1).font = { bold: true };
       const hr = ws.getRow(start + 1);
-      ["Khách hàng", "Dư nợ (đ)", "0–30 (đ)", "31–60 (đ)", "61–90 (đ)", "> 90 (đ)", "Đơn chưa thu"].forEach((t, i) => {
+      ["Khách hàng / đối tác", "Loại", "Dư nợ (đ)", "0–30 (đ)", "31–60 (đ)", "61–90 (đ)", "> 90 (đ)", "Đơn chưa thu"].forEach((t, i) => {
         const c = hr.getCell(i + 1);
         c.value = t; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
         c.font = { bold: true, color: { argb: HEADER_TEXT } }; c.border = allBorders;
         c.alignment = { horizontal: "center", wrapText: true };
       });
+      const partyLabel = (c) => (c.party_type === "partner" ? "Đối tác" : "Khách hàng");
       const rows = debts.map((c) => [
-        c.name, num(c.outstanding), num(c.d0_30), num(c.d30_60), num(c.d60_90), num(c.d90_plus), num(c.unpaid_orders),
+        c.name, partyLabel(c), num(c.outstanding), num(c.d0_30), num(c.d30_60), num(c.d60_90), num(c.d90_plus), num(c.unpaid_orders),
       ]);
       const sum = (k) => debts.reduce((s, c) => s + num(c[k]), 0);
-      rows.push(["TỔNG CỘNG", sum("outstanding"), sum("d0_30"), sum("d30_60"), sum("d60_90"), sum("d90_plus"), sum("unpaid_orders")]);
-      writeRows(ws, rows, new Set([1, 2, 3, 4, 5]), start + 2);
+      rows.push(["TỔNG CỘNG", "", sum("outstanding"), sum("d0_30"), sum("d30_60"), sum("d60_90"), sum("d90_plus"), sum("unpaid_orders")]);
+      writeRows(ws, rows, new Set([2, 3, 4, 5, 6]), start + 2);
       ws.getRow(start + 1 + rows.length).font = { bold: true };
     }
   }
@@ -198,24 +202,25 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
   // 6) Khách hàng
   {
     const ws = wb.addWorksheet("KHACH_HANG");
-    const h = titleAndHeader(ws, "Top khách hàng theo doanh thu kỳ",
-      ["Khách hàng", "Số đơn", "Doanh thu (đ)"], [32, 12, 22]);
-    writeRows(ws, (data?.top_customers ?? []).map((c) => [c.name, num(c.total_orders), num(c.total_revenue)]),
-      new Set([2]), h + 1);
+    const partyLabel = (c) => (c.party_type === "partner" ? "Đối tác" : "Khách hàng");
+    const h = titleAndHeader(ws, "Top khách hàng / đối tác theo doanh thu kỳ",
+      ["Khách hàng / đối tác", "Loại", "Số đơn", "Doanh thu (đ)"], [32, 14, 12, 22]);
+    writeRows(ws, (data?.top_customers ?? []).map((c) => [c.name, partyLabel(c), num(c.total_orders), num(c.total_revenue)]),
+      new Set([3]), h + 1);
 
     const risky = data?.risky_customers ?? [];
     if (risky.length) {
       const start = ws.lastRow.number + 2;
-      ws.getCell(start, 1).value = "Khách hàng rủi ro công nợ";
+      ws.getCell(start, 1).value = "Khách hàng / đối tác rủi ro công nợ";
       ws.getCell(start, 1).font = { bold: true };
       const hr = ws.getRow(start + 1);
-      ["Khách hàng", "Dư nợ (đ)", "Quá hạn (đ)"].forEach((t, i) => {
+      ["Khách hàng / đối tác", "Loại", "Dư nợ (đ)", "Quá hạn (đ)"].forEach((t, i) => {
         const c = hr.getCell(i + 1);
         c.value = t; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
         c.font = { bold: true, color: { argb: HEADER_TEXT } }; c.border = allBorders;
         c.alignment = { horizontal: "center" };
       });
-      writeRows(ws, risky.map((c) => [c.name, num(c.outstanding), num(c.overdue)]), new Set([1, 2]), start + 2);
+      writeRows(ws, risky.map((c) => [c.name, partyLabel(c), num(c.outstanding), num(c.overdue)]), new Set([2, 3]), start + 2);
     }
   }
 

@@ -37,6 +37,9 @@ let app;
 let driverToken;
 let mgrToken;
 let acctToken;
+// Coordinator là người duyệt chi phí tài xế duy nhất — Manager đã bị bỏ khỏi vai
+// trò này (màn "Quản lý chi" của Manager giờ chỉ để xem lịch sử).
+let coordToken;
 
 const NOW = new Date();
 const MONTH = NOW.getMonth() + 1;
@@ -137,6 +140,7 @@ describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Ch�
         driverToken = signLongToken({ userId: 4, role: 'driver' });
         mgrToken = signLongToken({ userId: 1, role: 'manager' });
         acctToken = signLongToken({ userId: 3, role: 'accountant' });
+        coordToken = signLongToken({ userId: 2, role: 'coordinator' });
     });
 
     it('B2 [driver] — POST /api/payroll/advance ngày 25: quá 5tr bị 4xx, 3tr thành công', async () => {
@@ -238,15 +242,20 @@ describe('L3-FLOW-03 — API: Chi phí tài xế + Phiếu chi 2 cấp → Tổn
         assert.strictEqual(c.c, 0);
     });
 
-    it('B2 [manager] — GET /api/manager/expenses thấy pending → PATCH approve → ghi sổ 642/1111', async () => {
-        const list = await request(app).get('/api/manager/expenses?status=pending')
+    it('B2 [coordinator] — GET /api/coordinator/expenses thấy pending → PATCH approve → ghi sổ 642/1111', async () => {
+        // Manager vẫn XEM được danh sách (màn lịch sử) nhưng KHÔNG còn quyền duyệt
+        const mgrList = await request(app).get('/api/manager/expenses?status=pending')
             .set('Authorization', `Bearer ${mgrToken}`);
+        assert.strictEqual(mgrList.status, 200);
+
+        const list = await request(app).get('/api/coordinator/expenses?status=pending')
+            .set('Authorization', `Bearer ${coordToken}`);
         assert.strictEqual(list.status, 200);
         const exp = (list.body.rows ?? list.body)[0];
-        assert.ok(exp, 'manager phải thấy chi phí chờ duyệt trên màn Quản lý chi');
+        assert.ok(exp, 'coordinator phải thấy chi phí chờ duyệt trên màn Chi phí tài xế');
 
-        const approve = await request(app).patch(`/api/manager/expenses/${exp.id}/approve`)
-            .set('Authorization', `Bearer ${mgrToken}`);
+        const approve = await request(app).patch(`/api/coordinator/expenses/${exp.id}/approve`)
+            .set('Authorization', `Bearer ${coordToken}`);
         assert.strictEqual(approve.status, 200);
 
         // Duyệt = công ty nhận nợ tài (chờ hoàn) — sổ CHƯA ghi chi cho tới khi hoàn
@@ -356,7 +365,7 @@ describe('L3-FLOW-02/03 — Negative paths over HTTP (4xx/409, Điều III, inva
         assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
     });
 
-    it('N6 — manager approving the same expense twice over HTTP is rejected the second time', async () => {
+    it('N6 — coordinator approving the same expense twice over HTTP is rejected the second time', async () => {
         const create = await request(app).post('/api/expenses')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '2')
@@ -368,13 +377,20 @@ describe('L3-FLOW-02/03 — Negative paths over HTTP (4xx/409, Điều III, inva
         const rows = create.body.expenses ?? create.body.rows ?? [create.body];
         const expenseId = rows[rows.length - 1].id;
 
-        const approve1 = await request(app).patch(`/api/manager/expenses/${expenseId}/approve`)
-            .set('Authorization', `Bearer ${mgrToken}`);
+        const approve1 = await request(app).patch(`/api/coordinator/expenses/${expenseId}/approve`)
+            .set('Authorization', `Bearer ${coordToken}`);
         assert.strictEqual(approve1.status, 200);
 
-        const approve2 = await request(app).patch(`/api/manager/expenses/${expenseId}/approve`)
-            .set('Authorization', `Bearer ${mgrToken}`);
+        const approve2 = await request(app).patch(`/api/coordinator/expenses/${expenseId}/approve`)
+            .set('Authorization', `Bearer ${coordToken}`);
         assert.ok(approve2.status >= 400, `expected an error status, got ${approve2.status}`);
+    });
+
+    // Manager đã bị bỏ khỏi vai trò duyệt chi phí — route không còn tồn tại
+    it('N6b — route duyệt chi phí của manager đã bị bỏ, không còn truy cập được', async () => {
+        const res = await request(app).patch('/api/manager/expenses/1/approve')
+            .set('Authorization', `Bearer ${mgrToken}`);
+        assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
     });
 
     it('N7 — Điều III: paying a payroll on a day other than the valid payday is rejected over HTTP', async () => {

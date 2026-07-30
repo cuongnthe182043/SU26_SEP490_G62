@@ -3,7 +3,7 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input
 import {
   RiCheckLine, RiErrorWarningLine, RiLoader4Line,
   RiToolsLine, RiFileTextLine, RiUserLine,
-  RiErrorWarningFill, RiAlertLine,
+  RiErrorWarningFill, RiAlertLine, RiCloseLine,
 } from "react-icons/ri";
 import { managerService } from "../services/manager.service";
 import { notify } from "../../../components/shared-ui/Toast";
@@ -96,15 +96,21 @@ export function SendToMaintenanceModal({ open, vehicle, driverOptions, loadingDr
   );
 }
 
-export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
+export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onReject }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ocrResults, setOcrResults] = useState({});
   const [ocrLoading, setOcrLoading] = useState(false);
+  // Đối trọng của nút xác nhận: hóa đơn khống / số tiền sai phải có đường từ chối,
+  // nếu không manager chỉ còn cách duyệt bừa hoặc để bản ghi treo vĩnh viễn.
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const pending = vehicle?.active_maintenance_status === "pending_verification";
 
-  useEffect(() => { if (open) { setNote(""); setError(null); } }, [open]);
+  useEffect(() => {
+    if (open) { setNote(""); setError(null); setRejecting(false); setRejectReason(""); }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !vehicle?.id) return;
@@ -134,7 +140,20 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
     }
   };
 
+  const handleReject = async (mode) => {
+    if (!rejectReason.trim()) return showFormError(setError, "Cần ghi lý do từ chối.");
+    setSaving(true);
+    try {
+      await onReject({ mode, reason: rejectReason.trim() });
+    } catch (err) {
+      showFormError(setError, err.message || "Không thể từ chối bảo dưỡng.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const images = normalizeBillPics(vehicle?.active_maintenance_bill_pics);
+  const cost = Number(vehicle?.active_maintenance_cost);
 
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="lg">
@@ -171,12 +190,59 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit }) {
               </p>
             )}
           </div>
-          <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
-          {!pending && <p className="text-xs text-amber-600 dark:text-amber-300">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất.</p>}
+          <div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-1">Chi phí tài xế khai</div>
+            <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
+              {Number.isFinite(cost) && cost > 0 ? `${cost.toLocaleString("vi-VN")} đ` : "Chưa khai"}
+            </p>
+          </div>
+          {rejecting ? (
+            <Textarea
+              label="Lý do từ chối"
+              placeholder="VD: ảnh hóa đơn không khớp số tiền khai, nghi ngờ chứng từ khống"
+              value={rejectReason}
+              onValueChange={setRejectReason}
+              minRows={3}
+              variant="bordered"
+              startContent={ic(RiErrorWarningLine)}
+              isRequired
+            />
+          ) : (
+            <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
+          )}
+          {rejecting && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {pending && (
+                <>
+                  <b>Yêu cầu làm lại</b>: xoá hóa đơn và chi phí đã khai, xe vẫn ở trạng thái bảo dưỡng, tài xế phải chụp và nhập lại.
+                  <br />
+                </>
+              )}
+              <b>Huỷ bảo dưỡng</b>: đóng bản ghi, xe trở lại hoạt động, tài xế muốn bảo dưỡng phải gửi yêu cầu mới.
+            </p>
+          )}
+          {!pending && <p className="text-xs text-amber-600 dark:text-amber-300">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất. Chưa xác nhận được, nhưng vẫn huỷ được nếu mở nhầm hoặc tài xế bỏ dở.</p>}
         </ModalBody>
         <ModalFooter>
-          <Button variant="flat" onPress={onClose}>Hủy</Button>
-          <Button color="primary" isDisabled={!pending} isLoading={saving} onPress={handleOk}>Xác nhận</Button>
+          {rejecting ? (
+            <>
+              <Button variant="flat" isDisabled={saving} onPress={() => { setRejecting(false); setError(null); }}>Quay lại</Button>
+              {/* Làm lại chứng từ chỉ có nghĩa khi tài xế đã nộp; huỷ thì lúc nào cũng cần —
+                  không có nó, đợt bảo dưỡng mở nhầm sẽ giam xe ở trạng thái bảo dưỡng. */}
+              {pending && (
+                <Button color="warning" variant="flat" isLoading={saving} onPress={() => handleReject("redo")}>Yêu cầu làm lại</Button>
+              )}
+              <Button color="danger" isLoading={saving} onPress={() => handleReject("cancel")}>Huỷ bảo dưỡng</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="flat" onPress={onClose}>Đóng</Button>
+              <Button color="danger" variant="flat" startContent={<RiCloseLine size={16} />} onPress={() => { setRejecting(true); setError(null); }}>
+                {pending ? "Từ chối" : "Huỷ bảo dưỡng"}
+              </Button>
+              <Button color="primary" isDisabled={!pending} isLoading={saving} onPress={handleOk}>Xác nhận</Button>
+            </>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>

@@ -45,12 +45,11 @@ router.patch('/payrolls/:id/revert', managerController.revertPayroll);
 
 router.get('/receipt-requests', managerController.getReceiptRequests);
 
-// Quản lý chi — chi phí tài xế (duyệt/từ chối song song quyền Coordinator),
+// Quản lý chi — chi phí tài xế (chỉ xem lịch sử, Manager không còn quyền duyệt/từ
+// chối — chỉ coordinator mới duyệt, hoặc tự động duyệt với đơn không thu tiền mặt),
 // phiếu chi thủ công (Manager duyệt), tổng hợp chi
 const spendingController = require('../controllers/spendingController');
 router.get('/expenses', spendingController.listExpenses);
-router.patch('/expenses/:id/approve', managerController.approveExpense);
-router.patch('/expenses/:id/reject',  managerController.rejectExpense);
 router.get('/vouchers', spendingController.listVouchers);
 router.patch('/vouchers/:id/approve', spendingController.approveVoucher);
 router.patch('/vouchers/:id/reject',  spendingController.rejectVoucher);

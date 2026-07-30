@@ -1,7 +1,11 @@
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Chip } from "@heroui/react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Chip,
+  Checkbox, Select, SelectItem, Input,
+} from "@heroui/react";
 import {
   RiCalendarLine, RiFileTextLine, RiMoneyDollarCircleLine, RiPhoneLine, RiShoppingBag3Line,
-  RiScales3Line, RiTruckLine, RiUserLine,
+  RiScales3Line, RiTruckLine, RiUserLine, RiUserAddLine, RiErrorWarningLine,
 } from "react-icons/ri";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
@@ -62,7 +66,212 @@ function ShipmentCard({ shipment }) {
   );
 }
 
-export default function OrderDetailModal({ open, order, onClose }) {
+const RETURN_CHARGE_OPTIONS = [
+  { key: "no_charge", label: "Khách không phải trả tiền", hint: "Lỗi từ phía doanh nghiệp — chuyến này 0đ doanh thu" },
+  { key: "return_fee", label: "Thu phí hoàn hàng", hint: "Khách từ chối nhận — chỉ thu phí chở về, nhập số bên dưới" },
+  { key: "full_fare", label: "Thu đủ cước", hint: "Xe đã chạy đủ hành trình — tính như chuyến bình thường" },
+];
+
+// Xử lý chuyến giao thất bại. Tài xế KHÔNG được tự quyết — điều phối phải liên hệ
+// khách rồi chọn giao lại hay hoàn hàng, và chốt khách có phải trả tiền hay không.
+function FailedShipmentsPanel({ order, onResolve }) {
+  const [target, setTarget] = useState(null);
+  const [chargeType, setChargeType] = useState("no_charge");
+  const [returnFee, setReturnFee] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const failed = useMemo(
+    () => (order.trips || []).filter((t) => t.shipment_id && t.status === "failed"),
+    [order.trips],
+  );
+
+  if (failed.length === 0) return null;
+
+  const run = async (action) => {
+    setBusy(true);
+    try {
+      await onResolve({
+        shipmentId: Number(target.shipment_id),
+        action,
+        chargeType: action === "return" ? chargeType : undefined,
+        returnFee: action === "return" && chargeType === "return_fee" ? Number(returnFee) : undefined,
+      });
+      setTarget(null);
+      setChargeType("no_charge");
+      setReturnFee("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const feeInvalid = chargeType === "return_fee" && !(Number(returnFee) > 0);
+
+  return (
+    <div className="rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50/60 dark:bg-rose-500/[0.07] p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <RiErrorWarningLine size={15} className="text-rose-600 dark:text-rose-300" />
+        <span className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+          Chuyến giao thất bại — cần xử lý
+        </span>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Liên hệ khách rồi chọn giao lại hoặc hoàn hàng. Tài xế đang chờ và không tự chuyển
+        trạng thái được.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        {failed.map((t) => (
+          <div key={t.shipment_id} className="rounded-lg border border-rose-100 dark:border-rose-500/20 bg-white/70 dark:bg-white/[0.03] p-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-xs text-gray-700 dark:text-gray-200">
+                <b>Chuyến {t.shipment_index}</b> <span className="text-gray-400 dark:text-gray-500">#{t.shipment_id}</span>
+                {t.driverName ? ` · ${t.driverName}` : ""}
+              </div>
+              {Number(target?.shipment_id) !== Number(t.shipment_id) && (
+                <Button size="sm" color="danger" variant="flat" onPress={() => setTarget(t)}>Xử lý</Button>
+              )}
+            </div>
+
+            {Number(target?.shipment_id) === Number(t.shipment_id) && (
+              <div className="mt-3 flex flex-col gap-3">
+                <Select
+                  label="Khách có phải trả tiền?"
+                  size="sm"
+                  selectedKeys={[chargeType]}
+                  onSelectionChange={(keys) => setChargeType([...keys][0] ?? "no_charge")}
+                  variant="bordered"
+                  description={RETURN_CHARGE_OPTIONS.find((o) => o.key === chargeType)?.hint}
+                >
+                  {RETURN_CHARGE_OPTIONS.map((o) => <SelectItem key={o.key}>{o.label}</SelectItem>)}
+                </Select>
+
+                {chargeType === "return_fee" && (
+                  <Input
+                    type="number"
+                    size="sm"
+                    label="Phí hoàn hàng (đ)"
+                    placeholder="VD: 300000"
+                    value={returnFee}
+                    onValueChange={setReturnFee}
+                    variant="bordered"
+                    isInvalid={feeInvalid}
+                    errorMessage={feeInvalid ? "Phí hoàn hàng phải lớn hơn 0" : undefined}
+                  />
+                )}
+
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <Button size="sm" variant="flat" isDisabled={busy} onPress={() => setTarget(null)}>Thoát</Button>
+                  <Button size="sm" color="primary" variant="flat" isLoading={busy} onPress={() => run("redeliver")}>
+                    Cho giao lại
+                  </Button>
+                  <Button size="sm" color="danger" isLoading={busy} isDisabled={feeInvalid} onPress={() => run("return")}>
+                    Cho hoàn hàng
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Gán trước chuyến cho tài xế. Chỉ chuyến còn 'available' và chưa có tài mới gán được.
+// Một đơn có thể gán NHIỀU chuyến cho CÙNG một tài (chạy tuần tự), hoặc chia mỗi
+// chuyến cho một tài khác nhau — backend chỉ chặn khi tài đang vướng đơn KHÁC.
+function AssignShipmentsPanel({ order, drivers, onAssign }) {
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [driverId, setDriverId] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const assignable = useMemo(() => (order.trips || []).filter(
+    (t) => t.shipment_id && t.status === "available" && !t.owner_driver_id,
+  ), [order.trips]);
+
+  // Đơn khác / vừa gán xong → bỏ lựa chọn cũ để không gửi id đã hết hiệu lực
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => assignable.some((t) => Number(t.shipment_id) === Number(id))));
+  }, [assignable]);
+
+  if (assignable.length === 0) return null;
+
+  const toggle = (shipmentId) => setSelectedIds((prev) => (
+    prev.includes(shipmentId) ? prev.filter((id) => id !== shipmentId) : [...prev, shipmentId]
+  ));
+
+  const handleAssign = async () => {
+    setBusy(true);
+    try {
+      await onAssign({ shipmentIds: selectedIds, driverId: Number(driverId) });
+      setSelectedIds([]);
+      setDriverId(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06] p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <RiUserAddLine size={15} className="text-blue-600 dark:text-blue-300" />
+        <span className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+          Gán chuyến cho tài xế
+        </span>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Chọn nhiều chuyến cho cùng một tài xế thì tài chạy lần lượt — xong chuyến trước, chuyến
+        sau tự mở. Tài đang chạy chuyến của đơn khác sẽ không gán được.
+      </p>
+
+      <div className="flex flex-col gap-2 mb-3">
+        {assignable.map((t) => (
+          <Checkbox
+            key={t.shipment_id}
+            size="sm"
+            isSelected={selectedIds.includes(Number(t.shipment_id))}
+            onValueChange={() => toggle(Number(t.shipment_id))}
+          >
+            <span className="text-xs text-gray-700 dark:text-gray-200">
+              Chuyến {t.shipment_index} <span className="text-gray-400 dark:text-gray-500">#{t.shipment_id}</span>
+              {t.pickup_address || t.delivery_address
+                ? ` · ${[t.pickup_address, t.delivery_address].filter(Boolean).join(" → ")}`
+                : ""}
+            </span>
+          </Checkbox>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+        <Select
+          label="Tài xế"
+          placeholder="Chọn tài xế"
+          size="sm"
+          className="flex-1"
+          selectedKeys={driverId ? [String(driverId)] : []}
+          onSelectionChange={(keys) => setDriverId([...keys][0] ?? null)}
+          variant="bordered"
+        >
+          {(drivers || []).map((d) => (
+            <SelectItem key={String(d.id)}>{d.full_name || d.name}</SelectItem>
+          ))}
+        </Select>
+        <Button
+          color="primary"
+          size="md"
+          isDisabled={selectedIds.length === 0 || !driverId}
+          isLoading={busy}
+          startContent={!busy && <RiUserAddLine size={16} />}
+          onPress={handleAssign}
+        >
+          {selectedIds.length > 1 ? `Gán ${selectedIds.length} chuyến` : "Gán chuyến"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function OrderDetailModal({ open, order, onClose, drivers, onAssignShipments, onResolveFailed }) {
   if (!order) return null;
 
   return (
@@ -122,6 +331,14 @@ export default function OrderDetailModal({ open, order, onClose }) {
               ))}
             </div>
           </div>
+
+          {onResolveFailed && (
+            <FailedShipmentsPanel order={order} onResolve={onResolveFailed} />
+          )}
+
+          {onAssignShipments && (
+            <AssignShipmentsPanel order={order} drivers={drivers} onAssign={onAssignShipments} />
+          )}
 
           {order.notes && (
             <div className="rounded-xl border border-gray-100 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.03] p-3">

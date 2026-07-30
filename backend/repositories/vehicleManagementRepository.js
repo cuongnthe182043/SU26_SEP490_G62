@@ -97,12 +97,14 @@ const VEHICLE_DETAIL_SELECT = `
     ) li ON TRUE
 `;
 
-const listVehicleGroups = async () => {
+// includeHidden=true dùng cho màn Quản lý xe để Manager còn thấy nhóm đã ẩn mà bỏ ẩn.
+// Mặc định vẫn chỉ trả nhóm 'active' để các form chọn nhóm xe không hiện nhóm đã ẩn.
+const listVehicleGroups = async ({ includeHidden = false } = {}) => {
     const result = await pool.query(
         `${VEHICLE_GROUP_DETAIL_SELECT}
-         WHERE vg.status = 'active'
+         ${includeHidden ? '' : "WHERE vg.status = 'active'"}
          GROUP BY vg.id
-         ORDER BY vg.name ASC, vg.id ASC`,
+         ORDER BY vg.status ASC, vg.name ASC, vg.id ASC`,
     );
     return result.rows;
 };
@@ -196,10 +198,36 @@ const updateVehicleGroup = async (
     return result.rows[0] ?? null;
 };
 
+// Xe còn đang dùng trong nhóm — dùng để chặn ẩn nhóm. Xe 'retired' không tính
+// vì đã ngừng khai thác, để lại trong nhóm ẩn cũng không sinh hệ luỵ.
+const listInUseVehiclesInGroup = async (vehicleGroupId) => {
+    const result = await pool.query(
+        `SELECT id, plate_number, status
+         FROM vehicles
+         WHERE vehicle_group_id = $1
+           AND status <> 'retired'
+         ORDER BY plate_number ASC`,
+        [vehicleGroupId],
+    );
+    return result.rows;
+};
+
 const deleteVehicleGroup = async (vehicleGroupId) => {
     const result = await pool.query(
         `UPDATE vehicle_groups
          SET status = 'hidden'
+         WHERE id = $1
+         RETURNING id`,
+        [vehicleGroupId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Bỏ ẩn nhóm xe — ẩn phải đảo ngược được, nếu không thì "ẩn" trở thành xoá vĩnh viễn.
+const restoreVehicleGroup = async (vehicleGroupId) => {
+    const result = await pool.query(
+        `UPDATE vehicle_groups
+         SET status = 'active'
          WHERE id = $1
          RETURNING id`,
         [vehicleGroupId],
@@ -940,6 +968,145 @@ const completeMaintenanceRecordAndSetStatus = async ({
     }
 };
 
+// Manager từ chối / huỷ bản ghi bảo dưỡng đang mở (hóa đơn khống, số tiền không hợp lệ,
+// hoặc đưa xe vào bảo dưỡng sai).
+// mode = 'redo'   → trả về 'open', xe vẫn ở maintenance, tài xế làm lại chứng từ.
+// mode = 'cancel' → 'rejected', xe về 'active', tài xế phải gửi yêu cầu mới.
+// allowedStatuses giới hạn bản ghi được tác động: 'redo' chỉ áp cho bản đã submit
+// ('pending_verification'), 'cancel' áp cho cả bản chưa submit ('open').
+// Chưa có expense nào được sinh trước bước verify nên không cần đảo sổ.
+const rejectPendingMaintenanceRecord = async ({
+    vehicleId,
+    maintenanceRecordId,
+    managerId,
+    reason,
+    mode,
+    allowedStatuses = ['pending_verification'],
+}) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const vehicleResult = await client.query(
+            `SELECT id, status
+             FROM vehicles
+             WHERE id = $1
+             FOR UPDATE`,
+            [vehicleId],
+        );
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const params = [vehicleId, allowedStatuses];
+        let idClause = '';
+        if (maintenanceRecordId !== null) {
+            params.push(maintenanceRecordId);
+            idClause = `AND id = $${params.length}`;
+        }
+
+        const recordResult = await client.query(
+            `SELECT id, performed_by, requested_by
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status = ANY($2)
+               ${idClause}
+             ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            params,
+        );
+        const record = recordResult.rows[0];
+        if (!record) {
+            const err = new Error('Maintenance record awaiting verification not found');
+            err.code = 'PENDING_MAINTENANCE_NOT_FOUND';
+            throw err;
+        }
+
+        if (mode === 'cancel') {
+            await client.query(
+                `UPDATE maintenance_records
+                 SET status = 'rejected',
+                     reject_reason = $2,
+                     verified_by = $3,
+                     verified_at = NOW(),
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [record.id, reason, managerId],
+            );
+
+            await client.query(
+                `UPDATE vehicles
+                 SET status = 'active',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [vehicleId],
+            );
+
+            await client.query(
+                `INSERT INTO vehicle_status_history (
+                    vehicle_id,
+                    action_type,
+                    from_status,
+                    to_status,
+                    reference_type,
+                    reference_id,
+                    note,
+                    created_by
+                )
+                VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
+                [vehicleId, vehicle.status, record.id, `Huỷ bảo dưỡng: ${reason}`, managerId],
+            );
+        } else {
+            // Xoá chứng từ và chi phí cũ để tài xế buộc phải khai lại từ đầu,
+            // tránh việc chỉ sửa số tiền mà giữ nguyên ảnh hoá đơn không hợp lệ.
+            await client.query(
+                `UPDATE maintenance_records
+                 SET status = 'open',
+                     reject_reason = $2,
+                     bill_pics = '[]'::jsonb,
+                     cost = NULL,
+                     completed_at = NULL,
+                     completed_by = NULL,
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [record.id, reason],
+            );
+
+            await client.query(
+                `INSERT INTO vehicle_status_history (
+                    vehicle_id,
+                    action_type,
+                    from_status,
+                    to_status,
+                    reference_type,
+                    reference_id,
+                    note,
+                    created_by
+                )
+                VALUES ($1, 'send_to_maintenance', $2, $2, 'maintenance_record', $3, $4, $5)`,
+                [vehicleId, vehicle.status, record.id, `Yêu cầu làm lại chứng từ bảo dưỡng: ${reason}`, managerId],
+            );
+        }
+
+        await client.query('COMMIT');
+        return {
+            maintenanceId: record.id,
+            performedBy: record.performed_by,
+            requestedBy: record.requested_by,
+            previousStatus: vehicle.status,
+            mode,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const verifyMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
@@ -1263,6 +1430,40 @@ const resolveFailureRecordAndSetStatus = async ({
     }
 };
 
+// Đưa xe đã thu hồi (retired) trở lại hoạt động. Không tự gán lại tài xế — việc gán
+// do Manager làm riêng sau đó, tránh khôi phục nhầm gán lại người đã chuyển xe khác.
+const unretireVehicle = async ({ vehicleId, managerId, note = null }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [vehicle] } = await client.query(
+            `SELECT id, status FROM vehicles WHERE id = $1 FOR UPDATE`,
+            [vehicleId],
+        );
+        if (!vehicle) { await client.query('ROLLBACK'); return null; }
+
+        await client.query(
+            `UPDATE vehicles SET status = 'active', updated_at = NOW() WHERE id = $1`,
+            [vehicleId],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id, action_type, from_status, to_status, note, created_by
+            ) VALUES ($1, 'restore_vehicle', $2, 'active', $3, $4)`,
+            [vehicleId, vehicle.status, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const retireVehicle = async ({ vehicleId, managerId, note = null }) => {
     const client = await pool.connect();
     try {
@@ -1349,6 +1550,41 @@ const listVehicleStatusHistory = async (vehicleId) => {
          LEFT JOIN profiles p ON p.id = vsh.created_by
          WHERE vsh.vehicle_id = $1
          ORDER BY vsh.created_at DESC, vsh.id DESC`,
+        [vehicleId],
+    );
+    return result.rows;
+};
+
+// Lịch sử bảo dưỡng đầy đủ của 1 xe cho Manager/Accountant: kèm ẢNH HÓA ĐƠN tài xế
+// đã tải, chi phí, người thực hiện/xác nhận và lý do từ chối. vehicle_status_history
+// chỉ có dòng ghi chú nên không đủ để đối chiếu chứng từ của các đợt đã xong.
+const listVehicleMaintenanceRecords = async (vehicleId, db = pool) => {
+    const result = await db.query(
+        `SELECT
+            mr.id,
+            mr.maintenance_type,
+            mr.description,
+            mr.cost,
+            mr.maintenance_date,
+            mr.next_due_date,
+            mr.status,
+            mr.bill_pics,
+            mr.request_reason,
+            mr.reject_reason,
+            mr.started_at,
+            mr.completed_at,
+            mr.verified_at,
+            mr.expense_id,
+            performer.full_name AS performed_by_name,
+            requester.full_name AS requested_by_name,
+            verifier.full_name  AS verified_by_name
+         FROM maintenance_records mr
+         LEFT JOIN profiles performer ON performer.id = mr.performed_by
+         LEFT JOIN profiles requester ON requester.id = mr.requested_by
+         LEFT JOIN profiles verifier  ON verifier.id  = mr.verified_by
+         WHERE mr.vehicle_id = $1
+         ORDER BY mr.started_at DESC, mr.id DESC
+         LIMIT 50`,
         [vehicleId],
     );
     return result.rows;
@@ -1592,6 +1828,8 @@ module.exports = {
     createVehicleGroup,
     updateVehicleGroup,
     deleteVehicleGroup,
+    restoreVehicleGroup,
+    listInUseVehiclesInGroup,
     listVehicles,
     getVehicleById,
     getVehicleByPlateNumber,
@@ -1607,10 +1845,13 @@ module.exports = {
     moveBrokenVehicleToMaintenance,
     completeMaintenanceRecordAndSetStatus,
     verifyMaintenanceRecordAndSetStatus,
+    rejectPendingMaintenanceRecord,
     createFailureRecordAndSetStatus,
     resolveFailureRecordAndSetStatus,
     retireVehicle,
+    unretireVehicle,
     listVehicleStatusHistory,
+    listVehicleMaintenanceRecords,
     getActiveMaintenanceRecordForDriver,
     getMaintenanceRecordsForDriver,
     updateMaintenanceBillPics,

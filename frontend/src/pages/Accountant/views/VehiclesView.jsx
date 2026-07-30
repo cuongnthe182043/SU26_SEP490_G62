@@ -5,7 +5,7 @@ import {
   Button, Input, Select, SelectItem, Chip, Spinner, Textarea,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Tooltip,
 } from "@heroui/react";
 import {
   RiSearchLine, RiAddLine, RiMore2Line, RiToolsLine,
@@ -71,7 +71,7 @@ export default function VehiclesView({ user }) {
 
   const loadVehicleGroups = async () => {
     try {
-      const data = await accountantService.getVehicleGroups();
+      const data = await accountantService.getVehicleGroups(true);
       setVehicleGroups(data.vehicleGroups || []);
     } catch (err) { notify.error(err.message); }
   };
@@ -133,6 +133,14 @@ export default function VehiclesView({ user }) {
       setGroupDeleteTarget(null);
       await loadVehicleGroups();
       notify.success("Đã xóa nhóm xe.");
+    } catch (err) { notify.error(err.message); }
+  };
+
+  const handleGroupRestore = async (group) => {
+    try {
+      await accountantService.restoreVehicleGroup(group.id);
+      await loadVehicleGroups();
+      notify.success("Đã bỏ ẩn nhóm xe.");
     } catch (err) { notify.error(err.message); }
   };
 
@@ -198,6 +206,13 @@ export default function VehiclesView({ user }) {
     setVerifyTarget(null);
     await loadVehicles();
     notify.success("Đã xác minh bảo dưỡng.");
+  };
+
+  const submitRejectMaintenance = async (values) => {
+    await accountantService.rejectVehicleMaintenance(verifyTarget.id, values);
+    setVerifyTarget(null);
+    await loadVehicles();
+    notify.success(values.mode === "cancel" ? "Đã huỷ bảo dưỡng." : "Đã yêu cầu tài xế làm lại chứng từ.");
   };
 
   const submitBroken = async (values) => {
@@ -269,7 +284,7 @@ export default function VehiclesView({ user }) {
       );
     }
     if (vehicle.status === "maintenance") {
-      items.push({ key: "verify", label: "Xác nhận bảo dưỡng", icon: RiCheckboxCircleLine, color: "success", onPress: () => handleVerifyMaintenance(vehicle) });
+      items.push({ key: "verify", label: "Xác nhận / huỷ bảo dưỡng", icon: RiCheckboxCircleLine, color: "success", onPress: () => handleVerifyMaintenance(vehicle) });
     }
     if (vehicle.status === "broken") {
       items.push(
@@ -277,14 +292,25 @@ export default function VehiclesView({ user }) {
         { key: "restore", label: "Khôi phục", icon: RiCheckboxCircleLine, color: "success", onPress: () => setRestoreTarget(vehicle) },
       );
     }
+    // Xe da thu hoi van phai dua lai duoc vao hoat dong (neu khong = xoa vinh vien)
+    if (vehicle.status === "retired") {
+      items.push({
+        key: "restore",
+        label: "Đưa lại hoạt động",
+        icon: RiCheckboxCircleLine,
+        color: "success",
+        onPress: () => setRestoreTarget(vehicle),
+      });
+    }
     return items;
   };
 
+  const activeVehicleGroups = vehicleGroups.filter((g) => g.status !== "hidden");
   const currentEditingGroupMissing = editingVehicle?.vehicle_group_id
-    && !vehicleGroups.some((g) => Number(g.id) === Number(editingVehicle.vehicle_group_id));
+    && !activeVehicleGroups.some((g) => Number(g.id) === Number(editingVehicle.vehicle_group_id));
   const selectableVehicleGroups = currentEditingGroupMissing
-    ? [...vehicleGroups, { id: editingVehicle.vehicle_group_id, name: editingVehicle.vehicle_group_name || `Nhóm #${editingVehicle.vehicle_group_id}` }]
-    : vehicleGroups;
+    ? [...activeVehicleGroups, { id: editingVehicle.vehicle_group_id, name: editingVehicle.vehicle_group_name || `Nhóm #${editingVehicle.vehicle_group_id}` }]
+    : activeVehicleGroups;
 
   return (
     <div className="flex flex-col gap-5">
@@ -300,25 +326,55 @@ export default function VehiclesView({ user }) {
           </Button>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          {vehicleGroups.map((g) => (
-            <div key={g.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-4 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{g.name}</span>
-                <span className="text-xs text-gray-400 dark:text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
+          {vehicleGroups.map((g) => {
+            const isHidden = g.status === "hidden";
+            // Xe 'retired' để lại trong nhóm ẩn thì vô hại; xe còn đang dùng mà bỏ
+            // quên sẽ thành "xe ma" — active nhưng coordinator không chọn được nhóm
+            // nên vĩnh viễn không có việc. Backend chặn, ở đây chặn sớm cho đỡ hụt.
+            const inUseCount = Number(g.vehicle_count || 0) - Number(g.retired_vehicle_count || 0);
+            return (
+              <div
+                key={g.id}
+                className={`rounded-xl border p-4 flex flex-col gap-2 ${
+                  isHidden
+                    ? "border-dashed border-gray-300 dark:border-white/20 bg-gray-50 dark:bg-white/5 opacity-75"
+                    : "border-gray-100 dark:border-white/10"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{g.name}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isHidden && <Chip size="sm" variant="flat" color="default">Đã ẩn</Chip>}
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{Number(g.price_per_km).toLocaleString()}/km</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
+                <div className="flex flex-wrap gap-1">
+                  <Chip size="sm" variant="flat" color="primary">{g.vehicle_count} tổng</Chip>
+                  <Chip size="sm" variant="flat" color="success">{g.active_vehicle_count} hoạt động</Chip>
+                  <Chip size="sm" variant="flat" color="warning">{g.maintenance_vehicle_count} bảo trì</Chip>
+                  <Chip size="sm" variant="flat" color="danger">{g.broken_vehicle_count} hỏng</Chip>
+                </div>
+                <div className="flex gap-1 justify-end mt-1">
+                  {isHidden ? (
+                    <Button size="sm" variant="flat" color="success" startContent={<RiCheckboxCircleLine size={13} />} onPress={() => handleGroupRestore(g)}>Bỏ ẩn</Button>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
+                      <Tooltip
+                        content={inUseCount > 0 ? `Còn ${inUseCount} xe đang dùng trong nhóm. Hãy chuyển xe sang nhóm khác hoặc thu hồi xe trước.` : "Ẩn nhóm xe"}
+                        placement="top"
+                      >
+                        <span>
+                          <Button size="sm" variant="flat" color="danger" isDisabled={inUseCount > 0} startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
+                        </span>
+                      </Tooltip>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-400 line-clamp-2">{g.description || "Không có mô tả"}</p>
-              <div className="flex flex-wrap gap-1">
-                <Chip size="sm" variant="flat" color="primary">{g.vehicle_count} tổng</Chip>
-                <Chip size="sm" variant="flat" color="success">{g.active_vehicle_count} hoạt động</Chip>
-                <Chip size="sm" variant="flat" color="warning">{g.maintenance_vehicle_count} bảo trì</Chip>
-                <Chip size="sm" variant="flat" color="danger">{g.broken_vehicle_count} hỏng</Chip>
-              </div>
-              <div className="flex gap-1 justify-end mt-1">
-                <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => { setEditingGroup(g); setGroupModalOpen(true); }}>Sửa</Button>
-                <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setGroupDeleteTarget(g)}>Ẩn</Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -428,9 +484,19 @@ export default function VehiclesView({ user }) {
               <TableRow key={v.id}>
                 <TableCell><span className="font-semibold text-sm">{v.plate_number}</span></TableCell>
                 <TableCell>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <span className="text-sm">{v.vehicle_group_name}</span>
                     <span className="text-xs text-gray-400 dark:text-gray-400">#{v.vehicle_group_id}</span>
+                    {/* Xe còn sót trong nhóm đã ẩn (data cũ, trước khi có guard chặn ẩn):
+                        vẫn active nhưng coordinator không chọn được nhóm nên vĩnh viễn
+                        không có việc mới. Phải cảnh báo, nếu không nhìn bảng không ra. */}
+                    {v.vehicle_group_status === "hidden" && (
+                      <Tooltip content="Nhóm xe này đã bị ẩn — không tạo được đơn mới cho xe. Hãy chuyển xe sang nhóm khác hoặc bỏ ẩn nhóm." placement="top">
+                        <Chip size="sm" variant="flat" color="warning" className="text-[10px] w-fit" startContent={<RiAlertLine size={11} />}>
+                          Nhóm đã ẩn
+                        </Chip>
+                      </Tooltip>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -518,7 +584,7 @@ export default function VehiclesView({ user }) {
         onClose={() => { setMaintenanceTarget(null); setMaintenanceDriverOptions([]); }}
         onSubmit={submitMaintenance}
       />
-      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} />
+      <VerifyMaintenanceModal open={!!verifyTarget} vehicle={verifyTarget} onClose={() => setVerifyTarget(null)} onSubmit={submitVerify} onReject={submitRejectMaintenance} />
       <MarkBrokenModal open={!!brokenTarget} vehicle={brokenTarget} onClose={() => setBrokenTarget(null)} onSubmit={submitBroken} />
       <RestoreVehicleModal open={!!restoreTarget} vehicle={restoreTarget} onClose={() => setRestoreTarget(null)} onSubmit={submitRestore} />
       <RetireVehicleModal open={!!retireTarget} vehicle={retireTarget} onClose={() => setRetireTarget(null)} onSubmit={submitRetire} />

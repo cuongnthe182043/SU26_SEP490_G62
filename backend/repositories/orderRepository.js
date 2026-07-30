@@ -267,8 +267,9 @@ const getDriverById = async (client, driverId) => {
 
 //Lấy Id nhóm xe
 const getDefaultVehicleGroupId = async (client) => {
+    // Chỉ lấy nhóm đang dùng — nhóm đã ẩn không được làm mặc định cho đơn mới
     const result = await client.query(
-        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
+        `SELECT id FROM vehicle_groups WHERE status = 'active' ORDER BY id ASC LIMIT 1`,
     );
     return result.rows[0]?.id ?? null;
 };
@@ -494,6 +495,7 @@ const listCoordinatorVehicleGroups = async () => {
                   AND mr_driver.status IN ('open', 'pending_verification')
             )
          LEFT JOIN profiles p ON p.id = v.assigned_driver_id
+         WHERE vg.status = 'active'
          GROUP BY vg.id
          ORDER BY vg.name ASC, vg.id ASC`,
         [ACTIVE_STATUSES],

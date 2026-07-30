@@ -11,6 +11,7 @@ export type NotificationType =
   | 'PAYSLIP_PUBLISHED'
   | 'MAINTENANCE_ASSIGNED'
   | 'MAINTENANCE_COMPLETED'
+  | 'MAINTENANCE_REJECTED'
   | 'SYSTEM_ALERT';
 
 export type AppNotification = {
@@ -39,6 +40,8 @@ export type NotificationEvent =
   | { type: 'notification.created'; notification: AppNotification }
   | { type: 'maintenance.assigned'; vehicleId: number; maintenanceRecordId: number | null }
   | { type: 'maintenance.completed'; vehicleId: number; maintenanceRecordId: number }
+  | { type: 'trip.cancelled'; shipmentId: number; orderId: number | null; reason: string }
+  | { type: 'trip.failed_resolved'; shipmentId: number; action: 'redeliver' | 'return'; status: string }
   | { type: 'pong' };
 
 export type MarkNotificationReadResponse = {

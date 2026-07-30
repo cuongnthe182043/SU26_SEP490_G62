@@ -31,6 +31,12 @@ describe('Trip Service', () => {
     });
 
     describe('claimTrip', () => {
+        // claimTrip kiểm tra nghĩa vụ phiếu thu của chuyến trước (guard PENDING_RECEIPT)
+        // TRƯỚC mọi bước khác. Không mock thì mọi test dưới đây đập vào DB thật.
+        beforeEach(() => {
+            mock.method(tripRepository, 'getPendingReceiptOrder', async () => null);
+        });
+
         it('BR-001: throws if driver has no vehicle assigned', async () => {
             mock.method(tripRepository, 'getDriverVehicleId', async () => null);
 
@@ -328,8 +334,8 @@ describe('Trip Service', () => {
         it('BR-008A: non-final shipment only saves actual_km, no receipt request created', async () => {
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
             mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
-            mock.method(tripRepository, 'isFinalShipment', async () => false);
-            mock.method(pool, 'query', async () => ({ rows: [{ payment_type: 'cash' }] }));
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: false, allOthersReady: true }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'cash');
 
             const result = await tripService.requestOrderReceipt(501, 1, { shipmentId: 10, actualKm: 120 });
 
@@ -339,19 +345,32 @@ describe('Trip Service', () => {
         it('BR-008A: final shipment but non-cash order only saves actual_km', async () => {
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
             mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
-            mock.method(tripRepository, 'isFinalShipment', async () => true);
-            mock.method(pool, 'query', async () => ({ rows: [{ payment_type: 'bank_transfer' }] }));
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: true, allOthersReady: true }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'bank_transfer');
 
             const result = await tripService.requestOrderReceipt(501, 1, { shipmentId: 10, actualKm: 120 });
 
             assert.strictEqual(result.receipt_request_created, false);
         });
 
+        // Là chuyến index cao nhất nhưng chuyến khác trong đơn chưa nhập km xong
+        it('chuyến cuối cash nhưng chuyến khác chưa nhập km → chưa tạo yêu cầu', async () => {
+            mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
+            mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: true, allOthersReady: false }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'cash');
+
+            const result = await tripService.requestOrderReceipt(501, 1, { shipmentId: 10, actualKm: 120 });
+
+            assert.strictEqual(result.receipt_request_created, false);
+            assert.strictEqual(result.waiting_for_other_shipments, true);
+        });
+
         it('BR-008B: final shipment of cash order creates the receipt request', async () => {
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
             mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
-            mock.method(tripRepository, 'isFinalShipment', async () => true);
-            mock.method(pool, 'query', async () => ({ rows: [{ payment_type: 'cash' }] }));
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: true, allOthersReady: true }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'cash');
             mock.method(tripRepository, 'getOrderReceiptRequestByOrderId', async () => null);
             mock.method(tripRepository, 'createOrderReceiptRequest', async () => ({ id: 1 }));
             mock.method(notificationGateway, 'broadcastToRole', () => {});
@@ -367,8 +386,8 @@ describe('Trip Service', () => {
         it('BR-018: rejects if the order already has a pending receipt request', async () => {
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
             mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
-            mock.method(tripRepository, 'isFinalShipment', async () => true);
-            mock.method(pool, 'query', async () => ({ rows: [{ payment_type: 'cash' }] }));
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: true, allOthersReady: true }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'cash');
             mock.method(tripRepository, 'getOrderReceiptRequestByOrderId', async () => ({ id: 5 }));
 
             await assert.rejects(
@@ -380,8 +399,8 @@ describe('Trip Service', () => {
         it('BR-008C: unique constraint violation (concurrent completion) is translated to BR-018B message', async () => {
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed', order_id: 501 }));
             mock.method(tripRepository, 'saveShipmentActualKm', async () => {});
-            mock.method(tripRepository, 'isFinalShipment', async () => true);
-            mock.method(pool, 'query', async () => ({ rows: [{ payment_type: 'cash' }] }));
+            mock.method(tripRepository, 'getShipmentFinalStatus', async () => ({ isMaxIndex: true, allOthersReady: true }));
+            mock.method(tripRepository, 'getOrderPaymentType', async () => 'cash');
             mock.method(tripRepository, 'getOrderReceiptRequestByOrderId', async () => null);
             mock.method(tripRepository, 'createOrderReceiptRequest', async () => {
                 const err = new Error('duplicate key');

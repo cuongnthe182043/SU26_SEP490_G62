@@ -92,11 +92,14 @@ export const managerService = {
   getDrivers: () => apiRequest("/api/drivers"),
 
   // ─── Vehicle groups ───────────────────────────────────────────────────────
-  getVehicleGroups: () => apiRequest("/api/admin/vehicle-groups"),
+  // includeHidden: màn Quản lý xe cần thấy cả nhóm đã ẩn để bỏ ẩn lại
+  getVehicleGroups: (includeHidden = false) =>
+    apiRequest(`/api/admin/vehicle-groups${includeHidden ? "?include_hidden=1" : ""}`),
   getVehicleGroupDetail: (id) => apiRequest(`/api/admin/vehicle-groups/${id}`),
   createVehicleGroup: (payload) => apiRequest("/api/admin/vehicle-groups", { method: "POST", body: payload }),
   updateVehicleGroup: (id, payload) => apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "PUT", body: payload }),
   deleteVehicleGroup: (id) => apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "DELETE" }),
+  restoreVehicleGroup: (id) => apiRequest(`/api/admin/vehicle-groups/${id}/restore`, { method: "POST" }),
 
   // ─── Vehicles ─────────────────────────────────────────────────────────────
   getVehicles: (params = {}) => {
@@ -114,6 +117,8 @@ export const managerService = {
   // Vehicle lifecycle
   sendVehicleToMaintenance: (id, payload) => apiRequest(`/api/admin/vehicles/${id}/send-to-maintenance`, { method: "POST", body: payload }),
   verifyVehicleMaintenance: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
+  // mode: 'redo' (bắt tài xế làm lại chứng từ) | 'cancel' (huỷ hẳn, xe về hoạt động)
+  rejectVehicleMaintenance: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/reject-maintenance`, { method: "POST", body: payload }),
   scanMaintenanceBill: (id) => apiRequest(`/api/admin/vehicles/${id}/scan-maintenance-bill`),
   markVehicleBroken: (id, payload) => apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),
   restoreVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/restore`, { method: "POST", body: payload }),
@@ -144,8 +149,6 @@ export const managerService = {
 
   // ─── Trips / expenses (shared with Coordinator) ──────────────────────────
   getTripPool: (params = {}) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
-  approveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/approve`, { method: "PATCH" }),
-  rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
   cancelShipment: (shipmentId, reason) => apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
 

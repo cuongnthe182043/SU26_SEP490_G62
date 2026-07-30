@@ -50,7 +50,7 @@ function MaintenanceCard({
     onCompleted,
 }: {
     record: MaintenanceRecord;
-    onBillUploaded: (vehicleId: number, uri: string) => Promise<void>;
+    onBillUploaded: (vehicleId: number, uri: string, cost: number | null) => Promise<void>;
     onCompleted:    (vehicleId: number, cost: number) => Promise<void>;
 }) {
     const [expanded,    setExpanded]    = useState(record.status === 'open' || record.status === 'requested' || record.status === 'rejected');
@@ -67,11 +67,16 @@ function MaintenanceCard({
     const isRequested = record.status === 'requested';
     const isRejected = record.status === 'rejected';
 
+    // Ở bước bảo dưỡng (open) phải nhập chi phí TRƯỚC khi chụp hóa đơn: server đối
+    // chiếu ảnh với số tiền ngay lúc upload, chưa có số tiền thì ảnh nào cũng qua.
+    // Ảnh chứng từ/báo giá lúc còn 'requested' thì chưa có chi phí nên không chặn.
+    const needsCostBeforeBill = isOpen && (!costRaw || costRaw <= 0);
+
     const handleCapture = async (uri: string) => {
         setShowCamera(false);
         setUploading(true);
         try {
-            await onBillUploaded(record.vehicle_id, uri);
+            await onBillUploaded(record.vehicle_id, uri, isOpen ? costRaw : null);
         } catch (err) {
             const status = (err as { status?: number })?.status;
             const msg = err instanceof Error ? err.message : 'Không thể tải hóa đơn';
@@ -196,6 +201,20 @@ function MaintenanceCard({
                             </XStack>
                         )}
 
+                        {/* Bị quản lý trả về làm lại chứng từ: record quay lại 'open'
+                            nhưng vẫn giữ reject_reason để tài xế biết phải sửa gì */}
+                        {isOpen && record.reject_reason && (
+                            <XStack
+                                padding={12} borderRadius={appTheme.radius.sm}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                alignItems="flex-start" gap={10}
+                            >
+                                <Text flex={1} fontSize={13} color={appTheme.colors.dangerText}>
+                                    Chứng từ bị từ chối: {record.reject_reason}. Hãy chụp lại hoá đơn và nhập lại chi phí.
+                                </Text>
+                            </XStack>
+                        )}
+
                         {/* Cost row */}
                         {!isRequested && !isRejected && (
                         <YStack gap={6}>
@@ -226,9 +245,9 @@ function MaintenanceCard({
                                 </Text>
                                 {(isOpen || isRequested) && (
                                     <Pressable
-                                        style={[s.uploadBtn, uploading && { opacity: 0.6 }]}
+                                        style={[s.uploadBtn, (uploading || needsCostBeforeBill) && { opacity: 0.5 }]}
                                         onPress={() => setShowCamera(true)}
-                                        disabled={uploading}
+                                        disabled={uploading || needsCostBeforeBill}
                                     >
                                         {uploading
                                             ? <ActivityIndicator size="small" color={appTheme.colors.primary} />
@@ -239,6 +258,12 @@ function MaintenanceCard({
                                     </Pressable>
                                 )}
                             </XStack>
+
+                            {needsCostBeforeBill && (
+                                <Text fontSize={12} color={appTheme.colors.warningText}>
+                                    Nhập chi phí bảo dưỡng trước, sau đó mới chụp được ảnh hóa đơn.
+                                </Text>
+                            )}
 
                             {record.bill_pics.length > 0 && (
                                 <XStack flexWrap="wrap" gap={8}>
@@ -459,7 +484,10 @@ export function MaintenanceScreen() {
         setRefreshing(false);
     };
 
-    const handleBillUploaded = async (vehicleId: number, uri: string) => {
+    const handleBillUploaded = async (vehicleId: number, uri: string, cost: number | null) => {
+        // Chốt chi phí lên server trước khi gửi ảnh để bước quét hóa đơn có số tiền
+        // mà đối chiếu — thứ tự này là phần chống vượt rào, không chỉ để tiện tay.
+        if (cost && cost > 0) await maintenanceService.saveCost(vehicleId, cost);
         await maintenanceService.uploadBill(vehicleId, uri);
         await reload(false);
     };

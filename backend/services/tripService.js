@@ -82,6 +82,16 @@ const getActiveTrip = async (driverId) => {
 };
 
 const claimTrip = async (shipmentId, driverId) => {
+    // Chặn nhận chuyến mới nếu còn chuyến cash đã COMPLETED mà chưa nhập km /
+    // chưa gửi yêu cầu tạo phiếu thu — bắt buộc tài xế xử lý xong nghĩa vụ tài
+    // chính của chuyến trước rồi mới được nhận chuyến tiếp theo.
+    const pendingReceipt = await tripRepository.getPendingReceiptOrder(driverId);
+    if (pendingReceipt) {
+        throw new Error(
+            `PENDING_RECEIPT:Bạn còn chuyến #${pendingReceipt.shipment_id} (đơn #${pendingReceipt.order_id}) chưa nhập km thực tế / chưa gửi yêu cầu tạo phiếu thu. Vui lòng hoàn tất trước khi nhận chuyến mới.`
+        );
+    }
+
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);
     if (!vehicleId) throw new Error('Tài xế chưa được gán xe');
 
@@ -142,6 +152,30 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
     const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null, driverId);
 
     fireStatusNotif(driverId, tripId, newStatus);
+
+    // Giao thất bại là việc phải có người xử lý ngay: coordinator liên hệ khách rồi
+    // quyết định giao lại hay trả hàng về, và khách có phải trả tiền hay không.
+    // Trước đây chỉ báo cho chính tài xế (silent) nên coordinator không hề biết.
+    if (newStatus === SHIPMENT_STATUS.FAILED) {
+        const coordinatorIds = await notificationService.getUserIdsByRole('coordinator');
+        notificationService.createForUsers(coordinatorIds, {
+            title: 'Giao hàng thất bại — cần xử lý',
+            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Hãy liên hệ khách rồi chọn giao lại hoặc hoàn hàng.`,
+            type: 'TRIP_STATUS_UPDATED',
+            entityType: 'shipments',
+            entityId: tripId,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        try {
+            notificationGateway.broadcastToRole('coordinator', {
+                type: 'coordinator.shipment.failed',
+                action: 'failed',
+                shipmentId: Number(tripId),
+                orderId: trip.order_id ?? null,
+                reason: reason.trim(),
+            });
+        } catch { /* realtime failure must not abort the status change */ }
+    }
 
     // RETURNING → COMPLETED: hàng đã về kho, KHÔNG auto-activate leg tiếp theo
     // Successful delivery COMPLETED được xử lý qua completeTrip (POST /complete)
@@ -307,10 +341,12 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.RETURNING) throw new Error('Chuyến phải ở trạng thái "returning" để xác nhận hoàn hàng');
 
-    // Photo is optional for return completion
-    if (proofFileUrl) {
-        await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
+    // Ảnh BẮT BUỘC: đây là bằng chứng duy nhất chứng minh hàng đã thực sự về kho.
+    // Trước đây ảnh tuỳ chọn nên không có gì xác nhận hàng đã được trả lại.
+    if (!proofFileUrl) {
+        throw new Error('Ảnh xác nhận đã trả hàng về điểm lấy là bắt buộc');
     }
+    await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
     const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
 
@@ -396,10 +432,17 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
     // Lưu km vào order_shipments cho mọi driver
     await tripRepository.saveShipmentActualKm(shipmentId, km);
 
-    const isFinal = await tripRepository.isFinalShipment(shipmentId);
+    const { isMaxIndex, allOthersReady } = await tripRepository.getShipmentFinalStatus(shipmentId);
+    const isFinal = isMaxIndex && allOthersReady;
 
     // Kiểm tra payment_type của order
     const orderPaymentType = await tripRepository.getOrderPaymentType(orderId);
+
+    // Là chuyến cuối (theo thứ tự) nhưng có chuyến khác trong đơn chưa nhập km xong
+    // → chưa cho tạo yêu cầu, báo rõ lý do thay vì im lặng trả về như "không phải chuyến cuối".
+    if (isMaxIndex && !allOthersReady && orderPaymentType === 'cash') {
+        return { km_saved: true, receipt_request_created: false, waiting_for_other_shipments: true };
+    }
 
     // Chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
     if (!isFinal || orderPaymentType !== 'cash') {
@@ -491,7 +534,9 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 title: 'Khách chuyển khoản về công ty — cần xác nhận',
                 message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${receiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
                 type: 'BANK_TRANSFER_PENDING',
-                entityType: 'receipt',
+                // entityType riêng để bấm thông báo mở đúng màn "Xác nhận chuyển khoản"
+                // (dùng 'receipt' sẽ nhảy sang màn Doanh thu như mọi phiếu thu khác)
+                entityType: 'bank_transfer',
                 entityId: receiptId,
             }, { displayMode: 'alert' })
         ).catch(() => {});

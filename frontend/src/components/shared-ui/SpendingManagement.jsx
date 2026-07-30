@@ -8,7 +8,7 @@ import {
 } from "@heroui/react";
 import {
   RiRefreshLine, RiCheckLine, RiCloseLine, RiAddLine, RiMoneyDollarCircleLine, RiWalletLine,
-  RiCheckboxCircleLine, RiCloseCircleLine, RiHandCoinLine, RiTimeLine,
+  RiCheckboxCircleLine, RiCloseCircleLine, RiHandCoinLine, RiTimeLine, RiArrowGoBackLine,
 } from "react-icons/ri";
 import { StatCard } from "./StatCard";
 import { PaginationBar } from "./PaginationBar";
@@ -187,6 +187,24 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     }
   };
 
+  const handleUnapproveExpense = async (r) => {
+    if (!(await confirmDialog({
+      title: "Gỡ duyệt chi phí",
+      description: `Gỡ duyệt khoản ${fmt(r.amount)} của ${r.driver_name || "tài xế"}? Khoản này về trạng thái chờ duyệt và tài xế sẽ sửa/xoá được.`,
+      confirmLabel: "Gỡ duyệt",
+    }))) return;
+    setActing(true);
+    try {
+      await api.unapproveExpense(r.id);
+      notify.success("Đã gỡ duyệt chi phí.");
+      loadExpenses();
+    } catch (e) {
+      notify.error(e.message || "Lỗi gỡ duyệt chi phí");
+    } finally {
+      setActing(false);
+    }
+  };
+
   const handleRejectExpense = async () => {
     if (!expenseRejectReason.trim()) { notify.error("Vui lòng nhập lý do từ chối"); return; }
     setActing(true);
@@ -320,7 +338,14 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       </div>
 
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
-        <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary">
+        {/* Role không có quyền phiếu chi (VD Điều phối) chỉ còn 1 tab — ẩn thanh tab
+            cho đỡ thừa vì nhãn tab trùng luôn tiêu đề trang. */}
+        <Tabs
+          selectedKey={tab}
+          onSelectionChange={setTab}
+          color="primary"
+          classNames={{ tabList: api.listVouchers ? undefined : "hidden" }}
+        >
           {/* ─── Tab 1: Chi phí tài xế ─── */}
           <Tab key="expenses" title="Chi phí tài xế">
             <div className="grid grid-cols-4 gap-4 my-4">
@@ -422,6 +447,13 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                           <Button size="sm" variant="light" color="danger" startContent={<RiCloseLine size={13} />} onPress={() => { setExpenseRejectTarget(r); setExpenseRejectReason(""); }}>Từ chối</Button>
                         </div>
                       )}
+                      {/* Gỡ duyệt: chi phí đã duyệt thì tài xế không sửa được nữa,
+                          nên duyệt sai số tiền là bế tắc nếu không có đường lùi này */}
+                      {canModerateExpense && api.unapproveExpense && r.status === "approved" && (
+                        <div className="flex gap-1 justify-end">
+                          <Button size="sm" variant="light" color="warning" isDisabled={acting} startContent={<RiArrowGoBackLine size={13} />} onPress={() => handleUnapproveExpense(r)}>Gỡ duyệt</Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 )}
@@ -436,8 +468,9 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
             )}
           </Tab>
 
-          {/* ─── Tab 2: Phiếu chi ─── */}
-          <Tab key="vouchers" title="Phiếu chi">
+          {/* ─── Tab 2: Phiếu chi — chỉ hiện khi role này có quyền (VD: Coordinator không có) ─── */}
+          {api.listVouchers && (
+            <Tab key="vouchers" title="Phiếu chi">
             <div className="grid grid-cols-4 gap-4 my-4">
               <StatCard label="Chờ duyệt" value={voucherStats?.pending_count || 0} icon={RiMoneyDollarCircleLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
               <StatCard label="Chờ chi" value={voucherStats?.approved_count || 0} icon={RiTimeLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
@@ -529,8 +562,10 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               </div>
             )}
           </Tab>
+          )}
 
-          {/* ─── Tab 3: Tổng hợp chi ─── */}
+          {/* ─── Tab 3: Tổng hợp chi — chỉ hiện khi role này có quyền phiếu chi ─── */}
+          {api.getSummary && (
           <Tab key="summary" title="Tổng hợp chi">
             {summaryLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
@@ -581,6 +616,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               </div>
             )}
           </Tab>
+          )}
         </Tabs>
       </div>
 
