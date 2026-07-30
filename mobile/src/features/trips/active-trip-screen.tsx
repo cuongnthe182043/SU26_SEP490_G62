@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
-    AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
+    AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Clock,
     FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
@@ -580,6 +580,14 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         router.replace('/(tabs)');
     }), [trip.id]);
 
+    // Điều phối đã quyết định chuyến giao thất bại (giao lại / hoàn hàng) — tải lại
+    // để màn đổi từ "đang chờ điều phối" sang bước tiếp theo mà tài không phải tự F5.
+    useEffect(() => appEvents.on('trip.failed_resolved', (payload) => {
+        const event = payload as { shipmentId?: number };
+        if (Number(event?.shipmentId) !== Number(trip.id)) return;
+        refresh();
+    }), [trip.id, refresh]);
+
     // Handlers cho multi-stop flow: gọi transit/complete không cần ảnh (proof đã capture per-stop)
     const [transitingViaStops, setTransitingViaStops]     = useState(false);
     const [completingViaStops, setCompletingViaStops]     = useState(false);
@@ -616,6 +624,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isPicking     = trip.status === 'picking';
     const isArrived     = trip.status === 'arrived';
     const isReturning   = trip.status === 'returning';
+    const isFailed      = trip.status === 'failed';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
 
@@ -863,7 +872,30 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </YStack>
                 ) : null}
 
-                {/* ── Return complete section (RETURNING) – Item 5 ── */}
+                {/* ── Chờ điều phối xử lý (FAILED) ──
+                    Tài KHÔNG được tự chuyển sang hoàn hàng: điều phối phải liên hệ khách
+                    rồi quyết định giao lại hay trả hàng về, kèm chốt khách có phải trả
+                    tiền không. Trước đây có nút "Bắt đầu hoàn hàng" ở đây. */}
+                {isFailed ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.border}
+                        backgroundColor={appTheme.colors.dangerSoft}
+                        padding={14} gap={8}
+                    >
+                        <XStack alignItems="center" gap={8}>
+                            <Clock size={16} color={appTheme.colors.dangerText} />
+                            <Text fontSize={13} fontWeight="900" color={appTheme.colors.dangerText}>
+                                Đang chờ điều phối viên xử lý
+                            </Text>
+                        </XStack>
+                        <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={17}>
+                            Điều phối viên đã nhận báo cáo giao thất bại và đang liên hệ khách.
+                            Bạn sẽ được thông báo khi có quyết định giao lại hoặc hoàn hàng về kho.
+                        </Text>
+                    </YStack>
+                ) : null}
+
+                {/* ── Return complete section (RETURNING) ── */}
                 {isReturning ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.border}
@@ -873,11 +905,13 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
                             XÁC NHẬN ĐÃ HOÀN HÀNG
                         </Text>
+                        {/* Ảnh BẮT BUỘC — bằng chứng duy nhất hàng đã thực sự về kho.
+                            BE trả 400 nếu thiếu, nên nút phải disable thay vì để tài bấm rồi lỗi. */}
                         <PhotoCaptureCard
-                            label="Ảnh hoàn hàng (tuỳ chọn)"
-                            sublabel="Chụp ảnh hàng đã trả về kho"
+                            label="Ảnh hoàn hàng (bắt buộc)"
+                            sublabel="Chụp ảnh hàng đã trả về điểm lấy"
                             uri={returnUri}
-                            required={false}
+                            required
                             onCapture={() => openCamera('return')}
                             onDelete={() => setReturnUri(null)}
                         />
@@ -886,6 +920,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                             tone="secondary"
                             onPress={() => void completeReturn(trip.id, returnUri ?? undefined)}
                             isLoading={completingReturn}
+                            disabled={!returnUri}
                             icon={<RotateCcw size={17} color="#fff" />}
                         />
                     </YStack>

@@ -421,8 +421,9 @@ export type NextAction = {
 export const NEXT_ACTIONS: Partial<Record<TripStatus, NextAction>> = {
     claimed:   { label: 'Bắt đầu lấy hàng',  nextStatus: 'picking',   tone: 'primary'   },
     transit:   { label: 'Xác nhận đã đến',    nextStatus: 'arrived',   tone: 'primary'   },
-    failed:    { label: 'Bắt đầu hoàn hàng',  nextStatus: 'returning', tone: 'secondary' },
     // picking → transit: requires loading proof photo (use-loading-proof hook → POST /start-transit)
     // arrived → completed: requires delivery proof + receipt (use-completion-proof → POST /complete)
-    // returning → completed: use return-complete with optional photo
+    // failed: KHÔNG có action cho tài — điều phối viên phải quyết định giao lại hay
+    //         hoàn hàng (POST /coordinator/trips/:id/resolve-failed), tài chỉ chờ
+    // returning → completed: return-complete, ảnh BẮT BUỘC (bằng chứng hàng đã về kho)
 };
