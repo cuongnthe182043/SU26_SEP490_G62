@@ -362,10 +362,16 @@ const listVehicles = async (query = {}) => {
 
 const getVehicleDetail = async (vehicleId) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
-    const history = await vehicleManagementRepository.listVehicleStatusHistory(vehicle.id);
+    // maintenance_records kèm ảnh hóa đơn để Manager/Accountant soi được chứng từ của
+    // MỌI đợt bảo dưỡng, không chỉ đợt đang chờ xác nhận.
+    const [history, maintenanceRecords] = await Promise.all([
+        vehicleManagementRepository.listVehicleStatusHistory(vehicle.id),
+        vehicleManagementRepository.listVehicleMaintenanceRecords(vehicle.id),
+    ]);
     return {
         ...vehicle,
         status_history: history,
+        maintenance_records: maintenanceRecords,
     };
 };
 
@@ -708,10 +714,21 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
     return updatedVehicle;
 };
 
-// Manager từ chối bản ghi bảo dưỡng đang chờ xác nhận. Đây là đối trọng của
-// verifyMaintenance: không có nó thì hoá đơn khống / số tiền sai chỉ còn hai lối
-// là duyệt bừa hoặc để treo vĩnh viễn.
+// Manager từ chối / huỷ bản ghi bảo dưỡng. Đây là đối trọng của verifyMaintenance:
+// không có nó thì hoá đơn khống / số tiền sai chỉ còn hai lối là duyệt bừa hoặc để
+// treo vĩnh viễn.
+//
+//   mode = 'redo'   → chỉ áp cho bản ghi tài xế ĐÃ submit ('pending_verification'):
+//                     xoá chứng từ + chi phí, xe vẫn ở bảo dưỡng, bắt khai lại.
+//   mode = 'cancel' → áp cho cả bản ghi CHƯA submit ('open'): đóng bản ghi, xe về
+//                     'active'. Không có nhánh này thì một đợt bảo dưỡng mở sai (hoặc
+//                     tài xế bỏ giữa) sẽ giam xe ở trạng thái 'maintenance' vĩnh viễn —
+//                     retireVehicle cũng chặn khi còn bảo dưỡng mở.
 const REJECT_MAINTENANCE_MODES = ['redo', 'cancel'];
+const REJECTABLE_MAINTENANCE_STATUSES = {
+    redo: ['pending_verification'],
+    cancel: ['open', 'pending_verification'],
+};
 
 const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
@@ -720,13 +737,20 @@ const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
     if (!vehicle.active_maintenance_id) {
         throw createError('Xe này không có bản ghi bảo dưỡng nào đang mở', 404);
     }
-    if (vehicle.active_maintenance_status !== 'pending_verification') {
-        throw createError('Chỉ từ chối được bảo dưỡng đang chờ xác nhận', 409);
-    }
 
     const mode = normalizeString(payload.mode) || 'redo';
     if (!REJECT_MAINTENANCE_MODES.includes(mode)) {
         throw createError(`mode phải là một trong: ${REJECT_MAINTENANCE_MODES.join(', ')}`, 400);
+    }
+
+    const allowedStatuses = REJECTABLE_MAINTENANCE_STATUSES[mode];
+    if (!allowedStatuses.includes(vehicle.active_maintenance_status)) {
+        throw createError(
+            mode === 'redo'
+                ? 'Chỉ yêu cầu làm lại được với bảo dưỡng đang chờ xác nhận'
+                : 'Chỉ huỷ được bảo dưỡng đang thực hiện hoặc đang chờ xác nhận',
+            409,
+        );
     }
 
     const reason = normalizeString(payload.reason);
@@ -742,10 +766,11 @@ const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
             managerId: parsePositiveInteger(managerId, 'manager_id'),
             reason,
             mode,
+            allowedStatuses,
         });
     } catch (err) {
         if (err.code === 'PENDING_MAINTENANCE_NOT_FOUND') {
-            throw createError('Không tìm thấy bảo dưỡng đang chờ xác nhận. Hãy tải lại trang.', 409);
+            throw createError('Không tìm thấy bản ghi bảo dưỡng phù hợp. Hãy tải lại trang.', 409);
         }
         throw err;
     }

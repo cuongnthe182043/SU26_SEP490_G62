@@ -26,6 +26,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'updateVehicle', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         mock.method(vehicleManagementRepository, 'insertVehicleAssignmentHistory', async () => {});
 
         const vehicle = await vehicleManagementService.setVehicleDriverAssignment(10, { assigned_driver_id: null });
@@ -179,6 +180,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'moveBrokenVehicleToMaintenance', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
 
         await vehicleManagementService.sendVehicleToMaintenance(18, 3, {
             maintenance_type: 'repair',
@@ -240,6 +242,7 @@ describe('Vehicle Management Service', () => {
             status: 'active',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         mock.method(vehicleManagementRepository, 'insertVehicleAssignmentHistory', async () => {});
 
         const vehicle = await vehicleManagementService.createVehicle({
@@ -358,6 +361,7 @@ describe('Vehicle Management Service', () => {
             previousStatus: 'active',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         mock.method(notificationService, 'createForUser', async () => ({}));
         mock.method(notificationGateway, 'broadcastToUser', () => {});
 
@@ -397,6 +401,7 @@ describe('Vehicle Management Service', () => {
             previousStatus: 'maintenance',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
 
         await vehicleManagementService.verifyMaintenance(28, 3, {
             maintenance_record_id: 41,
@@ -454,6 +459,55 @@ describe('Vehicle Management Service', () => {
         );
     });
 
+    // Huỷ bảo dưỡng phải áp được cả khi tài xế CHƯA nộp chứng từ (status 'open'):
+    // đợt bảo dưỡng mở nhầm mà không huỷ được sẽ giam xe ở trạng thái 'maintenance'
+    // vĩnh viễn (retire cũng bị chặn khi còn bảo dưỡng mở).
+    it('should cancel a maintenance that the driver has not submitted yet', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 61,
+            plate_number: '51A-00061',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+            active_maintenance_id: 71,
+            active_maintenance_status: 'open',
+        }));
+        mock.method(vehicleManagementRepository, 'rejectPendingMaintenanceRecord', async () => ({
+            maintenanceId: 71,
+            performedBy: 7,
+            requestedBy: 7,
+            mode: 'cancel',
+        }));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
+
+        await vehicleManagementService.rejectMaintenance(61, 3, { mode: 'cancel', reason: 'Mo nham dot bao duong' });
+
+        assert.strictEqual(vehicleManagementRepository.rejectPendingMaintenanceRecord.mock.calls.length, 1);
+        assert.deepStrictEqual(
+            vehicleManagementRepository.rejectPendingMaintenanceRecord.mock.calls[0].arguments[0].allowedStatuses,
+            ['open', 'pending_verification'],
+        );
+    });
+
+    // Ngược lại: "làm lại chứng từ" chỉ có nghĩa khi tài xế đã nộp.
+    it('should refuse a redo request when the driver has not submitted the paperwork', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 62,
+            plate_number: '51A-00062',
+            vehicle_group_id: 2,
+            assigned_driver_id: 7,
+            status: 'maintenance',
+            active_maintenance_id: 72,
+            active_maintenance_status: 'open',
+        }));
+
+        await assert.rejects(
+            () => vehicleManagementService.rejectMaintenance(62, 3, { mode: 'redo', reason: 'Chung tu sai' }),
+            (err) => err.statusCode === 409,
+        );
+    });
+
     it('should route active to broken transitions through markVehicleAsBroken', async () => {
         mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
             id: 31,
@@ -467,6 +521,7 @@ describe('Vehicle Management Service', () => {
             previousStatus: 'active',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
 
         await vehicleManagementService.changeVehicleStatus(31, 3, {
             status: 'broken',
@@ -517,6 +572,7 @@ describe('Vehicle Management Service', () => {
             previousStatus: 'active',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
 
         await vehicleManagementService.changeVehicleStatus(33, 3, {
             status: 'retired',
@@ -636,6 +692,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'completeMaintenanceRecordAndSetStatus', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         
         await vehicleManagementService.completeMaintenance(1, 3, {
             maintenance_record_id: 100,
@@ -666,6 +723,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'resolveFailureRecordAndSetStatus', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         
         await vehicleManagementService.restoreVehicle(1, 3, { failure_record_id: 200 });
         
@@ -679,6 +737,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'retireVehicle', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'listVehicleMaintenanceRecords', async () => []);
         
         await vehicleManagementService.softDeleteVehicle(1, 3);
         

@@ -3,7 +3,10 @@ const vehicleManagementRepository = require('../repositories/vehicleManagementRe
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
-const { scanMaintenanceReceipt } = require('./expenseAiValidator');
+// Gọi qua object (không destructure) để test thay được readReceiptTotal — helper mock
+// của repo swap property trên module object.
+const expenseAiValidator = require('./expenseAiValidator');
+const { matchesTotal, fmtVND } = expenseAiValidator;
 
 const createError = (message, statusCode) => {
     const error = new Error(message);
@@ -17,6 +20,40 @@ const parsePositiveAmount = (value, fieldName) => {
         throw createError(`${fieldName} must be greater than 0`, 400);
     }
     return parsed;
+};
+
+// Đối chiếu số tiền tài xế khai với tổng tiền đọc được trên các ảnh hóa đơn đã lưu.
+//
+// Vì sao cần chạy LẠI ở bước hoàn tất dù upload đã quét: lúc upload, chi phí có thể
+// chưa được nhập (cost = NULL) nên scanMaintenanceReceipt chỉ kiểm tra "ảnh có phải
+// hóa đơn đọc được" mà KHÔNG so khớp số tiền. Tài xế vì thế có thể up ảnh hóa đơn
+// 200k trước rồi khai 5 triệu — vượt rào toàn bộ lớp kiểm tra. Chốt lại ở đây là
+// điểm duy nhất biết cả ảnh lẫn số tiền cuối cùng.
+//
+// Chấp nhận khi số khai khớp TỔNG các hóa đơn (nhiều hóa đơn rời) HOẶC khớp hóa đơn
+// lớn nhất (tài xế chụp cùng một hóa đơn nhiều góc) — nếu chỉ so tổng thì trường hợp
+// thứ hai sẽ bị từ chối oan.
+//
+// Fail-open khi KHÔNG đọc được ảnh nào (OCR lỗi/ảnh mờ): manager vẫn còn chốt cuối
+// ở bước xác nhận, không chặn cứng tài xế vì sự cố hạ tầng.
+const assertMaintenanceCostMatchesBills = async (cost, billPics) => {
+    const totals = (await Promise.all(billPics.map((url) => expenseAiValidator.readReceiptTotal(url))))
+        .filter((total) => Number.isFinite(total) && total > 0);
+
+    if (totals.length === 0) return;
+
+    const sum = totals.reduce((acc, total) => acc + total, 0);
+    const max = Math.max(...totals);
+    if (matchesTotal(cost, sum) || matchesTotal(cost, max)) return;
+
+    const err = createError(
+        `Số tiền khai (${fmtVND(cost)}) không khớp hóa đơn đã tải lên (đọc được ${fmtVND(sum)}). `
+        + 'Vui lòng nhập đúng số tiền trên hóa đơn hoặc chụp lại hóa đơn của khoản này.',
+        422,
+    );
+    err.reject_reason = err.message;
+    err.invalidBill = true;
+    throw err;
 };
 
 const buildMaintenanceVerificationMessage = (vehicle) => {
@@ -129,7 +166,7 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     // không quét ảnh chứng từ/báo giá lúc còn chờ duyệt (requested). Ảnh không hợp lệ
     // bị từ chối ngay (422) và KHÔNG được lưu → tài xế phải upload ảnh khác.
     if (record.status === 'open') {
-        const scan = await scanMaintenanceReceipt(billUrl, { amount: record.cost });
+        const scan = await expenseAiValidator.scanMaintenanceReceipt(billUrl, { amount: record.cost });
         if (!scan.valid) {
             const err = createError(scan.reject_reason || 'Ảnh hóa đơn không hợp lệ', 422);
             err.reject_reason = scan.reject_reason;
@@ -200,6 +237,8 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
     if (billPics.length === 0) {
         throw createError('At least one maintenance bill image is required before completion', 400);
     }
+
+    await assertMaintenanceCostMatchesBills(cost, billPics);
 
     await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
         vehicleId: parsedVehicleId,

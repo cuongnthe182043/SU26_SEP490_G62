@@ -40,6 +40,12 @@ router.post(
     handleUpload(uploadMaintenanceBill.single('bill')),
     driverController.uploadMaintenanceBill,
 );
+router.patch(
+    '/maintenance/:vehicleId/cost',
+    verifyToken,
+    requireRole('driver'),
+    driverController.updateMaintenanceCost,
+);
 router.post(
     '/maintenance/:vehicleId/complete',
     verifyToken,
