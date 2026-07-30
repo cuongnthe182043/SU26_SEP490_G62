@@ -285,7 +285,7 @@ export default function BusinessReportView() {
         <Section title="Năng suất tài xế" icon={RiUserStarLine}>
           <DriverProductivity data={data?.drivers} />
         </Section>
-        <Section title="Top khách hàng theo doanh thu kỳ" icon={RiGroupLine}>
+        <Section title="Top khách hàng / đối tác theo doanh thu kỳ" icon={RiGroupLine}>
           <TopCustomersTable data={data?.top_customers} />
         </Section>
       </div>
@@ -293,16 +293,22 @@ export default function BusinessReportView() {
       {/* Dòng tiền + KPI công nợ */}
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
-          <Section title="Phân tích nợ khách theo tuổi" icon={RiTimeLine}>
+          <Section title="Phân tích nợ phải thu theo tuổi" icon={RiTimeLine}>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              <MiniStat label="Nợ phải thu" value={VND(cash.receivable_total)} tone="text-orange-600 dark:text-orange-300" />
+              <MiniStat label="Nợ phải thu (khách + đối tác)" value={VND(cash.receivable_total)} tone="text-orange-600 dark:text-orange-300" />
               <MiniStat label="DSO (ngày thu tiền)" value={`${Number(cash.dso || 0).toFixed(0)} ngày`} tone="text-gray-700 dark:text-gray-200" />
               <MiniStat
-                label="Tỷ lệ thu hồi kỳ"
+                label="Tỷ lệ thu hồi công nợ kỳ"
                 value={`${Number(cash.collection_rate || 0).toFixed(0)}%`}
                 tone={Number(cash.collection_rate) >= 80 ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300"}
               />
             </div>
+            {/* Nói rõ mẫu số: DSO và tỷ lệ thu hồi chia cho doanh thu BÁN CHỊU, không phải
+                tổng doanh thu — đơn tiền mặt không sinh nợ phải thu. */}
+            <p className="text-[11px] text-gray-400 dark:text-gray-400 mb-3">
+              Đã thu trong kỳ {VND(cash.collected)} / doanh thu bán chịu {VND(cash.credit_revenue)}.
+              Tiền mặt tài xế thu hộ theo dõi riêng ở "Tiền tài xế đang cầm".
+            </p>
             <DebtAgingBars data={cash.debt_aging} />
           </Section>
         </div>
@@ -311,13 +317,13 @@ export default function BusinessReportView() {
         </Section>
       </div>
 
-      {/* Khách hàng rủi ro */}
-      <Section title="Khách hàng rủi ro công nợ" icon={RiErrorWarningLine}>
+      {/* Bên nợ rủi ro */}
+      <Section title="Khách hàng / đối tác rủi ro công nợ" icon={RiErrorWarningLine}>
         <RiskyCustomers data={data?.risky_customers} />
       </Section>
 
-      {/* Công nợ chi tiết khách hàng — tách theo tuổi nợ */}
-      <Section title="Công nợ chi tiết khách hàng" icon={RiFileList3Line}>
+      {/* Công nợ chi tiết — tách theo tuổi nợ, tổng khớp với ô "Nợ phải thu" ở trên */}
+      <Section title="Công nợ phải thu chi tiết" icon={RiFileList3Line}>
         <CustomerDebtTable data={data?.customer_debts} />
       </Section>
 
@@ -481,6 +487,16 @@ function DriverProductivity({ data }) {
   );
 }
 
+// Bảng công nợ giờ gộp cả khách hàng và đối tác giao việc (để tổng khớp với ô
+// "Nợ phải thu") — cần nhãn để phân biệt hai loại bên nợ.
+function PartyTag() {
+  return (
+    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
+      Đối tác
+    </span>
+  );
+}
+
 function CustomerDebtTable({ data }) {
   if (!data?.length) {
     return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Không có khách hàng còn dư nợ.</p>;
@@ -493,7 +509,7 @@ function CustomerDebtTable({ data }) {
       <table className="w-full text-xs min-w-[640px]">
         <thead>
           <tr className="text-gray-400 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
-            <th className="text-left font-semibold py-2 px-2">Khách hàng</th>
+            <th className="text-left font-semibold py-2 px-2">Khách hàng / đối tác</th>
             <th className="text-right font-semibold py-2 px-2">Dư nợ</th>
             <th className="text-right font-semibold py-2 px-2">0–30</th>
             <th className="text-right font-semibold py-2 px-2">31–60</th>
@@ -505,7 +521,10 @@ function CustomerDebtTable({ data }) {
         <tbody>
           {data.map((c, i) => (
             <tr key={i} className="border-b border-gray-50 last:border-0">
-              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[200px]">{c.name}</td>
+              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[200px]">
+                {c.name}
+                {c.party_type === "partner" && <PartyTag />}
+              </td>
               <td className={`${cell} font-bold text-gray-800 dark:text-gray-100`}>{VND_FULL(c.outstanding)}</td>
               <td className={`${cell} text-gray-500 dark:text-gray-400`}>{Number(c.d0_30) > 0 ? VND(c.d0_30) : "—"}</td>
               <td className={`${cell} text-yellow-600 dark:text-yellow-300`}>{Number(c.d30_60) > 0 ? VND(c.d30_60) : "—"}</td>
@@ -540,7 +559,7 @@ function RiskyCustomers({ data }) {
       <table className="w-full text-xs min-w-[420px]">
         <thead>
           <tr className="text-gray-400 dark:text-gray-400 border-b border-gray-100 dark:border-white/10">
-            <th className="text-left font-semibold py-2 px-2">Khách hàng</th>
+            <th className="text-left font-semibold py-2 px-2">Khách hàng / đối tác</th>
             <th className="text-right font-semibold py-2 px-2">Dư nợ</th>
             <th className="text-right font-semibold py-2 px-2">Quá hạn</th>
           </tr>
@@ -548,7 +567,10 @@ function RiskyCustomers({ data }) {
         <tbody>
           {data.map((c, i) => (
             <tr key={i} className="border-b border-gray-50 last:border-0">
-              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[220px]">{c.name}</td>
+              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[220px]">
+                {c.name}
+                {c.party_type === "partner" && <PartyTag />}
+              </td>
               <td className="py-2.5 px-2 text-right font-semibold text-gray-700 dark:text-gray-200">{VND_FULL(c.outstanding)}</td>
               <td className="py-2.5 px-2 text-right font-bold">
                 {Number(c.overdue) > 0

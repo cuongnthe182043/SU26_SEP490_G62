@@ -41,8 +41,10 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     // Đơn không phải cash (chuyển khoản/công nợ) không bao giờ đi qua luồng chốt
     // phiếu thu — không có điểm nào để coordinator duyệt thủ công, nên tự động
-    // duyệt ngay khi tạo để không kẹt "pending" vĩnh viễn. Đơn cash vẫn giữ pending,
-    // chờ coordinator duyệt/từ chối thủ công (không auto).
+    // duyệt ngay khi tạo để không kẹt "pending" vĩnh viễn. Đơn cash giữ 'pending'
+    // và được duyệt TỰ ĐỘNG khi coordinator phát hành phiếu thu
+    // (coordinatorService.approveReceiptRequest) — coordinator vẫn có thể duyệt/từ chối
+    // sớm ở màn "Chi phí tài xế" nếu muốn loại một khoản khỏi phiếu.
     const orderPaymentType = await tripRepository.getOrderPaymentType(shipment.order_id);
     if (orderPaymentType !== 'cash') {
         await expenseRepository.approveExpense(expense.id, null);
@@ -53,7 +55,9 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
     // màn "Quản lý chi phí" bên Manager chỉ để xem lịch sử.
     const coordinatorIds = await roleRepository.getUserIdsByRole('coordinator');
     notificationService.createForUsers(coordinatorIds, {
-        title: orderPaymentType === 'cash' ? 'Chi phí mới chờ duyệt' : 'Chi phí mới (đơn không thu tiền mặt — đã tự duyệt)',
+        title: orderPaymentType === 'cash'
+            ? 'Chi phí mới (sẽ tự duyệt khi phát hành phiếu thu)'
+            : 'Chi phí mới (đơn không thu tiền mặt — đã tự duyệt)',
         message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${Number(amount).toLocaleString('vi-VN')}đ cho chuyến #${shipmentId}.`,
         type: 'EXPENSE_SUBMITTED',
         entityType: 'expenses',
