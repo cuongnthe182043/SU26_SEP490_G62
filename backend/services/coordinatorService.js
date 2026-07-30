@@ -901,6 +901,18 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
             entityType: 'shipments',
             entityId: shipmentId,
         }, { displayMode: 'alert' }).catch(() => {});
+
+        // Tài xế có thể đang mở màn chuyến — cần đẩy realtime để app thoát ra
+        // trang chủ ngay, nếu không tài vẫn bấm cập nhật trạng thái rồi ăn lỗi
+        // "không thể chuyển trạng thái từ cancelled".
+        try {
+            notificationGateway.broadcastToUser(shipment.owner_driver_id, {
+                type: 'trip.cancelled',
+                shipmentId: Number(shipmentId),
+                orderId: shipment.order_id ?? null,
+                reason: reason.trim(),
+            });
+        } catch { /* realtime failure must not abort the cancellation */ }
     }
 
     return updated;
