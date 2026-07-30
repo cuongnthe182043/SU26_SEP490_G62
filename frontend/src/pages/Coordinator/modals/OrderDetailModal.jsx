@@ -1,7 +1,11 @@
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Chip } from "@heroui/react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Chip,
+  Checkbox, Select, SelectItem,
+} from "@heroui/react";
 import {
   RiCalendarLine, RiFileTextLine, RiMoneyDollarCircleLine, RiPhoneLine, RiShoppingBag3Line,
-  RiScales3Line, RiTruckLine, RiUserLine,
+  RiScales3Line, RiTruckLine, RiUserLine, RiUserAddLine,
 } from "react-icons/ri";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
@@ -62,7 +66,101 @@ function ShipmentCard({ shipment }) {
   );
 }
 
-export default function OrderDetailModal({ open, order, onClose }) {
+// Gán trước chuyến cho tài xế. Chỉ chuyến còn 'available' và chưa có tài mới gán được.
+// Một đơn có thể gán NHIỀU chuyến cho CÙNG một tài (chạy tuần tự), hoặc chia mỗi
+// chuyến cho một tài khác nhau — backend chỉ chặn khi tài đang vướng đơn KHÁC.
+function AssignShipmentsPanel({ order, drivers, onAssign }) {
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [driverId, setDriverId] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const assignable = useMemo(() => (order.trips || []).filter(
+    (t) => t.shipment_id && t.status === "available" && !t.owner_driver_id,
+  ), [order.trips]);
+
+  // Đơn khác / vừa gán xong → bỏ lựa chọn cũ để không gửi id đã hết hiệu lực
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => assignable.some((t) => Number(t.shipment_id) === Number(id))));
+  }, [assignable]);
+
+  if (assignable.length === 0) return null;
+
+  const toggle = (shipmentId) => setSelectedIds((prev) => (
+    prev.includes(shipmentId) ? prev.filter((id) => id !== shipmentId) : [...prev, shipmentId]
+  ));
+
+  const handleAssign = async () => {
+    setBusy(true);
+    try {
+      await onAssign({ shipmentIds: selectedIds, driverId: Number(driverId) });
+      setSelectedIds([]);
+      setDriverId(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06] p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <RiUserAddLine size={15} className="text-blue-600 dark:text-blue-300" />
+        <span className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+          Gán chuyến cho tài xế
+        </span>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Chọn nhiều chuyến cho cùng một tài xế thì tài chạy lần lượt — xong chuyến trước, chuyến
+        sau tự mở. Tài đang chạy chuyến của đơn khác sẽ không gán được.
+      </p>
+
+      <div className="flex flex-col gap-2 mb-3">
+        {assignable.map((t) => (
+          <Checkbox
+            key={t.shipment_id}
+            size="sm"
+            isSelected={selectedIds.includes(Number(t.shipment_id))}
+            onValueChange={() => toggle(Number(t.shipment_id))}
+          >
+            <span className="text-xs text-gray-700 dark:text-gray-200">
+              Chuyến {t.shipment_index} <span className="text-gray-400 dark:text-gray-500">#{t.shipment_id}</span>
+              {t.pickup_address || t.delivery_address
+                ? ` · ${[t.pickup_address, t.delivery_address].filter(Boolean).join(" → ")}`
+                : ""}
+            </span>
+          </Checkbox>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+        <Select
+          label="Tài xế"
+          placeholder="Chọn tài xế"
+          size="sm"
+          className="flex-1"
+          selectedKeys={driverId ? [String(driverId)] : []}
+          onSelectionChange={(keys) => setDriverId([...keys][0] ?? null)}
+          variant="bordered"
+        >
+          {(drivers || []).map((d) => (
+            <SelectItem key={String(d.id)}>{d.full_name || d.name}</SelectItem>
+          ))}
+        </Select>
+        <Button
+          color="primary"
+          size="md"
+          isDisabled={selectedIds.length === 0 || !driverId}
+          isLoading={busy}
+          startContent={!busy && <RiUserAddLine size={16} />}
+          onPress={handleAssign}
+        >
+          {selectedIds.length > 1 ? `Gán ${selectedIds.length} chuyến` : "Gán chuyến"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function OrderDetailModal({ open, order, onClose, drivers, onAssignShipments }) {
   if (!order) return null;
 
   return (
@@ -122,6 +220,10 @@ export default function OrderDetailModal({ open, order, onClose }) {
               ))}
             </div>
           </div>
+
+          {onAssignShipments && (
+            <AssignShipmentsPanel order={order} drivers={drivers} onAssign={onAssignShipments} />
+          )}
 
           {order.notes && (
             <div className="rounded-xl border border-gray-100 dark:border-white/10 bg-gray-50/60 dark:bg-white/[0.03] p-3">
