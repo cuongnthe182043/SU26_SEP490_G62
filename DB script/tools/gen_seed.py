@@ -66,7 +66,7 @@ S = [
     (100010, 100009, 1, 100001, 100004, 230, 240, 2800, "Vật tư xây dựng",          "completed", "2026-07-14", {}),
     # đơn 2 chuyến CÙNG 1 tài (coord pre-assign, chạy tuần tự)
     (100011, 100010, 1, 100000, 100006, 100, 105, 800,  "Kho lưu trữ đợt 1",        "completed", "2026-07-18", {}),
-    (100012, 100010, 2, 100000, 100006, 100, 108, 850,  "Kho lưu trữ đợt 2",        "completed", "2026-07-20", {}),
+    (100012, 100010, 2, 100000, 100006, 100, 108, 850,  "Kho lưu trữ đợt 2",        "completed", "2026-07-19", {}),
     # trả trước đã xác nhận
     (100013, 100011, 1, 100002, 100005, 320, 330, 6500, "Hàng liên tỉnh Đà Nẵng",   "completed", "2026-07-22", {}),
     # đang chạy + chờ nhận
@@ -114,7 +114,10 @@ PAY = [
     ("d_100006", 300000,  "cash",          "2026-07-02", 100005, "Nộp một phần phí hoàn hàng"),
 ]
 
-HOLIDAYS = [("2026-06-01", "Nghỉ bù Quốc tế Lao động"), ("2026-07-20", "Ngày truyền thống công ty")]
+# Ngày lễ là dữ liệu CHÍNH SÁCH — đã nằm trong DB script.sql (8 ngày theo Điều V.1
+# của thông báo lương). Tháng 6 và 7/2026 KHÔNG có ngày lễ nào, nên holiday_bonus
+# bằng 0 là đúng thực tế, không phải thiếu dữ liệu.
+HOLIDAYS = []
 # Công thức lương: actualWorkDays = min(26, số ngày trong tháng − ngày nghỉ không lương).
 # Tháng 30 ngày phải nghỉ > 4 ngày mới bắt đầu bị trừ lương → cho tài 100005 nghỉ 6 ngày
 # trong T7 để cột absence_penalty có dữ liệu thật, thay vì luôn bằng 0.
@@ -124,6 +127,29 @@ LEAVES = [(100005, "2026-06-15", "unpaid", "Việc gia đình"), (100005, "2026-
           (100005, f"2026-07-{d:02d}", "unpaid", "Nghỉ dài về quê lo việc gia đình") for d in (23, 24, 25, 27, 28, 29)]
 ATT = [(100004, "2026-06-12", "absent_unexcused", "Không báo trước"),
        (100006, "2026-07-21", "half_day", "Sáng đi làm, chiều xin về")]
+
+
+# ── Chuyến tuyến cố định (để doanh thu tháng đạt mức THỰC TẾ) ───────────────
+# 1 tài chạy ~15-20 chuyến/tháng mới ra doanh thu 50-100tr như ngưỡng KPI trong
+# thông báo lương. Nếu chỉ để 1-2 chuyến/tài/tháng thì bonus_rules thành data chết.
+# Các chuyến này đều: đơn chuyển khoản 1 chuyến, đã hoàn thành, không chi phí.
+ROUTINE = []          # (driver, month, so_chuyen, km_moi_chuyen, ngay_bat_dau)
+ROUTINE += [(100005, 6, 12, 250, 2)]    # Xe 5m2 20k/km -> 12*250*20k = 60tr  (duoi 70tr)
+ROUTINE += [(100005, 7, 15, 250, 2)]    # -> 15*250*20k = 75tr (+10,6tr cu) => VUOT 70tr
+ROUTINE += [(100003, 7, 16, 300, 2)]    # Cat noc 10k/km -> 16*300*10k = 48tr (+2tr) duoi 50tr
+ROUTINE += [(100004, 7, 18, 250, 2)]    # 4m3 15k/km -> 18*250*15k = 67,5tr (+3,6tr) => VUOT 65tr
+
+_sid, _oid = 200000, 200000
+for drv, mon, n, km, day0 in ROUTINE:
+    gid = DRIVERS[drv][1]
+    for i in range(n):
+        d = day0 + i
+        day = f"2026-{mon:02d}-{d:02d}"
+        O[_oid] = (100001, "bank_transfer", f"Tuyến cố định {DRIVER_NAME[drv]} — chuyến {i+1}", 0, None)
+        S.append((_sid, _oid, 1, gid, drv, km, km, min(GROUPS[gid][2] - 100, 900),
+                  "Hàng tuyến cố định", "completed", day, {}))
+        _sid += 1
+        _oid += 1
 
 # ── TÍNH TOÁN ───────────────────────────────────────────────────────────────
 by_id = {s[0]: s for s in S}
@@ -198,13 +224,39 @@ if errs:
     raise SystemExit(1)
 
 out = io.StringIO()
+master = io.StringIO()
 W = out.write
+MW = master.write
 def block(sql): W(textwrap.dedent(sql).strip() + "\n\n")
+def mblock(sql): MW(textwrap.dedent(sql).strip() + "\n\n")
 
-W("-- Seed tháng 6 + 7/2026. Sinh bởi script — mọi số tiền được TÍNH từ km × đơn giá,\n")
-W("-- không gõ tay. Xem gen_seed.py để biết cách suy ra từng con số.\n\n")
+W("-- Dữ liệu nghiệp vụ tháng 6 + 7/2026. Sinh bởi DB script/tools/gen_seed.py —\n")
+W("-- mọi số tiền được TÍNH từ km × đơn giá, không gõ tay.\n")
+W("-- Danh mục cố định (tài khoản, nhóm xe, xe, tài xế, chế độ thưởng, ngày lễ)\n")
+W("-- nằm trong DB script.sql, không nằm ở đây.\n\n")
 
-block("""
+MW("-- ══ DỮ LIỆU CỐ ĐỊNH ══════════════════════════════════════════════════════\n")
+MW("-- Tài khoản, nhóm xe, xe, tài xế và CHẾ ĐỘ THƯỞNG. Đây là danh mục nền, luôn\n")
+MW("-- tồn tại từ đầu và reset_data.sql KHÔNG xoá. Sinh bởi tools/gen_seed.py.\n\n")
+
+mblock("""
+-- Chế độ thưởng theo "Thông báo thay đổi chính sách tiền lương" 29/03/2026,
+-- hiệu lực 01/04/2026. KHÔNG sửa các con số này khi làm dữ liệu demo.
+--   Điều II.4 — Thưởng cuối tháng: 3 giải "Lái xe xuất sắc nhất tháng",
+--               1.000.000đ/giải, chỉ cho 3 nhóm: cắt nóc, 3 tấn (4m3), 5m2.
+--   Điều II.5 — Thưởng vượt KPI 2.000.000đ theo ngưỡng doanh thu/tháng:
+--               cắt nóc > 50tr, 4m3 > 65tr, 5m2 > 70tr, 7m4 > 100tr.
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json) VALUES
+    (100000, 'Thưởng vượt KPI — Xe cắt nóc',                'kpi',         2000000, '{"min_revenue": 50000000}'::jsonb),
+    (100001, 'Thưởng vượt KPI — Xe 3 tấn (4m3)',            'kpi',         2000000, '{"min_revenue": 65000000}'::jsonb),
+    (100002, 'Thưởng vượt KPI — Xe 5m2',                    'kpi',         2000000, '{"min_revenue": 70000000}'::jsonb),
+    (100003, 'Thưởng vượt KPI — Xe 7m4',                    'kpi',         2000000, '{"min_revenue": 100000000}'::jsonb),
+    (100000, 'Lái xe xuất sắc nhất tháng — Xe cắt nóc',     'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100001, 'Lái xe xuất sắc nhất tháng — Xe 3 tấn (4m3)', 'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100002, 'Lái xe xuất sắc nhất tháng — Xe 5m2',         'top_revenue', 1000000, '{"rank": 1}'::jsonb);
+""")
+
+mblock("""
 INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES
     (100000, 'anhdv76@gmail.com', crypt('Admin@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
     (100001, 'cuongnt@gmail.com', crypt('Coord@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
@@ -224,31 +276,21 @@ INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, a
     (100006, 'Lê Thanh Sơn',      '0901000007', (SELECT id FROM roles WHERE name = 'driver'),      '1995-05-30', 'male',   '079195000777', '210 Phan Văn Trị, Gò Vấp',   'Hồ Chí Minh', 'VN', 'Lê Thị Mai',     '0908000007', 'Tài xế xe cắt nóc (xe thứ 2)');
 """)
 
-W("INSERT INTO vehicle_groups (id, name, description, max_load_weight_kg, price_per_km) VALUES\n")
-W(",\n".join(f"    ({i}, '{v[0]}', '{v[1]}', {v[2]}, {v[3]})" for i, v in GROUPS.items()) + ";\n\n")
+MW("INSERT INTO vehicle_groups (id, name, description, max_load_weight_kg, price_per_km) VALUES\n")
+MW(",\n".join(f"    ({i}, '{v[0]}', '{v[1]}', {v[2]}, {v[3]})" for i, v in GROUPS.items()) + ";\n\n")
 
-W("INSERT INTO vehicles (id, plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, purchase_date, assigned_driver_id, status) VALUES\n")
-W(",\n".join(
+MW("INSERT INTO vehicles (id, plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, purchase_date, assigned_driver_id, status) VALUES\n")
+MW(",\n".join(
     f"    ({i}, '{v[0]}', {v[1]}, '{v[2]}', '{v[3]}', {v[4]}, {v[5]}, DATE '{v[6]}', "
     f"{v[7] if v[7] else 'NULL'}, 'active')" for i, v in VEHICLES.items()) + ";\n\n")
 
-W("INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES\n")
-W(",\n".join(
+MW("INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES\n")
+MW(",\n".join(
     f"    ({d}, {v[0]}, {v[1]}, '{v[2]}', DATE '2029-12-31', DATE '{v[3]}', {v[4]}, "
     f"'Người thân {DRIVER_NAME[d].split()[-1]}', '090800000{i+4}')"
     for i, (d, v) in enumerate(DRIVERS.items())) + ";\n\n")
 
 block("""
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json) VALUES
-    (100000, 'Thưởng vượt KPI — Xe cắt nóc',                'kpi',         2000000, '{"min_revenue": 6000000}'::jsonb),
-    (100001, 'Thưởng vượt KPI — Xe 3 tấn (4m3)',            'kpi',         2000000, '{"min_revenue": 6000000}'::jsonb),
-    (100002, 'Thưởng vượt KPI — Xe 5m2',                    'kpi',         2000000, '{"min_revenue": 8000000}'::jsonb),
-    (100003, 'Thưởng vượt KPI — Xe 7m4',                    'kpi',         2000000, '{"min_revenue": 12000000}'::jsonb),
-    (100000, 'Lái xe xuất sắc nhất tháng — Xe cắt nóc',     'top_revenue', 1000000, '{"rank": 1}'::jsonb),
-    (100001, 'Lái xe xuất sắc nhất tháng — Xe 3 tấn (4m3)', 'top_revenue', 1000000, '{"rank": 1}'::jsonb),
-    (100002, 'Lái xe xuất sắc nhất tháng — Xe 5m2',         'top_revenue', 1000000, '{"rank": 1}'::jsonb),
-    (100003, 'Lái xe xuất sắc nhất tháng — Xe 7m4',         'top_revenue', 1000000, '{"rank": 1}'::jsonb);
-
 INSERT INTO customers (id, customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes) VALUES
     (100000, 'individual', 'Nguyễn Hoàng An', NULL,                            'Nguyễn Hoàng An', '0987000001', 'hoangan@gmail.com',  '123 Nguyễn Huệ, Quận 1, TP.HCM',    NULL,         'Khách cá nhân, giao nội thành, trả tiền mặt'),
     (100001, 'business',   NULL, 'Công ty TNHH Thực phẩm Sài Gòn',            'Ms. Lan',         '0987000002', 'lan@saigonfoods.vn', '456 Lê Lợi, Quận 1, TP.HCM',        '0312345678', 'Hàng thực phẩm khô, thanh toán chuyển khoản'),
@@ -269,8 +311,8 @@ UPDATE company_info SET
 WHERE id = 1;
 """)
 
-W("INSERT INTO company_holidays (holiday_date, name) VALUES\n")
-W(",\n".join(f"    (DATE '{d}', '{n}')" for d, n in HOLIDAYS) + ";\n\n")
+# company_holidays: 8 ngày lễ theo Điều V.1 đã có sẵn trong DB script.sql.
+# Tháng 6 và 7/2026 không có ngày lễ nào nên holiday_bonus = 0 là đúng thực tế.
 
 # ── orders ──────────────────────────────────────────────────────────────────
 W("INSERT INTO orders (id, customer_id, created_by, partner_id, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, prepaid_amount, prepaid_status, prepaid_method, prepaid_confirmed_by, prepaid_confirmed_at, derived_status, notes, created_at, updated_at) VALUES\n")
@@ -631,6 +673,7 @@ if payroll_sql:
     W(payroll_sql + "\n")
 
 open("seed_new.sql", "w", encoding="utf-8").write(out.getvalue())
+open("master_data.sql", "w", encoding="utf-8").write(master.getvalue())
 
 # ── in ra bảng đối chiếu để người đọc kiểm tay ─────────────────────────────
 print("=== CHUYẾN ===")

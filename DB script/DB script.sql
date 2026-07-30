@@ -1185,3 +1185,59 @@ CREATE OR REPLACE VIEW v_chatbot_my_bonuses AS
 SELECT id, driver_id, type, year, amount, status, notes
 FROM driver_bonuses
 WHERE driver_id = current_setting('app.actor_id', true)::int;
+
+-- ══ DỮ LIỆU CỐ ĐỊNH ══════════════════════════════════════════════════════
+-- Tài khoản, nhóm xe, xe, tài xế và CHẾ ĐỘ THƯỞNG. Đây là danh mục nền, luôn
+-- tồn tại từ đầu và reset_data.sql KHÔNG xoá. Sinh bởi tools/gen_seed.py.
+
+INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES
+    (100000, 'anhdv76@gmail.com', crypt('Admin@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
+    (100001, 'cuongnt@gmail.com', crypt('Coord@1234',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+    (100002, 'hoangtm@gmail.com', crypt('Acct@1234',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
+    (100003, 'tienpv@gmail.com',  crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100004, 'quanhm@gmail.com',  crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100005, 'phuocdh@gmail.com', crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100006, 'sonlt@gmail.com',   crypt('Driver@1234', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE);
+
+INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, address, city, country, emergency_contact_name, emergency_contact_phone, notes) VALUES
+    (100000, 'Đỗ Việt Anh',       '0901000001', (SELECT id FROM roles WHERE name = 'manager'),     '1985-04-12', 'male',   '079185000111', '12 Nguyễn Huệ, Quận 1',      'Hồ Chí Minh', 'VN', 'Nguyễn Thị Hoa', '0908000001', 'Giám đốc điều hành'),
+    (100001, 'Nguyễn Thế Cương',  '0901000002', (SELECT id FROM roles WHERE name = 'coordinator'), '1992-09-21', 'male',   '079192000222', '88 Lê Lợi, Quận 3',          'Hồ Chí Minh', 'VN', 'Nguyễn Văn Phúc','0908000002', 'Điều phối viên'),
+    (100002, 'Triệu Minh Hoàng',  '0901000003', (SELECT id FROM roles WHERE name = 'accountant'),  '1991-03-14', 'male',   '079191000333', '25 Võ Thị Sáu, Quận 3',      'Hồ Chí Minh', 'VN', 'Triệu Minh Châu','0908000003', 'Kế toán tổng hợp'),
+    (100003, 'Phạm Văn Tiền',     '0901000004', (SELECT id FROM roles WHERE name = 'driver'),      '1993-07-08', 'male',   '079193000444', '101 Trần Hưng Đạo, Thủ Đức', 'Hồ Chí Minh', 'VN', 'Phạm Thị Lan',   '0908000004', 'Tài xế xe cắt nóc'),
+    (100004, 'Hoàng Minh Quân',   '0901000005', (SELECT id FROM roles WHERE name = 'driver'),      '1990-11-02', 'male',   '079190000555', '55 Hùng Vương, Quận 5',      'Hồ Chí Minh', 'VN', 'Hoàng Thị Hạnh', '0908000005', 'Tài xế xe 3 tấn'),
+    (100005, 'Đỗ Hữu Phước',      '0901000006', (SELECT id FROM roles WHERE name = 'driver'),      '1996-01-18', 'male',   '079196000666', '7 Nguyễn Văn Cừ, Quận 5',    'Hồ Chí Minh', 'VN', 'Đỗ Quốc Minh',   '0908000006', 'Tài xế xe 5m2'),
+    (100006, 'Lê Thanh Sơn',      '0901000007', (SELECT id FROM roles WHERE name = 'driver'),      '1995-05-30', 'male',   '079195000777', '210 Phan Văn Trị, Gò Vấp',   'Hồ Chí Minh', 'VN', 'Lê Thị Mai',     '0908000007', 'Tài xế xe cắt nóc (xe thứ 2)');
+
+INSERT INTO vehicle_groups (id, name, description, max_load_weight_kg, price_per_km) VALUES
+    (100000, 'Xe cắt nóc', 'Xe tải nhẹ cắt nóc, chở hàng cồng kềnh nội thành', 2000, 10000),
+    (100001, 'Xe 3 tấn (4m3)', 'Xe tải 3 tấn thùng 4m3', 3000, 15000),
+    (100002, 'Xe 5m2', 'Xe tải thùng dài 5m2', 7000, 20000),
+    (100003, 'Xe 7m4', 'Xe tải thùng dài 7m4, tuyến liên tỉnh', 10000, 30000);
+
+INSERT INTO vehicles (id, plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, purchase_date, assigned_driver_id, status) VALUES
+    (100000, '51C-123.45', 100000, 'Suzuki', 'Carry Pro', 1900, 2022, DATE '2022-06-10', 100003, 'active'),
+    (100001, '51D-678.90', 100001, 'Isuzu', 'QKR 230', 3000, 2021, DATE '2021-09-15', 100004, 'active'),
+    (100002, '51E-246.80', 100002, 'Hino', 'XZU 342L', 6800, 2023, DATE '2023-02-20', 100005, 'active'),
+    (100003, '51F-135.79', 100003, 'Hyundai', 'Mighty EX8', 9500, 2022, DATE '2022-11-05', NULL, 'active'),
+    (100004, '51H-889.12', 100000, 'Thaco', 'Towner 990', 1900, 2023, DATE '2023-08-12', 100006, 'active');
+
+INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES
+    (100003, 100000, 100000, 'DL-0123456', DATE '2029-12-31', DATE '2023-03-01', 15.0, 'Người thân Tiền', '0908000004'),
+    (100004, 100001, 100001, 'DL-0234567', DATE '2029-12-31', DATE '2024-05-15', 15.0, 'Người thân Quân', '0908000005'),
+    (100005, 100002, 100002, 'DL-0345678', DATE '2029-12-31', DATE '2025-11-01', 15.0, 'Người thân Phước', '0908000006'),
+    (100006, 100004, 100000, 'DL-0456789', DATE '2029-12-31', DATE '2025-09-20', 15.0, 'Người thân Sơn', '0908000007');
+
+-- Chế độ thưởng theo "Thông báo thay đổi chính sách tiền lương" 29/03/2026,
+-- hiệu lực 01/04/2026. KHÔNG sửa các con số này khi làm dữ liệu demo.
+--   Điều II.4 — Thưởng cuối tháng: 3 giải "Lái xe xuất sắc nhất tháng",
+--               1.000.000đ/giải, chỉ cho 3 nhóm: cắt nóc, 3 tấn (4m3), 5m2.
+--   Điều II.5 — Thưởng vượt KPI 2.000.000đ theo ngưỡng doanh thu/tháng:
+--               cắt nóc > 50tr, 4m3 > 65tr, 5m2 > 70tr, 7m4 > 100tr.
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json) VALUES
+    (100000, 'Thưởng vượt KPI — Xe cắt nóc',                'kpi',         2000000, '{"min_revenue": 50000000}'::jsonb),
+    (100001, 'Thưởng vượt KPI — Xe 3 tấn (4m3)',            'kpi',         2000000, '{"min_revenue": 65000000}'::jsonb),
+    (100002, 'Thưởng vượt KPI — Xe 5m2',                    'kpi',         2000000, '{"min_revenue": 70000000}'::jsonb),
+    (100003, 'Thưởng vượt KPI — Xe 7m4',                    'kpi',         2000000, '{"min_revenue": 100000000}'::jsonb),
+    (100000, 'Lái xe xuất sắc nhất tháng — Xe cắt nóc',     'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100001, 'Lái xe xuất sắc nhất tháng — Xe 3 tấn (4m3)', 'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100002, 'Lái xe xuất sắc nhất tháng — Xe 5m2',         'top_revenue', 1000000, '{"rank": 1}'::jsonb);
