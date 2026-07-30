@@ -192,6 +192,32 @@ const unapproveExpense = async (req, res) => {
     }
 };
 
+// POST /api/coordinator/orders/:id/assign-driver  Body: { shipment_ids: [], driver_id }
+// Gán trước nhiều chuyến của CÙNG đơn cho 1 tài xế (chạy tuần tự)
+const assignOrderShipments = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+
+        const result = await coordinatorService.assignOrderShipments(orderId, {
+            shipmentIds: req.body?.shipment_ids,
+            driverId: req.body?.driver_id,
+        }, req.user.userId);
+
+        const count = result.assignedShipmentIds.length;
+        res.json({ message: `Đã gán ${count} chuyến cho tài xế`, ...result });
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('chỉ gán được') || err.message.includes('đã được tài xế khác')
+                || err.message.includes('đang chạy chuyến') ? 409
+            : err.message.includes('bắt buộc') || err.message.includes('không hợp lệ')
+                || err.message.includes('Phải chọn') || err.message.includes('không thuộc') ? 400
+            : err.message.includes('chưa nhập km') ? 422
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 const cancelShipment = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
@@ -245,4 +271,5 @@ module.exports = {
     unapproveExpense,
     cancelShipment,
     reassignShipment,
+    assignOrderShipments,
 };

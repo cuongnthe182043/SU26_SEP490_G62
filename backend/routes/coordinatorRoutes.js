@@ -19,6 +19,10 @@ router.get('/trip-pool', tripController.getTripPool);
 router.patch('/trips/:id/cancel',   coordinatorController.cancelShipment);
 router.patch('/trips/:id/reassign', coordinatorController.reassignShipment);
 
+// Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế — chạy tuần tự, chuyến sau
+// tự mở khi chuyến trước hoàn thành. Chặn nếu tài đang vướng đơn khác.
+router.post('/orders/:id/assign-driver', coordinatorController.assignOrderShipments);
+
 // Receipt request management (driver yêu cầu → coordinator xử lý)
 router.get('/receipt-requests',          coordinatorController.getReceiptRequests);
 router.get('/receipt-requests/:id',      coordinatorController.getReceiptRequestDetail);
