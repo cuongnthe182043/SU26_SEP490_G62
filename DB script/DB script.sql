@@ -1263,3 +1263,11 @@ INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, con
     (100000, 'Lái xe xuất sắc nhất tháng — Xe cắt nóc',     'top_revenue', 1000000, '{"rank": 1}'::jsonb),
     (100001, 'Lái xe xuất sắc nhất tháng — Xe 3 tấn (4m3)', 'top_revenue', 1000000, '{"rank": 1}'::jsonb),
     (100002, 'Lái xe xuất sắc nhất tháng — Xe 5m2',         'top_revenue', 1000000, '{"rank": 1}'::jsonb);
+
+-- Danh mục trên được insert KÈM id tường minh (100000...), việc đó KHÔNG làm
+-- identity sequence tự tăng. Không set lại thì lần đầu app tạo tài khoản / nhóm xe /
+-- xe mới sẽ xin id = 100000 và lỗi duplicate key. Bắt buộc phải có, kể cả khi
+-- deploy production không nạp seed.sql.
+SELECT setval(pg_get_serial_sequence('accounts','id'),       (SELECT MAX(id) FROM accounts));
+SELECT setval(pg_get_serial_sequence('vehicle_groups','id'), (SELECT MAX(id) FROM vehicle_groups));
+SELECT setval(pg_get_serial_sequence('vehicles','id'),       (SELECT MAX(id) FROM vehicles));
