@@ -119,7 +119,6 @@ export const managerService = {
   verifyVehicleMaintenance: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
   // mode: 'redo' (bắt tài xế làm lại chứng từ) | 'cancel' (huỷ hẳn, xe về hoạt động)
   rejectVehicleMaintenance: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/reject-maintenance`, { method: "POST", body: payload }),
-  scanMaintenanceBill: (id) => apiRequest(`/api/admin/vehicles/${id}/scan-maintenance-bill`),
   markVehicleBroken: (id, payload) => apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),
   restoreVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/restore`, { method: "POST", body: payload }),
   retireVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/retire`, { method: "POST", body: payload }),

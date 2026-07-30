@@ -31,7 +31,6 @@ router.post('/vehicles/:id/send-to-maintenance', vehicleManagementController.sen
 router.post('/vehicles/:id/complete-maintenance', vehicleManagementController.completeMaintenance);
 router.post('/vehicles/:id/verify-maintenance', vehicleManagementController.verifyMaintenance);
 router.post('/vehicles/:id/reject-maintenance', vehicleManagementController.rejectMaintenance);
-router.get('/vehicles/:id/scan-maintenance-bill', vehicleManagementController.scanMaintenanceBill);
 router.post('/vehicles/:id/mark-broken', vehicleManagementController.markVehicleAsBroken);
 router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle);
 router.post('/vehicles/:id/retire', vehicleManagementController.retireVehicle);
