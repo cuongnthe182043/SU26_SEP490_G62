@@ -30,12 +30,18 @@ const CANCELLABLE_STATUSES = Object.freeze([
 // PICKING → TRANSIT goes through POST /start-transit (with mandatory loading proof, BR-013/014)
 // ARRIVED → COMPLETED goes through POST /complete (with mandatory delivery proof, BR-015/016/017)
 // RETURNING → COMPLETED goes through POST /return-complete (with notifications + KPI)
+// FAILED không còn cho tài tự chuyển sang RETURNING: giao thất bại là điểm quyết
+// định nghiệp vụ (liên hệ khách → giao lại hay trả hàng về, khách có phải trả tiền
+// hay không), coordinator xử lý qua POST /coordinator/trips/:id/resolve-failed.
 const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.CLAIMED]:   [SHIPMENT_STATUS.PICKING],
     [SHIPMENT_STATUS.TRANSIT]:   [SHIPMENT_STATUS.ARRIVED],
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
-    [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
 });
+
+// Cách tính tiền khách khi chuyến phải hoàn hàng — coordinator chốt theo từng ca
+// vì lỗi có thể từ phía khách (từ chối nhận) hoặc phía doanh nghiệp.
+const RETURN_CHARGE_TYPES = Object.freeze(['no_charge', 'return_fee', 'full_fare']);
 
 const RELEASABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
@@ -59,5 +65,6 @@ module.exports = {
     CANCELLABLE_STATUSES,
     RELEASABLE_STATUSES,
     ALLOWED_TRANSITIONS,
+    RETURN_CHARGE_TYPES,
     STATUS_TIMESTAMP_COL,
 };

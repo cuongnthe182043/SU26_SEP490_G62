@@ -499,9 +499,19 @@ export default function VehiclesView({ user }) {
               <TableRow key={v.id}>
                 <TableCell><span className="font-semibold text-sm">{v.plate_number}</span></TableCell>
                 <TableCell>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <span className="text-sm">{v.vehicle_group_name}</span>
                     <span className="text-xs text-gray-400 dark:text-gray-400">#{v.vehicle_group_id}</span>
+                    {/* Xe còn sót trong nhóm đã ẩn (data cũ, trước khi có guard chặn ẩn):
+                        vẫn active nhưng coordinator không chọn được nhóm nên vĩnh viễn
+                        không có việc mới. Phải cảnh báo, nếu không nhìn bảng không ra. */}
+                    {v.vehicle_group_status === "hidden" && (
+                      <Tooltip content="Nhóm xe này đã bị ẩn — không tạo được đơn mới cho xe. Hãy chuyển xe sang nhóm khác hoặc bỏ ẩn nhóm." placement="top">
+                        <Chip size="sm" variant="flat" color="warning" className="text-[10px] w-fit" startContent={<RiAlertLine size={11} />}>
+                          Nhóm đã ẩn
+                        </Chip>
+                      </Tooltip>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
