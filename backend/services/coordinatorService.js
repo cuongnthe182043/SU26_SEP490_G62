@@ -893,8 +893,13 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
     if (!updated) throw new Error('Không thể hủy chuyến');
 
     if (shipment.owner_driver_id) {
+        // Đây là NGUỒN DUY NHẤT của popup thông báo hủy (displayMode 'alert' → mobile
+        // tự bung alert ở bất kỳ màn nào tài đang mở). Event WS trip.cancelled bên
+        // dưới chỉ lo điều hướng, KHÔNG bung alert nữa — trước đây cả hai cùng bung
+        // thì showAlert của ui-provider chỉ giữ được 1 alert nên cái đến sau ghi đè
+        // cái trước, tài xế thấy nội dung khác nhau tuỳ frame nào về trước.
         notificationService.createForUser(shipment.owner_driver_id, {
-            title: 'Chuyến của bạn đã bị hủy',
+            title: 'Chuyến đã bị Điều phối viên hủy',
             message: `Chuyến #${shipmentId} đã bị hủy. Lý do: ${reason.trim()}`,
             type: 'TRIP_CANCELLED',
             entityType: 'shipments',
