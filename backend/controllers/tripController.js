@@ -39,6 +39,9 @@ const claimTrip = async (req, res) => {
         if (err.message.startsWith('SAME_ORDER:')) {
             return res.status(409).json({ error: err.message.replace('SAME_ORDER:', '') });
         }
+        if (err.message.startsWith('PENDING_RECEIPT:')) {
+            return res.status(422).json({ error: err.message.replace('PENDING_RECEIPT:', ''), code: 'PENDING_RECEIPT' });
+        }
         const status = err.message.includes('đang có') ? 422
             : err.message.includes('chưa được gán') ? 422
             : 400;
@@ -275,7 +278,9 @@ const requestOrderReceipt = async (req, res) => {
         const status = result.receipt_request_created ? 201 : 200;
         const message = result.receipt_request_created
             ? 'Đã gửi yêu cầu tạo phiếu thu. Coordinator sẽ xem xét sớm.'
-            : 'Đã lưu số km thực tế.';
+            : result.waiting_for_other_shipments
+                ? 'Đã lưu số km thực tế. Đơn còn chuyến khác chưa nhập km — chờ chuyến đó xong mới gửi được yêu cầu tạo phiếu thu.'
+                : 'Đã lưu số km thực tế.';
         res.status(status).json({ message, ...result });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403

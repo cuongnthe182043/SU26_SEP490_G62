@@ -41,6 +41,11 @@ export const maintenanceService = {
         return apiClient.postForm(`/api/drivers/maintenance/${vehicleId}/bills`, form);
     },
 
+    // Lưu chi phí trước khi chụp hóa đơn — server cần số tiền để đối chiếu với ảnh
+    // ngay lúc upload, nếu không thì ảnh nào cũng được nhận.
+    saveCost: (vehicleId: number, cost: number): Promise<{ maintenanceRecordId: number; cost: number }> =>
+        apiClient.patch(`/api/drivers/maintenance/${vehicleId}/cost`, { cost }),
+
     complete: (vehicleId: number, cost: number): Promise<{ maintenanceRecordId: number }> =>
         apiClient.post(`/api/drivers/maintenance/${vehicleId}/complete`, { cost }),
 };

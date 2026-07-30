@@ -394,6 +394,256 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     }
 };
 
+// Coordinator xử lý chuyến giao thất bại.
+//
+// action='redeliver' → về TRANSIT, tài đi giao lại (xoá dấu thất bại để chuyến chạy
+//                      lại bình thường; cancel_reason giữ nguyên làm vết audit).
+// action='return'    → sang RETURNING kèm cách tính tiền khách đã chốt:
+//                      no_charge  → actual_price = 0 (DN chịu)
+//                      return_fee → actual_price = phí hoàn hàng coordinator nhập
+//                      full_fare  → actual_price = NULL, để computeReceiptAmount tính
+//                                   như chuyến bình thường (khách trả đủ cước)
+//
+// Ghi actual_price ngay tại đây khiến KPI tự đúng: kpiRepository dùng
+// COALESCE(actual_price, estimated_price, 0) nên 0 hoặc phí hoàn hàng sẽ được dùng
+// thay cho giá cước đầy đủ, mà không phải sửa câu KPI.
+const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee, coordinatorId }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const lockedResult = await client.query(
+            `SELECT id, status, order_id FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            [shipmentId],
+        );
+        const shipment = lockedResult.rows[0];
+        if (!shipment) {
+            await client.query('ROLLBACK');
+            throw new Error('SHIPMENT_NOT_FOUND');
+        }
+        if (shipment.status !== SHIPMENT_STATUS.FAILED) {
+            await client.query('ROLLBACK');
+            throw new Error('NOT_FAILED');
+        }
+
+        let updated;
+        if (action === 'redeliver') {
+            const res = await client.query(
+                `UPDATE order_shipments
+                 SET status = $2,
+                     failed_at = NULL,
+                     failed_resolved_by = $3,
+                     failed_resolved_at = NOW(),
+                     version = version + 1,
+                     updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING *`,
+                [shipmentId, SHIPMENT_STATUS.TRANSIT, coordinatorId],
+            );
+            updated = res.rows[0];
+        } else {
+            const actualPrice = chargeType === 'no_charge' ? 0
+                : chargeType === 'return_fee' ? Number(returnFee)
+                : null;
+            const res = await client.query(
+                `UPDATE order_shipments
+                 SET status = $2,
+                     returning_at = NOW(),
+                     return_charge_type = $3,
+                     return_fee = $4,
+                     actual_price = CASE WHEN $5::boolean THEN $6::numeric ELSE actual_price END,
+                     failed_resolved_by = $7,
+                     failed_resolved_at = NOW(),
+                     version = version + 1,
+                     updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING *`,
+                [
+                    shipmentId,
+                    SHIPMENT_STATUS.RETURNING,
+                    chargeType,
+                    chargeType === 'return_fee' ? Number(returnFee) : null,
+                    actualPrice !== null,
+                    actualPrice,
+                    coordinatorId,
+                ],
+            );
+            updated = res.rows[0];
+        }
+
+        await client.query('COMMIT');
+
+        // Audit cùng cơ chế với updateTripStatus (không có bảng shipment_status_history)
+        activityLogRepository.logSafe({
+            userId: coordinatorId,
+            action: 'trip_failed_resolved',
+            entityType: 'shipment',
+            entityId: shipmentId,
+            oldData: { status: SHIPMENT_STATUS.FAILED },
+            newData: {
+                status: updated.status,
+                resolution: action,
+                ...(action === 'return' ? { return_charge_type: chargeType, return_fee: updated.return_fee } : {}),
+            },
+        });
+
+        return updated;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+// Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
+//
+// Cách hoạt động: ghi shipment_assignment_history (⇒ v_shipment_current.owner_driver_id
+// trỏ về tài) nhưng GIỮ os.status = 'available' cho các chuyến sau. Chuyến có
+// shipment_index nhỏ nhất được đưa lên 'claimed' luôn để tài chạy ngay; xong chuyến đó
+// thì activateNextShipment tự kích hoạt chuyến kế tiếp. Nhờ vậy tài chỉ có 1 chuyến
+// active tại một thời điểm (giữ BR-005) nhưng vẫn "nhận" cả 2/3/4 chuyến của đơn.
+//
+// getAvailableShipments lọc owner_driver_id IS NULL nên các chuyến đã pre-assign tự
+// biến khỏi trip pool của tài khác — không cần đổi gì ở đó.
+//
+// Ràng buộc: chỉ gán nhiều chuyến trong CÙNG order. Nếu tài đang vướng chuyến của
+// order khác (đang chạy hoặc đã được pre-assign) thì chặn.
+const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, vehicleId, coordinatorId }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Cùng advisory lock với claimShipment — nếu không, tài xế tự claim đúng lúc
+        // coordinator đang gán thì hai bên cùng đọc "chưa có chuyến nào" rồi cùng ghi.
+        await lockClaimResources(client, driverId, vehicleId);
+
+        // Khoá toàn bộ chuyến của order để hai coordinator không gán chồng nhau
+        const lockedResult = await client.query(
+            `SELECT os.id, os.shipment_index, os.status, os.vehicle_group_id,
+                    sc.owner_driver_id
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.order_id = $1
+             ORDER BY os.shipment_index ASC
+             FOR UPDATE OF os`,
+            [orderId],
+        );
+        const orderShipments = lockedResult.rows;
+        if (orderShipments.length === 0) {
+            await client.query('ROLLBACK');
+            throw new Error('ORDER_NOT_FOUND');
+        }
+
+        const byId = new Map(orderShipments.map((s) => [Number(s.id), s]));
+        const targets = [];
+        for (const rawId of shipmentIds) {
+            const shipment = byId.get(Number(rawId));
+            if (!shipment) {
+                await client.query('ROLLBACK');
+                throw new Error('SHIPMENT_NOT_IN_ORDER');
+            }
+            if (shipment.status !== SHIPMENT_STATUS.AVAILABLE || shipment.owner_driver_id !== null) {
+                await client.query('ROLLBACK');
+                throw new Error('SHIPMENT_NOT_ASSIGNABLE');
+            }
+            targets.push(shipment);
+        }
+
+        // Xe của tài phải đúng nhóm xe mà chuyến yêu cầu (BR-003)
+        const vehicleGroupResult = await client.query(
+            `SELECT vehicle_group_id FROM vehicles WHERE id = $1`,
+            [vehicleId],
+        );
+        const driverGroupId = vehicleGroupResult.rows[0]?.vehicle_group_id ?? null;
+        const groupMismatch = targets.some((s) => s.vehicle_group_id !== null
+            && Number(s.vehicle_group_id) !== Number(driverGroupId));
+        if (groupMismatch) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_GROUP_MISMATCH');
+        }
+
+        // Vướng order khác: đang chạy, HOẶC đã được pre-assign (available + có owner)
+        const otherOrderResult = await client.query(
+            `SELECT os.order_id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = $1
+               AND os.order_id <> $2
+               AND (os.status = ANY($3::text[]) OR os.status = 'available')
+             LIMIT 1`,
+            [driverId, orderId, ACTIVE_STATUSES],
+        );
+        if (otherOrderResult.rows[0]) {
+            await client.query('ROLLBACK');
+            const err = new Error('OTHER_ORDER_ACTIVE');
+            err.conflictingOrderId = otherOrderResult.rows[0].order_id;
+            throw err;
+        }
+
+        // Xe đang chạy chuyến của order khác (tài khác cầm xe này)
+        const vehicleBusyResult = await client.query(
+            `SELECT os.order_id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.vehicle_id = $1
+               AND os.order_id <> $2
+               AND os.status = ANY($3::text[])
+             LIMIT 1`,
+            [vehicleId, orderId, ACTIVE_STATUSES],
+        );
+        if (vehicleBusyResult.rows[0]) {
+            await client.query('ROLLBACK');
+            const err = new Error('VEHICLE_BUSY_OTHER_ORDER');
+            err.conflictingOrderId = vehicleBusyResult.rows[0].order_id;
+            throw err;
+        }
+
+        for (const shipment of targets) {
+            await insertAssignmentHistory(client, {
+                shipmentId: shipment.id,
+                toDriverId: driverId,
+                toVehicleId: vehicleId,
+                changedBy: coordinatorId,
+                changeReason: 'initial_assign',
+                notes: 'Điều phối viên gán trước chuyến trong đơn',
+            });
+        }
+
+        // Chỉ kích hoạt ngay nếu tài chưa có chuyến nào đang chạy trong đơn này —
+        // giữ đúng nguyên tắc 1 chuyến active tại một thời điểm.
+        const hasActiveInOrder = orderShipments.some((s) => ACTIVE_STATUSES.includes(s.status)
+            && Number(s.owner_driver_id) === Number(driverId));
+
+        let activated = null;
+        if (!hasActiveInOrder) {
+            const first = targets.reduce(
+                (min, s) => (min === null || s.shipment_index < min.shipment_index ? s : min),
+                null,
+            );
+            const activateResult = await client.query(
+                `UPDATE order_shipments
+                 SET status = $1, claimed_at = NOW(), version = version + 1, updated_at = NOW()
+                 WHERE id = $2
+                 RETURNING *`,
+                [SHIPMENT_STATUS.CLAIMED, first.id],
+            );
+            activated = activateResult.rows[0];
+        }
+
+        await client.query('COMMIT');
+        return {
+            assignedShipmentIds: targets.map((s) => Number(s.id)),
+            activatedShipmentId: activated ? Number(activated.id) : null,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const activateNextShipment = async (completedShipmentId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
@@ -574,7 +824,10 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
     }
 };
 
-const isFinalShipment = async (tripId) => {
+// Trả chi tiết (không chỉ true/false) để service phân biệt "không phải chuyến
+// cuối" với "là chuyến cuối nhưng đang chờ chuyến khác nhập km" — cho phép báo
+// đúng lý do thay vì im lặng.
+const getShipmentFinalStatus = async (tripId) => {
     const result = await pool.query(
         `SELECT
             (os.shipment_index = (
@@ -585,14 +838,27 @@ const isFinalShipment = async (tripId) => {
                 SELECT 1 FROM order_shipments s3
                 WHERE s3.order_id = os.order_id
                   AND s3.id != os.id
-                  AND s3.status NOT IN ('completed', 'cancelled', 'failed')
+                  AND (
+                      s3.status NOT IN ('completed', 'cancelled', 'failed')
+                      OR (s3.status = 'completed' AND s3.is_price_manual != TRUE AND s3.actual_distance_km IS NULL)
+                  )
             ) AS all_others_terminal
          FROM order_shipments os
          WHERE os.id = $1`,
         [tripId],
     );
-    if (!result.rows[0]) return false;
-    return result.rows[0].is_max_index && result.rows[0].all_others_terminal;
+    if (!result.rows[0]) return { isMaxIndex: false, allOthersReady: false };
+    return { isMaxIndex: result.rows[0].is_max_index, allOthersReady: result.rows[0].all_others_terminal };
+};
+
+// Chuyến được coi là "final" khi: (1) shipment_index cao nhất, VÀ (2) mọi chuyến
+// khác trong đơn đã ở trạng thái kết thúc, VÀ (3) nếu chuyến khác đó đã completed
+// (và không phải giá cố định) thì PHẢI đã có actual_distance_km — tránh việc tài
+// xế cuối gửi yêu cầu (và coordinator duyệt) trước khi tài xế chuyến khác kịp
+// khai báo km thật, khiến hệ thống lặng lẽ dùng km ước tính lúc tạo đơn.
+const isFinalShipment = async (tripId) => {
+    const { isMaxIndex, allOthersReady } = await getShipmentFinalStatus(tripId);
+    return isMaxIndex && allOthersReady;
 };
 
 const saveDeliveryProof = async (shipmentId, driverId, fileUrl) => {
@@ -938,9 +1204,10 @@ const getOrderWithShipments = async (orderId, driverId) => {
     };
 };
 
+// Dùng cho bộ lọc nhóm xe ở màn trip pool của tài xế — nhóm đã ẩn không cần hiện
 const getAllVehicleGroups = async () => {
     const result = await pool.query(
-        `SELECT id, name FROM vehicle_groups ORDER BY id ASC`,
+        `SELECT id, name FROM vehicle_groups WHERE status = 'active' ORDER BY id ASC`,
     );
     return result.rows;
 };
@@ -1153,26 +1420,31 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
          LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
          LEFT JOIN vehicles v            ON v.id    = sc.vehicle_id`;
 
-    // Thử tìm qua shipment_receipts.id trước
+    // Ưu tiên tra theo order_receipt_requests.id (orr.id) TRƯỚC — đây là ID mobile
+    // luôn gửi (kể cả khi phiếu thu thật đã tồn tại), và LÀ ID DUY NHẤT, không thể
+    // trùng với bất kỳ bản ghi nào khác. Trước đây tra theo shipment_receipts.id
+    // trước có thể trùng số ngẫu nhiên với 1 order_receipt_requests.id (2 sequence
+    // độc lập) và trả nhầm về phiếu thu của yêu cầu KHÁC — đây chính là bug tài xế
+    // ấn vào phiếu đang chờ duyệt lại nhảy sang phiếu không liên quan.
     let result = await pool.query(
+        `SELECT ${COLS}
+         FROM order_receipt_requests orr
+         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
+         ${JOINS}
+         LEFT JOIN profiles p_coord      ON p_coord.id  = COALESCE(sr.created_by, orr.processed_by)
+         WHERE orr.id = $1 AND orr.driver_id = $2`,
+        [receiptId, driverId],
+    );
+    if (result.rows[0]) return result.rows[0];
+
+    // Fallback: dữ liệu cũ / deep-link cũ vẫn còn giữ shipment_receipts.id trực tiếp.
+    result = await pool.query(
         `SELECT ${COLS}
          FROM shipment_receipts sr
          JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
          ${JOINS}
          LEFT JOIN profiles p_coord      ON p_coord.id  = sr.created_by
          WHERE sr.id = $1 AND orr.driver_id = $2`,
-        [receiptId, driverId],
-    );
-    if (result.rows[0]) return result.rows[0];
-
-    // Fallback: dữ liệu cũ — receiptId là order_receipt_requests.id
-    result = await pool.query(
-        `SELECT ${COLS}
-         FROM order_receipt_requests orr
-         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
-         ${JOINS}
-         LEFT JOIN profiles p_coord      ON p_coord.id  = orr.processed_by
-         WHERE orr.id = $1 AND orr.driver_id = $2`,
         [receiptId, driverId],
     );
     return result.rows[0] ?? null;
@@ -1560,9 +1832,12 @@ module.exports = {
     createOrderReceiptRequest,
     getOrderReceiptRequestByOrderId,
     claimShipment,
+    assignOrderShipmentsToDriver,
+    resolveFailedShipment,
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,
+    getShipmentFinalStatus,
     saveDeliveryProof,
     saveLoadingProof,
     reassignShipmentAfterIncident,

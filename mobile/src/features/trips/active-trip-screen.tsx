@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
-    AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
+    AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Clock,
     FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
@@ -17,6 +17,7 @@ import { ScreenHeader }         from '@/components/screen-header';
 import { TripStatusBadge }      from '@/components/trip-status-badge';
 import { ActiveTripSkeleton }   from '@/components/skeleton';
 import { appTheme }             from '@/theme/app-theme';
+import { appEvents }            from '@/lib/app-events';
 import { useActiveTrip }        from '@/hooks/use-active-trip';
 import { useCompletionProof }   from '@/hooks/use-completion-proof';
 import { useLoadingProof }      from '@/hooks/use-loading-proof';
@@ -24,7 +25,7 @@ import { useReturnComplete }    from '@/hooks/use-return-complete';
 import { useReleaseTrip }       from '@/hooks/use-release-trip';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
-import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
+import { useToast, useAppAlert } from '@/providers/ui-provider';
 import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
@@ -502,7 +503,6 @@ function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequ
 function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () => void }) {
     const { showToast }   = useToast();
     const { showAlert }   = useAppAlert();
-    const { showConfirm } = useConfirm();
 
     const { isLoading: lifecycleLoading, advance } = useTripLifecycle((updatedTrip) => {
         const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
@@ -519,6 +519,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [cameraTarget, setCameraTarget] = useState<'proof' | 'loading' | 'return' | null>(null);
 
     const [showRelease, setShowRelease] = useState(false);
+    const [showMarkFailed, setShowMarkFailed] = useState(false);
     const [showExpense, setShowExpense] = useState(false);
 
     // Flag để trigger navigation sau khi hoàn thành chuyến (qua useEffect để đảm bảo render cycle)
@@ -567,6 +568,26 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
+    // Điều phối viên hủy chuyến khi tài đang chạy: phải thoát khỏi màn này ngay.
+    // Nếu ở lại, mọi nút cập nhật trạng thái đều ăn lỗi "không thể chuyển trạng
+    // thái từ cancelled" mà tài không hiểu vì sao.
+    // CHỈ điều hướng. Popup "Chuyến đã bị Điều phối viên hủy" do notification
+    // displayMode='alert' bung ra ở tầng provider nên hiện được ở mọi màn — nếu bung
+    // thêm ở đây thì hai alert ghi đè nhau, tài thấy nội dung tuỳ frame nào về trước.
+    useEffect(() => appEvents.on('trip.cancelled', (payload) => {
+        const event = payload as { shipmentId?: number };
+        if (Number(event?.shipmentId) !== Number(trip.id)) return;
+        router.replace('/(tabs)');
+    }), [trip.id]);
+
+    // Điều phối đã quyết định chuyến giao thất bại (giao lại / hoàn hàng) — tải lại
+    // để màn đổi từ "đang chờ điều phối" sang bước tiếp theo mà tài không phải tự F5.
+    useEffect(() => appEvents.on('trip.failed_resolved', (payload) => {
+        const event = payload as { shipmentId?: number };
+        if (Number(event?.shipmentId) !== Number(trip.id)) return;
+        refresh();
+    }), [trip.id, refresh]);
+
     // Handlers cho multi-stop flow: gọi transit/complete không cần ảnh (proof đã capture per-stop)
     const [transitingViaStops, setTransitingViaStops]     = useState(false);
     const [completingViaStops, setCompletingViaStops]     = useState(false);
@@ -603,6 +624,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isPicking     = trip.status === 'picking';
     const isArrived     = trip.status === 'arrived';
     const isReturning   = trip.status === 'returning';
+    const isFailed      = trip.status === 'failed';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
 
@@ -631,16 +653,11 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         setCameraTarget(target);
     };
 
-    const handleMarkFailed = async () => {
-        const ok = await showConfirm({
-            title: 'Xác nhận giao thất bại?',
-            message: 'Bạn sẽ cần hoàn hàng về điểm lấy ban đầu.',
-            confirmLabel: 'Xác nhận thất bại',
-            cancelLabel: 'Hủy',
-            danger: true,
-        });
-        if (!ok) return;
-        await advance(trip.id, 'failed');
+    // BE bắt buộc lý do khi chuyển sang 'failed' — phải nhập, không dùng confirm trống
+    // (thiếu reason là 422 và toàn bộ luồng hoàn hàng phía sau không vào được)
+    const handleMarkFailed = async (reason: string) => {
+        setShowMarkFailed(false);
+        await advance(trip.id, 'failed', reason);
     };
 
     const expenseBadge = expenses.length > 0
@@ -855,7 +872,30 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </YStack>
                 ) : null}
 
-                {/* ── Return complete section (RETURNING) – Item 5 ── */}
+                {/* ── Chờ điều phối xử lý (FAILED) ──
+                    Tài KHÔNG được tự chuyển sang hoàn hàng: điều phối phải liên hệ khách
+                    rồi quyết định giao lại hay trả hàng về, kèm chốt khách có phải trả
+                    tiền không. Trước đây có nút "Bắt đầu hoàn hàng" ở đây. */}
+                {isFailed ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.border}
+                        backgroundColor={appTheme.colors.dangerSoft}
+                        padding={14} gap={8}
+                    >
+                        <XStack alignItems="center" gap={8}>
+                            <Clock size={16} color={appTheme.colors.dangerText} />
+                            <Text fontSize={13} fontWeight="900" color={appTheme.colors.dangerText}>
+                                Đang chờ điều phối viên xử lý
+                            </Text>
+                        </XStack>
+                        <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={17}>
+                            Điều phối viên đã nhận báo cáo giao thất bại và đang liên hệ khách.
+                            Bạn sẽ được thông báo khi có quyết định giao lại hoặc hoàn hàng về kho.
+                        </Text>
+                    </YStack>
+                ) : null}
+
+                {/* ── Return complete section (RETURNING) ── */}
                 {isReturning ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.border}
@@ -865,11 +905,13 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
                             XÁC NHẬN ĐÃ HOÀN HÀNG
                         </Text>
+                        {/* Ảnh BẮT BUỘC — bằng chứng duy nhất hàng đã thực sự về kho.
+                            BE trả 400 nếu thiếu, nên nút phải disable thay vì để tài bấm rồi lỗi. */}
                         <PhotoCaptureCard
-                            label="Ảnh hoàn hàng (tuỳ chọn)"
-                            sublabel="Chụp ảnh hàng đã trả về kho"
+                            label="Ảnh hoàn hàng (bắt buộc)"
+                            sublabel="Chụp ảnh hàng đã trả về điểm lấy"
                             uri={returnUri}
-                            required={false}
+                            required
                             onCapture={() => openCamera('return')}
                             onDelete={() => setReturnUri(null)}
                         />
@@ -878,6 +920,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                             tone="secondary"
                             onPress={() => void completeReturn(trip.id, returnUri ?? undefined)}
                             isLoading={completingReturn}
+                            disabled={!returnUri}
                             icon={<RotateCcw size={17} color="#fff" />}
                         />
                     </YStack>
@@ -902,7 +945,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 {/* ── Secondary actions row ── */}
                 <XStack gap={8}>
                     {isArrived ? (
-                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={handleMarkFailed}>
+                        <Pressable style={[s.secondaryBtn, s.dangerBtn]} onPress={() => setShowMarkFailed(true)}>
                             <XCircle size={14} color={appTheme.colors.danger} />
                             <Text fontSize={12} fontWeight="700" color={appTheme.colors.danger}>Thất bại</Text>
                         </Pressable>
@@ -950,6 +993,18 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 confirmDanger
                 onConfirm={(reason) => { setShowRelease(false); void releaseTrip(trip.id, reason || undefined); }}
                 onClose={() => setShowRelease(false)}
+            />
+
+            <ReasonModal
+                visible={showMarkFailed}
+                title="Giao hàng thất bại"
+                description="Ghi rõ lý do không giao được. Sau bước này bạn sẽ phải hoàn hàng về điểm lấy ban đầu."
+                placeholder="VD: khách từ chối nhận, không liên lạc được khách..."
+                required
+                confirmLabel="Xác nhận thất bại"
+                confirmDanger
+                onConfirm={(reason) => { void handleMarkFailed(reason); }}
+                onClose={() => setShowMarkFailed(false)}
             />
 
             <ExpenseFormModal

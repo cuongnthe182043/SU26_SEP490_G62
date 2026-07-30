@@ -672,7 +672,7 @@ export function ReceiptDetailScreen() {
         }
     };
 
-    // Xoá chi phí phát sinh — chỉ khi yêu cầu phiếu thu đang bị từ chối (BE kiểm tra lại)
+    // Xoá chi phí phát sinh — chỉ khi khoản chưa duyệt và phiếu thu chưa chốt (BE kiểm tra lại)
     const handleDeleteExpense = (expense: ExpenseItem) => {
         Alert.alert(
             'Xoá chi phí?',
@@ -725,6 +725,11 @@ export function ReceiptDetailScreen() {
     // bank_transfer cần kế toán xác nhận; trước khi confirm thì vẫn là "chờ xác nhận"
     const bankPendingConfirm = alreadyRecorded && receipt.payment_type === 'bank_transfer' && !receipt.bank_confirmed;
     const needsProof      = selected === 'cash_collected' || selected === 'bank_transfer';
+    // Sửa/xoá được khi khoản đó CHƯA được duyệt và phiếu thu của đơn chưa chốt
+    // (chốt rồi là đã thu tiền khách, không được đổi số nữa). Trước đây chỉ xét
+    // request_status === 'rejected' nên nút vẫn hiện với khoản đã duyệt rồi tài
+    // bấm vào ăn 403 — phải khớp đúng điều kiện backend.
+    const canEditExpense = (expense: ExpenseItem) => !isApproved && expense.status !== 'approved';
     // Tổng chi phí phát sinh (mọi loại, trừ rejected) — chỉ để hiển thị danh sách.
     // Tiền khách phải trả = receipt.amount (backend đã gồm cước + chi hộ khách).
     const totalExpenses = (receipt.order_shipments?.length > 0
@@ -1016,7 +1021,7 @@ export function ReceiptDetailScreen() {
                                                         <ExpenseRow
                                                             key={exp.id}
                                                             expense={exp}
-                                                            canEdit={isRejected}
+                                                            canEdit={canEditExpense(exp)}
                                                             isDeleting={deletingExpenseId === exp.id}
                                                             onEdit={() => setEditExpense(exp)}
                                                             onDelete={() => handleDeleteExpense(exp)}

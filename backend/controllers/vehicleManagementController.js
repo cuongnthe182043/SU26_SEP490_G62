@@ -8,9 +8,11 @@ const handleError = (res, err) => {
     res.status(statusCode).json({ error: err.message });
 };
 
-const listVehicleGroups = async (_req, res) => {
+const listVehicleGroups = async (req, res) => {
     try {
-        const vehicleGroups = await vehicleManagementService.listVehicleGroups();
+        // ?include_hidden=1 → màn Quản lý xe thấy cả nhóm đã ẩn để bỏ ẩn lại
+        const includeHidden = ['1', 'true', 'yes'].includes(String(req.query.include_hidden || '').toLowerCase());
+        const vehicleGroups = await vehicleManagementService.listVehicleGroups({ includeHidden });
         res.json({ vehicleGroups });
     } catch (err) {
         handleError(res, err);
@@ -48,6 +50,15 @@ const deleteVehicleGroup = async (req, res) => {
     try {
         const result = await vehicleManagementService.deleteVehicleGroup(req.params.id);
         res.json({ message: 'Vehicle group hidden successfully', id: result.id });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const restoreVehicleGroup = async (req, res) => {
+    try {
+        const vehicleGroup = await vehicleManagementService.restoreVehicleGroup(req.params.id);
+        res.json({ message: 'Đã bỏ ẩn nhóm xe', vehicleGroup });
     } catch (err) {
         handleError(res, err);
     }
@@ -120,6 +131,18 @@ const verifyMaintenance = async (req, res) => {
     try {
         const vehicle = await vehicleManagementService.verifyMaintenance(req.params.id, req.user.userId, req.body);
         res.json({ message: 'Vehicle maintenance verified!', vehicle });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const rejectMaintenance = async (req, res) => {
+    try {
+        const vehicle = await vehicleManagementService.rejectMaintenance(req.params.id, req.user.userId, req.body);
+        const message = req.body?.mode === 'cancel'
+            ? 'Đã huỷ bảo dưỡng'
+            : 'Đã yêu cầu tài xế làm lại chứng từ bảo dưỡng';
+        res.json({ message, vehicle });
     } catch (err) {
         handleError(res, err);
     }
@@ -230,6 +253,7 @@ module.exports = {
     createVehicleGroup,
     updateVehicleGroup,
     deleteVehicleGroup,
+    restoreVehicleGroup,
     listVehicles,
     getVehicleDetail,
     createVehicle,
@@ -238,6 +262,7 @@ module.exports = {
     sendVehicleToMaintenance,
     completeMaintenance,
     verifyMaintenance,
+    rejectMaintenance,
     scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,

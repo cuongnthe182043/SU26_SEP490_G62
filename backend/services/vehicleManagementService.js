@@ -224,7 +224,8 @@ const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existin
     };
 };
 
-const listVehicleGroups = async () => vehicleManagementRepository.listVehicleGroups();
+const listVehicleGroups = async ({ includeHidden = false } = {}) =>
+    vehicleManagementRepository.listVehicleGroups({ includeHidden });
 
 const getVehicleGroupDetail = async (vehicleGroupId) => {
     const id = parsePositiveInteger(vehicleGroupId, 'vehicle_group_id');
@@ -272,6 +273,19 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     const existingVehicleGroup = await vehicleManagementRepository.getVehicleGroupById(id);
     if (!existingVehicleGroup) throw createError('Vehicle group not found', 404);
 
+    // Ẩn nhóm mà bỏ quên xe bên trong sẽ tạo ra "xe ma": xe vẫn active, vẫn có
+    // tài xế, nhưng coordinator không còn chọn được nhóm nên xe vĩnh viễn không
+    // có việc mới. Bắt chuyển xe sang nhóm khác (hoặc thu hồi xe) trước.
+    const inUseVehicles = await vehicleManagementRepository.listInUseVehiclesInGroup(id);
+    if (inUseVehicles.length > 0) {
+        const plates = inUseVehicles.map((v) => v.plate_number).join(', ');
+        throw createError(
+            `Không thể ẩn nhóm xe vì còn ${inUseVehicles.length} xe đang dùng: ${plates}. `
+            + 'Hãy chuyển các xe này sang nhóm khác hoặc thu hồi xe trước khi ẩn nhóm.',
+            409,
+        );
+    }
+
     try {
         await vehicleManagementRepository.deleteVehicleGroup(id);
     } catch (err) {
@@ -289,6 +303,26 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
         entityId: id,
     }, { displayMode: 'toast' });
     return { id };
+};
+
+// Bỏ ẩn nhóm xe — đối xứng với deleteVehicleGroup (ẩn), để thao tác ẩn đảo ngược được.
+const restoreVehicleGroup = async (vehicleGroupId) => {
+    const id = parsePositiveInteger(vehicleGroupId, 'vehicle_group_id');
+    const existing = await vehicleManagementRepository.getVehicleGroupById(id);
+    if (!existing) throw createError('Vehicle group not found', 404);
+    if (existing.status === 'active') throw createError('Nhóm xe đang hiển thị, không cần bỏ ẩn', 409);
+
+    await vehicleManagementRepository.restoreVehicleGroup(id);
+
+    notifyRolesSafe(['manager', 'accountant', 'coordinator'], {
+        title: 'Nhóm xe đã được bỏ ẩn',
+        message: `Nhóm xe "${existing.name || `#${id}`}" đã hiển thị trở lại.`,
+        type: 'VEHICLE_GROUP_RESTORED',
+        entityType: 'vehicle_groups',
+        entityId: id,
+    }, { displayMode: 'toast' });
+
+    return vehicleManagementRepository.getVehicleGroupById(id);
 };
 
 const listVehicles = async (query = {}) => {
@@ -328,10 +362,16 @@ const listVehicles = async (query = {}) => {
 
 const getVehicleDetail = async (vehicleId) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
-    const history = await vehicleManagementRepository.listVehicleStatusHistory(vehicle.id);
+    // maintenance_records kèm ảnh hóa đơn để Manager/Accountant soi được chứng từ của
+    // MỌI đợt bảo dưỡng, không chỉ đợt đang chờ xác nhận.
+    const [history, maintenanceRecords] = await Promise.all([
+        vehicleManagementRepository.listVehicleStatusHistory(vehicle.id),
+        vehicleManagementRepository.listVehicleMaintenanceRecords(vehicle.id),
+    ]);
     return {
         ...vehicle,
         status_history: history,
+        maintenance_records: maintenanceRecords,
     };
 };
 
@@ -674,6 +714,94 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
     return updatedVehicle;
 };
 
+// Manager từ chối / huỷ bản ghi bảo dưỡng. Đây là đối trọng của verifyMaintenance:
+// không có nó thì hoá đơn khống / số tiền sai chỉ còn hai lối là duyệt bừa hoặc để
+// treo vĩnh viễn.
+//
+//   mode = 'redo'   → chỉ áp cho bản ghi tài xế ĐÃ submit ('pending_verification'):
+//                     xoá chứng từ + chi phí, xe vẫn ở bảo dưỡng, bắt khai lại.
+//   mode = 'cancel' → áp cho cả bản ghi CHƯA submit ('open'): đóng bản ghi, xe về
+//                     'active'. Không có nhánh này thì một đợt bảo dưỡng mở sai (hoặc
+//                     tài xế bỏ giữa) sẽ giam xe ở trạng thái 'maintenance' vĩnh viễn —
+//                     retireVehicle cũng chặn khi còn bảo dưỡng mở.
+const REJECT_MAINTENANCE_MODES = ['redo', 'cancel'];
+const REJECTABLE_MAINTENANCE_STATUSES = {
+    redo: ['pending_verification'],
+    cancel: ['open', 'pending_verification'],
+};
+
+const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
+    const vehicle = await getVehicleOrThrow(vehicleId);
+    ensureVehicleStatus(vehicle, ['maintenance'], 'Reject maintenance');
+
+    if (!vehicle.active_maintenance_id) {
+        throw createError('Xe này không có bản ghi bảo dưỡng nào đang mở', 404);
+    }
+
+    const mode = normalizeString(payload.mode) || 'redo';
+    if (!REJECT_MAINTENANCE_MODES.includes(mode)) {
+        throw createError(`mode phải là một trong: ${REJECT_MAINTENANCE_MODES.join(', ')}`, 400);
+    }
+
+    const allowedStatuses = REJECTABLE_MAINTENANCE_STATUSES[mode];
+    if (!allowedStatuses.includes(vehicle.active_maintenance_status)) {
+        throw createError(
+            mode === 'redo'
+                ? 'Chỉ yêu cầu làm lại được với bảo dưỡng đang chờ xác nhận'
+                : 'Chỉ huỷ được bảo dưỡng đang thực hiện hoặc đang chờ xác nhận',
+            409,
+        );
+    }
+
+    const reason = normalizeString(payload.reason);
+    if (!reason) {
+        throw createError('Cần ghi lý do từ chối bảo dưỡng', 400);
+    }
+
+    let rejected;
+    try {
+        rejected = await vehicleManagementRepository.rejectPendingMaintenanceRecord({
+            vehicleId: vehicle.id,
+            maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
+            managerId: parsePositiveInteger(managerId, 'manager_id'),
+            reason,
+            mode,
+            allowedStatuses,
+        });
+    } catch (err) {
+        if (err.code === 'PENDING_MAINTENANCE_NOT_FOUND') {
+            throw createError('Không tìm thấy bản ghi bảo dưỡng phù hợp. Hãy tải lại trang.', 409);
+        }
+        throw err;
+    }
+
+    const notifyTarget = rejected?.performedBy ?? rejected?.requestedBy ?? null;
+    if (notifyTarget) {
+        const isCancel = mode === 'cancel';
+        try {
+            await notificationService.createForUser(notifyTarget, {
+                title: isCancel ? 'Bảo dưỡng bị huỷ' : 'Cần làm lại chứng từ bảo dưỡng',
+                message: isCancel
+                    ? `Bảo dưỡng xe của bạn bị huỷ: ${reason}. Nếu vẫn cần bảo dưỡng, hãy gửi yêu cầu mới.`
+                    : `Chứng từ bảo dưỡng bị từ chối: ${reason}. Hãy chụp lại hoá đơn và nhập lại chi phí.`,
+                type: 'MAINTENANCE_REJECTED',
+                entityType: 'maintenance_record',
+                entityId: rejected.maintenanceId,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(notifyTarget, {
+                type: 'maintenance.assigned',
+                vehicleId: vehicle.id,
+                maintenanceRecordId: rejected.maintenanceId,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange(mode === 'cancel' ? 'maintenance_cancelled' : 'maintenance_rework', updatedVehicle);
+    return updatedVehicle;
+};
+
 // OCR gợi ý cho manager khi xác nhận bảo dưỡng — chỉ mang tính tham khảo,
 // giống cơ chế scan hóa đơn chi phí của coordinator (không tự động duyệt).
 const scanMaintenanceBill = async (vehicleId) => {
@@ -737,7 +865,21 @@ const markVehicleAsBroken = async (vehicleId, managerId, payload = {}) => {
 
 const restoreVehicle = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
-    ensureVehicleStatus(vehicle, ['broken'], 'Restore vehicle');
+    ensureVehicleStatus(vehicle, ['broken', 'retired'], 'Restore vehicle');
+
+    // Xe đã thu hồi (ẩn) → chỉ cần bật lại 'active', không có sự cố nào để đóng.
+    // Trước đây chỉ cho khôi phục xe 'broken' nên xe thu hồi không có đường quay lại,
+    // khiến thao tác "ẩn xe" trở thành xoá vĩnh viễn.
+    if (vehicle.status === 'retired') {
+        await vehicleManagementRepository.unretireVehicle({
+            vehicleId: vehicle.id,
+            managerId: parsePositiveInteger(managerId, 'manager_id'),
+            note: normalizeString(payload.resolution_note) || normalizeString(payload.note),
+        });
+        const restored = await getVehicleDetail(vehicle.id);
+        broadcastManagerVehicleChange('restored', restored);
+        return restored;
+    }
 
     await vehicleManagementRepository.resolveFailureRecordAndSetStatus({
         vehicleId: vehicle.id,
@@ -906,6 +1048,7 @@ module.exports = {
     createVehicleGroup,
     updateVehicleGroup,
     deleteVehicleGroup,
+    restoreVehicleGroup,
     listVehicles,
     getVehicleDetail,
     createVehicle,
@@ -917,6 +1060,7 @@ module.exports = {
     rejectMaintenanceRequest,
     completeMaintenance,
     verifyMaintenance,
+    rejectMaintenance,
     scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,

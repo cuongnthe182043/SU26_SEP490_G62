@@ -32,6 +32,21 @@ export const coordinatorService = {
     apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) =>
     apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+
+  // Xử lý chuyến giao thất bại: action 'redeliver' (giao lại) | 'return' (hoàn hàng)
+  // charge_type chỉ dùng khi 'return': no_charge | return_fee | full_fare
+  resolveFailedShipment: (shipmentId, { action, chargeType, returnFee }) =>
+    apiRequest(`${BASE}/trips/${shipmentId}/resolve-failed`, {
+      method: "POST",
+      body: { action, charge_type: chargeType, return_fee: returnFee },
+    }),
+
+  // Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế (chạy tuần tự)
+  assignOrderShipments: (orderId, { shipmentIds, driverId }) =>
+    apiRequest(`${BASE}/orders/${orderId}/assign-driver`, {
+      method: "POST",
+      body: { shipment_ids: shipmentIds, driver_id: driverId },
+    }),
   getTripPool: (params) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
 
   // ─── Lookups ──────────────────────────────────────────────────────────────
@@ -55,6 +70,13 @@ export const coordinatorService = {
   approveReceiptRequest: (id, data) => apiRequest(`${BASE}/receipt-requests/${id}/approve`, { method: "POST", body: data }),
   rejectReceiptRequest: (id, notes) => apiRequest(`${BASE}/receipt-requests/${id}/reject`, { method: "POST", body: { notes } }),
   scanReceiptExpenses: (id) => apiRequest(`${BASE}/receipt-requests/${id}/scan-expenses`),
+
+  // ─── Chi phí tài xế (coordinator là người duyệt/từ chối duy nhất) ────────
+  getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+  approveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/approve`, { method: "PATCH" }),
+  rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
+  // Gỡ duyệt: đưa chi phí đã duyệt về chờ duyệt để tài xế sửa lại
+  unapproveExpense: (id) => apiRequest(`${BASE}/expenses/${id}/unapprove`, { method: "PATCH" }),
 
   // ─── Customers (shared with Manager) ─────────────────────────────────────
   getCustomers: (params) => apiRequest(`/api/customers?${new URLSearchParams(params)}`),

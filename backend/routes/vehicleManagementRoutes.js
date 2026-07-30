@@ -13,6 +13,7 @@ router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
 router.get('/vehicle-groups/:id', vehicleManagementController.getVehicleGroupDetail);
 router.put('/vehicle-groups/:id', vehicleManagementController.updateVehicleGroup);
 router.delete('/vehicle-groups/:id', vehicleManagementController.deleteVehicleGroup);
+router.post('/vehicle-groups/:id/restore', vehicleManagementController.restoreVehicleGroup);
 
 router.get('/vehicles/driver-options', vehicleManagementController.listAssignableDrivers);
 router.get('/vehicles', vehicleManagementController.listVehicles);
@@ -29,6 +30,7 @@ router.post('/maintenance-requests/:id/reject', vehicleManagementController.reje
 router.post('/vehicles/:id/send-to-maintenance', vehicleManagementController.sendVehicleToMaintenance);
 router.post('/vehicles/:id/complete-maintenance', vehicleManagementController.completeMaintenance);
 router.post('/vehicles/:id/verify-maintenance', vehicleManagementController.verifyMaintenance);
+router.post('/vehicles/:id/reject-maintenance', vehicleManagementController.rejectMaintenance);
 router.get('/vehicles/:id/scan-maintenance-bill', vehicleManagementController.scanMaintenanceBill);
 router.post('/vehicles/:id/mark-broken', vehicleManagementController.markVehicleAsBroken);
 router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle);

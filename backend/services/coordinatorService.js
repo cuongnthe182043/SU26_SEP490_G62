@@ -337,13 +337,22 @@ const importExcel = async (userId, fileBuffer) => {
 
 // toll, parking, etc: khách chịu (pass-through). fuel/repair: công ty chịu.
 
+// Chỉ dùng để HIỂN THỊ xem trước (chưa chốt) — phải khớp với logic tính tiền
+// thật trong computeReceiptAmount, nếu không coordinator sẽ thấy số "gợi ý" sai
+// (VD: giá công ty đã sửa tay nhưng preview lại hiện theo km × đơn giá).
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);
     if (Number.isFinite(actualPrice) && actualPrice > 0) {
         return actualPrice;
     }
 
-    const actualKm = Number(shipment.actual_distance_km ?? shipment.estimated_distance_km ?? shipment.actual_km ?? 0);
+    // Giá cố định do DN chốt tay → luôn hiện đúng giá đó, bất kể km.
+    if (shipment.is_price_manual === true) {
+        const manualPrice = Number(shipment.estimated_price);
+        return Number.isFinite(manualPrice) && manualPrice > 0 ? manualPrice : 0;
+    }
+
+    const actualKm = Number(shipment.actual_distance_km ?? shipment.actual_km ?? 0);
     const pricePerKm = Number(shipment.price_per_km || 0);
     return actualKm > 0 && pricePerKm > 0 ? actualKm * pricePerKm : 0;
 };
@@ -388,7 +397,11 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
     const shipments = [];
     for (const shipment of rawShipments) {
         const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
-        // Chi phí bị từ chối không được tính vào bất kỳ tổng tiền nào
+        // Tính cả 'pending' lẫn 'approved', chỉ bỏ 'rejected'. Chi phí tài xế khai KHÔNG
+        // cần một bước duyệt riêng: phát hành phiếu thu CHÍNH LÀ hành động duyệt
+        // (autoApproveOrderExpenses trong approveReceiptRequest). Khoản 'pending' vì thế
+        // chắc chắn nằm trong phiếu, nên màn xem trước phải hiện đúng con số đó — lọc bỏ
+        // pending sẽ khiến coordinator xem 0đ rồi chốt ra số khác.
         const countableExpenses = expenses.filter((expense) => expense.status !== 'rejected');
         const totalExpenses = countableExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
         const passThroughExpenses = countableExpenses.reduce((sum, expense) => (
@@ -455,29 +468,80 @@ const computeReceiptAmount = (pricingSnapshot) => {
     if (shipments.length === 0) throw new Error('Không thể lấy cấu hình giá cho đơn hàng');
 
     const shipmentBreakdown = shipments.map((shipment) => {
-        const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
+        const status = String(shipment.status || '').toLowerCase();
         const pricePerKm = Number(shipment.price_per_km || 0);
         const isPriceManual = shipment.is_price_manual === true;
         const estimatedPrice = Number(shipment.estimated_price);
 
         // Đơn giá CỐ ĐỊNH do DN chốt tay → giữ nguyên estimated_price, KHÔNG tính lại
-        // theo km (tránh phá giá đã chốt khi driver nhập actual_km).
+        // theo km — bất kể tài xế nhập bao nhiêu km, giá công ty sửa luôn thắng tuyệt đối.
         if (isPriceManual) {
             if (!Number.isFinite(estimatedPrice) || estimatedPrice <= 0) {
                 throw new Error(`Chuyến #${shipment.id} là giá cố định nhưng chưa có giá cước hợp lệ`);
             }
+            const manualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
             return {
                 shipment_id: shipment.id,
-                actual_km: Number.isFinite(Number(actualKm)) ? Number(actualKm) : 0,
+                actual_km: Number.isFinite(Number(manualKm)) ? Number(manualKm) : 0,
                 price_per_km: pricePerKm,
                 actual_income: estimatedPrice,
                 is_price_manual: true,
             };
         }
 
-        // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe.
+        // Chuyến đã hủy/thất bại → không phát sinh doanh thu, không đòi hỏi km.
+        if (status === 'cancelled' || status === 'failed') {
+            return {
+                shipment_id: shipment.id,
+                actual_km: 0,
+                price_per_km: pricePerKm,
+                actual_income: 0,
+                is_price_manual: false,
+            };
+        }
+
+        // Chuyến phải HOÀN HÀNG (returning_at có giá trị — kể cả khi đã sang
+        // 'completed' vì hàng đã về kho). Số tiền khách phải trả do coordinator chốt
+        // lúc xử lý chuyến thất bại, KHÔNG được tính lại theo km như chuyến giao
+        // thành công. Trước đây returnComplete đặt status='completed' nên nhánh
+        // 'failed' ở trên không bao giờ chạy → khách bị thu đủ cước cho hàng chưa
+        // từng giao.
+        if (shipment.returning_at) {
+            const chargeType = shipment.return_charge_type;
+            if (chargeType === 'no_charge') {
+                return {
+                    shipment_id: shipment.id,
+                    actual_km: 0,
+                    price_per_km: pricePerKm,
+                    actual_income: 0,
+                    is_price_manual: false,
+                    is_returned: true,
+                };
+            }
+            if (chargeType === 'return_fee') {
+                const fee = Number(shipment.return_fee);
+                if (!Number.isFinite(fee) || fee < 0) {
+                    throw new Error(`Chuyến #${shipment.id} hoàn hàng nhưng chưa có phí hoàn hàng hợp lệ`);
+                }
+                return {
+                    shipment_id: shipment.id,
+                    actual_km: 0,
+                    price_per_km: pricePerKm,
+                    actual_income: fee,
+                    is_price_manual: false,
+                    is_returned: true,
+                };
+            }
+            // full_fare → rơi xuống tính như chuyến bình thường (khách trả đủ cước)
+        }
+
+        // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe — BẮT BUỘC phải là km THẬT của
+        // chính chuyến đó (actual_distance_km), KHÔNG được lặng lẽ dùng km ước tính
+        // lúc tạo đơn thay thế. Nếu chuyến này chưa có km thật (tài xế của chuyến đó
+        // chưa khai báo), chặn hẳn việc chốt phiếu thu thay vì tính sai.
+        const actualKm = shipment.actual_distance_km;
         if (actualKm === null || actualKm === undefined || Number.isNaN(Number(actualKm)) || Number(actualKm) <= 0) {
-            throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế hợp lệ để tính thu nhập`);
+            throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế (tài xế chuyến đó chưa khai báo) — không thể chốt phiếu thu`);
         }
         if (!pricePerKm || Number.isNaN(pricePerKm) || pricePerKm <= 0) {
             throw new Error(`Chuyến #${shipment.id} chưa có đơn giá xe hợp lệ để tính thu nhập thực tế`);
@@ -678,9 +742,27 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        // Duyệt các chi phí tài xế còn 'pending' của đơn NGAY ĐẦU giao dịch. Chi phí đi
+        // vào phiếu thu không cần một bước duyệt riêng của manager/coordinator: phát hành
+        // phiếu thu chính là lúc chúng được duyệt.
+        //
+        // Trước đây bước này nằm ở CUỐI, nên phải chặn cứng việc chốt phiếu khi đơn còn
+        // khoản chi hộ khách 'pending' (nếu không thì khoản đó có thể bị tính vào tiền
+        // khách rồi sau lại bị từ chối → tài xế đã ứng tiền thật mà không được hoàn).
+        // Duyệt ngay từ đầu khiến tình huống đó không còn tồn tại: mọi khoản không bị
+        // 'rejected' đều được duyệt và ghi nợ hoàn cho tài xế (reimbursement_status =
+        // 'pending') trong CÙNG giao dịch với số tiền phiếu thu.
+        //
+        // Lưu ý: snapshot bên dưới đọc expenses qua pool (ngoài giao dịch) nên KHÔNG
+        // thấy thay đổi này; việc tính đúng số tiền dựa vào bộ lọc "khác 'rejected'"
+        // trong getOrderShipmentsForReceipt, không dựa vào thứ tự hai câu lệnh.
+        await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
+
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
+
         const requestActualKm = Number(req.actual_km);
         if (Number.isFinite(requestActualKm) && requestActualKm > 0) {
             await coordinatorRepository.updateShipmentActualDistance(client, targetShipment.id, requestActualKm);
@@ -741,10 +823,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 refType: 'shipment', refId: shipmentSummary.shipment_id, actorId: coordinatorId,
             });
         }
-
-        // Duyệt phiếu thu = duyệt luôn các chi phí pending mà driver đã khai trong đơn.
-        // Không ghi sổ tại đây — khoản tài ứng chuyển sang 'pending' chờ hoàn.
-        await coordinatorRepository.autoApproveOrderExpenses(client, coordinatorId, req.order_id);
 
         // Cập nhật trạng thái request → approved
         await coordinatorRepository.markReceiptRequestApproved(client, { coordinatorId, requestId, notes });
@@ -850,13 +928,30 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
     if (!updated) throw new Error('Không thể hủy chuyến');
 
     if (shipment.owner_driver_id) {
+        // Đây là NGUỒN DUY NHẤT của popup thông báo hủy (displayMode 'alert' → mobile
+        // tự bung alert ở bất kỳ màn nào tài đang mở). Event WS trip.cancelled bên
+        // dưới chỉ lo điều hướng, KHÔNG bung alert nữa — trước đây cả hai cùng bung
+        // thì showAlert của ui-provider chỉ giữ được 1 alert nên cái đến sau ghi đè
+        // cái trước, tài xế thấy nội dung khác nhau tuỳ frame nào về trước.
         notificationService.createForUser(shipment.owner_driver_id, {
-            title: 'Chuyến của bạn đã bị hủy',
+            title: 'Chuyến đã bị Điều phối viên hủy',
             message: `Chuyến #${shipmentId} đã bị hủy. Lý do: ${reason.trim()}`,
             type: 'TRIP_CANCELLED',
             entityType: 'shipments',
             entityId: shipmentId,
         }, { displayMode: 'alert' }).catch(() => {});
+
+        // Tài xế có thể đang mở màn chuyến — cần đẩy realtime để app thoát ra
+        // trang chủ ngay, nếu không tài vẫn bấm cập nhật trạng thái rồi ăn lỗi
+        // "không thể chuyển trạng thái từ cancelled".
+        try {
+            notificationGateway.broadcastToUser(shipment.owner_driver_id, {
+                type: 'trip.cancelled',
+                shipmentId: Number(shipmentId),
+                orderId: shipment.order_id ?? null,
+                reason: reason.trim(),
+            });
+        } catch { /* realtime failure must not abort the cancellation */ }
     }
 
     return updated;
@@ -918,6 +1013,155 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
     return reassigned;
 };
 
+// Coordinator xử lý chuyến giao thất bại: liên hệ khách rồi chọn giao lại hoặc
+// hoàn hàng, kèm chốt khách có phải trả tiền hay không.
+const resolveFailedShipment = async (shipmentId, { action, chargeType, returnFee }, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const notificationService = require('./notificationService');
+    const { RETURN_CHARGE_TYPES } = require('../constants/tripConstants');
+
+    const parsedId = Number(shipmentId);
+    if (!parsedId) throw new Error('Chuyến không hợp lệ');
+    if (!['redeliver', 'return'].includes(action)) {
+        throw new Error('action phải là "redeliver" (giao lại) hoặc "return" (hoàn hàng)');
+    }
+
+    let normalizedFee = null;
+    if (action === 'return') {
+        if (!RETURN_CHARGE_TYPES.includes(chargeType)) {
+            throw new Error(`Cách tính tiền phải là một trong: ${RETURN_CHARGE_TYPES.join(', ')}`);
+        }
+        if (chargeType === 'return_fee') {
+            normalizedFee = Number(returnFee);
+            if (!Number.isFinite(normalizedFee) || normalizedFee <= 0) {
+                throw new Error('Phí hoàn hàng phải lớn hơn 0');
+            }
+        }
+    }
+
+    const shipment = await tripRepository.getTripById(parsedId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+
+    let updated;
+    try {
+        updated = await tripRepository.resolveFailedShipment({
+            shipmentId: parsedId,
+            action,
+            chargeType: action === 'return' ? chargeType : null,
+            returnFee: normalizedFee,
+            coordinatorId: Number(actorId),
+        });
+    } catch (err) {
+        if (err.message === 'SHIPMENT_NOT_FOUND') throw new Error('Chuyến không tồn tại');
+        if (err.message === 'NOT_FAILED') throw new Error('Chỉ xử lý được chuyến đang ở trạng thái giao thất bại');
+        throw err;
+    }
+
+    if (shipment.owner_driver_id) {
+        const chargeLabel = {
+            no_charge: 'khách không phải trả tiền',
+            return_fee: `khách trả phí hoàn hàng ${Number(normalizedFee).toLocaleString('vi-VN')}đ`,
+            full_fare: 'khách trả đủ cước',
+        }[chargeType];
+
+        notificationService.createForUser(shipment.owner_driver_id, {
+            title: action === 'redeliver' ? 'Giao lại chuyến' : 'Chuyển sang hoàn hàng',
+            message: action === 'redeliver'
+                ? `Điều phối viên đã liên hệ khách — chuyến #${parsedId} được giao lại. Hãy tiếp tục đến điểm giao.`
+                : `Chuyến #${parsedId} chuyển sang hoàn hàng (${chargeLabel}). Hãy chở hàng về điểm lấy và chụp ảnh xác nhận khi trả hàng.`,
+            type: 'TRIP_STATUS_UPDATED',
+            entityType: 'shipments',
+            entityId: parsedId,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        try {
+            notificationGateway.broadcastToUser(shipment.owner_driver_id, {
+                type: 'trip.failed_resolved',
+                shipmentId: parsedId,
+                action,
+                status: updated.status,
+            });
+        } catch { /* realtime failure must not abort the resolution */ }
+    }
+
+    return updated;
+};
+
+// Coordinator gán trước nhiều chuyến của CÙNG một đơn cho một tài xế.
+// Ràng buộc nghiệp vụ: chỉ trong cùng đơn. Tài đang vướng đơn khác thì không gán được.
+const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const driverRepository = require('../repositories/driverRepository');
+    const notificationService = require('./notificationService');
+
+    const parsedOrderId = Number(orderId);
+    const parsedDriverId = Number(driverId);
+    if (!parsedOrderId) throw new Error('Đơn hàng không hợp lệ');
+    if (!parsedDriverId) throw new Error('Tài xế là bắt buộc');
+
+    const ids = Array.isArray(shipmentIds) ? shipmentIds.map(Number).filter(Boolean) : [];
+    if (ids.length === 0) throw new Error('Phải chọn ít nhất 1 chuyến để gán');
+    const uniqueIds = [...new Set(ids)];
+
+    const driver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedDriverId);
+    if (!driver) throw new Error('Tài xế không tồn tại');
+    if (!driver.vehicle_id) throw new Error('Tài xế chưa được gán xe');
+
+    // Cùng ràng buộc như khi tài tự nhận chuyến: chưa xong nghĩa vụ phiếu thu của
+    // chuyến trước thì không được nhận việc mới — nếu bỏ ở đây thì coordinator gán
+    // tay trở thành đường lách guard đó.
+    const pendingReceipt = await tripRepository.getPendingReceiptOrder(parsedDriverId);
+    if (pendingReceipt) {
+        throw new Error(
+            `Tài xế còn chuyến #${pendingReceipt.shipment_id} (đơn #${pendingReceipt.order_id}) chưa nhập km thực tế / chưa gửi yêu cầu tạo phiếu thu. Không thể gán chuyến mới.`,
+        );
+    }
+
+    let result;
+    try {
+        result = await tripRepository.assignOrderShipmentsToDriver({
+            orderId: parsedOrderId,
+            shipmentIds: uniqueIds,
+            driverId: parsedDriverId,
+            vehicleId: Number(driver.vehicle_id),
+            coordinatorId: Number(actorId),
+        });
+    } catch (err) {
+        const messages = {
+            ORDER_NOT_FOUND: 'Đơn hàng không tồn tại hoặc chưa có chuyến nào',
+            SHIPMENT_NOT_IN_ORDER: 'Có chuyến không thuộc đơn hàng này',
+            SHIPMENT_NOT_ASSIGNABLE: 'Có chuyến đã được tài xế khác nhận hoặc đã bắt đầu chạy — hãy tải lại danh sách',
+            VEHICLE_GROUP_MISMATCH: 'Xe của tài xế không thuộc nhóm xe mà chuyến yêu cầu',
+            OTHER_ORDER_ACTIVE: `Tài xế đang có chuyến thuộc đơn #${err.conflictingOrderId} — chỉ gán được nhiều chuyến trong cùng một đơn`,
+            VEHICLE_BUSY_OTHER_ORDER: `Xe của tài xế đang chạy chuyến thuộc đơn #${err.conflictingOrderId}`,
+        };
+        if (messages[err.message]) throw new Error(messages[err.message]);
+        throw err;
+    }
+
+    const count = result.assignedShipmentIds.length;
+    notificationService.createForUser(parsedDriverId, {
+        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
+        message: count > 1
+            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
+            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    try {
+        notificationGateway.broadcastToUser(parsedDriverId, {
+            type: 'trip.assigned',
+            orderId: parsedOrderId,
+            shipmentIds: result.assignedShipmentIds,
+            activatedShipmentId: result.activatedShipmentId,
+        });
+    } catch { /* realtime failure must not abort the assignment */ }
+
+    return result;
+};
+
 // Tổng quan cho Coordinator — số đơn/trip đang xử lý, sự cố mở, phiếu thu/chi phí chờ duyệt
 const getDashboard = async () => {
     const overview = await coordinatorRepository.getDashboardStats();
@@ -941,5 +1185,7 @@ module.exports = {
     rejectReceiptRequest,
     cancelShipment,
     reassignShipment,
+    assignOrderShipments,
+    resolveFailedShipment,
     getDashboard,
 };

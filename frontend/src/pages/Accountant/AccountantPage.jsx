@@ -2,11 +2,10 @@ import { lazy, Suspense, useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
-  RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine,
+  RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine, RiBankCardLine,
   RiCalendarCheckLine, RiTruckLine, RiEqualizerLine, RiCalendarEventLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
-import "../../styles/accountant.css";
 
 import { Sidebar } from "../../components/shared-ui/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
@@ -16,6 +15,7 @@ import { PayrollView } from "./views/PayrollView";
 import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
+import { BankTransferView } from "./views/BankTransferView";
 import AttendanceView from "./views/AttendanceView";
 import VehiclesView from "./views/VehiclesView";
 import BonusRulesView from "../Manager/views/BonusRulesView";
@@ -39,6 +39,7 @@ const NAV_GROUPS = [
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
+      { key: "bank-transfer", label: "Chuyển khoản", icon: RiBankCardLine },
       { key: "spending", label: "Quản lý chi", icon: RiWalletLine },
       { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
     ],
@@ -103,6 +104,11 @@ const VIEW_META = {
     subtitle: "Phân tích doanh thu, công nợ và lương theo kỳ",
     searchPlaceholder: "",
   },
+  "bank-transfer": {
+    title: "Xác nhận chuyển khoản",
+    subtitle: "Tài xế báo khách đã chuyển khoản về công ty — kiểm tra sao kê và xác nhận tiền đã về.",
+    searchPlaceholder: "Tìm khách hàng, tài xế, mã đơn...",
+  },
   ledger: {
     title: "Nhật ký tài chính",
     subtitle: "Sổ ghi mọi chuyển động tiền trong hệ thống, xuất kỳ kế toán sang MISA",
@@ -144,10 +150,11 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   maintenance_record: "vehicles",
   receipt: "revenue",
   receipt_requests: "revenue",
+  bank_transfer: "bank-transfer",
   orders: "revenue",
   reports: "report",
 };
-const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "attendance", "holidays", "vehicles"];
+const VALID_VIEWS = ["report", "revenue", "debt", "bank-transfer", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "attendance", "holidays", "vehicles"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -252,6 +259,9 @@ export default function AccountantPage({ user, onLogout }) {
             )}
             {activeView === "report" && (
               <ReportView />
+            )}
+            {activeView === "bank-transfer" && (
+              <BankTransferView search={search} />
             )}
             {activeView === "ledger" && (
               <LedgerView />

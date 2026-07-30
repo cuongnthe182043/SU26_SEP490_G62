@@ -240,7 +240,9 @@ export const accountantService = {
     apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
 
   // ─── Nhóm xe ──────────────────────────────────────────────────────────────
-  getVehicleGroups: () => apiRequest("/api/admin/vehicle-groups"),
+  // includeHidden: màn Quản lý xe cần thấy cả nhóm đã ẩn để bỏ ẩn lại
+  getVehicleGroups: (includeHidden = false) =>
+    apiRequest(`/api/admin/vehicle-groups${includeHidden ? "?include_hidden=1" : ""}`),
 
   getVehicleGroupDetail: (id) => apiRequest(`/api/admin/vehicle-groups/${id}`),
 
@@ -252,6 +254,9 @@ export const accountantService = {
 
   deleteVehicleGroup: (id) =>
     apiRequest(`/api/admin/vehicle-groups/${id}`, { method: "DELETE" }),
+
+  restoreVehicleGroup: (id) =>
+    apiRequest(`/api/admin/vehicle-groups/${id}/restore`, { method: "POST" }),
 
   // ─── Quản lý xe + gán tài xế ────────────────────────────────────────────────
   getVehicles: (params = {}) => {
@@ -286,6 +291,10 @@ export const accountantService = {
 
   verifyVehicleMaintenance: (id, payload = {}) =>
     apiRequest(`/api/admin/vehicles/${id}/verify-maintenance`, { method: "POST", body: payload }),
+
+  // mode: 'redo' (bắt tài xế làm lại chứng từ) | 'cancel' (huỷ hẳn, xe về hoạt động)
+  rejectVehicleMaintenance: (id, payload = {}) =>
+    apiRequest(`/api/admin/vehicles/${id}/reject-maintenance`, { method: "POST", body: payload }),
 
   markVehicleBroken: (id, payload) =>
     apiRequest(`/api/admin/vehicles/${id}/mark-broken`, { method: "POST", body: payload }),

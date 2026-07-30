@@ -55,7 +55,11 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
 
     return (
         <Pressable
-            onPress={() => router.push(`/receipt-detail?receiptId=${item.receipt_id}`)}
+            // Dùng orr_id (order_receipt_requests.id) — ID duy nhất, không thể trùng với
+            // bản ghi nào khác. receipt_id có thể là orr.id HOẶC shipment_receipts.id tuỳ
+            // trường hợp (2 sequence độc lập) nên KHÔNG dùng để điều hướng, dễ trùng số
+            // và mở nhầm sang phiếu thu không liên quan.
+            onPress={() => router.push(`/receipt-detail?receiptId=${item.orr_id}`)}
             style={({ pressed }) => [
                 styles.card,
                 isRejected && styles.cardRejected,
