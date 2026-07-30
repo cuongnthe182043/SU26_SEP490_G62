@@ -571,18 +571,14 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     // Điều phối viên hủy chuyến khi tài đang chạy: phải thoát khỏi màn này ngay.
     // Nếu ở lại, mọi nút cập nhật trạng thái đều ăn lỗi "không thể chuyển trạng
     // thái từ cancelled" mà tài không hiểu vì sao.
+    // CHỈ điều hướng. Popup "Chuyến đã bị Điều phối viên hủy" do notification
+    // displayMode='alert' bung ra ở tầng provider nên hiện được ở mọi màn — nếu bung
+    // thêm ở đây thì hai alert ghi đè nhau, tài thấy nội dung tuỳ frame nào về trước.
     useEffect(() => appEvents.on('trip.cancelled', (payload) => {
-        const event = payload as { shipmentId?: number; reason?: string };
+        const event = payload as { shipmentId?: number };
         if (Number(event?.shipmentId) !== Number(trip.id)) return;
         router.replace('/(tabs)');
-        showAlert({
-            type: 'warning',
-            title: 'Chuyến đã bị Điều phối viên hủy',
-            message: event?.reason
-                ? `Lý do: ${event.reason}`
-                : 'Chuyến này đã bị hủy. Bạn có thể nhận chuyến mới từ danh sách chuyến khả dụng.',
-        });
-    }), [trip.id, showAlert]);
+    }), [trip.id]);
 
     // Handlers cho multi-stop flow: gọi transit/complete không cần ảnh (proof đã capture per-stop)
     const [transitingViaStops, setTransitingViaStops]     = useState(false);
