@@ -2,7 +2,6 @@ const vehicleManagementRepository = require('../repositories/vehicleManagementRe
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
-const { validateExpenseReceipt } = require('./expenseAiValidator');
 
 const VEHICLE_STATUSES = ['active', 'maintenance', 'broken', 'retired'];
 const FAILURE_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -802,33 +801,6 @@ const rejectMaintenance = async (vehicleId, managerId, payload = {}) => {
     return updatedVehicle;
 };
 
-// OCR gợi ý cho manager khi xác nhận bảo dưỡng — chỉ mang tính tham khảo,
-// giống cơ chế scan hóa đơn chi phí của coordinator (không tự động duyệt).
-const scanMaintenanceBill = async (vehicleId) => {
-    const vehicle = await getVehicleOrThrow(vehicleId);
-
-    const billPics = Array.isArray(vehicle.active_maintenance_bill_pics) ? vehicle.active_maintenance_bill_pics : [];
-    if (billPics.length === 0) {
-        return { maintenanceRecordId: vehicle.active_maintenance_id ?? null, results: [] };
-    }
-
-    const results = await Promise.all(
-        billPics.map(async (imageUrl) => {
-            try {
-                const result = await validateExpenseReceipt(imageUrl, {
-                    amount: vehicle.active_maintenance_cost,
-                    expenseType: 'maintenance',
-                });
-                return { image_url: imageUrl, valid: result.valid, reject_reason: result.reject_reason };
-            } catch {
-                return { image_url: imageUrl, valid: true, reject_reason: null };
-            }
-        }),
-    );
-
-    return { maintenanceRecordId: vehicle.active_maintenance_id ?? null, results };
-};
-
 const markVehicleAsBroken = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
     ensureVehicleStatus(vehicle, ['active'], 'Mark vehicle as broken');
@@ -1061,7 +1033,6 @@ module.exports = {
     completeMaintenance,
     verifyMaintenance,
     rejectMaintenance,
-    scanMaintenanceBill,
     markVehicleAsBroken,
     restoreVehicle,
     retireVehicle,
