@@ -212,24 +212,34 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
           )}
           {rejecting && (
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              <b>Yêu cầu làm lại</b>: xoá hóa đơn và chi phí đã khai, xe vẫn ở trạng thái bảo dưỡng, tài xế phải chụp và nhập lại.
-              <br />
+              {pending && (
+                <>
+                  <b>Yêu cầu làm lại</b>: xoá hóa đơn và chi phí đã khai, xe vẫn ở trạng thái bảo dưỡng, tài xế phải chụp và nhập lại.
+                  <br />
+                </>
+              )}
               <b>Huỷ bảo dưỡng</b>: đóng bản ghi, xe trở lại hoạt động, tài xế muốn bảo dưỡng phải gửi yêu cầu mới.
             </p>
           )}
-          {!pending && <p className="text-xs text-amber-600 dark:text-amber-300">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất.</p>}
+          {!pending && <p className="text-xs text-amber-600 dark:text-amber-300">Bảo dưỡng này vẫn đang chờ tài xế tải ảnh hóa đơn và đánh dấu hoàn tất. Chưa xác nhận được, nhưng vẫn huỷ được nếu mở nhầm hoặc tài xế bỏ dở.</p>}
         </ModalBody>
         <ModalFooter>
           {rejecting ? (
             <>
               <Button variant="flat" isDisabled={saving} onPress={() => { setRejecting(false); setError(null); }}>Quay lại</Button>
-              <Button color="warning" variant="flat" isLoading={saving} onPress={() => handleReject("redo")}>Yêu cầu làm lại</Button>
+              {/* Làm lại chứng từ chỉ có nghĩa khi tài xế đã nộp; huỷ thì lúc nào cũng cần —
+                  không có nó, đợt bảo dưỡng mở nhầm sẽ giam xe ở trạng thái bảo dưỡng. */}
+              {pending && (
+                <Button color="warning" variant="flat" isLoading={saving} onPress={() => handleReject("redo")}>Yêu cầu làm lại</Button>
+              )}
               <Button color="danger" isLoading={saving} onPress={() => handleReject("cancel")}>Huỷ bảo dưỡng</Button>
             </>
           ) : (
             <>
               <Button variant="flat" onPress={onClose}>Đóng</Button>
-              <Button color="danger" variant="flat" isDisabled={!pending} startContent={<RiCloseLine size={16} />} onPress={() => { setRejecting(true); setError(null); }}>Từ chối</Button>
+              <Button color="danger" variant="flat" startContent={<RiCloseLine size={16} />} onPress={() => { setRejecting(true); setError(null); }}>
+                {pending ? "Từ chối" : "Huỷ bảo dưỡng"}
+              </Button>
               <Button color="primary" isDisabled={!pending} isLoading={saving} onPress={handleOk}>Xác nhận</Button>
             </>
           )}

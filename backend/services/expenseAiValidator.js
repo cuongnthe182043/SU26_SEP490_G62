@@ -256,6 +256,22 @@ const scanMaintenanceReceipt = async (imageUrl, { amount } = {}) => {
     return { valid: true, receiptTotal, reject_reason: null };
 };
 
+/**
+ * Đọc tổng tiền của MỘT ảnh hóa đơn, không so khớp gì cả.
+ * Trả null khi OCR lỗi/không đọc được — nơi gọi tự quyết định fail-open hay không.
+ *
+ * @param {string} imageUrl
+ * @returns {Promise<number|null>}
+ */
+const readReceiptTotal = async (imageUrl) => {
+    try {
+        const { receiptTotal } = await scanMaintenanceReceipt(imageUrl);
+        return Number.isFinite(receiptTotal) && receiptTotal > 0 ? receiptTotal : null;
+    } catch {
+        return null;
+    }
+};
+
 // ─── Cloudinary cleanup ───────────────────────────────────────────────────────
 
 const deleteUploadedFile = async (publicId) => {
@@ -267,4 +283,11 @@ const deleteUploadedFile = async (publicId) => {
     }
 };
 
-module.exports = { validateExpenseReceipt, scanMaintenanceReceipt, deleteUploadedFile };
+module.exports = {
+    validateExpenseReceipt,
+    scanMaintenanceReceipt,
+    readReceiptTotal,
+    matchesTotal,
+    fmtVND,
+    deleteUploadedFile,
+};

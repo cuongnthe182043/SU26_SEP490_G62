@@ -13,6 +13,12 @@ import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { coordinatorService } from "../services/coordinator.service";
 import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
 
+const EXPENSE_STATUS_CHIP = {
+  pending: { label: "Sẽ duyệt khi phát hành", color: "warning" },
+  approved: { label: "Đã duyệt", color: "success" },
+  rejected: { label: "Đã từ chối", color: "danger" },
+};
+
 const formatRouteLabel = (shipment) => {
   if (!shipment) return "-";
   const pickup = shipment.pickup_address || shipment.stops?.find((stop) => stop.stop_type === "pickup")?.address || "-";
@@ -175,14 +181,27 @@ export default function ReceiptDetailModal({
                             {!hasImage && (
                               <Chip size="sm" variant="flat" startContent={<RiImageLine size={12} />}>Chưa có ảnh</Chip>
                             )}
+                            {/* Khoản 'pending' sẽ được duyệt tự động khi phát hành phiếu thu —
+                                nói rõ ra để coordinator không tưởng nó bị bỏ ngoài số tiền. */}
+                            <Chip size="sm" variant="flat" color={EXPENSE_STATUS_CHIP[expense.status]?.color || "default"}>
+                              {EXPENSE_STATUS_CHIP[expense.status]?.label || expense.status}
+                            </Chip>
                             <strong className="text-sm">{formatCurrency(expense.amount)}</strong>
                           </div>
                         </div>
                         {hasImage && (
-                          <div className="flex gap-2 flex-wrap">
-                            {images.map((url, idx) => (
-                              <Image key={idx} src={url} width={72} height={72} className="object-cover rounded-lg border border-gray-100 dark:border-white/10" />
-                            ))}
+                          <div>
+                            {/* Ảnh 72px không đủ để đối chiếu số tiền — mở ảnh gốc ở tab mới. */}
+                            <div className="text-[11px] text-gray-400 dark:text-gray-400 mb-1">
+                              Ảnh hóa đơn tài xế tải lên ({images.length}) — bấm để xem ảnh gốc
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              {images.map((url, idx) => (
+                                <a key={idx} href={url} target="_blank" rel="noreferrer">
+                                  <Image src={url} width={72} height={72} className="object-cover rounded-lg border border-gray-100 dark:border-white/10" />
+                                </a>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>

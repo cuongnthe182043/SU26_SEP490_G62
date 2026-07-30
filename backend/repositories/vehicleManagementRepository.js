@@ -968,16 +968,20 @@ const completeMaintenanceRecordAndSetStatus = async ({
     }
 };
 
-// Manager từ chối bản ghi đang chờ xác nhận (hóa đơn khống, số tiền không hợp lệ).
+// Manager từ chối / huỷ bản ghi bảo dưỡng đang mở (hóa đơn khống, số tiền không hợp lệ,
+// hoặc đưa xe vào bảo dưỡng sai).
 // mode = 'redo'   → trả về 'open', xe vẫn ở maintenance, tài xế làm lại chứng từ.
 // mode = 'cancel' → 'rejected', xe về 'active', tài xế phải gửi yêu cầu mới.
-// Chưa có expense nào được sinh ở bước pending_verification nên không cần đảo sổ.
+// allowedStatuses giới hạn bản ghi được tác động: 'redo' chỉ áp cho bản đã submit
+// ('pending_verification'), 'cancel' áp cho cả bản chưa submit ('open').
+// Chưa có expense nào được sinh trước bước verify nên không cần đảo sổ.
 const rejectPendingMaintenanceRecord = async ({
     vehicleId,
     maintenanceRecordId,
     managerId,
     reason,
     mode,
+    allowedStatuses = ['pending_verification'],
 }) => {
     const client = await pool.connect();
     try {
@@ -996,7 +1000,7 @@ const rejectPendingMaintenanceRecord = async ({
             return null;
         }
 
-        const params = [vehicleId];
+        const params = [vehicleId, allowedStatuses];
         let idClause = '';
         if (maintenanceRecordId !== null) {
             params.push(maintenanceRecordId);
@@ -1007,7 +1011,7 @@ const rejectPendingMaintenanceRecord = async ({
             `SELECT id, performed_by, requested_by
              FROM maintenance_records
              WHERE vehicle_id = $1
-               AND status = 'pending_verification'
+               AND status = ANY($2)
                ${idClause}
              ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
              LIMIT 1
@@ -1551,6 +1555,41 @@ const listVehicleStatusHistory = async (vehicleId) => {
     return result.rows;
 };
 
+// Lịch sử bảo dưỡng đầy đủ của 1 xe cho Manager/Accountant: kèm ẢNH HÓA ĐƠN tài xế
+// đã tải, chi phí, người thực hiện/xác nhận và lý do từ chối. vehicle_status_history
+// chỉ có dòng ghi chú nên không đủ để đối chiếu chứng từ của các đợt đã xong.
+const listVehicleMaintenanceRecords = async (vehicleId, db = pool) => {
+    const result = await db.query(
+        `SELECT
+            mr.id,
+            mr.maintenance_type,
+            mr.description,
+            mr.cost,
+            mr.maintenance_date,
+            mr.next_due_date,
+            mr.status,
+            mr.bill_pics,
+            mr.request_reason,
+            mr.reject_reason,
+            mr.started_at,
+            mr.completed_at,
+            mr.verified_at,
+            mr.expense_id,
+            performer.full_name AS performed_by_name,
+            requester.full_name AS requested_by_name,
+            verifier.full_name  AS verified_by_name
+         FROM maintenance_records mr
+         LEFT JOIN profiles performer ON performer.id = mr.performed_by
+         LEFT JOIN profiles requester ON requester.id = mr.requested_by
+         LEFT JOIN profiles verifier  ON verifier.id  = mr.verified_by
+         WHERE mr.vehicle_id = $1
+         ORDER BY mr.started_at DESC, mr.id DESC
+         LIMIT 50`,
+        [vehicleId],
+    );
+    return result.rows;
+};
+
 const getMaintenanceRecordsForDriver = async (driverId, db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
@@ -1812,6 +1851,7 @@ module.exports = {
     retireVehicle,
     unretireVehicle,
     listVehicleStatusHistory,
+    listVehicleMaintenanceRecords,
     getActiveMaintenanceRecordForDriver,
     getMaintenanceRecordsForDriver,
     updateMaintenanceBillPics,

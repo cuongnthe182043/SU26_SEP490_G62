@@ -163,23 +163,6 @@ const approveExpense = async (expenseId, reviewerId) => {
     return expense;
 };
 
-// Duyệt hàng loạt TRONG transaction chốt phiếu thu. Dùng cho các khoản chi hộ
-// khách còn 'pending' nhưng đã được tính vào số tiền phiếu thu: khách đã bị thu
-// nên bắt buộc phải hoàn cho tài xế, không được để coord từ chối sau đó.
-const approveExpensesInTx = async (client, expenseIds = [], reviewerId = null) => {
-    if (!Array.isArray(expenseIds) || expenseIds.length === 0) return [];
-    const { rows } = await client.query(
-        `UPDATE expenses
-         SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(),
-             reimbursement_status = 'pending', updated_at = NOW()
-         WHERE id = ANY($1::int[])
-           AND status = 'pending'
-         RETURNING id, expense_type, amount, created_by`,
-        [expenseIds, reviewerId],
-    );
-    return rows;
-};
-
 // Gỡ duyệt — đưa chi phí đã duyệt về 'pending' để tài xế sửa lại.
 // Không có nó thì chi phí duyệt sai là bế tắc vĩnh viễn: tài không sửa được
 // (đã approved), coord cũng không từ chối được (rejectExpense chỉ chạy trên
@@ -318,6 +301,5 @@ const getExpenseStats = async ({ month, year } = {}) => {
 module.exports = {
     createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense, unapproveExpense,
-    approveExpensesInTx,
     listAllExpenses, getExpenseStats,
 };
