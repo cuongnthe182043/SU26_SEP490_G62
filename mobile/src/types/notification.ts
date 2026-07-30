@@ -41,6 +41,7 @@ export type NotificationEvent =
   | { type: 'maintenance.assigned'; vehicleId: number; maintenanceRecordId: number | null }
   | { type: 'maintenance.completed'; vehicleId: number; maintenanceRecordId: number }
   | { type: 'trip.cancelled'; shipmentId: number; orderId: number | null; reason: string }
+  | { type: 'trip.failed_resolved'; shipmentId: number; action: 'redeliver' | 'return'; status: string }
   | { type: 'pong' };
 
 export type MarkNotificationReadResponse = {

@@ -33,6 +33,14 @@ export const coordinatorService = {
   reassignShipment: (shipmentId, toDriverId) =>
     apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
 
+  // Xử lý chuyến giao thất bại: action 'redeliver' (giao lại) | 'return' (hoàn hàng)
+  // charge_type chỉ dùng khi 'return': no_charge | return_fee | full_fare
+  resolveFailedShipment: (shipmentId, { action, chargeType, returnFee }) =>
+    apiRequest(`${BASE}/trips/${shipmentId}/resolve-failed`, {
+      method: "POST",
+      body: { action, charge_type: chargeType, return_fee: returnFee },
+    }),
+
   // Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế (chạy tuần tự)
   assignOrderShipments: (orderId, { shipmentIds, driverId }) =>
     apiRequest(`${BASE}/orders/${orderId}/assign-driver`, {
