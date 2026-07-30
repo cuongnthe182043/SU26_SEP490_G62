@@ -202,6 +202,11 @@ export function TopCustomersTable({ data }) {
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[10px] text-gray-400 dark:text-gray-400">{c.total_orders} đơn</span>
+              {/* Báo cáo Manager gộp cả đối tác giao việc để tổng khớp ô "Doanh thu";
+                  báo cáo Kế toán không gửi party_type nên tag này không hiện. */}
+              {c.party_type === "partner" && (
+                <span className="text-[10px] font-semibold text-indigo-500 dark:text-indigo-300">Đối tác</span>
+              )}
               {Number(c.outstanding_debt) > 0 && (
                 <span className="text-[10px] text-red-400 font-medium">
                   Nợ: {VND(c.outstanding_debt)}
