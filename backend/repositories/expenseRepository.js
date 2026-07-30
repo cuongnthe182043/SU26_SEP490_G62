@@ -48,26 +48,49 @@ const getShipmentExpenses = async (shipmentId) => {
     return result.rows;
 };
 
+// Điều kiện tài xế được sửa/xoá chi phí của chính mình.
+//
+// Trước đây điều kiện bắt buộc phải có order_receipt_requests ở trạng thái
+// 'rejected' VÀ requesting_shipment_id trùng shipment của chi phí. Điều đó chặn
+// oan 3 trường hợp:
+//   - đơn nhiều chuyến: chi phí của tài chuyến 1 không bao giờ trùng
+//     requesting_shipment_id (do tài chuyến cuối gửi phiếu)
+//   - đơn không phải cash: không hề có order_receipt_requests ⇒ không bao giờ sửa được
+//   - chi phí đã được coord duyệt lẻ: khoá cứng, mà coord cũng không gỡ duyệt được
+//
+// Quy tắc mới: cứ chi phí của mình mà CHƯA được duyệt thì sửa/xoá được, miễn là
+// phiếu thu của đơn chưa chốt (chốt rồi thì số tiền đã thu của khách, không được
+// đổi nữa). Chi phí đã duyệt thì phải nhờ coord gỡ duyệt trước.
+const DRIVER_EDITABLE_EXPENSE_CONDITION = `
+    e.created_by = $2
+    AND e.status IN ('pending', 'rejected')
+    AND NOT EXISTS (
+        SELECT 1
+        FROM order_shipments os
+        JOIN order_receipt_requests orr ON orr.order_id = os.order_id
+        WHERE os.id = e.shipment_id
+          AND orr.status = 'approved'
+    )
+`;
+
+const DRIVER_EDIT_DENIED_MESSAGE = 'Không sửa/xoá được: chi phí đã được duyệt (nhờ điều phối gỡ duyệt) '
+    + 'hoặc phiếu thu của đơn đã chốt';
+
 const updateExpense = async (expenseId, driverId, { expenseType, amount, description, fileUrl }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Chỉ cho sửa khi yêu cầu phiếu thu liên quan đang ở trạng thái 'rejected'
         const check = await client.query(
             `SELECT e.id
              FROM expenses e
-             JOIN order_receipt_requests orr ON orr.requesting_shipment_id = e.shipment_id
              WHERE e.id = $1
-               AND e.created_by = $2
-               AND orr.driver_id = $2
-               AND orr.status = 'rejected'
-               AND e.status != 'approved'`,
+               AND ${DRIVER_EDITABLE_EXPENSE_CONDITION}`,
             [expenseId, driverId],
         );
-        if (!check.rows[0]) throw new Error('Chỉ được sửa chi phí khi yêu cầu phiếu thu bị từ chối và chi phí chưa được duyệt');
+        if (!check.rows[0]) throw new Error(DRIVER_EDIT_DENIED_MESSAGE);
 
-        // Sửa xong quay về 'pending' để coordinator duyệt lại cùng phiếu thu
+        // Sửa xong quay về 'pending' để coordinator duyệt lại
         // (nếu giữ 'rejected' thì khoản đã sửa sẽ không bao giờ được tính lại)
         await client.query(
             `UPDATE expenses
@@ -101,22 +124,16 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
     }
 };
 
-// Chỉ cho xoá khi cùng điều kiện với sửa: yêu cầu phiếu thu liên quan đang 'rejected'
-// và chi phí chưa được duyệt. expense_attachments tự xoá theo (ON DELETE CASCADE).
+// Cùng điều kiện với sửa. expense_attachments tự xoá theo (ON DELETE CASCADE).
 const deleteExpense = async (expenseId, driverId) => {
     const result = await pool.query(
         `DELETE FROM expenses e
-         USING order_receipt_requests orr
          WHERE e.id = $1
-           AND e.created_by = $2
-           AND orr.requesting_shipment_id = e.shipment_id
-           AND orr.driver_id = $2
-           AND orr.status = 'rejected'
-           AND e.status != 'approved'
+           AND ${DRIVER_EDITABLE_EXPENSE_CONDITION}
          RETURNING e.id`,
         [expenseId, driverId],
     );
-    if (!result.rows[0]) throw new Error('Chỉ được xoá chi phí khi yêu cầu phiếu thu bị từ chối và chi phí chưa được duyệt');
+    if (!result.rows[0]) throw new Error(DRIVER_EDIT_DENIED_MESSAGE);
 };
 
 const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
@@ -144,6 +161,47 @@ const approveExpense = async (expenseId, reviewerId) => {
     );
     if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
     return expense;
+};
+
+// Duyệt hàng loạt TRONG transaction chốt phiếu thu. Dùng cho các khoản chi hộ
+// khách còn 'pending' nhưng đã được tính vào số tiền phiếu thu: khách đã bị thu
+// nên bắt buộc phải hoàn cho tài xế, không được để coord từ chối sau đó.
+const approveExpensesInTx = async (client, expenseIds = [], reviewerId = null) => {
+    if (!Array.isArray(expenseIds) || expenseIds.length === 0) return [];
+    const { rows } = await client.query(
+        `UPDATE expenses
+         SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(),
+             reimbursement_status = 'pending', updated_at = NOW()
+         WHERE id = ANY($1::int[])
+           AND status = 'pending'
+         RETURNING id, expense_type, amount, created_by`,
+        [expenseIds, reviewerId],
+    );
+    return rows;
+};
+
+// Gỡ duyệt — đưa chi phí đã duyệt về 'pending' để tài xế sửa lại.
+// Không có nó thì chi phí duyệt sai là bế tắc vĩnh viễn: tài không sửa được
+// (đã approved), coord cũng không từ chối được (rejectExpense chỉ chạy trên
+// 'pending'). Chặn khi phiếu thu của đơn đã chốt vì lúc đó tiền đã thu của khách.
+const unapproveExpense = async (expenseId, reviewerId) => {
+    const { rows: [expense] } = await pool.query(
+        `UPDATE expenses e
+         SET status = 'pending', reviewed_by = $2, reviewed_at = NULL,
+             reject_reason = NULL, reimbursement_status = NULL, updated_at = NOW()
+         WHERE e.id = $1
+           AND e.status = 'approved'
+           AND NOT EXISTS (
+               SELECT 1
+               FROM order_shipments os
+               JOIN order_receipt_requests orr ON orr.order_id = os.order_id
+               WHERE os.id = e.shipment_id
+                 AND orr.status = 'approved'
+           )
+         RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.created_by`,
+        [expenseId, reviewerId],
+    );
+    return expense ?? null;
 };
 
 const rejectExpense = async (expenseId, reviewerId, reason) => {
@@ -259,6 +317,7 @@ const getExpenseStats = async ({ month, year } = {}) => {
 
 module.exports = {
     createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
-    wasDriverAssignedToShipment, approveExpense, rejectExpense,
+    wasDriverAssignedToShipment, approveExpense, rejectExpense, unapproveExpense,
+    approveExpensesInTx,
     listAllExpenses, getExpenseStats,
 };

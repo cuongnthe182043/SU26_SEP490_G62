@@ -66,7 +66,9 @@ const updateExpense = async (req, res) => {
         });
         res.json({ message: 'Đã cập nhật chi phí' });
     } catch (err) {
-        const status = err.message.includes('quyền') || err.message.includes('từ chối') ? 403
+        // 409: trạng thái chi phí/phiếu thu không cho sửa (không phải thiếu quyền)
+        const status = err.message.includes('Không sửa/xoá được') ? 409
+            : err.message.includes('quyền') ? 403
             : err.message.includes('không hợp lệ') || err.message.includes('lớn hơn') ? 400
             : 500;
         res.status(status).json({ error: err.message });
@@ -81,7 +83,7 @@ const deleteExpense = async (req, res) => {
         await expenseService.deleteExpense(req.user.userId, expenseId);
         res.json({ message: 'Đã xoá chi phí' });
     } catch (err) {
-        const status = err.message.includes('từ chối') ? 403 : 500;
+        const status = err.message.includes('Không sửa/xoá được') ? 409 : 500;
         res.status(status).json({ error: err.message });
     }
 };

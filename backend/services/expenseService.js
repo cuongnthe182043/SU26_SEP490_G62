@@ -39,21 +39,17 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     await expenseRepository.addExpenseAttachment(expense.id, receiptUrl);
 
-    // Đơn không phải cash (chuyển khoản/công nợ) không bao giờ đi qua luồng chốt
-    // phiếu thu — không có điểm nào để coordinator duyệt thủ công, nên tự động
-    // duyệt ngay khi tạo để không kẹt "pending" vĩnh viễn. Đơn cash vẫn giữ pending,
-    // chờ coordinator duyệt/từ chối thủ công (không auto).
-    const orderPaymentType = await tripRepository.getOrderPaymentType(shipment.order_id);
-    if (orderPaymentType !== 'cash') {
-        await expenseRepository.approveExpense(expense.id, null);
-    }
-
+    // Mọi chi phí đều giữ 'pending' chờ coordinator duyệt — kể cả đơn không thu
+    // tiền mặt. Trước đây đơn non-cash được auto-duyệt ngay để không kẹt pending
+    // vĩnh viễn, nhưng auto-duyệt lại khoá luôn quyền sửa của tài xế (không sửa
+    // được chi phí đã approved) nên tài gõ sai số tiền là hết đường. Giờ chi phí
+    // pending KHÔNG còn chặn việc chốt phiếu thu nữa nên không có gì bị kẹt.
     const driver = await profileRepository.getProfileById(driverId);
     // Chỉ coordinator duyệt chi phí tài xế — Manager không còn vai trò này,
     // màn "Quản lý chi phí" bên Manager chỉ để xem lịch sử.
     const coordinatorIds = await roleRepository.getUserIdsByRole('coordinator');
     notificationService.createForUsers(coordinatorIds, {
-        title: orderPaymentType === 'cash' ? 'Chi phí mới chờ duyệt' : 'Chi phí mới (đơn không thu tiền mặt — đã tự duyệt)',
+        title: 'Chi phí mới chờ duyệt',
         message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${Number(amount).toLocaleString('vi-VN')}đ cho chuyến #${shipmentId}.`,
         type: 'EXPENSE_SUBMITTED',
         entityType: 'expenses',
@@ -74,6 +70,24 @@ const approveExpense = async (expenseId, reviewerId) => {
         entityType: 'expenses',
         entityId: expense.id,
     }, { displayMode: 'silent' }).catch(() => {});
+
+    return expense;
+};
+
+// Gỡ duyệt — cách duy nhất để cứu một chi phí đã duyệt nhưng sai số tiền
+const unapproveExpense = async (expenseId, reviewerId) => {
+    const expense = await expenseRepository.unapproveExpense(expenseId, reviewerId);
+    if (!expense) {
+        throw new Error('Không gỡ duyệt được: chi phí chưa được duyệt hoặc phiếu thu của đơn đã chốt');
+    }
+
+    notificationService.createForUser(expense.created_by, {
+        title: 'Chi phí cần khai lại',
+        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${Number(expense.amount).toLocaleString('vi-VN')}đ đã bị gỡ duyệt. Bạn có thể sửa hoặc xoá khoản này.`,
+        type: 'EXPENSE_REJECTED',
+        entityType: 'expenses',
+        entityId: expense.id,
+    }, { displayMode: 'alert' }).catch(() => {});
 
     return expense;
 };
@@ -118,5 +132,5 @@ const deleteExpense = async (driverId, expenseId) => {
 
 module.exports = {
     createExpense, getShipmentExpenses, getExpensesByShipment, updateExpense, deleteExpense,
-    approveExpense, rejectExpense,
+    approveExpense, rejectExpense, unapproveExpense,
 };
