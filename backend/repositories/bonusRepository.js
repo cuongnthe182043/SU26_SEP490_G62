@@ -69,8 +69,9 @@ const previewTetBonuses = async (year) => {
                 vg.name AS vehicle_group
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
-         LEFT JOIN vehicles v ON v.id = d.vehicle_id
-         LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+         -- Nhóm CỐ ĐỊNH (biên chế), không phải nhóm của xe đang cầm — để nhãn nhóm
+         -- ở màn Thưởng khớp với màn KPI và Bảng lương.
+         LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
          ORDER BY p.full_name`,
     );
     if (!drivers.length) return [];
@@ -187,8 +188,8 @@ const BASE = `
     FROM driver_bonuses db
     JOIN profiles p   ON p.id  = db.driver_id
     LEFT JOIN drivers d     ON d.profile_id = db.driver_id
-    LEFT JOIN vehicles v    ON v.id = d.vehicle_id
-    LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+    -- Nhóm CỐ ĐỊNH (biên chế) — xem chú thích ở getDriversForBonus
+    LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
     LEFT JOIN profiles req  ON req.id = db.requested_by
     LEFT JOIN profiles apr  ON apr.id = db.approved_by
     LEFT JOIN profiles pai  ON pai.id = db.paid_by

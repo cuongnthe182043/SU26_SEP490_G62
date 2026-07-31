@@ -959,8 +959,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
         driver={editingDriver}
         vehicleGroups={vehicleGroups}
         onSave={async (driverId, vehicleGroupId) => {
-          await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId);
+          const res = await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId);
           refetch();
+          return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
         }}
         onClose={() => setEditingDriver(null)}
       />
