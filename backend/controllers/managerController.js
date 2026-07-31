@@ -1,6 +1,7 @@
 const managerService = require('../services/managerService');
 const accountantPayrollRepository = require('../repositories/accountantPayrollRepository');
 const notificationService = require('../services/notificationService');
+const { optMonth, optYear } = require('../utils/accountantValidate');
 
 const parseId = (value, label) => {
     const parsed = Number(value);
@@ -255,8 +256,8 @@ const getPayrolls = async (req, res) => {
     try {
         const { status, search, sort } = req.query;
         const now   = new Date();
-        const month = Number(req.query.month) || now.getMonth() + 1;
-        const year  = Number(req.query.year)  || now.getFullYear();
+        const month = optMonth(req.query.month, now.getMonth() + 1);
+        const year  = optYear(req.query.year, now.getFullYear());
 
         if (status && !PAYROLL_STATUSES.includes(status))
             return res.status(400).json({ error: 'Trạng thái bảng lương không hợp lệ' });
