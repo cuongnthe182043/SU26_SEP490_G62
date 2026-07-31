@@ -7,7 +7,10 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
     const params = [year, month];
     const driverConds = ['a.is_active = TRUE'];
     if (driverId)       { params.push(driverId);       driverConds.push(`d.profile_id = $${params.length}`); }
-    if (vehicleGroupId) { params.push(vehicleGroupId); driverConds.push(`v.vehicle_group_id = $${params.length}`); }
+    // Lọc theo NHÓM CỐ ĐỊNH của tài (biên chế), KHÔNG theo nhóm của xe đang cầm.
+    // Tài nhóm 4m2 mượn xe cắt nóc vẫn phải nằm trong danh sách chấm công 4m2 —
+    // nếu lọc theo xe thì kế toán chọn nhóm 4m2 sẽ không thấy tài đó và chấm sót.
+    if (vehicleGroupId) { params.push(vehicleGroupId); driverConds.push(`d.default_vehicle_group_id = $${params.length}`); }
 
     const result = await pool.query(
         `WITH days AS (
@@ -18,12 +21,14 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
             )::date AS work_date
         ),
         drv AS (
+            -- Biển số lấy theo xe ĐANG CẦM (thông tin vận hành), còn tên nhóm lấy
+            -- theo nhóm CỐ ĐỊNH để khớp với KPI, xếp hạng và bảng lương.
             SELECT d.profile_id AS driver_id, p.full_name, v.plate_number, vg.name AS vehicle_group_name
             FROM drivers d
             JOIN profiles p ON p.id = d.profile_id
             JOIN accounts a ON a.id = p.id
             LEFT JOIN vehicles v ON v.id = d.vehicle_id
-            LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+            LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
             WHERE ${driverConds.join(' AND ')}
         )
         SELECT
