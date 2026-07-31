@@ -115,6 +115,9 @@ const claimTrip = async (shipmentId, driverId) => {
         if (err.message === 'DRIVER_VEHICLE_MISMATCH') {
             throw new Error('Tài xế chưa được gán hợp lệ với xe này');
         }
+        if (err.message === 'VEHICLE_GROUP_MISMATCH') {
+            throw new Error('VEHICLE_GROUP_MISMATCH:Chuyến này thuộc nhóm xe khác — xe bạn đang lái không chở được. Chỉ nhận các chuyến hiện trong danh sách chuyến khả dụng.');
+        }
         if (err.message === 'DRIVER_MAINTENANCE') {
             throw new Error('Tài xế đang phụ trách bảo trì xe khác');
         }
