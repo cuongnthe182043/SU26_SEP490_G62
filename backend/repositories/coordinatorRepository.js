@@ -93,7 +93,11 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
                 WHEN rr.status = 'approved' THEN 'receipt'
                 ELSE 'request'
             END AS record_kind,
-            COALESCE(sr.id, rr.id) AS receipt_id,
+            -- KHÔNG dùng COALESCE(sr.id, rr.id): shipment_receipts và
+            -- order_receipt_requests là hai sequence độc lập cùng START WITH 100000 nên
+            -- dải ID chồng nhau; gộp lại thành một số thì client không biết mình đang
+            -- giữ khoá bảng nào. Khoá của rr đã có sẵn ở cột id phía trên.
+            sr.id AS shipment_receipt_id,
             COALESCE(sr.amount, GREATEST(
                 COALESCE(revenue_summary.total_actual_price, 0) - COALESCE(o.prepaid_amount, 0),
                 0

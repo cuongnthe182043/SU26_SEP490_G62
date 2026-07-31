@@ -111,26 +111,28 @@ export const tripService = {
             `/api/orders/${orderId}/receipt-request`,
         ),
 
-    // Phiếu thu đã được coordinator tạo — driver xem + show cho khách
+    // Phiếu thu đã được coordinator tạo — driver xem + show cho khách.
+    // Mọi endpoint dưới đây định danh bằng orr_id (order_receipt_requests.id), KHÔNG
+    // phải shipment_receipts.id — xem ghi chú ở DriverReceiptSummary.
     getDriverReceipts: (page = 1, limit = 20) =>
         apiClient.get<{ receipts: import('@/types/trip').DriverReceiptSummary[] }>(
-            `/api/trips/receipts?page=${page}&limit=${limit}`,
+            `/api/trips/receipt-requests?page=${page}&limit=${limit}`,
         ),
 
-    getDriverReceiptDetail: (receiptId: number) =>
+    getDriverReceiptDetail: (orrId: number) =>
         apiClient.get<{ receipt: import('@/types/trip').DriverReceiptDetail }>(
-            `/api/trips/receipts/${receiptId}`,
+            `/api/trips/receipt-requests/${orrId}`,
         ),
 
-    recordReceiptCollection: (receiptId: number, formData: FormData) =>
+    recordReceiptCollection: (orrId: number, formData: FormData) =>
         apiClient.postForm<{ message: string }>(
-            `/api/trips/receipts/${receiptId}/record-collection`,
+            `/api/trips/receipt-requests/${orrId}/record-collection`,
             formData,
         ),
 
     resubmitReceiptRequest: (orrId: number, driverNotes?: string) =>
         apiClient.post<{ message: string }>(
-            `/api/trips/receipt-request/${orrId}/resubmit`,
+            `/api/trips/receipt-requests/${orrId}/resubmit`,
             { driver_notes: driverNotes ?? null },
         ),
 
