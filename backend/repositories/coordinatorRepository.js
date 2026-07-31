@@ -18,8 +18,6 @@ const getOrderShipments = async (db, orderId) => {
             os.is_price_manual,
             os.notes,
             os.returning_at,
-            os.return_charge_type,
-            os.return_fee,
             v.plate_number,
             p.full_name AS driver_name,
             COALESCE(vg_vehicle.id, vg_order.id) AS vehicle_group_id,

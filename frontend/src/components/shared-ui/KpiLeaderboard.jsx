@@ -457,8 +457,9 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
           driver={editingDriver}
           vehicleGroups={vehicleGroups}
           onSave={async (driverId, nextVehicleGroupId) => {
-            await onUpdateDriverGroup(driverId, nextVehicleGroupId);
+            const res = await onUpdateDriverGroup(driverId, nextVehicleGroupId);
             setReloadToken((t) => t + 1);
+            return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
           }}
           onClose={() => setEditingDriver(null)}
         />

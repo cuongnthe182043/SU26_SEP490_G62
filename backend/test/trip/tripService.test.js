@@ -66,6 +66,20 @@ describe('Trip Service', () => {
             );
         });
 
+        // BR-003: trip pool đã lọc theo nhóm xe nên giao diện không hiện chuyến sai nhóm,
+        // nhưng đó chỉ là lọc hiển thị — gọi thẳng API với id chuyến phải bị chặn ở tầng ghi,
+        // nếu không thì xe nhỏ nhận được đơn quá tải trọng của nhóm xe lớn.
+        it('BR-003: translates VEHICLE_GROUP_MISMATCH with prefix so controller trả 422', async () => {
+            mock.method(tripRepository, 'getDriverVehicleId', async () => 3);
+            mock.method(tripRepository, 'claimShipment', async () => { throw new Error('VEHICLE_GROUP_MISMATCH'); });
+
+            await assert.rejects(
+                () => tripService.claimTrip(10, 1),
+                (err) => err.message.startsWith('VEHICLE_GROUP_MISMATCH:')
+                      && err.message.includes('nhóm xe khác'),
+            );
+        });
+
         it('BR-007: throws ALREADY_CLAIMED when repo returns falsy (lost the atomic race)', async () => {
             mock.method(tripRepository, 'getDriverVehicleId', async () => 3);
             mock.method(tripRepository, 'claimShipment', async () => null);
@@ -137,14 +151,34 @@ describe('Trip Service', () => {
         });
 
         it('failed transition with a valid reason succeeds', async () => {
-            mock.method(tripRepository, 'getTripById', async () => ({ status: 'arrived', owner_driver_id: 1 }));
+            mock.method(tripRepository, 'getTripById', async () => ({ status: 'arrived', owner_driver_id: 1, order_id: 5 }));
             mock.method(tripRepository, 'updateTripStatus', async (id, status, reason) => ({ id, status, reason }));
             mock.method(notificationService, 'createForUser', async () => {});
+            // Báo thất bại còn đánh thức coordinator (alert + WS) — không mock thì
+            // getUserIdsByRole đập vào DB thật.
+            mock.method(notificationService, 'getUserIdsByRole', async () => [99]);
+            mock.method(notificationService, 'createForUsers', async () => {});
+            mock.method(notificationGateway, 'broadcastToRole', () => {});
 
             const result = await tripService.updateStatus(10, 1, 'failed', 'Khách từ chối nhận hàng');
 
             assert.strictEqual(result.status, 'failed');
             assert.strictEqual(result.reason, 'Khách từ chối nhận hàng');
+        });
+
+        it('báo giao thất bại phải đánh thức coordinator (trước đây chỉ báo cho chính tài xế)', async () => {
+            mock.method(tripRepository, 'getTripById', async () => ({ status: 'arrived', owner_driver_id: 1, order_id: 5 }));
+            mock.method(tripRepository, 'updateTripStatus', async (id, status, reason) => ({ id, status, reason }));
+            mock.method(notificationService, 'createForUser', async () => {});
+            mock.method(notificationService, 'getUserIdsByRole', async () => [99]);
+            mock.method(notificationService, 'createForUsers', async () => {});
+            mock.method(notificationGateway, 'broadcastToRole', () => {});
+
+            await tripService.updateStatus(10, 1, 'failed', 'Khách vắng mặt');
+
+            assert.strictEqual(notificationService.createForUsers.mock.calls.length, 1);
+            assert.strictEqual(notificationGateway.broadcastToRole.mock.calls.length, 1);
+            assert.strictEqual(notificationGateway.broadcastToRole.mock.calls[0].arguments[0], 'coordinator');
         });
     });
 

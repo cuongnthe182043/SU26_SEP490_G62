@@ -42,6 +42,14 @@ const claimTrip = async (req, res) => {
         if (err.message.startsWith('PENDING_RECEIPT:')) {
             return res.status(422).json({ error: err.message.replace('PENDING_RECEIPT:', ''), code: 'PENDING_RECEIPT' });
         }
+        // Nhận chuyến sai nhóm xe: dữ liệu gửi lên không hợp lệ với xe đang lái (422),
+        // kèm code để app phân biệt được với các lỗi 422 khác.
+        if (err.message.startsWith('VEHICLE_GROUP_MISMATCH:')) {
+            return res.status(422).json({
+                error: err.message.replace('VEHICLE_GROUP_MISMATCH:', ''),
+                code: 'VEHICLE_GROUP_MISMATCH',
+            });
+        }
         const status = err.message.includes('đang có') ? 422
             : err.message.includes('chưa được gán') ? 422
                 : 400;
