@@ -315,20 +315,6 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     }
   };
 
-  // Xử lý chuyến giao thất bại — giao lại hoặc hoàn hàng kèm chốt tiền khách
-  const submitResolveFailed = async ({ shipmentId, action, chargeType, returnFee }) => {
-    try {
-      const res = await coordinatorService.resolveFailedShipment(shipmentId, { action, chargeType, returnFee });
-      const refreshed = await loadOrders(pagination.page);
-      const updated = (refreshed ?? []).find((o) => Number(o.orderId) === Number(detailOrder.orderId));
-      if (updated) setDetailOrder(updated);
-      notify.success(res.message || "Đã xử lý chuyến giao thất bại.");
-    } catch (error) {
-      notify.error(error.message || "Không thể xử lý chuyến giao thất bại.");
-      throw error;
-    }
-  };
-
   const submitCancelShipment = async () => {
     if (!cancelTarget || !cancelReason.trim()) return;
     setCancelBusy(true);
@@ -557,7 +543,6 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         onClose={() => setDetailOrder(null)}
         drivers={drivers}
         onAssignShipments={submitAssignShipments}
-        onResolveFailed={submitResolveFailed}
       />
 
       <Modal isOpen={!!reassignTarget} onOpenChange={(isOpen) => !isOpen && closeReassignModal()} size="sm">

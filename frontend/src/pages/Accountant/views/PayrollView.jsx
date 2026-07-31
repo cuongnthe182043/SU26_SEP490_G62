@@ -71,6 +71,12 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
 
+  // holiday_bonus = 100% lương ngày cộng thêm cho mỗi ngày lễ tài đi làm (tổng 200%).
+  // Suy ngược số ngày từ số tiền vì BE tính đúng holidayBonus = round(lương cứng/28) × số ngày.
+  const holidayBonus  = Number(row.holiday_bonus ?? 0);
+  const dailyWage     = Math.round(Number(row.base_salary ?? 0) / 28);
+  const holidayDays   = dailyWage > 0 ? Math.round(holidayBonus / dailyWage) : 0;
+
   const detail = [
     { label: "Lương cứng",      value: row.base_salary },
     { label: "Doanh thu",       value: row.total_revenue },
@@ -78,6 +84,9 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
     { label: "Phụ cấp ĐT",     value: "200,000đ",       raw: true },
     { label: "Thưởng KPI",           value: row.kpi_bonus },
     { label: "Thưởng xuất sắc",     value: row.top_driver_bonus },
+    ...(holidayBonus > 0
+      ? [{ label: `Đi làm ngày lễ ×2 (${holidayDays} ngày)`, value: row.holiday_bonus }]
+      : []),
     { label: "Thưởng & Phúc lợi",  value: row.overtime_bonus },
     ...(Number(row.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: row.manual_bonus }] : []),
     { label: "Lương gộp",           value: row.gross_salary,  bold: true },

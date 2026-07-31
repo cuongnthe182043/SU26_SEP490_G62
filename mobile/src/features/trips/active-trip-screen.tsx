@@ -41,8 +41,8 @@ const STATUS_ADVANCE_TOAST: Partial<Record<TripStatus, string>> = {
     picking:   'Đang di chuyển đến điểm lấy hàng',
     transit:   'Đang vận chuyển hàng đến điểm giao',
     arrived:   'Đã đến điểm giao – tiến hành giao hàng',
-    failed:    'Ghi nhận giao thất bại – cần hoàn hàng về điểm lấy',
-    returning: 'Đang hoàn hàng về điểm lấy',
+    failed:    'Đã báo giao thất bại – chờ điều phối quyết định',
+    returning: 'Đang hoàn hàng về điểm lấy (chuyến tính gấp đôi cước)',
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -905,6 +905,12 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
                             XÁC NHẬN ĐÃ HOÀN HÀNG
                         </Text>
+                        {/* Chạy cả chiều đi lẫn chiều về nên chuyến này ăn gấp đôi cước —
+                            nói rõ ở đây để tài biết mình không bị thiệt khi phải quay đầu. */}
+                        <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={17}>
+                            Điều phối đã duyệt hoàn hàng. Chở hàng về đúng điểm lấy ban đầu, chụp ảnh
+                            rồi xác nhận. Chuyến này được tính gấp đôi cước vì bạn chạy cả hai chiều.
+                        </Text>
                         {/* Ảnh BẮT BUỘC — bằng chứng duy nhất hàng đã thực sự về kho.
                             BE trả 400 nếu thiếu, nên nút phải disable thay vì để tài bấm rồi lỗi. */}
                         <PhotoCaptureCard
@@ -973,7 +979,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 label={
                     cameraTarget === 'loading' ? 'Chụp ảnh lấy hàng' :
                     cameraTarget === 'proof'   ? 'Chụp ảnh xác nhận giao hàng' :
-                                                 'Chụp ảnh hoàn hàng (tuỳ chọn)'
+                                                 'Chụp ảnh hoàn hàng (bắt buộc)'
                 }
                 onCapture={(uri) => {
                     if      (cameraTarget === 'loading') setLoadingUri(uri);
@@ -998,7 +1004,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
             <ReasonModal
                 visible={showMarkFailed}
                 title="Giao hàng thất bại"
-                description="Ghi rõ lý do không giao được. Sau bước này bạn sẽ phải hoàn hàng về điểm lấy ban đầu."
+                description="Ghi rõ lý do không giao được. Hệ thống sẽ báo ngay cho điều phối viên để họ liên hệ khách và quyết định cho giao lại hay cho hoàn hàng."
                 placeholder="VD: khách từ chối nhận, không liên lạc được khách..."
                 required
                 confirmLabel="Xác nhận thất bại"
