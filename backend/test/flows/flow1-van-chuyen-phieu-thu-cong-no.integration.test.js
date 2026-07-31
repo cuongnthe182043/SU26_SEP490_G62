@@ -182,8 +182,11 @@ describe('L2-FLOW-01 — Vận chuyển tiền mặt → Phiếu thu → Công n
     });
 
     it('B6 — Driver ghi nhận khách trả TIỀN MẶT (TH2) → nợ tài xế + bút toán 1388/131', async () => {
-        const { rows: [receipt] } = await pool.query('SELECT id FROM shipment_receipts WHERE shipment_id = 1');
-        await tripService.recordReceiptCollection(receipt.id, DRIVER_ID, {
+        // recordReceiptCollection định danh bằng order_receipt_requests.id
+        const { rows: [receipt] } = await pool.query(
+            'SELECT id, order_receipt_request_id FROM shipment_receipts WHERE shipment_id = 1',
+        );
+        await tripService.recordReceiptCollection(receipt.order_receipt_request_id, DRIVER_ID, {
             paymentType: 'cash_collected',
             proofUrl: 'https://proof-cash.test/1.jpg',
         });
@@ -295,8 +298,7 @@ describe('L2-FLOW-02 — Đơn cash nhưng khách xin nợ (TH3 client_credit) �
         const { rows: [orr] } = await pool.query('SELECT id FROM order_receipt_requests WHERE order_id = 2');
         await coordinatorService.approveReceiptRequest(orr.id, COORD_ID, { notes: 'cong no 30 ngay', expenses: [] });
 
-        const { rows: [receipt] } = await pool.query('SELECT id FROM shipment_receipts WHERE shipment_id = 2');
-        await tripService.recordReceiptCollection(receipt.id, DRIVER_ID, { paymentType: 'client_credit' });
+        await tripService.recordReceiptCollection(orr.id, DRIVER_ID, { paymentType: 'client_credit' });
 
         const { rows: [debt] } = await pool.query(`SELECT total_amount, customer_id FROM debts WHERE debt_type = 'customer'`);
         assert.ok(debt, 'client_credit phải sinh nợ khách hàng');
@@ -432,8 +434,10 @@ describe('L2-FLOW-01/02 — Negative paths (BR violations, invalid input, duplic
     });
 
     it('N9 — confirming the same debt repayment twice is rejected the second time', async () => {
-        const { rows: [receipt] } = await pool.query('SELECT id FROM shipment_receipts WHERE shipment_id = 90');
-        await tripService.recordReceiptCollection(receipt.id, DRIVER_ID, {
+        const { rows: [receipt] } = await pool.query(
+            'SELECT order_receipt_request_id FROM shipment_receipts WHERE shipment_id = 90',
+        );
+        await tripService.recordReceiptCollection(receipt.order_receipt_request_id, DRIVER_ID, {
             paymentType: 'cash_collected', proofUrl: 'https://proof-cash.test/90.jpg',
         });
         const { rows: [debt] } = await pool.query(`SELECT id, total_amount FROM debts WHERE debt_type = 'driver' AND driver_id = $1 AND shipment_id = 90`, [DRIVER_ID]);

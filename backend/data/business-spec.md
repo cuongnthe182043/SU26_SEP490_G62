@@ -516,7 +516,7 @@ Driver nhận notification: phiếu thu đã tạo
   ↓
 Driver mở Receipt Detail → chọn 1 trong 3 nút thanh toán
   ↓
-POST /api/trips/receipts/:id/record-collection { payment_type, proof }
+POST /api/trips/receipt-requests/:orrId/record-collection { payment_type, proof }
   ↓
 shipment_receipts.payment_type được cập nhật + debt tạo tự động
 ```
@@ -550,7 +550,8 @@ Sau khi coordinator tạo phiếu thu, driver mở màn hình Receipt Detail và
 
 Màn hình luôn hiển thị QR code ngân hàng công ty (lấy từ `companyInfo.bank_qr_url`) để driver show cho khách chuyển khoản.
 
-Endpoint: `POST /api/trips/receipts/:receiptId/record-collection`
+Endpoint: `POST /api/trips/receipt-requests/:orrId/record-collection`
+(`:orrId` là `order_receipt_requests.id` — KHÔNG phải `shipment_receipts.id`; hai bảng dùng sequence độc lập cùng `START WITH 100000` nên dải ID chồng nhau)
 Body: `{ payment_type }` + file `proof` (ảnh từ camera realtime, bắt buộc với bank_transfer và cash_collected)
 
 ## Ghi nhận actual_price và actual_distance_km
