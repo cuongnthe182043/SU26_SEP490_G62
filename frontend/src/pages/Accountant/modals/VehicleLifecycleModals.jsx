@@ -24,6 +24,15 @@ const SEVERITY_LEVELS = [
 
 const normalizeBillPics = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === "string" && v.trim()) : []);
 
+// Nhãn lý do bấm-là-xong. Bắt manager gõ tay mỗi lần từ chối chỉ tạo ra những
+// dòng "khong hop le" vô nghĩa; nhãn cố định vừa nhanh vừa thống kê được.
+const REJECT_REASON_PRESETS = [
+  "Hóa đơn khống",
+  "Số tiền không khớp hóa đơn",
+  "Ảnh mờ / không đọc được",
+  "Hóa đơn không phải của xe này",
+];
+
 const showFormError = (setError, message) => {
   setError(message);
   notify.error(message);
@@ -120,7 +129,9 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
   };
 
   const handleReject = async (mode) => {
-    if (!rejectReason.trim()) return showFormError(setError, "Cần ghi lý do từ chối.");
+    // Lý do vẫn bắt buộc (tài xế phải biết sửa gì, và đây là vết kiểm toán), nhưng
+    // manager không phải gõ tay: bấm một nhãn có sẵn là đủ.
+    if (!rejectReason.trim()) return showFormError(setError, "Chọn một lý do có sẵn hoặc tự ghi lý do.");
     setSaving(true);
     try {
       await onReject({ mode, reason: rejectReason.trim() });
@@ -141,10 +152,16 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <div>
-            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">Ảnh hóa đơn</div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
+              Ảnh hóa đơn {images.length > 0 ? "— bấm để xem ảnh gốc" : ""}
+            </div>
             {images.length > 0 ? (
-              <div className="flex gap-2 flex-wrap">
-                {images.map((url, i) => <Image key={i} src={url} width={100} height={100} className="object-cover rounded-lg" />)}
+              <div className="flex gap-3 flex-wrap">
+                {images.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer">
+                    <Image src={url} width={100} height={100} className="object-cover rounded-lg" />
+                  </a>
+                ))}
               </div>
             ) : (
               <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có ảnh hóa đơn.</p>
@@ -155,18 +172,36 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
               {Number.isFinite(cost) && cost > 0 ? `${cost.toLocaleString("vi-VN")} đ` : "Chưa khai"}
             </p>
+            <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-1">
+              Số tiền này đã được đối chiếu tự động với hóa đơn khi tài xế bấm hoàn tất.
+              Việc còn lại là mắt người: hóa đơn có thật và đúng của xe này không.
+            </p>
           </div>
           {rejecting ? (
-            <Textarea
-              label="Lý do từ chối"
-              placeholder="VD: ảnh hóa đơn không khớp số tiền khai, nghi ngờ chứng từ khống"
-              value={rejectReason}
-              onValueChange={setRejectReason}
-              minRows={3}
-              variant="bordered"
-              startContent={ic(RiErrorWarningLine)}
-              isRequired
-            />
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Lý do từ chối</div>
+              <div className="flex gap-2 flex-wrap">
+                {REJECT_REASON_PRESETS.map((preset) => (
+                  <Button
+                    key={preset}
+                    size="sm"
+                    variant={rejectReason === preset ? "solid" : "bordered"}
+                    color={rejectReason === preset ? "danger" : "default"}
+                    onPress={() => { setRejectReason(preset); setError(null); }}
+                  >
+                    {preset}
+                  </Button>
+                ))}
+              </div>
+              <Textarea
+                placeholder="Hoặc tự ghi lý do khác"
+                value={rejectReason}
+                onValueChange={(v) => { setRejectReason(v); setError(null); }}
+                minRows={2}
+                variant="bordered"
+                startContent={ic(RiErrorWarningLine)}
+              />
+            </div>
           ) : (
             <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
           )}

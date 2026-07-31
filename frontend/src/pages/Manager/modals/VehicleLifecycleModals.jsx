@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image, Chip } from "@heroui/react";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image } from "@heroui/react";
 import {
-  RiCheckLine, RiErrorWarningLine, RiLoader4Line,
   RiToolsLine, RiFileTextLine, RiUserLine,
-  RiErrorWarningFill, RiAlertLine, RiCloseLine,
+  RiErrorWarningFill, RiAlertLine, RiErrorWarningLine, RiCloseLine,
 } from "react-icons/ri";
-import { managerService } from "../services/manager.service";
 import { notify } from "../../../components/shared-ui/Toast";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
@@ -25,6 +23,15 @@ const SEVERITY_LEVELS = [
 ];
 
 const normalizeBillPics = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === "string" && v.trim()) : []);
+
+// Nhãn lý do bấm-là-xong. Bắt manager gõ tay mỗi lần từ chối chỉ tạo ra những
+// dòng "khong hop le" vô nghĩa; nhãn cố định vừa nhanh vừa thống kê được.
+const REJECT_REASON_PRESETS = [
+  "Hóa đơn khống",
+  "Số tiền không khớp hóa đơn",
+  "Ảnh mờ / không đọc được",
+  "Hóa đơn không phải của xe này",
+];
 
 const showFormError = (setError, message) => {
   setError(message);
@@ -100,10 +107,8 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
   const [note, setNote] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [ocrResults, setOcrResults] = useState({});
-  const [ocrLoading, setOcrLoading] = useState(false);
   // Đối trọng của nút xác nhận: hóa đơn khống / số tiền sai phải có đường từ chối,
-  // nếu không manager chỉ còn cách duyệt bừa hoặc để bản ghi treo vĩnh viễn.
+  // nếu không chỉ còn cách duyệt bừa hoặc để bản ghi treo vĩnh viễn.
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const pending = vehicle?.active_maintenance_status === "pending_verification";
@@ -111,23 +116,6 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
   useEffect(() => {
     if (open) { setNote(""); setError(null); setRejecting(false); setRejectReason(""); }
   }, [open]);
-
-  useEffect(() => {
-    if (!open || !vehicle?.id) return;
-    const images = normalizeBillPics(vehicle?.active_maintenance_bill_pics);
-    if (images.length === 0) return;
-
-    setOcrResults({});
-    setOcrLoading(true);
-    managerService.scanMaintenanceBill(vehicle.id)
-      .then((data) => {
-        const map = {};
-        (data.results || []).forEach((r) => { map[r.image_url] = r; });
-        setOcrResults(map);
-      })
-      .catch(() => {})
-      .finally(() => setOcrLoading(false));
-  }, [open, vehicle?.id]);
 
   const handleOk = async () => {
     setSaving(true);
@@ -141,7 +129,9 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
   };
 
   const handleReject = async (mode) => {
-    if (!rejectReason.trim()) return showFormError(setError, "Cần ghi lý do từ chối.");
+    // Lý do vẫn bắt buộc (tài xế phải biết sửa gì, và đây là vết kiểm toán), nhưng
+    // manager không phải gõ tay: bấm một nhãn có sẵn là đủ.
+    if (!rejectReason.trim()) return showFormError(setError, "Chọn một lý do có sẵn hoặc tự ghi lý do.");
     setSaving(true);
     try {
       await onReject({ mode, reason: rejectReason.trim() });
@@ -162,32 +152,19 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <div>
-            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">Ảnh hóa đơn</div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
+              Ảnh hóa đơn {images.length > 0 ? "— bấm để xem ảnh gốc" : ""}
+            </div>
             {images.length > 0 ? (
               <div className="flex gap-3 flex-wrap">
-                {images.map((url, i) => {
-                  const ocr = ocrResults[url];
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      <Image src={url} width={100} height={100} className="object-cover rounded-lg" />
-                      {ocrLoading && !ocr ? (
-                        <Chip size="sm" variant="flat" color="primary" startContent={<RiLoader4Line size={12} className="animate-spin" />}>Đang quét</Chip>
-                      ) : ocr?.valid === true ? (
-                        <Chip size="sm" variant="flat" color="success" startContent={<RiCheckLine size={12} />}>Hợp lệ</Chip>
-                      ) : ocr?.valid === false ? (
-                        <Chip size="sm" variant="flat" color="danger" startContent={<RiErrorWarningLine size={12} />}>Không khớp</Chip>
-                      ) : null}
-                    </div>
-                  );
-                })}
+                {images.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer">
+                    <Image src={url} width={100} height={100} className="object-cover rounded-lg" />
+                  </a>
+                ))}
               </div>
             ) : (
               <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có ảnh hóa đơn.</p>
-            )}
-            {Object.values(ocrResults).some((r) => r?.valid === false) && (
-              <p className="text-xs text-amber-600 dark:text-amber-300 mt-2">
-                {Object.values(ocrResults).find((r) => r?.valid === false)?.reject_reason || "Có ảnh hóa đơn không khớp với chi phí đã khai. Vui lòng kiểm tra kỹ trước khi xác nhận."}
-              </p>
             )}
           </div>
           <div>
@@ -195,18 +172,36 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
               {Number.isFinite(cost) && cost > 0 ? `${cost.toLocaleString("vi-VN")} đ` : "Chưa khai"}
             </p>
+            <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-1">
+              Số tiền này đã được đối chiếu tự động với hóa đơn khi tài xế bấm hoàn tất.
+              Việc còn lại là mắt người: hóa đơn có thật và đúng của xe này không.
+            </p>
           </div>
           {rejecting ? (
-            <Textarea
-              label="Lý do từ chối"
-              placeholder="VD: ảnh hóa đơn không khớp số tiền khai, nghi ngờ chứng từ khống"
-              value={rejectReason}
-              onValueChange={setRejectReason}
-              minRows={3}
-              variant="bordered"
-              startContent={ic(RiErrorWarningLine)}
-              isRequired
-            />
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider">Lý do từ chối</div>
+              <div className="flex gap-2 flex-wrap">
+                {REJECT_REASON_PRESETS.map((preset) => (
+                  <Button
+                    key={preset}
+                    size="sm"
+                    variant={rejectReason === preset ? "solid" : "bordered"}
+                    color={rejectReason === preset ? "danger" : "default"}
+                    onPress={() => { setRejectReason(preset); setError(null); }}
+                  >
+                    {preset}
+                  </Button>
+                ))}
+              </div>
+              <Textarea
+                placeholder="Hoặc tự ghi lý do khác"
+                value={rejectReason}
+                onValueChange={(v) => { setRejectReason(v); setError(null); }}
+                minRows={2}
+                variant="bordered"
+                startContent={ic(RiErrorWarningLine)}
+              />
+            </div>
           ) : (
             <Textarea label="Ghi chú xác nhận" placeholder="Không bắt buộc" value={note} onValueChange={setNote} minRows={3} variant="bordered" startContent={ic(RiFileTextLine)} />
           )}
