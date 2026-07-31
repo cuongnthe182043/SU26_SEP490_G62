@@ -1,4 +1,20 @@
 const leaveService = require('../services/leaveService');
+const attendanceService = require('../services/attendanceService');
+
+// GET /api/leave/attendance?month=7&year=2026
+// Tài xế xem chấm công từng ngày của CHÍNH MÌNH — để biết mình bị chấm vắng /
+// nửa công vào ngày nào mà còn khiếu nại đúng chỗ, thay vì chỉ thấy con số tổng.
+const getMyAttendance = async (req, res) => {
+    try {
+        const month = Number(req.query.month) || new Date().getMonth() + 1;
+        const year  = Number(req.query.year)  || new Date().getFullYear();
+        const data = await attendanceService.getMyMonth(req.user.userId, { month, year });
+        res.json(data);
+    } catch (err) {
+        const code = err.name === 'AttendanceError' ? (err.status ?? 400) : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
 
 // GET /api/leave/me?month=6&year=2026
 const getMyLeaves = async (req, res) => {
@@ -51,4 +67,4 @@ const deleteLeave = async (req, res) => {
     }
 };
 
-module.exports = { getMyLeaves, getSummary, createLeave, deleteLeave };
+module.exports = { getMyLeaves, getSummary, getMyAttendance, createLeave, deleteLeave };

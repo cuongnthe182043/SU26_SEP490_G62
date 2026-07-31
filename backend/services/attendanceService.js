@@ -1,4 +1,5 @@
 const attendanceRepository = require('../repositories/attendanceRepository');
+const notificationService  = require('./notificationService');
 
 class AttendanceError extends Error {
     constructor(message, status = 400) {
@@ -81,6 +82,47 @@ const getMonthlyGrid = async ({ month, year, driverId, vehicleGroupId }) => {
     return { drivers: Array.from(driversMap.values()), status_labels: STATUS_LABEL };
 };
 
+// Ngày dạng YYYY-MM-DD → DD/MM/YYYY cho người đọc
+const fmtDate = (d) => {
+    const [y, m, day] = String(d).slice(0, 10).split('-');
+    return `${day}/${m}/${y}`;
+};
+
+const MARK_NOTIF = {
+    present:          { title: 'Chấm công: Có mặt',           body: 'được ghi nhận đi làm bình thường.' },
+    absent_unexcused: { title: 'Chấm công: Vắng không phép',  body: 'bị ghi nhận vắng không phép — ngày này bị trừ công khi tính lương.' },
+    half_day:         { title: 'Chấm công: Nửa công',         body: 'được ghi nhận nửa công (nghỉ nửa buổi) — trừ 0,5 ngày công.' },
+    holiday_worked:   { title: 'Chấm công: Đi làm ngày lễ',   body: 'được ghi nhận đi làm ngày lễ — ngày này tính 200% lương.' },
+};
+
+// Gửi thông báo cho tài xế, không chặn luồng chấm công nếu gửi lỗi
+const notifyDriver = (driverId, workDate, status, notes) => {
+    const cfg = MARK_NOTIF[status];
+    if (!cfg) return;
+    const note = notes?.trim() ? ` Ghi chú: ${notes.trim()}` : '';
+    notificationService.createForUser(driverId, {
+        title: cfg.title,
+        message: `Ngày ${fmtDate(workDate)} ${cfg.body}${note}`,
+        type: 'ATTENDANCE_UPDATED',
+        entityType: 'attendance',
+        entityId: null,
+    }, { displayMode: 'alert' }).catch(() => {});
+};
+
+// Tài xế xem chấm công của CHÍNH MÌNH — driverId lấy từ token, không nhận từ query,
+// nên không thể xem của người khác. Trả đúng cấu trúc ngày như lưới của kế toán.
+const getMyMonth = async (driverId, { month, year }) => {
+    const { drivers, status_labels } = await getMonthlyGrid({ month, year, driverId });
+    const me = drivers[0];
+    return {
+        month: Number(month),
+        year: Number(year),
+        days: me?.days ?? [],
+        summary: me?.summary ?? {},
+        status_labels,
+    };
+};
+
 const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) => {
     if (!driverId) throw new AttendanceError('driver_id là bắt buộc');
     if (!workDate) throw new AttendanceError('work_date là bắt buộc');
@@ -113,19 +155,35 @@ const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) =
         }
     }
 
-    return attendanceRepository.upsertOverride({
+    const saved = await attendanceRepository.upsertOverride({
         driverId: Number(driverId),
         workDate,
         status,
         notes,
         markedBy,
     });
+
+    // Chấm công ăn thẳng vào lương (vắng/nửa công trừ tiền, đi làm ngày lễ cộng 200%)
+    // nên tài xế phải được báo ngay, đừng để tới lúc nhận lương mới biết rồi khiếu nại.
+    notifyDriver(Number(driverId), workDate, status, notes);
+
+    return saved;
 };
 
 const clearAttendance = async (driverId, workDate) => {
     const deleted = await attendanceRepository.deleteOverride(Number(driverId), workDate);
     if (!deleted) throw new AttendanceError('Không tìm thấy đánh dấu chấm công để xoá', 404);
+
+    // Gỡ đánh dấu cũng ảnh hưởng lương (bỏ trừ công / bỏ 200%) nên phải báo lại
+    notificationService.createForUser(Number(driverId), {
+        title: 'Chấm công: đã gỡ đánh dấu',
+        message: `Đánh dấu chấm công ngày ${fmtDate(workDate)} đã được gỡ — ngày này quay lại trạng thái mặc định.`,
+        type: 'ATTENDANCE_UPDATED',
+        entityType: 'attendance',
+        entityId: null,
+    }, { displayMode: 'alert' }).catch(() => {});
+
     return deleted;
 };
 
-module.exports = { AttendanceError, STATUS_LABEL, getMonthlyGrid, markAttendance, clearAttendance };
+module.exports = { AttendanceError, STATUS_LABEL, getMonthlyGrid, getMyMonth, markAttendance, clearAttendance };
