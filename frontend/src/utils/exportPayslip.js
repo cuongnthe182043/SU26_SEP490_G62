@@ -39,6 +39,13 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
       : null,
   ].filter(Boolean);
 
+  // Đi làm ngày lễ = 200% lương (Điều V.1): lương cứng đã trả 100% cho ngày lễ,
+  // holiday_bonus là 100% cộng thêm. Suy ngược số ngày từ số tiền vì backend tính
+  // đúng holidayBonus = round(lương cứng / 28) × số ngày.
+  const holidayBonus = num(row.holiday_bonus);
+  const dailyWage    = Math.round(num(row.base_salary) / 28);
+  const holidayDays  = dailyWage > 0 ? Math.round(holidayBonus / dailyWage) : 0;
+
   // Thu nhập — bám sát đúng các dòng hiển thị trên màn hình bảng lương
   const incomeRows = [
     ["Lương cứng", num(row.base_salary)],
@@ -46,6 +53,7 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
     ["Phụ cấp điện thoại", 200000],
     ["Thưởng KPI", num(row.kpi_bonus)],
     ["Thưởng xuất sắc", num(row.top_driver_bonus)],
+    ...(holidayBonus > 0 ? [[`Đi làm ngày lễ ×2 (${holidayDays} ngày)`, holidayBonus]] : []),
     ["Thưởng & Phúc lợi", num(row.overtime_bonus)],
   ];
   if (num(row.other_bonus) > 0) incomeRows.push(["Thưởng khác", num(row.other_bonus)]);
