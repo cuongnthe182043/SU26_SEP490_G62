@@ -408,8 +408,28 @@ const getMyIncidentCounts = async (driverId) => {
     };
 };
 
+// Đóng sự cố 'customer_refusal' còn mở của một chuyến — dùng khi coordinator xử lý
+// chuyến giao thất bại (cho giao lại / cho hoàn hàng). Sự cố sinh tự động lúc tài báo
+// thất bại nên phải khép lại cùng lúc, không để treo 'open' gây nhiễu màn Sự cố.
+const resolveOpenIncidentForShipment = async (shipmentId, { resolvedBy, resolution }) => {
+    const result = await pool.query(
+        `UPDATE incidents
+         SET status = 'resolved',
+             resolved_by = $2,
+             resolution_note = $3,
+             resolved_at = NOW()
+         WHERE shipment_id = $1
+           AND incident_type = 'customer_refusal'
+           AND status = 'open'
+         RETURNING *`,
+        [shipmentId, resolvedBy, resolution],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     createIncident,
+    resolveOpenIncidentForShipment,
     getMyIncidentCounts,
     addIncidentEvidence,
     getIncidentById,
