@@ -260,6 +260,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
                 v.plate_number,
                 v.status,
                 v.assigned_driver_id,
+                v.vehicle_group_id,
                 d.vehicle_id AS driver_vehicle_id
              FROM vehicles v
              JOIN drivers d ON d.profile_id = $2
@@ -331,7 +332,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const locked = await client.query(
-            `SELECT os.id, os.order_id, os.status, sc.owner_driver_id
+            `SELECT os.id, os.order_id, os.status, os.vehicle_group_id, sc.owner_driver_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE os.id = $1
@@ -342,11 +343,23 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             await client.query('ROLLBACK');
             return null;
         }
-        const { order_id, status, owner_driver_id } = locked.rows[0];
+        const { order_id, status, owner_driver_id, vehicle_group_id } = locked.rows[0];
 
         if (status !== 'available' || owner_driver_id !== null) {
             await client.query('ROLLBACK');
             return null;
+        }
+
+        // BR-003: xe đang lái phải đúng nhóm xe mà chuyến yêu cầu.
+        // Trip pool đã lọc theo nhóm nên giao diện không bao giờ hiện chuyến sai nhóm,
+        // nhưng đó chỉ là lọc HIỂN THỊ — gọi thẳng API với id chuyến vẫn nhận được.
+        // Bỏ qua nhóm là bỏ qua luôn giới hạn tải trọng (max_load_weight_kg của nhóm),
+        // nên phải chặn ở tầng ghi. Cả dòng xe lẫn dòng chuyến đều đã nằm trong
+        // transaction này và đã được advisory lock giữ, nên so ở đây là an toàn với
+        // trường hợp điều phối đổi xe đúng lúc tài đang bấm nhận.
+        if (Number(vehicle_group_id) !== Number(vehicle.vehicle_group_id)) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_GROUP_MISMATCH');
         }
 
         // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
