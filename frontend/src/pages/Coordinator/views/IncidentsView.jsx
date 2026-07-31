@@ -46,6 +46,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
 
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resolvingFailed, setResolvingFailed] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [detailIncident, setDetailIncident] = useState(null);
   const [form, setForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
@@ -148,6 +149,24 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       notify.error(error.message || "Không thể cập nhật sự cố.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Giao thất bại: quyết định giao lại / hoàn hàng nằm ngay trong sự cố. Backend tự
+  // đóng sự cố và (nếu hoàn hàng) chuyển chuyến sang 'returning' để tài chở hàng về.
+  const handleResolveFailed = async (action) => {
+    if (!selectedIncident?.shipment_id) return;
+    setResolvingFailed(true);
+    try {
+      const res = await coordinatorService.resolveFailedShipment(selectedIncident.shipment_id, { action });
+      closeModal();
+      loadIncidents();
+      onIncidentResolved?.();
+      notify.success(res?.message || "Đã xử lý chuyến giao thất bại.");
+    } catch (error) {
+      notify.error(error.message || "Không thể xử lý chuyến giao thất bại.");
+    } finally {
+      setResolvingFailed(false);
     }
   };
 
@@ -330,6 +349,8 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
         onSubmit={handleSubmit}
         compensation={compensation}
         setCompensation={setCompensation}
+        onResolveFailed={handleResolveFailed}
+        resolvingFailed={resolvingFailed}
       />
 
       <IncidentDetailModal

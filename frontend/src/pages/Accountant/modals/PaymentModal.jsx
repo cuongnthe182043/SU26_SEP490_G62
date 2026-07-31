@@ -15,21 +15,21 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 import { MoneyText } from "../components/shared/MoneyText";
 
 const PAYMENT_METHODS = [
-  { key: "cash",          label: "Tiá»n máº·t" },
-  { key: "bank_transfer", label: "Chuyá»ƒn khoáº£n" },
+  { key: "cash",          label: "Tiền mặt" },
+  { key: "bank_transfer", label: "Chuyển khoản" },
 ];
 
 const METHOD_LABEL = {
-  cash:          "Tiá»n máº·t",
-  bank_transfer: "Chuyá»ƒn khoáº£n",
-  offset:        "Cáº¥n trá»«",
+  cash:          "Tiền mặt",
+  bank_transfer: "Chuyển khoản",
+  offset:        "Cấn trừ",
 };
 
 const PAYMENT_STATUS_CHIP = {
-  confirmed: { label: "ÄÃ£ xÃ¡c nháº­n",  color: "success" },
-  pending:   { label: "Chá» xÃ¡c nháº­n", color: "warning" },
-  rejected:  { label: "Tá»« chá»‘i",      color: "danger"  },
-  voided:    { label: "ÄÃ£ há»§y",       color: "default" },
+  confirmed: { label: "Đã xác nhận",  color: "success" },
+  pending:   { label: "Chờ xác nhận", color: "warning" },
+  rejected:  { label: "Từ chối",      color: "danger"  },
+  voided:    { label: "Đã hủy",       color: "default" },
 };
 
 function HistoryItem({ payment, onVoid }) {
@@ -39,7 +39,7 @@ function HistoryItem({ payment, onVoid }) {
         day: "2-digit", month: "2-digit", year: "numeric",
         hour: "2-digit", minute: "2-digit",
       })
-    : "â€”";
+    : "—";
   const statusChip = PAYMENT_STATUS_CHIP[payment.payment_status] ?? PAYMENT_STATUS_CHIP.confirmed;
 
   return (
@@ -47,8 +47,8 @@ function HistoryItem({ payment, onVoid }) {
       <div className="flex flex-col gap-0.5">
         <MoneyText amount={payment.amount} className="text-xs font-bold text-emerald-600 dark:text-emerald-300" />
         <span className="text-[11px] text-gray-400 dark:text-gray-400">
-          {METHOD_LABEL[payment.payment_method] ?? payment.payment_method ?? "â€”"} Â· {date}
-          {payment.creator_name ? ` Â· ghi bá»Ÿi ${payment.creator_name}` : ""}
+          {METHOD_LABEL[payment.payment_method] ?? payment.payment_method ?? "—"} · {date}
+          {payment.creator_name ? ` · ghi bởi ${payment.creator_name}` : ""}
         </span>
         {payment.notes && (
           <span className="text-[11px] text-gray-400 dark:text-gray-400 italic">{payment.notes}</span>
@@ -62,7 +62,7 @@ function HistoryItem({ payment, onVoid }) {
         {payment.payment_status === "confirmed" && onVoid && (
           <Button size="sm" variant="light" color="danger" className="h-5 min-w-0 px-2 text-[10px]"
             onPress={() => onVoid(payment)}>
-            Há»§y
+            Hủy
           </Button>
         )}
       </div>
@@ -84,14 +84,14 @@ function AllocationRow({ alloc, isCurrentOrder }) {
         <span className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
           ÄÆ¡n #{alloc.orderId}
           {isCurrentOrder && (
-            <span className="ml-1 text-[10px] text-blue-500 font-medium">(Ä‘Æ¡n nÃ y)</span>
+            <span className="ml-1 text-[10px] text-blue-500 font-medium">(đơn này)</span>
           )}
         </span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <MoneyText amount={alloc.allocated} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300" />
         <Chip size="sm" color={statusColor} variant="flat" className="text-[10px] h-4 px-1">
-          {alloc.newStatus === "paid" ? "Xong" : alloc.newStatus === "partial" ? "Má»™t pháº§n" : "CÃ²n ná»£"}
+          {alloc.newStatus === "paid" ? "Xong" : alloc.newStatus === "partial" ? "Một phần" : "Còn nợ"}
         </Chip>
       </div>
     </div>
@@ -110,7 +110,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const [debtLoading, setDebtL]    = useState(false);
   const [result, setResult]        = useState(null);
 
-  // Há»§y xÃ¡c nháº­n khoáº£n Ä‘Ã£ confirmed â€” ná»£ há»“i phá»¥c + há»‡ thá»‘ng tá»± ghi bÃºt toÃ¡n Ä‘áº£o
+  // Hủy xác nhận khoản đã confirmed — nợ hồi phục + hệ thống tự ghi bút toán đảo
   const handleVoidPayment = async (payment) => {
     const confirmed = await confirmDialog({
       title: "Hủy khoản thanh toán",
@@ -124,10 +124,10 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       await accountantService.voidRepayment(payment.id, reason.trim());
       await loadData();
       onPaymentRecorded?.();
-      notify.success("ÄÃ£ há»§y khoáº£n thanh toÃ¡n.");
+      notify.success("Đã hủy khoản thanh toán.");
     } catch (err) {
-      setError(err.message ?? "Há»§y xÃ¡c nháº­n tháº¥t báº¡i");
-      notify.error(err.message ?? "Há»§y xÃ¡c nháº­n tháº¥t báº¡i");
+      setError(err.message ?? "Hủy xác nhận thất bại");
+      notify.error(err.message ?? "Hủy xác nhận thất bại");
     }
   };
 
@@ -165,13 +165,13 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const handleSubmit = async () => {
     const num = Number(String(amount).replace(/[^0-9.]/g, ""));
     if (!num || num <= 0) {
-      const message = "Sá»‘ tiá»n pháº£i lá»›n hÆ¡n 0.";
+      const message = "Số tiền phải lớn hơn 0.";
       setError(message);
       notify.error(message);
       return;
     }
     if (totalOutstanding > 0 && num > totalOutstanding + 0.01) {
-      const message = `Sá»‘ tiá»n vÆ°á»£t quÃ¡ tá»•ng cÃ´ng ná»£ khÃ¡ch hÃ ng (${Math.round(totalOutstanding).toLocaleString("vi-VN")}Ä‘).`;
+      const message = `Số tiền vượt quá tổng công nợ khách hàng (${Math.round(totalOutstanding).toLocaleString("vi-VN")}đ).`;
       setError(message);
       notify.error(message);
       return;
@@ -187,14 +187,14 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       });
       setResult(data);
       onPaymentRecorded();
-      notify.success("ÄÃ£ ghi nháº­n thanh toÃ¡n.");
-      // Reload history vá»›i debt má»›i
+      notify.success("Đã ghi nhận thanh toán.");
+      // Reload history với debt mới
       loadData();
       setAmount("");
       setNotes("");
     } catch (err) {
-      setError(err.message ?? "Lá»—i khi ghi nháº­n thanh toÃ¡n.");
-      notify.error(err.message ?? "Lá»—i khi ghi nháº­n thanh toÃ¡n.");
+      setError(err.message ?? "Lỗi khi ghi nhận thanh toán.");
+      notify.error(err.message ?? "Lỗi khi ghi nhận thanh toán.");
     } finally {
       setSubmit(false);
     }
@@ -211,10 +211,10 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               <RiBankCard2Line size={16} className="text-blue-600 dark:text-blue-300" />
             </div>
             <div>
-              <p className="text-base font-bold text-gray-900 dark:text-gray-100">Ghi nháº­n thanh toÃ¡n</p>
+              <p className="text-base font-bold text-gray-900 dark:text-gray-100">Ghi nhận thanh toán</p>
               {order && (
                 <p className="text-xs font-normal text-gray-400 dark:text-gray-400">
-                  ÄÆ¡n #{order.id} Â· {order.customer_name}
+                  Đơn #{order.id} · {order.customer_name}
                 </p>
               )}
             </div>
@@ -222,12 +222,12 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
         </ModalHeader>
 
         <ModalBody className="gap-4">
-          {/* TÃ³m táº¯t cÃ´ng ná»£ */}
+          {/* Tóm tắt công nợ */}
           {order && (
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-0.5 bg-gray-50 dark:bg-white/5 rounded-xl p-3">
                 <span className="text-[10px] text-gray-400 dark:text-gray-400 font-semibold uppercase tracking-wide">
-                  CÃ²n láº¡i Ä‘Æ¡n nÃ y
+                  Còn lại đơn này
                 </span>
                 <MoneyText
                   amount={orderDebtRemaining}
@@ -236,7 +236,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               </div>
               <div className="flex flex-col gap-0.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl p-3">
                 <span className="text-[10px] text-amber-600 dark:text-amber-300 font-semibold uppercase tracking-wide">
-                  Tá»•ng cÃ´ng ná»£ khÃ¡ch
+                  Tổng công nợ khách
                 </span>
                 {debtLoading ? (
                   <Spinner size="sm" className="mt-1" />
@@ -250,14 +250,14 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
             </div>
           )}
 
-          {/* Náº¿u vá»«a ghi nháº­n thÃ nh cÃ´ng â€” hiá»ƒn thá»‹ breakdown */}
+          {/* Nếu vừa ghi nhận thành công — hiển thị breakdown */}
           {result && (
             <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-3 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{result.message}</p>
               {result.spreadAcrossOrders && (
                 <div className="flex flex-col gap-0.5 mt-1">
                   <span className="text-[10px] text-emerald-600 dark:text-emerald-300 font-medium uppercase tracking-wide mb-0.5">
-                    PhÃ¢n bá»• vÃ o cÃ¡c Ä‘Æ¡n
+                    Phân bổ vào các đơn
                   </span>
                   {result.allocations.map((alloc) => (
                     <AllocationRow
@@ -270,7 +270,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               )}
               {result.totalRemainingAfter > 0.01 && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-300 mt-1">
-                  CÃ²n tá»•ng ná»£:{" "}
+                  Còn tổng nợ:{" "}
                   <MoneyText
                     amount={result.totalRemainingAfter}
                     className="font-bold inline"
@@ -282,7 +282,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
 
           <Divider />
 
-          {/* Form nháº­p */}
+          {/* Form nhập */}
           <div className="flex flex-col gap-3">
             {error && (
               <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg">
@@ -291,7 +291,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               </div>
             )}
             <Input
-              label="Sá»‘ tiá»n thu (VND)"
+              label="Số tiền thu (VND)"
               placeholder="0"
               value={amount}
               onValueChange={(v) => { setAmount(v); setError(null); setResult(null); }}
@@ -300,9 +300,9 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               startContent={ic(RiMoneyDollarCircleLine)}
               description={
                 totalOutstanding > 0
-                  ? `Tá»•ng ná»£ khÃ¡ch: ${Math.round(totalOutstanding).toLocaleString("vi-VN")}Ä‘${
+                  ? `Tổng nợ khách: ${Math.round(totalOutstanding).toLocaleString("vi-VN")}đ${
                       orderDebtRemaining > 0 && orderDebtRemaining < totalOutstanding
-                        ? ` â€” ÄÆ¡n nÃ y: ${Math.round(orderDebtRemaining).toLocaleString("vi-VN")}Ä‘ (sá»‘ thá»«a tá»± Ä‘á»™ng trá»« Ä‘Æ¡n cÅ© hÆ¡n)`
+                        ? ` — Đơn này: ${Math.round(orderDebtRemaining).toLocaleString("vi-VN")}đ (số thừa tự động trừ đơn cũ hơn)`
                         : ""
                     }`
                   : undefined
@@ -311,7 +311,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               classNames={{ inputWrapper: "bg-white dark:bg-[#161922]" }}
             />
             <Select
-              label="HÃ¬nh thá»©c thanh toÃ¡n"
+              label="Hình thức thanh toán"
               selectedKeys={method}
               onSelectionChange={setMethod}
               startContent={ic(RiBankCard2Line)}
@@ -321,8 +321,8 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               ))}
             </Select>
             <Input
-              label="Ghi chÃº"
-              placeholder="MÃ£ GD, tÃªn ngÆ°á»i ná»™p... (tuá»³ chá»n)"
+              label="Ghi chú"
+              placeholder="Mã GD, tên người nộp... (tuỳ chọn)"
               value={notes}
               onValueChange={setNotes}
               maxLength={500}
@@ -331,19 +331,19 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
             />
           </div>
 
-          {/* Lá»‹ch sá»­ */}
+          {/* Lịch sử */}
           <Divider />
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1.5 mb-1">
               <RiHistoryLine size={13} className="text-gray-400 dark:text-gray-400" />
               <span className="text-xs font-semibold text-gray-400 dark:text-gray-400 uppercase tracking-wide">
-                Lá»‹ch sá»­ thanh toÃ¡n Ä‘Æ¡n nÃ y
+                Lịch sử thanh toán đơn này
               </span>
             </div>
             {histLoading ? (
               <div className="flex justify-center py-4"><Spinner size="sm" /></div>
             ) : history.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-400 py-2 italic">ChÆ°a cÃ³ thanh toÃ¡n nÃ o.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 py-2 italic">Chưa có thanh toán nào.</p>
             ) : (
               history.map((p, i) => <HistoryItem key={i} payment={p} onVoid={handleVoidPayment} />)
             )}
@@ -351,7 +351,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="light" onPress={onClose} isDisabled={submitting}>ÄÃ³ng</Button>
+          <Button variant="light" onPress={onClose} isDisabled={submitting}>Đóng</Button>
           <Button
             color="primary"
             onPress={handleSubmit}
@@ -359,7 +359,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
             isDisabled={!amount || Number(amount) <= 0}
             startContent={!submitting && <RiBankCard2Line size={15} />}
           >
-            Ghi nháº­n
+            Ghi nhận
           </Button>
         </ModalFooter>
       </ModalContent>

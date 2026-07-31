@@ -312,8 +312,12 @@ export type RequestOrderReceiptResponse = {
 export type PaymentType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
 
 export type DriverReceiptSummary = {
-    receipt_id: number;
+    // orr_id: khoá nghiệp vụ của phiếu thu (order_receipt_requests.id) — dùng cho mọi
+    // lời gọi API. shipment_receipt_id chỉ để HIỂN THỊ số phiếu, null khi điều phối
+    // chưa duyệt. Đừng gộp hai cái này thành một trường: hai bảng dùng sequence độc lập
+    // cùng START WITH 100000 nên số trùng nhau được, gộp lại là mất thông tin loại khoá.
     orr_id: number;
+    shipment_receipt_id: number | null;
     request_status: ReceiptRequestStatus;
     payment_type: PaymentType | null;
     amount: string;
@@ -360,13 +364,10 @@ export type OrderShipmentRow = {
 };
 
 export type DriverReceiptDetail = DriverReceiptSummary & {
-    actual_receipt_id: number | null;
-    orr_id: number;
     request_status: string;
     rejection_reason: string | null;
     driver_notes: string | null;
     shipment_id: number;
-    shipment_receipt_id: number | null;
     order_payment_type: string | null;
     customer_id: number | null;
     cargo_weight_kg: number | null;

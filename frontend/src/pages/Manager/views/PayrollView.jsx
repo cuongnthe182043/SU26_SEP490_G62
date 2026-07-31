@@ -16,6 +16,13 @@ import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
 
+// Đi làm ngày lễ = 200% lương (Điều V.1). Số ngày suy ngược từ số tiền vì backend
+// tính đúng holiday_bonus = round(lương cứng / 28) × số ngày lễ đi làm.
+const holidayDays = (r) => {
+  const daily = Math.round(Number(r.base_salary || 0) / 28);
+  return daily > 0 ? Math.round(Number(r.holiday_bonus || 0) / daily) : 0;
+};
+
 // Chi tiết từng khoản của phiếu lương — bám sát đúng bảng chi tiết bên Kế toán
 const buildDetail = (r) => [
   { label: "Lương cứng",         value: fmt(r.base_salary) },
@@ -24,6 +31,9 @@ const buildDetail = (r) => [
   { label: "Phụ cấp ĐT",         value: "200.000đ" },
   { label: "Thưởng KPI",         value: fmt(r.kpi_bonus) },
   { label: "Thưởng xuất sắc",    value: fmt(r.top_driver_bonus) },
+  ...(Number(r.holiday_bonus) > 0
+    ? [{ label: `Đi làm ngày lễ ×2 (${holidayDays(r)} ngày)`, value: fmt(r.holiday_bonus) }]
+    : []),
   { label: "Thưởng & Phúc lợi",  value: fmt(r.overtime_bonus) },
   ...(Number(r.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: fmt(r.manual_bonus) }] : []),
   { label: "Lương gộp",          value: fmt(r.gross_salary), bold: true },
@@ -162,8 +172,17 @@ function ManagerRevertModal({ row, onClose, onDone }) {
 // phân — backend đã tính sẵn net_salary đúng, dùng lại trực tiếp thay vì cộng trừ lại
 // ở FE (trước đây cộng chuỗi bằng "+" bị nối chuỗi thay vì cộng số, ra NaN).
 const net = (r) => Number(r.net_salary || 0);
-const sumBonus = (r) => Number(r.revenue_bonus || 0) + Number(r.kpi_bonus || 0) + Number(r.top_driver_bonus || 0) + Number(r.other_bonus || 0);
-const sumDeduction = (r) => Number(r.insurance_employee || 0) + Number(r.driver_debt_deduction || 0) + Number(r.advance_deduction || 0) + Number(r.other_deduction || 0);
+// Cột THƯỞNG và KHẤU TRỪ phải cộng ĐỦ mọi khoản mà DB dùng để tính gross_salary /
+// net_salary, nếu không thì lương gộp trên màn chi tiết không khớp với cột tổng ở
+// bảng ngoài. Trước đây thiếu: thưởng ngày lễ (200%), thưởng & phúc lợi, điều chỉnh
+// tay; phía khấu trừ thiếu trừ công nghỉ không lương và điều chỉnh tay.
+const sumBonus = (r) => Number(r.revenue_bonus || 0) + Number(r.kpi_bonus || 0)
+    + Number(r.top_driver_bonus || 0) + Number(r.holiday_bonus || 0)
+    + Number(r.overtime_bonus || 0) + Number(r.other_bonus || 0)
+    + Number(r.manual_bonus || 0);
+const sumDeduction = (r) => Number(r.insurance_employee || 0) + Number(r.driver_debt_deduction || 0)
+    + Number(r.advance_deduction || 0) + Number(r.absence_penalty || 0)
+    + Number(r.other_deduction || 0) + Number(r.manual_deduction || 0);
 
 const PAYROLL_STATUS_LABELS = {
   pending: "Chờ xác nhận",

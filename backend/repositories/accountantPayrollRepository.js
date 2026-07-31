@@ -72,6 +72,9 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     // 'absent_unexcused' — nhưng nếu Manager/Coordinator đã ghi đè 'present' cho đúng
     // ngày đó (vd tài xế xin nghỉ nhưng thực tế vẫn đi làm), ghi đè luôn được ưu tiên,
     // không tính ngày đó là nghỉ nữa.
+    // Ngày lễ luôn được loại khỏi mọi phép trừ công: Điều V.1 quy định nghỉ lễ vẫn
+    // hưởng nguyên lương, nên dù tài có đơn nghỉ hay bị chấm vắng đúng ngày lễ thì
+    // cũng không được trừ.
     const { rows: [dayRow] } = await client.query(`
         SELECT COUNT(*)::int AS unpaid_days
         FROM leave_requests lr
@@ -82,23 +85,26 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           AND EXTRACT(MONTH FROM lr.leave_date) = $2
           AND EXTRACT(YEAR  FROM lr.leave_date) = $3
           AND COALESCE(ao.status, 'leave_unpaid') != 'present'
+          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date)
     `, [driver.driver_id, month, year]);
     const { rows: [attRow] } = await client.query(`
         SELECT COUNT(*)::int AS unexcused_days
-        FROM attendance_overrides
-        WHERE driver_id = $1
-          AND status = 'absent_unexcused'
-          AND EXTRACT(MONTH FROM work_date) = $2
-          AND EXTRACT(YEAR  FROM work_date) = $3
+        FROM attendance_overrides ao
+        WHERE ao.driver_id = $1
+          AND ao.status = 'absent_unexcused'
+          AND EXTRACT(MONTH FROM ao.work_date) = $2
+          AND EXTRACT(YEAR  FROM ao.work_date) = $3
+          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
     `, [driver.driver_id, month, year]);
     // Nửa công (sáng đi làm, chiều nghỉ) — chỉ trừ 0.5 công thay vì trừ nguyên ngày
     const { rows: [halfRow] } = await client.query(`
         SELECT COUNT(*)::int AS half_days
-        FROM attendance_overrides
-        WHERE driver_id = $1
-          AND status = 'half_day'
-          AND EXTRACT(MONTH FROM work_date) = $2
-          AND EXTRACT(YEAR  FROM work_date) = $3
+        FROM attendance_overrides ao
+        WHERE ao.driver_id = $1
+          AND ao.status = 'half_day'
+          AND EXTRACT(MONTH FROM ao.work_date) = $2
+          AND EXTRACT(YEAR  FROM ao.work_date) = $3
+          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
     `, [driver.driver_id, month, year]);
     const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0)
                           + Number(halfRow.half_days ?? 0) * 0.5;
@@ -177,19 +183,29 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
     // Đi làm ngày lễ = 200% lương (Điều V.1): lương cứng đã gồm 100% (lễ không trừ công),
-    // cộng thêm 100% lương ngày cho mỗi ngày lễ có chuyến hoàn thành
+    // cộng thêm 100% lương ngày cho mỗi ngày lễ tài xế có đi làm.
+    // Bằng chứng đi làm: hoàn thành chuyến trong ngày (tự nhận), HOẶC kế toán chấm tay
+    // 'holiday_worked' (tài chạy xuyên đêm nên chuyến rơi sang hôm sau, trực kho...).
     const { rows: [holidayRow] } = await client.query(`
         SELECT COUNT(DISTINCT h.holiday_date)::int AS days
         FROM company_holidays h
         WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
           AND EXTRACT(YEAR  FROM h.holiday_date) = $3
-          AND EXISTS (
-              SELECT 1
-              FROM order_shipments os
-              JOIN v_shipment_current sc ON sc.shipment_id = os.id
-              WHERE sc.owner_driver_id = $1
-                AND os.status = 'completed'
-                AND os.completed_at::date = h.holiday_date
+          AND (
+              EXISTS (
+                  SELECT 1
+                  FROM order_shipments os
+                  JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                  WHERE sc.owner_driver_id = $1
+                    AND os.status = 'completed'
+                    AND os.completed_at::date = h.holiday_date
+              )
+              OR EXISTS (
+                  SELECT 1 FROM attendance_overrides ao
+                  WHERE ao.driver_id = $1
+                    AND ao.work_date = h.holiday_date
+                    AND ao.status = 'holiday_worked'
+              )
           )
     `, [driver.driver_id, month, year]);
     const holidayDaysWorked = Number(holidayRow?.days ?? 0);
@@ -281,6 +297,7 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             p.kpi_bonus::text,
             p.top_driver_bonus::text,
             p.overtime_bonus::text,
+            p.holiday_bonus::text,
             p.other_bonus::text,
             p.insurance_employee::text,
             p.driver_debt_deduction::text,

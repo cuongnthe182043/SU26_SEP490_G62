@@ -1,6 +1,7 @@
 const coordinatorService = require('../services/coordinatorService');
 const expenseRepository  = require('../repositories/expenseRepository');
 const { validateExpenseReceipt } = require('../services/expenseAiValidator');
+const { validDate, sendError } = require('../utils/accountantValidate');
 
 const listVehicleGroups = async (_req, res) => {
   try {
@@ -45,15 +46,15 @@ const getReceiptRequests = async (req, res) => {
             status: status || null,
             kind: kind || 'all',
             search: search || '',
-            dateFrom: dateFrom || '',
-            dateTo: dateTo || '',
+            dateFrom: validDate(dateFrom, 'Ngày bắt đầu') || '',
+            dateTo:   validDate(dateTo, 'Ngày kết thúc') || '',
             sort: sort || null,
             page: page,
             limit: limit,
         });
         res.json(result);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        return sendError(res, err);
     }
 };
 
@@ -219,7 +220,8 @@ const assignOrderShipments = async (req, res) => {
 };
 
 // POST /api/coordinator/trips/:id/resolve-failed
-// Body: { action: 'redeliver'|'return', charge_type?, return_fee? }
+// Body: { action: 'redeliver' | 'return' }
+// 'return' → chuyến tính GẤP ĐÔI cước (tài chạy cả hai chiều)
 const resolveFailedShipment = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
@@ -227,13 +229,11 @@ const resolveFailedShipment = async (req, res) => {
 
         const shipment = await coordinatorService.resolveFailedShipment(shipmentId, {
             action: req.body?.action,
-            chargeType: req.body?.charge_type,
-            returnFee: req.body?.return_fee,
         }, req.user.userId);
 
         const message = req.body?.action === 'redeliver'
             ? 'Đã cho giao lại chuyến'
-            : 'Đã chuyển chuyến sang hoàn hàng';
+            : 'Đã chuyển chuyến sang hoàn hàng — chuyến này tính gấp đôi cước';
         res.json({ message, shipment });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404

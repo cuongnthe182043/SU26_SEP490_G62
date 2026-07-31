@@ -260,6 +260,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
                 v.plate_number,
                 v.status,
                 v.assigned_driver_id,
+                v.vehicle_group_id,
                 d.vehicle_id AS driver_vehicle_id
              FROM vehicles v
              JOIN drivers d ON d.profile_id = $2
@@ -331,7 +332,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const locked = await client.query(
-            `SELECT os.id, os.order_id, os.status, sc.owner_driver_id
+            `SELECT os.id, os.order_id, os.status, os.vehicle_group_id, sc.owner_driver_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE os.id = $1
@@ -342,11 +343,23 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             await client.query('ROLLBACK');
             return null;
         }
-        const { order_id, status, owner_driver_id } = locked.rows[0];
+        const { order_id, status, owner_driver_id, vehicle_group_id } = locked.rows[0];
 
         if (status !== 'available' || owner_driver_id !== null) {
             await client.query('ROLLBACK');
             return null;
+        }
+
+        // BR-003: xe đang lái phải đúng nhóm xe mà chuyến yêu cầu.
+        // Trip pool đã lọc theo nhóm nên giao diện không bao giờ hiện chuyến sai nhóm,
+        // nhưng đó chỉ là lọc HIỂN THỊ — gọi thẳng API với id chuyến vẫn nhận được.
+        // Bỏ qua nhóm là bỏ qua luôn giới hạn tải trọng (max_load_weight_kg của nhóm),
+        // nên phải chặn ở tầng ghi. Cả dòng xe lẫn dòng chuyến đều đã nằm trong
+        // transaction này và đã được advisory lock giữ, nên so ở đây là an toàn với
+        // trường hợp điều phối đổi xe đúng lúc tài đang bấm nhận.
+        if (Number(vehicle_group_id) !== Number(vehicle.vehicle_group_id)) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_GROUP_MISMATCH');
         }
 
         // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
@@ -398,16 +411,12 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
 //
 // action='redeliver' → về TRANSIT, tài đi giao lại (xoá dấu thất bại để chuyến chạy
 //                      lại bình thường; cancel_reason giữ nguyên làm vết audit).
-// action='return'    → sang RETURNING kèm cách tính tiền khách đã chốt:
-//                      no_charge  → actual_price = 0 (DN chịu)
-//                      return_fee → actual_price = phí hoàn hàng coordinator nhập
-//                      full_fare  → actual_price = NULL, để computeReceiptAmount tính
-//                                   như chuyến bình thường (khách trả đủ cước)
+// action='return'    → sang RETURNING, tài chở hàng về điểm lấy.
 //
-// Ghi actual_price ngay tại đây khiến KPI tự đúng: kpiRepository dùng
-// COALESCE(actual_price, estimated_price, 0) nên 0 hoặc phí hoàn hàng sẽ được dùng
-// thay cho giá cước đầy đủ, mà không phải sửa câu KPI.
-const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee, coordinatorId }) => {
+// Không ghi actual_price ở đây: lúc này tài xế CHƯA khai km thực tế. Giá chỉ chốt
+// khi coordinator duyệt phiếu thu — computeReceiptAmount thấy returning_at khác NULL
+// thì nhân đôi (km × đơn giá × 2) vì tài chạy cả chiều đi lẫn chiều về.
+const resolveFailedShipment = async ({ shipmentId, action, coordinatorId }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -442,31 +451,21 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             );
             updated = res.rows[0];
         } else {
-            const actualPrice = chargeType === 'no_charge' ? 0
-                : chargeType === 'return_fee' ? Number(returnFee)
-                : null;
+            // Hoàn hàng: tài chạy CẢ HAI CHIỀU nên chuyến được tính GẤP ĐÔI cước.
+            // Không ghi actual_price ở đây vì lúc này tài xế CHƯA khai km thực tế —
+            // computeReceiptAmount sẽ nhân đôi khi thấy returning_at IS NOT NULL.
+            // returning_at chính là dấu hiệu duy nhất, không cần cột phụ nào.
             const res = await client.query(
                 `UPDATE order_shipments
                  SET status = $2,
                      returning_at = NOW(),
-                     return_charge_type = $3,
-                     return_fee = $4,
-                     actual_price = CASE WHEN $5::boolean THEN $6::numeric ELSE actual_price END,
-                     failed_resolved_by = $7,
+                     failed_resolved_by = $3,
                      failed_resolved_at = NOW(),
                      version = version + 1,
                      updated_at = NOW()
                  WHERE id = $1
                  RETURNING *`,
-                [
-                    shipmentId,
-                    SHIPMENT_STATUS.RETURNING,
-                    chargeType,
-                    chargeType === 'return_fee' ? Number(returnFee) : null,
-                    actualPrice !== null,
-                    actualPrice,
-                    coordinatorId,
-                ],
+                [shipmentId, SHIPMENT_STATUS.RETURNING, coordinatorId],
             );
             updated = res.rows[0];
         }
@@ -483,7 +482,6 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             newData: {
                 status: updated.status,
                 resolution: action,
-                ...(action === 'return' ? { return_charge_type: chargeType, return_fee: updated.return_fee } : {}),
             },
         });
 
@@ -1294,8 +1292,8 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
     // để hiển thị cả dữ liệu cũ (approve trước khi có INSERT receipt) lẫn dữ liệu mới
     const result = await pool.query(
         `SELECT
-            COALESCE(sr.id, orr.id)                                           AS receipt_id,
             orr.id                                                             AS orr_id,
+            sr.id                                                              AS shipment_receipt_id,
             orr.status                                                         AS request_status,
             ${RECEIPT_PAYMENT_TYPE_SQL}                                       AS payment_type,
             -- sr.amount (đã gồm cước + chi hộ − trả trước, chốt khi duyệt);
@@ -1345,20 +1343,20 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
     return result.rows;
 };
 
-// Chi tiết 1 phiếu thu — driver dùng để show cho khách
-// Hỗ trợ 2 trường hợp:
-//   1. receiptId = shipment_receipts.id  (dữ liệu mới, sau khi có INSERT trong approve)
-//   2. receiptId = order_receipt_requests.id (dữ liệu cũ, approve trước khi có INSERT)
-const getDriverReceiptDetail = async (receiptId, driverId) => {
+// Chi tiết 1 phiếu thu — driver dùng để show cho khách.
+// Khoá tra cứu là order_receipt_requests.id (xem ghi chú ở recordReceiptCollection).
+// Response KHÔNG còn trường `receipt_id`/`actual_receipt_id`: đó là một số nguyên mà ý
+// nghĩa đổi theo trạng thái dữ liệu (COALESCE(sr.id, orr.id)), client cầm nó thì không
+// biết mình đang giữ khoá bảng nào. Hai khoá giờ trả riêng: `orr_id` và
+// `shipment_receipt_id`.
+const getDriverReceiptDetail = async (orrId, driverId) => {
     const COLS = `
-            COALESCE(sr.id, orr.id)      AS receipt_id,
-            sr.id                        AS actual_receipt_id,
             orr.id                       AS orr_id,
             orr.status                   AS request_status,
             orr.coordinator_notes        AS rejection_reason,
             orr.driver_notes             AS driver_notes,
             orr.requesting_shipment_id   AS shipment_id,
-            COALESCE(sr.id, NULL)        AS shipment_receipt_id,
+            sr.id                        AS shipment_receipt_id,
             sr.payment_type              AS payment_type,
             o.payment_type               AS order_payment_type,
             o.customer_id                AS customer_id,
@@ -1420,32 +1418,14 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
          LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
          LEFT JOIN vehicles v            ON v.id    = sc.vehicle_id`;
 
-    // Ưu tiên tra theo order_receipt_requests.id (orr.id) TRƯỚC — đây là ID mobile
-    // luôn gửi (kể cả khi phiếu thu thật đã tồn tại), và LÀ ID DUY NHẤT, không thể
-    // trùng với bất kỳ bản ghi nào khác. Trước đây tra theo shipment_receipts.id
-    // trước có thể trùng số ngẫu nhiên với 1 order_receipt_requests.id (2 sequence
-    // độc lập) và trả nhầm về phiếu thu của yêu cầu KHÁC — đây chính là bug tài xế
-    // ấn vào phiếu đang chờ duyệt lại nhảy sang phiếu không liên quan.
-    let result = await pool.query(
+    const result = await pool.query(
         `SELECT ${COLS}
          FROM order_receipt_requests orr
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
          ${JOINS}
          LEFT JOIN profiles p_coord      ON p_coord.id  = COALESCE(sr.created_by, orr.processed_by)
          WHERE orr.id = $1 AND orr.driver_id = $2`,
-        [receiptId, driverId],
-    );
-    if (result.rows[0]) return result.rows[0];
-
-    // Fallback: dữ liệu cũ / deep-link cũ vẫn còn giữ shipment_receipts.id trực tiếp.
-    result = await pool.query(
-        `SELECT ${COLS}
-         FROM shipment_receipts sr
-         JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
-         ${JOINS}
-         LEFT JOIN profiles p_coord      ON p_coord.id  = sr.created_by
-         WHERE sr.id = $1 AND orr.driver_id = $2`,
-        [receiptId, driverId],
+        [orrId, driverId],
     );
     return result.rows[0] ?? null;
 };
@@ -1525,8 +1505,17 @@ const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
     return result.rows[0];
 };
 
-const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
-    // Tìm shipment_receipts — receiptId có thể là sr.id hoặc orr.id (fallback)
+const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
+    // Khoá tra cứu DUY NHẤT là order_receipt_requests.id — khoá nghiệp vụ của "phiếu thu
+    // của đơn này" (UNIQUE theo order_id). KHÔNG nhận shipment_receipts.id: hai bảng dùng
+    // sequence độc lập cùng START WITH 100000 nên dải ID chồng nhau, một số nguyên trần
+    // không đủ phân biệt. Trước đây `WHERE (sr.id = $1 OR orr.id = $1) LIMIT 1` có thể
+    // khớp hai hàng khác nhau của cùng một tài xế rồi nhặt bừa — ghi payment_type sang
+    // phiếu của đơn khác, hoặc báo "đã ghi nhận" cho phiếu thật ra chưa ghi.
+    //
+    // ORDER BY: schema không chặn nhiều shipment_receipts trỏ về cùng một
+    // order_receipt_requests, nên ưu tiên phiếu CHƯA ghi nhận (đúng cái tài xế đang
+    // thao tác), rồi tie-break bằng sr.id để kết quả luôn xác định.
     const FIND_SQL = `
         SELECT sr.id AS sr_id, sr.payment_type,
                orr.requesting_shipment_id AS shipment_id,
@@ -1542,11 +1531,12 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         FROM shipment_receipts sr
         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
         JOIN orders o ON o.id = orr.order_id
-        WHERE (sr.id = $1 OR orr.id = $1)
+        WHERE orr.id = $1
           AND orr.driver_id = $2
+        ORDER BY (sr.payment_type IS NOT NULL) ASC, sr.id ASC
         LIMIT 1`;
 
-    const found = await pool.query(FIND_SQL, [receiptId, driverId]);
+    const found = await pool.query(FIND_SQL, [orrId, driverId]);
     const rec = found.rows[0];
     if (!rec) throw new Error('Không tìm thấy phiếu thu hoặc bạn không có quyền');
     if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
@@ -1711,7 +1701,11 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         }
 
         // Phần thừa → tự động phân bổ vào nợ cũ của khách (oldest → newest)
-        // Áp dụng cho cash_collected khi khách trả thừa để thanh toán nợ cũ
+        // Áp dụng cho cash_collected khi khách trả thừa để thanh toán nợ cũ.
+        // excessAllocated: số THỰC SỰ phân bổ được — có tiền thừa không đồng nghĩa với
+        // đã cấn trừ (khách có thể không còn nợ cũ nào). Tầng trên cần phân biệt để
+        // không báo "đã phân bổ xong" khi chưa phân bổ được đồng nào.
+        let excessAllocated = 0;
         if (excessAmount >= 0.01 && rec.customer_id && paymentType === 'cash_collected') {
             // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
             const { rows: oldDebts } = await client.query(
@@ -1761,14 +1755,20 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                             `Phân bổ từ phiếu thu #${rec.sr_id} — khách trả thừa, chờ kế toán xác nhận`,
                         ],
                     );
+                    excessAllocated = amounts.reduce((sum, a) => sum + a, 0);
                 }
             }
         }
 
         await client.query('COMMIT');
         return {
-            excessDistributed: excessAmount >= 0.01,
+            // shipmentReceiptId: khoá phía kế toán (accountant tra confirm-bank-transfer
+            // theo sr.id). Hàm này nhận orr.id nên PHẢI trả sr.id ra ngoài, đừng để tầng
+            // trên suy ra từ tham số đầu vào — hai dải khoá khác nhau.
+            shipmentReceiptId: rec.sr_id,
+            excessDistributed: excessAmount >= 0.01 && excessAllocated > 0.01,
             excessAmount,
+            excessAllocated,
             partialPayment: isPartial,
             shortfall,
         };

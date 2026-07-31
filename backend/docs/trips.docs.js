@@ -426,7 +426,7 @@
 
 /**
  * @swagger
- * /api/trips/receipts:
+ * /api/trips/receipt-requests:
  *   get:
  *     tags: [Trips]
  *     summary: Danh sách phiếu thu coordinator đã tạo cho các đơn của driver
@@ -446,7 +446,7 @@
 
 /**
  * @swagger
- * /api/trips/receipts/{receiptId}:
+ * /api/trips/receipt-requests/{orrId}:
  *   get:
  *     tags: [Trips]
  *     summary: Chi tiết phiếu thu — dùng để show cho khách hàng, xác nhận thanh toán
@@ -454,12 +454,19 @@
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: receiptId
+ *         name: orrId
  *         required: true
  *         schema: { type: integer }
+ *         description: |
+ *           order_receipt_requests.id — KHÔNG phải shipment_receipts.id. Hai bảng dùng
+ *           sequence độc lập cùng START WITH 100000 nên dải ID chồng nhau; endpoint này
+ *           chỉ chấp nhận khoá của order_receipt_requests.
  *     responses:
  *       200:
- *         description: Chi tiết phiếu thu kèm thông tin đơn hàng và chi phí phát sinh
+ *         description: |
+ *           Chi tiết phiếu thu kèm thông tin đơn hàng và chi phí phát sinh.
+ *           Hai khoá trả riêng: `orr_id` (dùng cho mọi lời gọi API) và
+ *           `shipment_receipt_id` (chỉ để hiển thị số phiếu, null khi chưa duyệt).
  *       403:
  *         description: Phiếu thu không thuộc về driver này
  *       404:
@@ -468,7 +475,7 @@
 
 /**
  * @swagger
- * /api/trips/receipts/{receiptId}/record-collection:
+ * /api/trips/receipt-requests/{orrId}/record-collection:
  *   post:
  *     tags: [Trips]
  *     summary: Driver xác nhận hình thức thanh toán sau khi coordinator tạo phiếu thu
@@ -486,9 +493,10 @@
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: receiptId
+ *         name: orrId
  *         required: true
  *         schema: { type: integer }
+ *         description: order_receipt_requests.id (KHÔNG phải shipment_receipts.id)
  *     requestBody:
  *       required: true
  *       content:
@@ -518,7 +526,7 @@
 
 /**
  * @swagger
- * /api/trips/receipt-request/{orrId}/resubmit:
+ * /api/trips/receipt-requests/{orrId}/resubmit:
  *   post:
  *     tags: [Trips]
  *     summary: Driver gửi lại yêu cầu phiếu thu sau khi bị coordinator từ chối

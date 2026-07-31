@@ -8,6 +8,7 @@ const driverOnly = [verifyToken, requireRole('driver')];
 
 router.get('/me',        driverOnly, leaveController.getMyLeaves);
 router.get('/summary',   driverOnly, leaveController.getSummary);
+router.get('/attendance', driverOnly, leaveController.getMyAttendance);
 router.post('/',         driverOnly, leaveController.createLeave);
 router.delete('/:id',    driverOnly, leaveController.deleteLeave);
 
