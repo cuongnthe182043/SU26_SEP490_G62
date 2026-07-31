@@ -1,29 +1,37 @@
 import { useCallback, useState } from 'react';
 import { leaveService } from '@/services/leave-service';
-import type { LeaveRequest, AttendanceSummary, LeaveType } from '@/services/leave-service';
+import type { LeaveRequest, AttendanceSummary, LeaveType, AttendanceDay } from '@/services/leave-service';
 
-// ─── Leave list + summary ─────────────────────────────────────────────────────
+// ─── Leave list + summary + chấm công từng ngày ──────────────────────────────
 
 type LeaveState = {
     leaves: LeaveRequest[];
     summary: AttendanceSummary | null;
+    days: AttendanceDay[];
+    statusLabels: Record<string, string>;
     isLoading: boolean;
     error: string | null;
 };
 
 export function useLeave(month: number, year: number) {
     const [state, setState] = useState<LeaveState>({
-        leaves: [], summary: null, isLoading: true, error: null,
+        leaves: [], summary: null, days: [], statusLabels: {}, isLoading: true, error: null,
     });
 
     const load = useCallback(async () => {
         setState((s) => ({ ...s, isLoading: true, error: null }));
         try {
-            const [{ leaves }, summary] = await Promise.all([
+            const [{ leaves }, summary, attendance] = await Promise.all([
                 leaveService.getMyLeaves({ month, year }),
                 leaveService.getSummary(month, year),
+                leaveService.getMyAttendance(month, year),
             ]);
-            setState({ leaves, summary, isLoading: false, error: null });
+            setState({
+                leaves, summary,
+                days: attendance.days ?? [],
+                statusLabels: attendance.status_labels ?? {},
+                isLoading: false, error: null,
+            });
         } catch (err) {
             setState((s) => ({
                 ...s,
