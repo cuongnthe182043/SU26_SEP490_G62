@@ -5,13 +5,20 @@ import {
 import {
   RiTruckLine, RiUserLine, RiScales3Line, RiFlag2Line, RiExchangeLine,
   RiFileTextLine, RiMoneyDollarCircleLine, RiBankCardLine, RiUserReceivedLine,
-  RiAlertLine,
+  RiAlertLine, RiArrowGoBackLine,
 } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
-export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation, readOnly = false }) {
+export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation, readOnly = false, onResolveFailed, resolvingFailed = false }) {
   if (!incident) return null;
+
+  // Sự cố "khách từ chối nhận" sinh tự động khi tài báo giao thất bại. Tài xế đang
+  // đứng chờ quyết định của điều phối và không tự chuyển trạng thái được, nên nút
+  // xử lý nằm ngay đây thay vì bắt mở màn Đơn hàng.
+  const isFailedDelivery = incident.incident_type === "customer_refusal"
+    && incident.shipment_status === "failed"
+    && Boolean(onResolveFailed) && !readOnly;
 
   const replacementOptions = drivers.filter((driver) => {
     if (!driver?.vehicle_id) return false;
@@ -51,6 +58,41 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
           <span className="text-xs font-normal text-gray-400 dark:text-gray-400">{incident.description || "Không có mô tả."}</span>
         </ModalHeader>
         <ModalBody className="gap-4">
+          {isFailedDelivery && (
+            <div className="rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50/70 dark:bg-rose-500/[0.07] p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <RiArrowGoBackLine size={15} className="text-rose-600 dark:text-rose-300" />
+                <span className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                  Giao hàng thất bại — cần quyết định
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+                Liên hệ khách rồi chọn một trong hai. Chọn <b>hoàn hàng</b> thì tài chở hàng về điểm
+                lấy và chuyến đó được tính <b>gấp đôi cước</b> (tài chạy cả hai chiều). Sự cố này tự
+                chuyển sang “đã giải quyết” ngay sau khi bấm.
+              </p>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <Button
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  isDisabled={resolvingFailed}
+                  onPress={() => onResolveFailed("redeliver")}
+                >
+                  Cho giao lại
+                </Button>
+                <Button
+                  size="sm"
+                  color="danger"
+                  isLoading={resolvingFailed}
+                  onPress={() => onResolveFailed("return")}
+                >
+                  Cho hoàn hàng (×2 cước)
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <Input label="Chuyến" value={incident.shipment_id ? `#${incident.shipment_id}` : "-"} isReadOnly variant="bordered" startContent={ic(RiTruckLine)} />
             <Input label="Tài xế báo cáo" value={incident.reported_by_name || "-"} isReadOnly variant="bordered" startContent={ic(RiUserLine)} />

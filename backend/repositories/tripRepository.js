@@ -260,6 +260,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
                 v.plate_number,
                 v.status,
                 v.assigned_driver_id,
+                v.vehicle_group_id,
                 d.vehicle_id AS driver_vehicle_id
              FROM vehicles v
              JOIN drivers d ON d.profile_id = $2
@@ -331,7 +332,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const locked = await client.query(
-            `SELECT os.id, os.order_id, os.status, sc.owner_driver_id
+            `SELECT os.id, os.order_id, os.status, os.vehicle_group_id, sc.owner_driver_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE os.id = $1
@@ -342,11 +343,23 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             await client.query('ROLLBACK');
             return null;
         }
-        const { order_id, status, owner_driver_id } = locked.rows[0];
+        const { order_id, status, owner_driver_id, vehicle_group_id } = locked.rows[0];
 
         if (status !== 'available' || owner_driver_id !== null) {
             await client.query('ROLLBACK');
             return null;
+        }
+
+        // BR-003: xe đang lái phải đúng nhóm xe mà chuyến yêu cầu.
+        // Trip pool đã lọc theo nhóm nên giao diện không bao giờ hiện chuyến sai nhóm,
+        // nhưng đó chỉ là lọc HIỂN THỊ — gọi thẳng API với id chuyến vẫn nhận được.
+        // Bỏ qua nhóm là bỏ qua luôn giới hạn tải trọng (max_load_weight_kg của nhóm),
+        // nên phải chặn ở tầng ghi. Cả dòng xe lẫn dòng chuyến đều đã nằm trong
+        // transaction này và đã được advisory lock giữ, nên so ở đây là an toàn với
+        // trường hợp điều phối đổi xe đúng lúc tài đang bấm nhận.
+        if (Number(vehicle_group_id) !== Number(vehicle.vehicle_group_id)) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_GROUP_MISMATCH');
         }
 
         // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
@@ -398,16 +411,12 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
 //
 // action='redeliver' → về TRANSIT, tài đi giao lại (xoá dấu thất bại để chuyến chạy
 //                      lại bình thường; cancel_reason giữ nguyên làm vết audit).
-// action='return'    → sang RETURNING kèm cách tính tiền khách đã chốt:
-//                      no_charge  → actual_price = 0 (DN chịu)
-//                      return_fee → actual_price = phí hoàn hàng coordinator nhập
-//                      full_fare  → actual_price = NULL, để computeReceiptAmount tính
-//                                   như chuyến bình thường (khách trả đủ cước)
+// action='return'    → sang RETURNING, tài chở hàng về điểm lấy.
 //
-// Ghi actual_price ngay tại đây khiến KPI tự đúng: kpiRepository dùng
-// COALESCE(actual_price, estimated_price, 0) nên 0 hoặc phí hoàn hàng sẽ được dùng
-// thay cho giá cước đầy đủ, mà không phải sửa câu KPI.
-const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee, coordinatorId }) => {
+// Không ghi actual_price ở đây: lúc này tài xế CHƯA khai km thực tế. Giá chỉ chốt
+// khi coordinator duyệt phiếu thu — computeReceiptAmount thấy returning_at khác NULL
+// thì nhân đôi (km × đơn giá × 2) vì tài chạy cả chiều đi lẫn chiều về.
+const resolveFailedShipment = async ({ shipmentId, action, coordinatorId }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -442,31 +451,21 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             );
             updated = res.rows[0];
         } else {
-            const actualPrice = chargeType === 'no_charge' ? 0
-                : chargeType === 'return_fee' ? Number(returnFee)
-                : null;
+            // Hoàn hàng: tài chạy CẢ HAI CHIỀU nên chuyến được tính GẤP ĐÔI cước.
+            // Không ghi actual_price ở đây vì lúc này tài xế CHƯA khai km thực tế —
+            // computeReceiptAmount sẽ nhân đôi khi thấy returning_at IS NOT NULL.
+            // returning_at chính là dấu hiệu duy nhất, không cần cột phụ nào.
             const res = await client.query(
                 `UPDATE order_shipments
                  SET status = $2,
                      returning_at = NOW(),
-                     return_charge_type = $3,
-                     return_fee = $4,
-                     actual_price = CASE WHEN $5::boolean THEN $6::numeric ELSE actual_price END,
-                     failed_resolved_by = $7,
+                     failed_resolved_by = $3,
                      failed_resolved_at = NOW(),
                      version = version + 1,
                      updated_at = NOW()
                  WHERE id = $1
                  RETURNING *`,
-                [
-                    shipmentId,
-                    SHIPMENT_STATUS.RETURNING,
-                    chargeType,
-                    chargeType === 'return_fee' ? Number(returnFee) : null,
-                    actualPrice !== null,
-                    actualPrice,
-                    coordinatorId,
-                ],
+                [shipmentId, SHIPMENT_STATUS.RETURNING, coordinatorId],
             );
             updated = res.rows[0];
         }
@@ -483,7 +482,6 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             newData: {
                 status: updated.status,
                 resolution: action,
-                ...(action === 'return' ? { return_charge_type: chargeType, return_fee: updated.return_fee } : {}),
             },
         });
 

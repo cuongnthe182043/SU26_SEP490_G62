@@ -83,12 +83,69 @@ const getLeaderboardByGroup = async (vehicleGroupId, { month, year } = {}) => {
     };
 };
 
-// Manager/Coordinator/Accountant sửa tay nhóm xe KPI cố định của tài xế (VD tài
-// chuyển hẳn sang lái nhóm xe khác lâu dài) — không tự đổi theo xe hiện tại.
+// Manager/Coordinator/Accountant sửa tay nhóm xe KPI cố định của tài xế — dùng khi
+// gán nhầm lúc tạo tài, hoặc tài chuyển hẳn sang biên chế nhóm khác.
+//
+// Quy tắc doanh thu khi đổi nhóm (đã chốt với nghiệp vụ):
+//   * kpi_records chỉ có 1 dòng cho mỗi tài mỗi tháng nên KHÔNG tách được doanh thu
+//     ra hai nhóm — đổi nhóm là cả tháng đi theo.
+//   * THÁNG HIỆN TẠI, lương chưa chốt → tính lại ngay, doanh thu cả tháng sang nhóm mới.
+//   * MỌI THÁNG CŨ → khoá, giữ nguyên nhóm cũ. Lịch sử đã ghi sao để vậy.
+//   * Lương tháng hiện tại đã duyệt/đã chi → KHÔNG đụng KPI, vì tiền đã tính theo
+//     nhóm cũ; đổi KPI sẽ làm bảng lương và bảng xếp hạng lệch nhau.
 const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
-    if (!driverId) throw new Error('Driver ID là bắt buộc');
-    if (!vehicleGroupId) throw new Error('Nhóm xe là bắt buộc');
-    return kpiRepository.setDriverDefaultVehicleGroup(driverId, vehicleGroupId);
+    const parsedDriverId = Number(driverId);
+    const parsedGroupId  = Number(vehicleGroupId);
+    if (!parsedDriverId) throw new Error('Driver ID là bắt buộc');
+    if (!parsedGroupId)  throw new Error('Nhóm xe là bắt buộc');
+
+    const driver = await kpiRepository.getDriverDefaultVehicleGroup(parsedDriverId);
+    if (!driver) throw new Error('Không tìm thấy tài xế');
+
+    const group = await kpiRepository.getVehicleGroupById(parsedGroupId);
+    if (!group) throw new Error('Nhóm xe không tồn tại');
+    if (group.status !== 'active') {
+        throw new Error(`Nhóm xe "${group.name}" đang bị ẩn — không gán được cho tài xế`);
+    }
+
+    if (Number(driver.default_vehicle_group_id) === parsedGroupId) {
+        return {
+            profile_id: parsedDriverId,
+            default_vehicle_group_id: parsedGroupId,
+            vehicle_group_name: group.name,
+            kpi_synced: false,
+            message: `Tài xế đã thuộc nhóm "${group.name}" — không có gì thay đổi`,
+        };
+    }
+
+    const updated = await kpiRepository.setDriverDefaultVehicleGroup(parsedDriverId, parsedGroupId);
+
+    const now   = new Date();
+    const month = now.getMonth() + 1;
+    const year  = now.getFullYear();
+
+    const payrollStatus = await kpiRepository.getPayrollStatus(parsedDriverId, month, year);
+    const payrollLocked = payrollStatus !== null && payrollStatus !== 'pending';
+
+    let kpiSynced = false;
+    if (!payrollLocked) {
+        // await (không fire-and-forget) để trả về đúng kết quả cho người bấm
+        await kpiRepository.recalculateDriverKPI(parsedDriverId, month, year, { syncVehicleGroup: true });
+        kpiSynced = true;
+    }
+
+    const message = payrollLocked
+        ? `Đã đổi nhóm cố định sang "${group.name}". Bảng lương tháng ${month}/${year} đã chốt (${payrollStatus}) nên KPI tháng này giữ nguyên nhóm cũ — nhóm mới áp dụng từ kỳ sau.`
+        : `Đã đổi nhóm cố định sang "${group.name}". Doanh thu và KPI tháng ${month}/${year} đã chuyển sang nhóm mới. Các tháng trước giữ nguyên nhóm cũ.`;
+
+    return {
+        ...updated,
+        vehicle_group_name: group.name,
+        kpi_synced: kpiSynced,
+        payroll_locked: payrollLocked,
+        payroll_status: payrollStatus,
+        message,
+    };
 };
 
 // Trigger tự động sau khi trip hoàn thành — gọi fire-and-forget (không await)

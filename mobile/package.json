@@ -16,7 +16,10 @@
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --forceExit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:prod": "eas build -p android --profile production-apk",
+    "build:prod:store": "eas build -p android --profile production",
+    "build:prod:ios": "eas build -p ios --profile production"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
