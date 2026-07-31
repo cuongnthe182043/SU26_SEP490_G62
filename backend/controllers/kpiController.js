@@ -75,9 +75,12 @@ const setDriverDefaultVehicleGroup = async (req, res) => {
         const vehicleGroupId = Number(req.body.vehicleGroupId);
         if (!vehicleGroupId) return res.status(400).json({ error: 'Nhóm xe không hợp lệ' });
         const result = await kpiService.setDriverDefaultVehicleGroup(driverId, vehicleGroupId);
-        res.json({ message: 'Đã cập nhật nhóm xe KPI cố định', driver: result });
+        // Thông điệp do service dựng — nói rõ doanh thu tháng này có chuyển nhóm hay
+        // không, để người bấm không phải đoán.
+        res.json({ message: result.message, driver: result });
     } catch (err) {
-        const code = err.message.includes('Không tìm thấy') ? 404 : 400;
+        const code = err.message.includes('Không tìm thấy') || err.message.includes('không tồn tại') ? 404
+            : 400;
         res.status(code).json({ error: err.message });
     }
 };

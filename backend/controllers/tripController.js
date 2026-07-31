@@ -1,10 +1,10 @@
-const tripService     = require('../services/tripService');
+const tripService = require('../services/tripService');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
     try {
-        const page           = Math.max(1, Number(req.query.page) || 1);
-        const limit          = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
         const vehicleGroupId = req.query.vehicleGroupId ? Number(req.query.vehicleGroupId) : null;
 
         const data = await tripService.getTripPool(req.user.userId, { page, limit, vehicleGroupId });
@@ -42,9 +42,17 @@ const claimTrip = async (req, res) => {
         if (err.message.startsWith('PENDING_RECEIPT:')) {
             return res.status(422).json({ error: err.message.replace('PENDING_RECEIPT:', ''), code: 'PENDING_RECEIPT' });
         }
+        // Nhận chuyến sai nhóm xe: dữ liệu gửi lên không hợp lệ với xe đang lái (422),
+        // kèm code để app phân biệt được với các lỗi 422 khác.
+        if (err.message.startsWith('VEHICLE_GROUP_MISMATCH:')) {
+            return res.status(422).json({
+                error: err.message.replace('VEHICLE_GROUP_MISMATCH:', ''),
+                code: 'VEHICLE_GROUP_MISMATCH',
+            });
+        }
         const status = err.message.includes('đang có') ? 422
             : err.message.includes('chưa được gán') ? 422
-            : 400;
+                : 400;
         res.status(status).json({ error: err.message });
     }
 };
@@ -63,7 +71,7 @@ const updateStatus = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('không thể') || err.message.includes('bắt buộc') ? 422
-            : 400;
+                : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -83,7 +91,7 @@ const releaseTrip = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('Chỉ có thể') ? 422
-            : 400;
+                : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -104,8 +112,8 @@ const completeTrip = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('bắt buộc') ? 422
-            : err.message.includes('"arrived"') ? 422
-            : 400;
+                : err.message.includes('"arrived"') ? 422
+                    : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -129,8 +137,8 @@ const startTransit = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('bắt buộc') ? 422
-            : err.message.includes('"picking"') ? 422
-            : 400;
+                : err.message.includes('"picking"') ? 422
+                    : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -153,7 +161,7 @@ const returnComplete = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('"returning"') ? 422
-            : 400;
+                : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -171,7 +179,7 @@ const getDriverStats = async (req, res) => {
 // GET /api/trips/history?page=1&limit=20
 const getOrderHistory = async (req, res) => {
     try {
-        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
         const result = await tripService.getOrderHistory(req.user.userId, page, limit);
         res.json(result);
@@ -224,14 +232,14 @@ const getOrderDetail = async (req, res) => {
 const arriveAtStop = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
-        const stopId     = Number(req.params.stopId);
+        const stopId = Number(req.params.stopId);
         const stop = await tripService.arriveAtStop(shipmentId, stopId, req.user.userId);
         res.json({ message: 'Đã đánh dấu đến điểm dừng', stop });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('không có quyền') ? 403
-            : err.message.includes('đã đánh dấu') ? 409
-            : 500;
+                : err.message.includes('đã đánh dấu') ? 409
+                    : 500;
         res.status(code).json({ error: err.message });
     }
 };
@@ -240,7 +248,7 @@ const arriveAtStop = async (req, res) => {
 const completeStop = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
-        const stopId     = Number(req.params.stopId);
+        const stopId = Number(req.params.stopId);
         const proofUrl = req.files?.['proof']?.[0]?.path
             ?? req.files?.['image']?.[0]?.path
             ?? req.body.proof_url
@@ -250,9 +258,9 @@ const completeStop = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('không có quyền') ? 403
-            : err.message.includes('BR-011') ? 422
-            : err.message.includes('đã hoàn thành') ? 409
-            : 500;
+                : err.message.includes('BR-011') ? 422
+                    : err.message.includes('đã hoàn thành') ? 409
+                        : 500;
         res.status(code).json({ error: err.message });
     }
 };
@@ -264,11 +272,11 @@ const completeStop = async (req, res) => {
 // Final driver:     lưu km + tạo phiếu → { km_saved, receipt_request_created: true, request }
 const requestOrderReceipt = async (req, res) => {
     try {
-        const orderId    = Number(req.params.id);
+        const orderId = Number(req.params.id);
         const shipmentId = Number(req.body.shipment_id);
-        const actualKm   = req.body.actual_km !== undefined ? Number(req.body.actual_km) : undefined;
+        const actualKm = req.body.actual_km !== undefined ? Number(req.body.actual_km) : undefined;
 
-        if (!orderId)    return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
         if (!shipmentId) return res.status(400).json({ error: 'shipment_id là bắt buộc' });
 
         const result = await tripService.requestOrderReceipt(orderId, req.user.userId, {
@@ -285,8 +293,8 @@ const requestOrderReceipt = async (req, res) => {
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('đã có yêu cầu') ? 409
-            : err.message.includes('completed') || err.message.includes('bắt buộc') ? 422
-            : 400;
+                : err.message.includes('completed') || err.message.includes('bắt buộc') ? 422
+                    : 400;
         res.status(code).json({ error: err.message });
     }
 };
@@ -313,10 +321,10 @@ const getOrderReceiptRequest = async (req, res) => {
     }
 };
 
-// GET /api/trips/receipts  — danh sách phiếu thu của driver
+// GET /api/trips/receipt-requests  — danh sách phiếu thu của driver
 const getDriverReceipts = async (req, res) => {
     try {
-        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(50, Number(req.query.limit) || 20);
         const receipts = await tripService.getDriverReceipts(req.user.userId, { page, limit });
         res.json({ receipts });
@@ -325,12 +333,12 @@ const getDriverReceipts = async (req, res) => {
     }
 };
 
-// GET /api/trips/receipts/:receiptId  — chi tiết phiếu thu (show cho khách)
+// GET /api/trips/receipt-requests/:orrId  — chi tiết phiếu thu (show cho khách)
 const getDriverReceiptDetail = async (req, res) => {
     try {
-        const receiptId = Number(req.params.receiptId);
-        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
-        const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu phiếu thu không hợp lệ' });
+        const receipt = await tripService.getDriverReceiptDetail(orrId, req.user.userId);
         res.json({ receipt });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
@@ -353,8 +361,8 @@ const resubmitReceiptRequest = async (req, res) => {
 
 const recordReceiptCollection = async (req, res) => {
     try {
-        const receiptId = Number(req.params.receiptId);
-        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu phiếu thu không hợp lệ' });
 
         const { payment_type, notes, collected_amount } = req.body;
         if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
@@ -367,7 +375,7 @@ const recordReceiptCollection = async (req, res) => {
         const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
         const proofUrl = file?.path ?? null;
 
-        const result = await tripService.recordReceiptCollection(receiptId, req.user.userId, {
+        const result = await tripService.recordReceiptCollection(orrId, req.user.userId, {
             paymentType: payment_type,
             proofUrl,
             notes: notes ?? null,
@@ -377,21 +385,21 @@ const recordReceiptCollection = async (req, res) => {
         const message = result?.excessDistributed
             ? 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.'
             : result?.partialPayment
-            ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${Number(result.shortfall).toLocaleString('vi-VN')}đ.`
-            : 'Đã ghi nhận thanh toán phiếu thu';
+                ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${Number(result.shortfall).toLocaleString('vi-VN')}đ.`
+                : 'Đã ghi nhận thanh toán phiếu thu';
 
         res.json({
             message,
             excessDistributed: result?.excessDistributed ?? false,
-            partialPayment:    result?.partialPayment    ?? false,
-            shortfall:         result?.shortfall         ?? 0,
+            partialPayment: result?.partialPayment ?? false,
+            shortfall: result?.shortfall ?? 0,
         });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('Ảnh') ? 422
-            : err.message.includes('đã được ghi nhận') ? 409
-            : err.message.includes('không hợp lệ') ? 400
-            : 500;
+                : err.message.includes('đã được ghi nhận') ? 409
+                    : err.message.includes('không hợp lệ') ? 400
+                        : 500;
         res.status(code).json({ error: err.message });
     }
 };

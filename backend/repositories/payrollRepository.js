@@ -121,6 +121,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     // 2. Số ngày nghỉ không lương / vắng không phép tháng này (khớp logic với
     // accountantPayrollRepository — gồm cả chấm công 'absent_unexcused', ghi đè
     // 'present' được ưu tiên) để màn ước tính khớp số với bảng lương chính thức
+    // Ngày lễ được loại khỏi mọi phép trừ công (Điều V.1 — nghỉ lễ hưởng nguyên lương)
     const leaveRes = await pool.query(
         `SELECT COUNT(*)::int AS unpaid_days
          FROM leave_requests lr
@@ -130,17 +131,30 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
            AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
            AND EXTRACT(MONTH FROM lr.leave_date) = $2
            AND EXTRACT(YEAR  FROM lr.leave_date) = $3
-           AND COALESCE(ao.status, 'leave_unpaid') != 'present'`,
+           AND COALESCE(ao.status, 'leave_unpaid') != 'present'
+           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date)`,
         [driverId, month, year],
     );
     const attRes = await pool.query(
         `SELECT COUNT(*)::int AS unexcused_days
-         FROM attendance_overrides
-         WHERE driver_id = $1 AND status = 'absent_unexcused'
-           AND EXTRACT(MONTH FROM work_date) = $2 AND EXTRACT(YEAR FROM work_date) = $3`,
+         FROM attendance_overrides ao
+         WHERE ao.driver_id = $1 AND ao.status = 'absent_unexcused'
+           AND EXTRACT(MONTH FROM ao.work_date) = $2 AND EXTRACT(YEAR FROM ao.work_date) = $3
+           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)`,
         [driverId, month, year],
     );
-    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0) + Number(attRes.rows[0].unexcused_days ?? 0);
+    // Nửa công — trừ 0.5 ngày, khớp với accountantPayrollRepository
+    const halfRes = await pool.query(
+        `SELECT COUNT(*)::int AS half_days
+         FROM attendance_overrides ao
+         WHERE ao.driver_id = $1 AND ao.status = 'half_day'
+           AND EXTRACT(MONTH FROM ao.work_date) = $2 AND EXTRACT(YEAR FROM ao.work_date) = $3
+           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)`,
+        [driverId, month, year],
+    );
+    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0)
+                     + Number(attRes.rows[0].unexcused_days ?? 0)
+                     + Number(halfRes.rows[0].half_days ?? 0) * 0.5;
     // "28 công" là quota — tháng dài hơn 28 ngày lịch có phần dư được miễn trừ tự
     // nhiên; chỉ khi số ngày thực đi làm tụt dưới 28 mới bị trừ đúng phần hụt đó.
     const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
@@ -212,19 +226,28 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
 
-    // 5b. Đi làm ngày lễ = 200% lương: cộng thêm 100% lương ngày cho mỗi ngày lễ có chuyến hoàn thành
+    // 5b. Đi làm ngày lễ = 200% lương: cộng thêm 100% lương ngày cho mỗi ngày lễ tài
+    // có đi làm — có chuyến hoàn thành trong ngày, hoặc kế toán chấm tay 'holiday_worked'
     const holidayRes = await pool.query(
         `SELECT COUNT(DISTINCT h.holiday_date)::int AS days
          FROM company_holidays h
          WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
            AND EXTRACT(YEAR  FROM h.holiday_date) = $3
-           AND EXISTS (
-               SELECT 1
-               FROM order_shipments os
-               JOIN v_shipment_current sc ON sc.shipment_id = os.id
-               WHERE sc.owner_driver_id = $1
-                 AND os.status = 'completed'
-                 AND os.completed_at::date = h.holiday_date
+           AND (
+               EXISTS (
+                   SELECT 1
+                   FROM order_shipments os
+                   JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                   WHERE sc.owner_driver_id = $1
+                     AND os.status = 'completed'
+                     AND os.completed_at::date = h.holiday_date
+               )
+               OR EXISTS (
+                   SELECT 1 FROM attendance_overrides ao
+                   WHERE ao.driver_id = $1
+                     AND ao.work_date = h.holiday_date
+                     AND ao.status = 'holiday_worked'
+               )
            )`,
         [driverId, month, year],
     );

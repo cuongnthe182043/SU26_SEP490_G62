@@ -16,21 +16,83 @@ const getDriverLeaves = async (driverId, { month = null, year = null } = {}) => 
     return result.rows;
 };
 
-// Attendance summary: working_days = 28 − unpaid leaves tháng đó
+// Tổng hợp nghỉ/công trong tháng cho màn hình tài xế.
+// Phải khớp TỪNG NGUỒN TRỪ CÔNG với bảng lương chính thức (accountantPayrollRepository),
+// nếu không tài xế nhìn số công một đằng, lương tính một nẻo. Ba nguồn trừ công:
+//   1. leave_requests 'unpaid' đã duyệt (trừ khi kế toán ghi đè 'present')
+//   2. attendance_overrides 'absent_unexcused'  — trừ 1 công
+//   3. attendance_overrides 'half_day'          — trừ 0.5 công
+// Ngày rơi đúng ngày lễ được loại khỏi cả ba (Điều V.1 — nghỉ lễ hưởng nguyên lương).
 const getAttendanceSummary = async (driverId, { month, year }) => {
     const result = await pool.query(
-        `SELECT
-            COUNT(*)                                                         AS total_leaves,
-            COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved') AS unpaid_days,
-            COUNT(*) FILTER (WHERE leave_type = 'paid'   AND status = 'approved') AS paid_days,
-            (28 - COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved'))::int AS working_days
-         FROM leave_requests
-         WHERE driver_id = $1
-           AND EXTRACT(MONTH FROM leave_date) = $2
-           AND EXTRACT(YEAR  FROM leave_date) = $3`,
+        `WITH leaves AS (
+            SELECT lr.leave_type, lr.status,
+                   EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date) AS on_holiday,
+                   COALESCE(ao.status, 'leave_unpaid') AS override_status
+            FROM leave_requests lr
+            LEFT JOIN attendance_overrides ao
+                   ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
+            WHERE lr.driver_id = $1
+              AND EXTRACT(MONTH FROM lr.leave_date) = $2
+              AND EXTRACT(YEAR  FROM lr.leave_date) = $3
+        ),
+        overrides AS (
+            SELECT
+                COUNT(*) FILTER (WHERE ao.status = 'absent_unexcused')::numeric AS unexcused_days,
+                COUNT(*) FILTER (WHERE ao.status = 'half_day')::numeric         AS half_days
+            FROM attendance_overrides ao
+            WHERE ao.driver_id = $1
+              AND EXTRACT(MONTH FROM ao.work_date) = $2
+              AND EXTRACT(YEAR  FROM ao.work_date) = $3
+              AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
+        ),
+        counted AS (
+            SELECT
+                COUNT(*)                                                                   AS total_leaves,
+                COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved'
+                                   AND NOT on_holiday AND override_status <> 'present')    AS unpaid_days,
+                COUNT(*) FILTER (WHERE leave_type = 'paid'   AND status = 'approved')      AS paid_days
+            FROM leaves
+        )
+        SELECT
+            total_leaves, unpaid_days, paid_days,
+            o.unexcused_days::int AS unexcused_days,
+            o.half_days::int      AS half_days,
+            LEAST(
+                28,
+                EXTRACT(DAY FROM (make_date($3::int, $2::int, 1) + INTERVAL '1 month - 1 day'))::int
+                    - unpaid_days - o.unexcused_days - o.half_days * 0.5
+            )::numeric AS working_days,
+            (SELECT COUNT(*)::int FROM company_holidays h
+             WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
+               AND EXTRACT(YEAR  FROM h.holiday_date) = $3) AS holiday_days,
+            (SELECT COUNT(DISTINCT h.holiday_date)::int
+             FROM company_holidays h
+             WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
+               AND EXTRACT(YEAR  FROM h.holiday_date) = $3
+               AND (
+                   EXISTS (SELECT 1 FROM order_shipments os
+                           JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                           WHERE sc.owner_driver_id = $1 AND os.status = 'completed'
+                             AND os.completed_at::date = h.holiday_date)
+                   OR EXISTS (SELECT 1 FROM attendance_overrides ao
+                              WHERE ao.driver_id = $1 AND ao.work_date = h.holiday_date
+                                AND ao.status = 'holiday_worked')
+               )) AS holiday_days_worked
+        FROM counted, overrides o`,
         [driverId, month, year],
     );
     return result.rows[0];
+};
+
+// Bảng lương kỳ đó đã chốt chưa — dùng để chặn đăng ký nghỉ lùi vào kỳ đã trả tiền
+const getPayrollStatus = async (driverId, month, year) => {
+    const result = await pool.query(
+        `SELECT status FROM payrolls
+         WHERE driver_id = $1 AND payroll_month = $2 AND payroll_year = $3`,
+        [driverId, month, year],
+    );
+    return result.rows[0]?.status ?? null;
 };
 
 // Driver tự đăng ký nghỉ — auto-approved
@@ -68,4 +130,4 @@ const rejectExpiredLeaveRequests = async () => {
     return result.rowCount;
 };
 
-module.exports = { getDriverLeaves, getAttendanceSummary, createLeave, deleteLeave, rejectExpiredLeaveRequests };
+module.exports = { getDriverLeaves, getAttendanceSummary, getPayrollStatus, createLeave, deleteLeave, rejectExpiredLeaveRequests };

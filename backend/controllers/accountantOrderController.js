@@ -1,5 +1,5 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
-const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('../utils/accountantValidate');
+const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
@@ -15,8 +15,8 @@ const getOrders = async (req, res) => {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
             customer:    req.query.customer?.trim()    || null,
-            dateFrom:    req.query.dateFrom?.trim()     || null,
-            dateTo:      req.query.dateTo?.trim()       || null,
+            dateFrom:    validDate(req.query.dateFrom, 'Ngày bắt đầu'),
+            dateTo:      validDate(req.query.dateTo, 'Ngày kết thúc'),
             sort:        req.query.sort?.trim()         || null,
         };
 
@@ -35,8 +35,8 @@ const exportOrdersReport = async (req, res) => {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
             customer:    req.query.customer?.trim()    || null,
-            dateFrom:    req.query.dateFrom?.trim()     || null,
-            dateTo:      req.query.dateTo?.trim()       || null,
+            dateFrom:    validDate(req.query.dateFrom, 'Ngày bắt đầu'),
+            dateTo:      validDate(req.query.dateTo, 'Ngày kết thúc'),
         };
         const rows = await accountantOrderService.exportOrdersReport(filters);
         res.json({ rows });

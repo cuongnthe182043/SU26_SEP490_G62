@@ -2,6 +2,7 @@ const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
 const stopRepository     = require('../repositories/stopRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
+const incidentRepository = require('../repositories/incidentRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -114,6 +115,9 @@ const claimTrip = async (shipmentId, driverId) => {
         if (err.message === 'DRIVER_VEHICLE_MISMATCH') {
             throw new Error('Tài xế chưa được gán hợp lệ với xe này');
         }
+        if (err.message === 'VEHICLE_GROUP_MISMATCH') {
+            throw new Error('VEHICLE_GROUP_MISMATCH:Chuyến này thuộc nhóm xe khác — xe bạn đang lái không chở được. Chỉ nhận các chuyến hiện trong danh sách chuyến khả dụng.');
+        }
         if (err.message === 'DRIVER_MAINTENANCE') {
             throw new Error('Tài xế đang phụ trách bảo trì xe khác');
         }
@@ -153,17 +157,30 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
 
     fireStatusNotif(driverId, tripId, newStatus);
 
-    // Giao thất bại là việc phải có người xử lý ngay: coordinator liên hệ khách rồi
-    // quyết định giao lại hay trả hàng về, và khách có phải trả tiền hay không.
-    // Trước đây chỉ báo cho chính tài xế (silent) nên coordinator không hề biết.
+    // Giao thất bại = một SỰ CỐ, không chỉ là đổi trạng thái. Tự sinh bản ghi
+    // incidents loại 'customer_refusal' để coordinator xử lý ở màn Sự cố (nơi tập
+    // trung mọi việc cần can thiệp), và để KPI incident_count phản ánh đúng — trước
+    // đây loại sự cố này bị bỏ sót hoàn toàn vì không ai tạo incident.
     if (newStatus === SHIPMENT_STATUS.FAILED) {
+        let incident = null;
+        try {
+            incident = await incidentRepository.createIncident({
+                shipmentId: Number(tripId),
+                reportedBy: Number(driverId),
+                incidentType: 'customer_refusal',
+                severityLevel: 'medium',
+                description: `Giao hàng thất bại: ${reason.trim()}`,
+                location: null,
+            });
+        } catch { /* không tạo được sự cố thì vẫn phải cho đổi trạng thái */ }
+
         const coordinatorIds = await notificationService.getUserIdsByRole('coordinator');
         notificationService.createForUsers(coordinatorIds, {
             title: 'Giao hàng thất bại — cần xử lý',
-            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Hãy liên hệ khách rồi chọn giao lại hoặc hoàn hàng.`,
-            type: 'TRIP_STATUS_UPDATED',
-            entityType: 'shipments',
-            entityId: tripId,
+            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Vào màn Sự cố để cho giao lại hoặc cho hoàn hàng.`,
+            type: 'INCIDENT_REPORTED',
+            entityType: 'incidents',
+            entityId: incident?.id ?? null,
         }, { displayMode: 'alert' }).catch(() => {});
 
         try {
@@ -172,6 +189,7 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
                 action: 'failed',
                 shipmentId: Number(tripId),
                 orderId: trip.order_id ?? null,
+                incidentId: incident?.id ?? null,
                 reason: reason.trim(),
             });
         } catch { /* realtime failure must not abort the status change */ }
@@ -503,8 +521,8 @@ const getDriverReceipts = async (driverId, opts) => {
     return tripRepository.getDriverReceipts(driverId, opts);
 };
 
-const getDriverReceiptDetail = async (receiptId, driverId) => {
-    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+const getDriverReceiptDetail = async (orrId, driverId) => {
+    const receipt = await tripRepository.getDriverReceiptDetail(orrId, driverId);
     if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền xem');
 
     // eslint-disable-next-line global-require
@@ -520,24 +538,28 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return { ...receipt, expenses, order_shipments: orderShipments };
 };
 
-const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
+const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
     const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
         throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
     }
-    const result = await tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount });
+    const result = await tripRepository.recordReceiptCollection(orrId, driverId, { paymentType, proofUrl, notes, collectedAmount });
 
     if (paymentType === 'bank_transfer') {
+        // entityId PHẢI là shipment_receipts.id: kế toán xác nhận chuyển khoản qua
+        // POST /api/accountant/receipts/:receiptId/confirm-bank-transfer, tra theo sr.id.
+        // Hàm này nhận orr.id — hai dải khoá khác nhau, truyền nhầm sẽ deep-link sai phiếu.
+        const shipmentReceiptId = result.shipmentReceiptId;
         notificationService.getUserIdsByRole('accountant').then((ids) =>
             notificationService.createForUsers(ids, {
                 title: 'Khách chuyển khoản về công ty — cần xác nhận',
-                message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${receiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
+                message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${shipmentReceiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
                 type: 'BANK_TRANSFER_PENDING',
                 // entityType riêng để bấm thông báo mở đúng màn "Xác nhận chuyển khoản"
                 // (dùng 'receipt' sẽ nhảy sang màn Doanh thu như mọi phiếu thu khác)
                 entityType: 'bank_transfer',
-                entityId: receiptId,
+                entityId: shipmentReceiptId,
             }, { displayMode: 'alert' })
         ).catch(() => {});
     }
