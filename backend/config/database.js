@@ -15,6 +15,13 @@ const poolConfig = {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
+    // Ép múi giờ Việt Nam cho MỌI phiên kết nối, không phụ thuộc cấu hình server.
+    // Cần thiết vì NOW(), CURRENT_DATE, ::date và EXTRACT(MONTH FROM timestamptz)
+    // đều quy đổi theo múi giờ phiên: để UTC thì từ 0h-7h sáng giờ VN hệ thống vẫn
+    // coi là "hôm qua" → sai mốc tháng của KPI/lương, sai khớp ngày lễ.
+    // Đặt ở đây (chứ không chỉ trong docker-compose) để lên production dùng DB quản trị
+    // sẵn (Cloud SQL...) vẫn đúng dù không sửa được cấu hình server.
+    options: `-c timezone=${process.env.DB_TIMEZONE || 'Asia/Ho_Chi_Minh'}`,
     max: 10,
     idleTimeoutMillis: 30000,
     // Chờ tối đa 5s để lấy được 1 connection từ pool — tránh request bị treo vô thời hạn

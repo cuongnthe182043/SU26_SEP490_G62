@@ -730,6 +730,29 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     try {
         await client.query('BEGIN');
 
+        // Khóa hàng yêu cầu phiếu thu rồi ĐỌC LẠI trạng thái NGAY TRONG giao dịch.
+        // Hai lần kiểm tra ở trên chạy ngoài transaction nên là check-then-act: điều
+        // phối bấm duyệt nhiều lần (mạng lag, spam nút) thì mọi request đều đọc được
+        // status='pending' trước khi ai kịp commit → sinh ra nhiều phiếu thu cho cùng
+        // một đơn, nhân đôi doanh thu trên sổ. FOR UPDATE khiến các request xếp hàng:
+        // cái đầu tiên commit xong, các cái sau đọc thấy 'approved' và bị chặn.
+        const lockedReq = await client.query(
+            `SELECT status FROM order_receipt_requests WHERE id = $1 FOR UPDATE`,
+            [requestId],
+        );
+        if (!lockedReq.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('Yêu cầu phiếu thu không tồn tại');
+        }
+        if (lockedReq.rows[0].status === 'approved') {
+            await client.query('ROLLBACK');
+            throw new Error('Yêu cầu này đã được duyệt rồi');
+        }
+        if (lockedReq.rows[0].status === 'rejected') {
+            await client.query('ROLLBACK');
+            throw new Error('Yêu cầu này đã bị từ chối');
+        }
+
         // Duyệt các chi phí tài xế còn 'pending' của đơn NGAY ĐẦU giao dịch. Chi phí đi
         // vào phiếu thu không cần một bước duyệt riêng của manager/coordinator: phát hành
         // phiếu thu chính là lúc chúng được duyệt.
@@ -872,7 +895,10 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
     if (req.status === 'approved') throw new Error('Yêu cầu này đã được duyệt rồi');
     if (req.status === 'rejected') throw new Error('Yêu cầu này đã bị từ chối rồi');
 
-    await coordinatorRepository.rejectReceiptRequestRow(coordinatorId, notes, requestId);
+    // rowCount = 0 nghĩa là yêu cầu vừa bị request khác xử lý xong trong lúc mình
+    // đang chạy — dừng ở đây, đừng gửi thông báo trùng cho tài xế.
+    const daDoi = await coordinatorRepository.rejectReceiptRequestRow(coordinatorId, notes, requestId);
+    if (!daDoi) throw new Error('Yêu cầu này đã được xử lý rồi');
 
     const notificationService = require('./notificationService');
     notificationService.createForUser(req.driver_id, {

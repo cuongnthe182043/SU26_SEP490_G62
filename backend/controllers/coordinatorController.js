@@ -1,6 +1,7 @@
 const coordinatorService = require('../services/coordinatorService');
 const expenseRepository  = require('../repositories/expenseRepository');
 const { validateExpenseReceipt } = require('../services/expenseAiValidator');
+const { validDate, sendError } = require('../utils/accountantValidate');
 
 const listVehicleGroups = async (_req, res) => {
   try {
@@ -45,15 +46,15 @@ const getReceiptRequests = async (req, res) => {
             status: status || null,
             kind: kind || 'all',
             search: search || '',
-            dateFrom: dateFrom || '',
-            dateTo: dateTo || '',
+            dateFrom: validDate(dateFrom, 'Ngày bắt đầu') || '',
+            dateTo:   validDate(dateTo, 'Ngày kết thúc') || '',
             sort: sort || null,
             page: page,
             limit: limit,
         });
         res.json(result);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        return sendError(res, err);
     }
 };
 
