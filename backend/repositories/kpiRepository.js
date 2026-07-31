@@ -102,6 +102,38 @@ const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
     return result.rows[0];
 };
 
+const getDriverDefaultVehicleGroup = async (driverId) => {
+    const result = await pool.query(
+        `SELECT d.profile_id, d.default_vehicle_group_id, p.full_name,
+                vg.name AS vehicle_group_name
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
+         WHERE d.profile_id = $1`,
+        [driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const getVehicleGroupById = async (vehicleGroupId) => {
+    const result = await pool.query(
+        `SELECT id, name, status FROM vehicle_groups WHERE id = $1`,
+        [vehicleGroupId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Bảng lương của kỳ đó đã chốt chưa — dùng để khoá không cho đổi nhóm KPI của kỳ
+// đã duyệt/đã chi (tiền đã trả rồi mà KPI đổi nhóm thì sổ sách lệch nhau).
+const getPayrollStatus = async (driverId, month, year) => {
+    const result = await pool.query(
+        `SELECT status FROM payrolls
+         WHERE driver_id = $1 AND payroll_month = $2 AND payroll_year = $3`,
+        [driverId, month, year],
+    );
+    return result.rows[0]?.status ?? null;
+};
+
 // ─── Driver: Leaderboard trong nhóm xe của mình (BR-028) ─────────────────────
 // Luôn trả về rank của driver hiện tại dù không trong top 20
 // Thêm total_in_group: tổng số driver có KPI trong nhóm tháng đó
@@ -218,8 +250,16 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
 // Gọi tự động sau mỗi lần trip hoàn thành (fire-and-forget)
 // BR-026: doanh thu KPI dùng actual_price, fallback estimated_price nếu chưa có.
 // Gọi thêm sau khi coordinator approve phiếu thu (set actual_price) để KPI cập nhật.
-
-const recalculateDriverKPI = async (driverId, month, year) => {
+//
+// syncVehicleGroup (mặc định FALSE): có ghi đè vehicle_group_id của dòng đã tồn tại
+// theo nhóm cố định hiện tại của tài hay không.
+//   - false → GIỮ NGUYÊN nhóm đã ghi. Bắt buộc cho các lần tính lại thông thường:
+//     phiếu thu chốt trễ sang tháng sau vẫn tính lại THÁNG CŨ (completed_at), nếu
+//     cho ghi đè thì lịch sử tháng cũ bị kéo sang nhóm mới ngoài ý muốn.
+//   - true  → chỉ dùng khi Manager/Kế toán chủ động sửa nhóm cố định (sửa gán nhầm),
+//     và chỉ áp cho tháng hiện tại còn mở.
+// Dòng INSERT mới thì luôn lấy nhóm cố định hiện tại.
+const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = false } = {}) => {
     await revenueAllocationRepository.ensureRevenueAllocationTable();
 
     const vgRes = await pool.query(
@@ -300,6 +340,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
              incident_count          = EXCLUDED.incident_count,
              major_incident_count    = EXCLUDED.major_incident_count,
              critical_incident_count = EXCLUDED.critical_incident_count,
+             ${syncVehicleGroup ? 'vehicle_group_id        = EXCLUDED.vehicle_group_id,' : ''}
              updated_at              = NOW()
          RETURNING *`,
         [
@@ -315,6 +356,9 @@ module.exports = {
     getDriverKPI,
     getDriverVehicleGroupId,
     setDriverDefaultVehicleGroup,
+    getDriverDefaultVehicleGroup,
+    getVehicleGroupById,
+    getPayrollStatus,
     getLeaderboard,
     getAllDriversKPI,
     getDriverKPIById,

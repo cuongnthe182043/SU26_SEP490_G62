@@ -23,8 +23,12 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
     if (!vehicleGroupId) return;
     setSaving(true);
     try {
-      await onSave(driver.driver_id, Number(vehicleGroupId));
-      notify.success("Đã cập nhật nhóm xe KPI.");
+      // Backend trả về thông điệp nói rõ doanh thu tháng này có chuyển nhóm hay không
+      // (còn tuỳ bảng lương kỳ đó đã chốt chưa) — hiển thị đúng câu đó thay vì báo chung chung.
+      const res = await onSave(driver.driver_id, Number(vehicleGroupId));
+      const message = res?.message ?? res?.driver?.message;
+      if (res?.driver?.payroll_locked) notify.warning(message);
+      else notify.success(message || "Đã cập nhật nhóm xe KPI.");
       onClose();
     } catch (e) {
       notify.error(e.message || "Lỗi cập nhật nhóm xe KPI");
@@ -43,8 +47,16 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
         <ModalBody className="gap-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Nhóm xe này dùng để tính KPI/doanh thu/xếp hạng cố định cho tài xế — không tự đổi
-            dù tài chạy tạm xe nhóm khác (điều chuyển sự cố...). Chỉ đổi khi tài chuyển hẳn sang nhóm xe khác lâu dài.
+            dù tài chạy tạm xe nhóm khác (điều chuyển sự cố...). Chỉ đổi khi gán nhầm, hoặc tài
+            chuyển hẳn sang nhóm xe khác lâu dài.
           </p>
+          <div className="rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/10 p-2.5">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+              Khi đổi: <b>toàn bộ doanh thu tháng này</b> chuyển sang nhóm mới (không tách được
+              nửa tháng). <b>Các tháng trước giữ nguyên</b> nhóm cũ. Nếu lương tháng này đã duyệt
+              hoặc đã chi thì KPI giữ nguyên, nhóm mới chỉ áp dụng từ kỳ sau.
+            </p>
+          </div>
           <Select
             label="Nhóm xe KPI"
             selectedKeys={vehicleGroupId ? [vehicleGroupId] : []}
