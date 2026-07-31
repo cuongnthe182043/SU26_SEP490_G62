@@ -39,9 +39,9 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
 });
 
-// Cách tính tiền khách khi chuyến phải hoàn hàng — coordinator chốt theo từng ca
-// vì lỗi có thể từ phía khách (từ chối nhận) hoặc phía doanh nghiệp.
-const RETURN_CHARGE_TYPES = Object.freeze(['no_charge', 'return_fee', 'full_fare']);
+// Chuyến phải hoàn hàng được tính GẤP ĐÔI cước: tài chạy cả chiều đi lẫn chiều về.
+// Khách từ chối nhận thì chịu cả hai lượt, doanh thu/KPI của tài lấy từ cùng con số.
+const RETURN_FARE_MULTIPLIER = 2;
 
 const RELEASABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
@@ -65,6 +65,6 @@ module.exports = {
     CANCELLABLE_STATUSES,
     RELEASABLE_STATUSES,
     ALLOWED_TRANSITIONS,
-    RETURN_CHARGE_TYPES,
+    RETURN_FARE_MULTIPLIER,
     STATUS_TIMESTAMP_COL,
 };

@@ -66,8 +66,14 @@ const changePassword = async (req, res) => {
         const result = await profileService.changePassword(req.user.userId, { currentPassword, newPassword });
         res.json(result);
     } catch (err) {
-        const code = err.message.includes('không đúng') ? 401
-            : err.message.includes('bắt buộc') || err.message.includes('ít nhất') ? 422
+        // Mật khẩu hiện tại sai là LỖI DỮ LIỆU NGƯỜI DÙNG NHẬP (422), KHÔNG phải 401.
+        // Trước đây trả 401 nên api-client của mobile hiểu nhầm là "access token hết
+        // hạn": nó refresh (refresh token vẫn hợp lệ nên thành công), retry lại request
+        // với đúng mật khẩu sai đó, nhận 401 lần hai rồi ĐĂNG XUẤT — người dùng gõ sai
+        // mật khẩu cũ là bị đá về màn login.
+        const code = err.message.includes('không đúng')
+            || err.message.includes('bắt buộc')
+            || err.message.includes('ít nhất') ? 422
             : 400;
         res.status(code).json({ error: err.message });
     }
