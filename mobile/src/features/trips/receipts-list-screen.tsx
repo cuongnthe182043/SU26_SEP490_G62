@@ -55,11 +55,9 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
 
     return (
         <Pressable
-            // Dùng orr_id (order_receipt_requests.id) — ID duy nhất, không thể trùng với
-            // bản ghi nào khác. receipt_id có thể là orr.id HOẶC shipment_receipts.id tuỳ
-            // trường hợp (2 sequence độc lập) nên KHÔNG dùng để điều hướng, dễ trùng số
-            // và mở nhầm sang phiếu thu không liên quan.
-            onPress={() => router.push(`/receipt-detail?receiptId=${item.orr_id}`)}
+            // Định danh phiếu thu bằng orr_id (order_receipt_requests.id) — khoá nghiệp vụ
+            // duy nhất, UNIQUE theo order. shipment_receipt_id chỉ dùng để hiển thị.
+            onPress={() => router.push(`/receipt-detail?orrId=${item.orr_id}`)}
             style={({ pressed }) => [
                 styles.card,
                 isRejected && styles.cardRejected,
@@ -202,7 +200,7 @@ export function ReceiptsListScreen() {
 
             <FlatList
                 data={receipts}
-                keyExtractor={(item) => `${item.request_status}-${item.receipt_id}`}
+                keyExtractor={(item) => `${item.request_status}-${item.orr_id}`}
                 renderItem={({ item }) => <ReceiptCard item={item} />}
                 ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                 contentContainerStyle={receipts.length === 0 ? styles.emptyContainer : styles.list}

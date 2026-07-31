@@ -9,7 +9,7 @@
  *   [driver]      POST claim → PATCH status → POST start-transit → PATCH arrived
  *                 → POST complete → POST /api/orders/:id/request-receipt
  *   [coordinator] POST /api/coordinator/receipt-requests/:id/approve
- *   [driver]      POST /api/trips/receipts/:id/record-collection (client_credit)
+ *   [driver]      POST /api/trips/receipt-requests/:orrId/record-collection (client_credit)
  *   [accountant]  POST /accountant/debts/payment/allocate (nhiều lần, tất toán)
  */
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'TEST_SECRET';
@@ -134,8 +134,11 @@ describe('L3-FLOW-04 — API: Đơn cash khách xin nợ (TH3) → Nợ khách h
     });
 
     it('B4 [driver] — chọn "Khách nợ" (client_credit) → nợ KHÁCH HÀNG, không nợ tài xế', async () => {
-        const { rows: [receipt] } = await pool.query('SELECT id FROM shipment_receipts WHERE shipment_id = 2');
-        const record = await request(app).post(`/api/trips/receipts/${receipt.id}/record-collection`)
+        // Endpoint định danh bằng order_receipt_requests.id, không phải shipment_receipts.id
+        const { rows: [receipt] } = await pool.query(
+            'SELECT order_receipt_request_id AS orr_id FROM shipment_receipts WHERE shipment_id = 2',
+        );
+        const record = await request(app).post(`/api/trips/receipt-requests/${receipt.orr_id}/record-collection`)
             .set('Authorization', `Bearer ${driverToken}`)
             .field('payment_type', 'client_credit');
         assert.strictEqual(record.status, 200);

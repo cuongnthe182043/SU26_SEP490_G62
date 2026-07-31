@@ -9,7 +9,7 @@
  *   [driver]      GET  /api/trips/pool → POST claim → PATCH status → POST start-transit
  *                 → PATCH arrived → POST complete → POST /api/orders/:id/request-receipt
  *   [coordinator] GET  /api/coordinator/receipt-requests → POST .../approve
- *   [driver]      GET  /api/trips/receipts → POST .../record-collection (tiền mặt)
+ *   [driver]      GET  /api/trips/receipt-requests → POST .../record-collection (tiền mặt)
  *                 → GET /api/debts/summary (nợ 1.5tr) → POST /api/debts/:id/repayments
  *   [accountant]  GET  /api/debts/repayments/pending → PATCH .../confirm
  *   [driver]      GET  /api/debts/summary → nợ về 0
@@ -176,12 +176,12 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
             VALUES (1, 1, 4, 'parking', 50000, 'Phi do xe tai kho', 'approved', 2, NOW(), 'pending')
         `);
 
-        const receipts = await request(app).get('/api/trips/receipts').set('Authorization', `Bearer ${driverToken}`);
+        const receipts = await request(app).get('/api/trips/receipt-requests').set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(receipts.status, 200);
         const receipt = (receipts.body.receipts ?? receipts.body)[0];
         assert.ok(receipt, 'driver phải thấy phiếu thu coordinator vừa tạo');
 
-        const record = await request(app).post(`/api/trips/receipts/${receipt.receipt_id}/record-collection`)
+        const record = await request(app).post(`/api/trips/receipt-requests/${receipt.orr_id}/record-collection`)
             .set('Authorization', `Bearer ${driverToken}`)
             .field('payment_type', 'cash_collected')
             .attach('proof', img(), 'cash.jpg');
@@ -282,7 +282,7 @@ describe('L3-FLOW-01 — Negative paths over HTTP (4xx/409, role checks, invalid
     });
 
     it('N4 — record-collection with an invalid payment_type is rejected with 400', async () => {
-        const res = await request(app).post('/api/trips/receipts/999999/record-collection')
+        const res = await request(app).post('/api/trips/receipt-requests/999999/record-collection')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('payment_type', 'not_a_real_type');
         assert.strictEqual(res.status, 400);
