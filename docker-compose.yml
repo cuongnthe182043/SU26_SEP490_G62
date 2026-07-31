@@ -4,10 +4,18 @@ services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    # Toàn hệ thống chạy giờ Việt Nam (+07). Postgres mặc định UTC nên NOW(),
+    # CURRENT_DATE, ::date và EXTRACT(MONTH FROM ...) đều lệch 7 tiếng — từ 0h đến
+    # 7h sáng giờ VN server vẫn coi là "hôm qua", làm sai mốc tháng của KPI/lương và
+    # sai khớp ngày lễ. TIMESTAMPTZ lưu UTC bên trong nên đổi múi giờ KHÔNG đụng dữ liệu,
+    # chỉ đổi cách quy đổi ra ngày.
+    command: postgres -c timezone=Asia/Ho_Chi_Minh
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
       POSTGRES_DB: ${POSTGRES_DB:-SEP490}
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
     volumes:
       - db_data:/var/lib/postgresql/data
       - './DB script/DB script.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro'
@@ -34,6 +42,10 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: development
+      # new Date() trong Node phải chạy giờ VN, nếu không getDate()/getMonth() lệch
+      # 7 tiếng: quy tắc "chỉ ứng lương ngày 25" và mốc tháng của KPI sẽ sai vào
+      # khoảng 0h-7h sáng.
+      TZ: Asia/Ho_Chi_Minh
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: ${POSTGRES_DB:-SEP490}

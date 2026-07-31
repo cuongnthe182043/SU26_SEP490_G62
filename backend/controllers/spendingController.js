@@ -1,4 +1,5 @@
 const spendingService = require('../services/spendingService');
+const { optMonth, optYear } = require('../utils/accountantValidate');
 
 const parseId = (value, label) => {
     const parsed = Number(value);
@@ -131,9 +132,10 @@ const payVoucher = async (req, res) => {
 
 const getSpendingSummary = async (req, res) => {
     try {
+        const now = new Date();
         const summary = await spendingService.getSpendingSummary({
-            month: req.query.month,
-            year: req.query.year,
+            month: optMonth(req.query.month, now.getMonth() + 1),
+            year:  optYear(req.query.year, now.getFullYear()),
         });
         res.json(summary);
     } catch (err) {

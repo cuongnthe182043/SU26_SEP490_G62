@@ -1,4 +1,5 @@
 const leaveService = require('../services/leaveService');
+const { optMonth, optYear, sendError } = require('../utils/accountantValidate');
 const attendanceService = require('../services/attendanceService');
 
 // GET /api/leave/attendance?month=7&year=2026
@@ -6,35 +7,39 @@ const attendanceService = require('../services/attendanceService');
 // nửa công vào ngày nào mà còn khiếu nại đúng chỗ, thay vì chỉ thấy con số tổng.
 const getMyAttendance = async (req, res) => {
     try {
-        const month = Number(req.query.month) || new Date().getMonth() + 1;
-        const year  = Number(req.query.year)  || new Date().getFullYear();
+        const now = new Date();
+        const month = optMonth(req.query.month, now.getMonth() + 1);
+        const year  = optYear(req.query.year, now.getFullYear());
         const data = await attendanceService.getMyMonth(req.user.userId, { month, year });
         res.json(data);
     } catch (err) {
-        const code = err.name === 'AttendanceError' ? (err.status ?? 400) : 500;
-        res.status(code).json({ error: err.message });
+        if (err.name === 'AttendanceError') return res.status(err.status ?? 400).json({ error: err.message });
+        return sendError(res, err);
     }
 };
 
 // GET /api/leave/me?month=6&year=2026
 const getMyLeaves = async (req, res) => {
     try {
-        const { month, year } = req.query;
+        const month = optMonth(req.query.month, null);
+        const year  = optYear(req.query.year, null);
         const data = await leaveService.getMyLeaves(req.user.userId, { month, year });
         res.json({ leaves: data });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        return sendError(res, err);
     }
 };
 
 // GET /api/leave/summary?month=6&year=2026
 const getSummary = async (req, res) => {
     try {
-        const { month, year } = req.query;
+        const now = new Date();
+        const month = optMonth(req.query.month, now.getMonth() + 1);
+        const year  = optYear(req.query.year, now.getFullYear());
         const data = await leaveService.getSummary(req.user.userId, { month, year });
         res.json(data);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        return sendError(res, err);
     }
 };
 

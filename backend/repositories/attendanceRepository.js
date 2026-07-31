@@ -70,6 +70,16 @@ const isHoliday = async (workDate) => {
     return result.rows[0]?.name ?? null;
 };
 
+// Bảng lương kỳ đó đã chốt chưa — chặn sửa chấm công của kỳ đã trả tiền
+const getPayrollStatus = async (driverId, month, year) => {
+    const result = await pool.query(
+        `SELECT status FROM payrolls
+         WHERE driver_id = $1 AND payroll_month = $2 AND payroll_year = $3`,
+        [driverId, month, year],
+    );
+    return result.rows[0]?.status ?? null;
+};
+
 const findApprovedLeave = async (driverId, workDate) => {
     const result = await pool.query(
         `SELECT id, leave_type FROM leave_requests WHERE driver_id = $1 AND leave_date = $2 AND status = 'approved'`,
@@ -114,4 +124,4 @@ const getUnexcusedAbsenceDays = async (driverId, month, year) => {
     return Number(result.rows[0]?.days ?? 0);
 };
 
-module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave, isHoliday };
+module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave, isHoliday, getPayrollStatus };
