@@ -540,8 +540,8 @@ function RecordedBanner({ pt, hasDriverDebt }: { pt: PaymentType; hasDriverDebt:
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function ReceiptDetailScreen() {
-    const { receiptId } = useLocalSearchParams<{ receiptId: string }>();
-    const id = Number(receiptId);
+    const { orrId } = useLocalSearchParams<{ orrId: string }>();
+    const id = Number(orrId);
 
     const [receipt,      setReceipt]      = useState<DriverReceiptDetail | null>(null);
     const [companyInfo,  setCompanyInfo]  = useState<CompanyInfo | null>(null);
@@ -558,10 +558,12 @@ export function ReceiptDetailScreen() {
     const [resubmitting, setResubmitting] = useState(false);
     const [driverNote,   setDriverNote]   = useState('');
 
-    const load = () => {
-        if (!id) { setError('ID không hợp lệ'); setIsLoading(false); return; }
+    // Trả về phiếu vừa tải (hoặc null nếu lỗi) để nơi gọi kiểm chứng được trạng thái
+    // thật sau khi reload, thay vì tin vào thông báo lỗi của server.
+    const load = (): Promise<DriverReceiptDetail | null> => {
+        if (!id) { setError('ID không hợp lệ'); setIsLoading(false); return Promise.resolve(null); }
         setIsLoading(true);
-        Promise.all([tripService.getDriverReceiptDetail(id), tripService.getCompanyInfo()])
+        return Promise.all([tripService.getDriverReceiptDetail(id), tripService.getCompanyInfo()])
             .then(([{ receipt: data }, { info }]) => {
                 setReceipt(data);
                 setCompanyInfo(info);
@@ -572,8 +574,12 @@ export function ReceiptDetailScreen() {
                     // pre-fill với tổng phiếu thu — amount đã bao gồm cước + chi hộ khách
                     setCashValue(Number(data.amount));
                 }
+                return data;
             })
-            .catch(err => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
+            .catch(err => {
+                setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu');
+                return null;
+            })
             .finally(() => setIsLoading(false));
     };
 
@@ -620,7 +626,6 @@ export function ReceiptDetailScreen() {
                 text: 'Đồng ý', onPress: async () => {
                     setIsSubmitting(true);
                     try {
-                        const targetId = receipt.actual_receipt_id ?? receipt.receipt_id;
                         const fd = new FormData();
                         fd.append('payment_type', selected);
                         if (selected === 'cash_collected') {
@@ -631,7 +636,7 @@ export function ReceiptDetailScreen() {
                             const name = proofUri.split('/').pop() ?? 'proof.jpg';
                             fd.append('proof', { uri: proofUri, name, type: 'image/jpeg' } as any);
                         }
-                        const res = await tripService.recordReceiptCollection(targetId, fd);
+                        const res = await tripService.recordReceiptCollection(receipt.orr_id, fd);
                         setProofUri(null);
                         load();
                         Alert.alert(
@@ -643,10 +648,21 @@ export function ReceiptDetailScreen() {
                         );
                     } catch (err: any) {
                         const msg = err?.message ?? 'Thử lại.';
-                        // Lần bấm trước đã thành công (upload chậm) → reload thay vì báo lỗi
+                        // Lần bấm trước đã thành công (upload chậm) → reload thay vì báo lỗi.
+                        // Nhưng phải KIỂM CHỨNG: chỉ coi là đã ghi nhận khi phiếu vừa
+                        // reload thật sự có payment_type. Nếu vẫn trống mà server báo
+                        // "đã ghi nhận" thì đó là lỗi thật (BE khớp nhầm bản ghi khác) —
+                        // nuốt nó đi sẽ khiến tài xế bấm mãi không xong mà không ai biết.
                         if (msg.includes('đã được ghi nhận')) {
-                            load();
-                            Alert.alert('Đã ghi nhận trước đó', 'Phiếu thu này đã được ghi nhận thanh toán rồi. Màn hình sẽ được cập nhật.');
+                            const fresh = await load();
+                            if (fresh?.payment_type) {
+                                Alert.alert('Đã ghi nhận trước đó', 'Phiếu thu này đã được ghi nhận thanh toán rồi. Màn hình sẽ được cập nhật.');
+                            } else {
+                                Alert.alert(
+                                    'Không ghi nhận được',
+                                    'Máy chủ báo phiếu thu đã được ghi nhận, nhưng phiếu này vẫn đang chờ xác nhận. Vui lòng báo điều phối/kế toán kiểm tra lại phiếu thu này.',
+                                );
+                            }
                         } else {
                             Alert.alert('Lỗi', msg);
                         }
@@ -819,7 +835,10 @@ export function ReceiptDetailScreen() {
                             PHIẾU THU VẬN CHUYỂN
                         </Text>
                         <Text fontSize={12} color={appTheme.colors.textMuted}>
-                            #{String(receipt.receipt_id).padStart(6, '0')} · {fmtDate(receipt.collected_at)}
+                            {/* Số phiếu HIỂN THỊ: ưu tiên số phiếu thu thật, chưa duyệt thì
+                                dùng số yêu cầu. Ghép ở client cho rõ — đây thuần là nhãn,
+                                không phải khoá; mọi lời gọi API vẫn dùng receipt.orr_id. */}
+                            #{String(receipt.shipment_receipt_id ?? receipt.orr_id).padStart(6, '0')} · {fmtDate(receipt.collected_at)}
                         </Text>
                     </YStack>
 
