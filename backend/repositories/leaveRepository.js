@@ -85,6 +85,16 @@ const getAttendanceSummary = async (driverId, { month, year }) => {
     return result.rows[0];
 };
 
+// Bảng lương kỳ đó đã chốt chưa — dùng để chặn đăng ký nghỉ lùi vào kỳ đã trả tiền
+const getPayrollStatus = async (driverId, month, year) => {
+    const result = await pool.query(
+        `SELECT status FROM payrolls
+         WHERE driver_id = $1 AND payroll_month = $2 AND payroll_year = $3`,
+        [driverId, month, year],
+    );
+    return result.rows[0]?.status ?? null;
+};
+
 // Driver tự đăng ký nghỉ — auto-approved
 const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
     const result = await pool.query(
@@ -120,4 +130,4 @@ const rejectExpiredLeaveRequests = async () => {
     return result.rowCount;
 };
 
-module.exports = { getDriverLeaves, getAttendanceSummary, createLeave, deleteLeave, rejectExpiredLeaveRequests };
+module.exports = { getDriverLeaves, getAttendanceSummary, getPayrollStatus, createLeave, deleteLeave, rejectExpiredLeaveRequests };

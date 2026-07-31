@@ -19,6 +19,17 @@ INSERT INTO roles (name) VALUES
     ('manager'), ('coordinator'), ('accountant'), ('driver')
 ON CONFLICT (name) DO NOTHING;
 
+-- Toàn hệ thống chạy giờ Việt Nam (+07). Postgres mặc định UTC, mà NOW(),
+-- CURRENT_DATE, ::date và EXTRACT(MONTH FROM timestamptz) đều quy đổi theo múi giờ
+-- phiên — để UTC thì từ 0h đến 7h sáng giờ VN hệ thống vẫn coi là "hôm qua", làm
+-- sai mốc tháng của KPI/lương và sai khớp ngày lễ với chuyến chạy đêm.
+-- TIMESTAMPTZ lưu UTC bên trong nên đổi múi giờ KHÔNG đụng tới dữ liệu đã có.
+DO $$
+BEGIN
+    EXECUTE format('ALTER DATABASE %I SET timezone = %L', current_database(), 'Asia/Ho_Chi_Minh');
+END $$;
+SET timezone = 'Asia/Ho_Chi_Minh';
+
 -- Ghi lại các migration đã áp lên DB này. Không có bảng này thì không cách nào
 -- biết một DB đang ở schema nào → không dám chạy lại migration, cũng không dám
 -- bỏ qua. Mỗi file trong DB script/migrations/ tự ghi tên mình vào đây.
@@ -31,7 +42,8 @@ CREATE TABLE schema_migrations (
 -- migration là "đã áp" để không ai chạy lại lên DB mới.
 INSERT INTO schema_migrations (filename) VALUES
     ('20260730_return_flow.sql'),
-    ('20260731_holiday_attendance.sql')
+    ('20260731_holiday_attendance.sql'),
+    ('20260731_timezone_vn.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (

@@ -48,6 +48,37 @@ const validYear = (val, label = 'Năm') => {
     return n;
 };
 
+// Ngày lọc gửi từ client (dateFrom/dateTo...). Rỗng/không gửi thì coi như không lọc.
+// Không kiểm ở đây thì chuỗi rác đi thẳng xuống Postgres và nổ thành 500 "invalid
+// input syntax for type date" — lỗi của người dùng nhưng bị báo thành lỗi máy chủ.
+const validDate = (val, label = 'Ngày') => {
+    if (val === undefined || val === null || val === '') return null;
+    const s = String(val).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw err400(`${label} không hợp lệ (định dạng YYYY-MM-DD).`);
+    const d = new Date(`${s}T00:00:00+07:00`);
+    if (Number.isNaN(d.getTime())) throw err400(`${label} không hợp lệ.`);
+    // Chặn ngày không tồn tại kiểu 2026-02-30 (Date tự dồn sang tháng sau)
+    if (d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) !== s) {
+        throw err400(`${label} không hợp lệ.`);
+    }
+    return s;
+};
+
+// Số tháng lùi lại cho các báo cáo dạng "N tháng gần đây"
+const validMonthsBack = (val, fallback = 6, label = 'Số tháng') => {
+    if (val === undefined || val === null || val === '') return fallback;
+    const n = Number(val);
+    if (!Number.isInteger(n) || n < 1 || n > 60) throw err400(`${label} không hợp lệ (1–60).`);
+    return n;
+};
+
+// Tháng/năm là tham số LỌC không bắt buộc: không gửi thì lấy mặc định, gửi thì phải đúng
+const optMonth = (val, fallback, label = 'Tháng') =>
+    (val === undefined || val === null || val === '' ? fallback : validMonth(val, label));
+
+const optYear = (val, fallback, label = 'Năm') =>
+    (val === undefined || val === null || val === '' ? fallback : validYear(val, label));
+
 const sendError = (res, err) => {
     const status = err.status || 500;
     if (status >= 500) {
@@ -57,4 +88,8 @@ const sendError = (res, err) => {
     return res.status(status).json({ error: err.message });
 };
 
-module.exports = { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validMonth, validYear, sendError, err400 };
+module.exports = {
+    posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN,
+    validMonth, validYear, validDate, validMonthsBack, optMonth, optYear,
+    sendError, err400,
+};
