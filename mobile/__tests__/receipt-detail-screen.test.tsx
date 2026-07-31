@@ -36,11 +36,11 @@ const companyInfo: CompanyInfo = {
 
 function makeReceipt(overrides: Partial<DriverReceiptDetail> = {}): DriverReceiptDetail {
     return {
-        receipt_id: 77, orr_id: 5, request_status: 'approved', payment_type: null,
+        orr_id: 5, shipment_receipt_id: 77, request_status: 'approved', payment_type: null,
         amount: '500000', total_expenses: '0', collected_at: new Date().toISOString(),
         notes: null, rejection_reason: null, order_id: 501,
         cargo_name: 'Hàng khô', customer_name: 'Nguyễn Văn A', customer_company: null, customer_phone: '0900000000',
-        actual_receipt_id: 77, shipment_id: 10, shipment_receipt_id: 77,
+        shipment_id: 10,
         order_payment_type: 'cash', customer_id: 1, cargo_weight_kg: null,
         customer_address: null, actual_distance_km: null, estimated_distance_km: null,
         actual_price: null, estimated_price: '500000', driver_name: 'Tài A', driver_phone: null,
@@ -56,7 +56,7 @@ describe('ReceiptDetailScreen', () => {
         jest.clearAllMocks();
         mockTripService.recordReceiptCollection.mockReset();
         mockTripService.resubmitReceiptRequest.mockReset();
-        mockUseLocalSearchParams.mockReturnValue({ receiptId: '77' });
+        mockUseLocalSearchParams.mockReturnValue({ orrId: '5' });
         mockTripService.getCompanyInfo.mockResolvedValue({ info: companyInfo } as any);
         mockRequestCameraPerm.mockResolvedValue({ status: 'granted' });
         mockLaunchCamera.mockResolvedValue({ canceled: false, assets: [{ uri: 'file://proof.jpg' }] });
@@ -158,7 +158,9 @@ describe('ReceiptDetailScreen', () => {
 
         await waitFor(() => expect(mockTripService.recordReceiptCollection).toHaveBeenCalled());
         const [targetId, formData] = mockTripService.recordReceiptCollection.mock.calls[0];
-        expect(targetId).toBe(77);
+        // PHẢI là orr_id (5), KHÔNG phải shipment_receipt_id (77): hai bảng dùng sequence
+        // độc lập cùng START WITH 100000 nên trùng số được — gửi sr.id khiến BE tra nhầm.
+        expect(targetId).toBe(5);
         expect((formData as FormData).get('payment_type')).toBe('bank_transfer');
     });
 
@@ -217,6 +219,47 @@ describe('ReceiptDetailScreen', () => {
         await waitFor(() => expect(mockTripService.recordReceiptCollection).toHaveBeenCalled());
         const [, formData] = mockTripService.recordReceiptCollection.mock.calls[0];
         expect((formData as FormData).get('payment_type')).toBe('client_credit');
+    });
+
+    it('G62-FE-166: server báo "đã được ghi nhận" nhưng phiếu reload vẫn trống → báo lỗi thật, không nuốt', async () => {
+        autoConfirmAlert();
+        // Phiếu vẫn payment_type=null cả trước lẫn sau khi reload → server khớp nhầm bản ghi
+        mockTripService.getDriverReceiptDetail.mockResolvedValue({ receipt: makeReceipt() } as any);
+        mockTripService.recordReceiptCollection.mockRejectedValue(
+            new Error('Phiếu thu đã được ghi nhận thanh toán rồi'),
+        );
+
+        await render(<ReceiptDetailScreen />);
+        await waitFor(() => screen.getByText('Khách nợ (chưa thanh toán)'));
+        await fireEvent.press(screen.getByText('Khách nợ (chưa thanh toán)'));
+        await fireEvent.press(screen.getByText('Xác nhận'));
+
+        await waitFor(() => {
+            const titles = (Alert.alert as jest.Mock).mock.calls.map((c) => c[0]);
+            expect(titles).toContain('Không ghi nhận được');
+        });
+        const titles = (Alert.alert as jest.Mock).mock.calls.map((c) => c[0]);
+        expect(titles).not.toContain('Đã ghi nhận trước đó');
+    });
+
+    it('G62-FE-167: server báo "đã được ghi nhận" và phiếu reload đã có payment_type → thông báo hiền lành', async () => {
+        autoConfirmAlert();
+        mockTripService.getDriverReceiptDetail
+            .mockResolvedValueOnce({ receipt: makeReceipt() } as any)
+            .mockResolvedValue({ receipt: makeReceipt({ payment_type: 'client_credit' }) } as any);
+        mockTripService.recordReceiptCollection.mockRejectedValue(
+            new Error('Phiếu thu đã được ghi nhận thanh toán rồi'),
+        );
+
+        await render(<ReceiptDetailScreen />);
+        await waitFor(() => screen.getByText('Khách nợ (chưa thanh toán)'));
+        await fireEvent.press(screen.getByText('Khách nợ (chưa thanh toán)'));
+        await fireEvent.press(screen.getByText('Xác nhận'));
+
+        await waitFor(() => {
+            const titles = (Alert.alert as jest.Mock).mock.calls.map((c) => c[0]);
+            expect(titles).toContain('Đã ghi nhận trước đó');
+        });
     });
 
     it('G62-FE-165: luôn hiển thị QR ngân hàng công ty khi có bank_qr_url', async () => {

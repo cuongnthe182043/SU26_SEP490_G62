@@ -87,18 +87,21 @@ router.patch(
 // Đơn cash đã hoàn thành nhưng driver chưa gửi yêu cầu phiếu thu (dùng cho banner home)
 router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder);
 
-// Phiếu thu (coordinator đã tạo) — driver xem + show cho khách
-router.get('/receipts',            driverOnly, tripController.getDriverReceipts);
-router.get('/receipts/:receiptId', driverOnly, tripController.getDriverReceiptDetail);
+// Phiếu thu (coordinator đã tạo) — driver xem + show cho khách.
+// Tham số đường dẫn là order_receipt_requests.id, KHÔNG phải shipment_receipts.id:
+// hai bảng dùng sequence độc lập cùng START WITH 100000 nên một số nguyên trần không
+// đủ phân biệt. Tên route nói rõ loại khoá để không gửi nhầm.
+router.get('/receipt-requests',        driverOnly, tripController.getDriverReceipts);
+router.get('/receipt-requests/:orrId', driverOnly, tripController.getDriverReceiptDetail);
 
 // Driver gửi lại yêu cầu tạo phiếu thu sau khi bị coordinator từ chối
-router.post('/receipt-request/:orrId/resubmit', driverOnly, tripController.resubmitReceiptRequest);
+router.post('/receipt-requests/:orrId/resubmit', driverOnly, tripController.resubmitReceiptRequest);
 
 // Driver ghi nhận cách khách thanh toán sau khi có phiếu thu
 // Body: { payment_type: 'cash_collected' | 'bank_transfer' | 'client_credit', notes? }
 // File: proof / image / photo (bắt buộc với cash_collected và bank_transfer)
 router.post(
-    '/receipts/:receiptId/record-collection',
+    '/receipt-requests/:orrId/record-collection',
     driverOnly,
     handleUpload(uploadReceiptCollectionProof.fields([
         { name: 'proof', maxCount: 1 },

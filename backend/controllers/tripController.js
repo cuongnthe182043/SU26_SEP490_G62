@@ -313,7 +313,7 @@ const getOrderReceiptRequest = async (req, res) => {
     }
 };
 
-// GET /api/trips/receipts  — danh sách phiếu thu của driver
+// GET /api/trips/receipt-requests  — danh sách phiếu thu của driver
 const getDriverReceipts = async (req, res) => {
     try {
         const page = Math.max(1, Number(req.query.page) || 1);
@@ -325,12 +325,12 @@ const getDriverReceipts = async (req, res) => {
     }
 };
 
-// GET /api/trips/receipts/:receiptId  — chi tiết phiếu thu (show cho khách)
+// GET /api/trips/receipt-requests/:orrId  — chi tiết phiếu thu (show cho khách)
 const getDriverReceiptDetail = async (req, res) => {
     try {
-        const receiptId = Number(req.params.receiptId);
-        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
-        const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu phiếu thu không hợp lệ' });
+        const receipt = await tripService.getDriverReceiptDetail(orrId, req.user.userId);
         res.json({ receipt });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
@@ -353,8 +353,8 @@ const resubmitReceiptRequest = async (req, res) => {
 
 const recordReceiptCollection = async (req, res) => {
     try {
-        const receiptId = Number(req.params.receiptId);
-        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu phiếu thu không hợp lệ' });
 
         const { payment_type, notes, collected_amount } = req.body;
         if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
@@ -367,7 +367,7 @@ const recordReceiptCollection = async (req, res) => {
         const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
         const proofUrl = file?.path ?? null;
 
-        const result = await tripService.recordReceiptCollection(receiptId, req.user.userId, {
+        const result = await tripService.recordReceiptCollection(orrId, req.user.userId, {
             paymentType: payment_type,
             proofUrl,
             notes: notes ?? null,

@@ -503,8 +503,8 @@ const getDriverReceipts = async (driverId, opts) => {
     return tripRepository.getDriverReceipts(driverId, opts);
 };
 
-const getDriverReceiptDetail = async (receiptId, driverId) => {
-    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+const getDriverReceiptDetail = async (orrId, driverId) => {
+    const receipt = await tripRepository.getDriverReceiptDetail(orrId, driverId);
     if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền xem');
 
     // eslint-disable-next-line global-require
@@ -520,24 +520,28 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return { ...receipt, expenses, order_shipments: orderShipments };
 };
 
-const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
+const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
     const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
         throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
     }
-    const result = await tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount });
+    const result = await tripRepository.recordReceiptCollection(orrId, driverId, { paymentType, proofUrl, notes, collectedAmount });
 
     if (paymentType === 'bank_transfer') {
+        // entityId PHẢI là shipment_receipts.id: kế toán xác nhận chuyển khoản qua
+        // POST /api/accountant/receipts/:receiptId/confirm-bank-transfer, tra theo sr.id.
+        // Hàm này nhận orr.id — hai dải khoá khác nhau, truyền nhầm sẽ deep-link sai phiếu.
+        const shipmentReceiptId = result.shipmentReceiptId;
         notificationService.getUserIdsByRole('accountant').then((ids) =>
             notificationService.createForUsers(ids, {
                 title: 'Khách chuyển khoản về công ty — cần xác nhận',
-                message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${receiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
+                message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${shipmentReceiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
                 type: 'BANK_TRANSFER_PENDING',
                 // entityType riêng để bấm thông báo mở đúng màn "Xác nhận chuyển khoản"
                 // (dùng 'receipt' sẽ nhảy sang màn Doanh thu như mọi phiếu thu khác)
                 entityType: 'bank_transfer',
-                entityId: receiptId,
+                entityId: shipmentReceiptId,
             }, { displayMode: 'alert' })
         ).catch(() => {});
     }
