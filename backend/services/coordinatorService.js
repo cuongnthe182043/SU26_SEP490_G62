@@ -501,38 +501,25 @@ const computeReceiptAmount = (pricingSnapshot) => {
         }
 
         // Chuyến phải HOÀN HÀNG (returning_at có giá trị — kể cả khi đã sang
-        // 'completed' vì hàng đã về kho). Số tiền khách phải trả do coordinator chốt
-        // lúc xử lý chuyến thất bại, KHÔNG được tính lại theo km như chuyến giao
-        // thành công. Trước đây returnComplete đặt status='completed' nên nhánh
-        // 'failed' ở trên không bao giờ chạy → khách bị thu đủ cước cho hàng chưa
-        // từng giao.
+        // 'completed' vì hàng đã về kho): tài chạy CẢ HAI CHIỀU nên tính GẤP ĐÔI cước.
+        // Khách từ chối nhận thì chịu cả lượt đi lẫn lượt về; doanh thu/KPI của tài
+        // cũng lấy từ đúng con số này nên sổ sách khớp, không phát sinh khoản bù.
         if (shipment.returning_at) {
-            const chargeType = shipment.return_charge_type;
-            if (chargeType === 'no_charge') {
-                return {
-                    shipment_id: shipment.id,
-                    actual_km: 0,
-                    price_per_km: pricePerKm,
-                    actual_income: 0,
-                    is_price_manual: false,
-                    is_returned: true,
-                };
+            const returnKm = shipment.actual_distance_km;
+            if (returnKm === null || returnKm === undefined || Number.isNaN(Number(returnKm)) || Number(returnKm) <= 0) {
+                throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế (tài xế chưa khai báo) — không thể chốt phiếu thu`);
             }
-            if (chargeType === 'return_fee') {
-                const fee = Number(shipment.return_fee);
-                if (!Number.isFinite(fee) || fee < 0) {
-                    throw new Error(`Chuyến #${shipment.id} hoàn hàng nhưng chưa có phí hoàn hàng hợp lệ`);
-                }
-                return {
-                    shipment_id: shipment.id,
-                    actual_km: 0,
-                    price_per_km: pricePerKm,
-                    actual_income: fee,
-                    is_price_manual: false,
-                    is_returned: true,
-                };
+            if (!pricePerKm || pricePerKm <= 0) {
+                throw new Error(`Chuyến #${shipment.id} chưa có đơn giá xe hợp lệ để tính thu nhập thực tế`);
             }
-            // full_fare → rơi xuống tính như chuyến bình thường (khách trả đủ cước)
+            return {
+                shipment_id: shipment.id,
+                actual_km: Number(returnKm),
+                price_per_km: pricePerKm,
+                actual_income: Number(returnKm) * pricePerKm * 2,
+                is_price_manual: false,
+                is_returned: true,
+            };
         }
 
         // Đơn giá TỰ TÍNH theo km × đơn giá nhóm xe — BẮT BUỘC phải là km THẬT của
@@ -1015,28 +1002,15 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
 
 // Coordinator xử lý chuyến giao thất bại: liên hệ khách rồi chọn giao lại hoặc
 // hoàn hàng, kèm chốt khách có phải trả tiền hay không.
-const resolveFailedShipment = async (shipmentId, { action, chargeType, returnFee }, actorId) => {
+const resolveFailedShipment = async (shipmentId, { action }, actorId) => {
     const tripRepository = require('../repositories/tripRepository');
+    const incidentRepository = require('../repositories/incidentRepository');
     const notificationService = require('./notificationService');
-    const { RETURN_CHARGE_TYPES } = require('../constants/tripConstants');
 
     const parsedId = Number(shipmentId);
     if (!parsedId) throw new Error('Chuyến không hợp lệ');
     if (!['redeliver', 'return'].includes(action)) {
         throw new Error('action phải là "redeliver" (giao lại) hoặc "return" (hoàn hàng)');
-    }
-
-    let normalizedFee = null;
-    if (action === 'return') {
-        if (!RETURN_CHARGE_TYPES.includes(chargeType)) {
-            throw new Error(`Cách tính tiền phải là một trong: ${RETURN_CHARGE_TYPES.join(', ')}`);
-        }
-        if (chargeType === 'return_fee') {
-            normalizedFee = Number(returnFee);
-            if (!Number.isFinite(normalizedFee) || normalizedFee <= 0) {
-                throw new Error('Phí hoàn hàng phải lớn hơn 0');
-            }
-        }
     }
 
     const shipment = await tripRepository.getTripById(parsedId);
@@ -1047,8 +1021,6 @@ const resolveFailedShipment = async (shipmentId, { action, chargeType, returnFee
         updated = await tripRepository.resolveFailedShipment({
             shipmentId: parsedId,
             action,
-            chargeType: action === 'return' ? chargeType : null,
-            returnFee: normalizedFee,
             coordinatorId: Number(actorId),
         });
     } catch (err) {
@@ -1057,18 +1029,23 @@ const resolveFailedShipment = async (shipmentId, { action, chargeType, returnFee
         throw err;
     }
 
-    if (shipment.owner_driver_id) {
-        const chargeLabel = {
-            no_charge: 'khách không phải trả tiền',
-            return_fee: `khách trả phí hoàn hàng ${Number(normalizedFee).toLocaleString('vi-VN')}đ`,
-            full_fare: 'khách trả đủ cước',
-        }[chargeType];
+    // Đóng luôn sự cố 'customer_refusal' đã sinh khi tài báo thất bại — coordinator
+    // xử lý ở màn Sự cố nên sự cố phải khép lại cùng lúc, không để treo 'open'.
+    try {
+        await incidentRepository.resolveOpenIncidentForShipment(parsedId, {
+            resolvedBy: Number(actorId),
+            resolution: action === 'redeliver'
+                ? 'Điều phối viên cho giao lại sau khi giao thất bại'
+                : 'Điều phối viên cho hoàn hàng về điểm lấy — chuyến tính gấp đôi cước',
+        });
+    } catch { /* không đóng được sự cố thì vẫn giữ nguyên kết quả xử lý chuyến */ }
 
+    if (shipment.owner_driver_id) {
         notificationService.createForUser(shipment.owner_driver_id, {
             title: action === 'redeliver' ? 'Giao lại chuyến' : 'Chuyển sang hoàn hàng',
             message: action === 'redeliver'
                 ? `Điều phối viên đã liên hệ khách — chuyến #${parsedId} được giao lại. Hãy tiếp tục đến điểm giao.`
-                : `Chuyến #${parsedId} chuyển sang hoàn hàng (${chargeLabel}). Hãy chở hàng về điểm lấy và chụp ảnh xác nhận khi trả hàng.`,
+                : `Chuyến #${parsedId} chuyển sang hoàn hàng. Chuyến này được tính GẤP ĐÔI cước vì bạn chạy cả hai chiều. Hãy chở hàng về điểm lấy và chụp ảnh xác nhận khi trả hàng.`,
             type: 'TRIP_STATUS_UPDATED',
             entityType: 'shipments',
             entityId: parsedId,

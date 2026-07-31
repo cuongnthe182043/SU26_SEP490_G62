@@ -33,15 +33,36 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
             ao.status AS override_status,
             ao.notes  AS override_notes,
             lr.id         AS leave_request_id,
-            lr.leave_type AS leave_type
+            lr.leave_type AS leave_type,
+            h.name    AS holiday_name,
+            -- Bằng chứng tài có đi làm hôm đó: hoàn thành ít nhất 1 chuyến trong ngày.
+            -- Ngày lễ mà có chuyến hoàn thành thì tính 200% lương (Điều V.1) — hệ thống
+            -- tự nhận, kế toán không phải chấm tay.
+            EXISTS (
+                SELECT 1
+                FROM order_shipments os
+                JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                WHERE sc.owner_driver_id = drv.driver_id
+                  AND os.status = 'completed'
+                  AND os.completed_at::date = dd.work_date
+            ) AS has_completed_trip
         FROM drv
         CROSS JOIN days dd
         LEFT JOIN attendance_overrides ao ON ao.driver_id = drv.driver_id AND ao.work_date = dd.work_date
         LEFT JOIN leave_requests lr ON lr.driver_id = drv.driver_id AND lr.leave_date = dd.work_date AND lr.status = 'approved'
+        LEFT JOIN company_holidays h ON h.holiday_date = dd.work_date
         ORDER BY drv.full_name ASC, dd.work_date ASC`,
         params,
     );
     return result.rows;
+};
+
+const isHoliday = async (workDate) => {
+    const result = await pool.query(
+        `SELECT name FROM company_holidays WHERE holiday_date = $1`,
+        [workDate],
+    );
+    return result.rows[0]?.name ?? null;
 };
 
 const findApprovedLeave = async (driverId, workDate) => {
@@ -88,4 +109,4 @@ const getUnexcusedAbsenceDays = async (driverId, month, year) => {
     return Number(result.rows[0]?.days ?? 0);
 };
 
-module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave };
+module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave, isHoliday };

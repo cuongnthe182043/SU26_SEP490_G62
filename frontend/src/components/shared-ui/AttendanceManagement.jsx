@@ -15,10 +15,17 @@ const PAGE_SIZE = 10;
 
 const STATUS_STYLE = {
   present:          { bg: "bg-green-100 dark:bg-green-500/15",  text: "text-green-700 dark:text-green-300",  dot: "bg-green-500" },
+  holiday:          { bg: "bg-violet-100 dark:bg-violet-500/15", text: "text-violet-700 dark:text-violet-300", dot: "bg-violet-500" },
+  holiday_worked:   { bg: "bg-fuchsia-200 dark:bg-fuchsia-500/25", text: "text-fuchsia-800 dark:text-fuchsia-200", dot: "bg-fuchsia-600" },
   leave_paid:       { bg: "bg-blue-100 dark:bg-blue-500/15",   text: "text-blue-700 dark:text-blue-300",   dot: "bg-blue-500" },
   leave_unpaid:     { bg: "bg-amber-100 dark:bg-amber-500/15",  text: "text-amber-700 dark:text-amber-300",  dot: "bg-amber-500" },
   absent_unexcused: { bg: "bg-rose-100 dark:bg-rose-500/15",   text: "text-rose-700 dark:text-rose-300",   dot: "bg-rose-500" },
   half_day:         { bg: "bg-orange-100 dark:bg-orange-500/15", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-500" },
+};
+
+// Trạng thái lạ (BE thêm mới mà FE chưa cập nhật) không được làm vỡ cả lưới
+const styleOf = (status) => STATUS_STYLE[status] ?? {
+  bg: "bg-gray-100 dark:bg-white/10", text: "text-gray-600 dark:text-gray-300", dot: "bg-gray-400",
 };
 
 const WEEKDAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -53,7 +60,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
           <ModalBody className="gap-4">
             <div className="flex flex-wrap gap-2">
               {Object.entries(driver.summary).map(([status, count]) => (
-                <Chip key={status} size="sm" variant="flat" className={`${STATUS_STYLE[status].bg} ${STATUS_STYLE[status].text}`}>
+                <Chip key={status} size="sm" variant="flat" className={`${styleOf(status).bg} ${styleOf(status).text}`}>
                   {statusLabels[status]}: {count}
                 </Chip>
               ))}
@@ -70,16 +77,25 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
                   <div key={wi} className="grid grid-cols-7 divide-x divide-gray-50 dark:divide-white/10">
                     {week.map((day, di) => {
                       if (!day) return <div key={di} className="h-16 bg-gray-50/40 dark:bg-white/5" />;
-                      const style = STATUS_STYLE[day.status];
+                      const style = styleOf(day.status);
                       const dayNum = new Date(day.work_date).getDate();
+                      const isHoliday = Boolean(day.holiday_name);
                       return (
                         <button
                           key={di}
                           onClick={() => setDayModal(day)}
-                          className={`h-16 flex flex-col items-center justify-center gap-1 hover:brightness-95 transition-all ${style.bg}`}
+                          title={isHoliday ? day.holiday_name : undefined}
+                          className={`h-16 flex flex-col items-center justify-center gap-0.5 hover:brightness-95 transition-all ${style.bg}
+                                     ${isHoliday ? "ring-1 ring-inset ring-violet-400/60" : ""}`}
                         >
                           <span className={`text-xs font-semibold ${style.text}`}>{dayNum}</span>
-                          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                          {isHoliday ? (
+                            <span className={`text-[9px] font-bold leading-none ${style.text}`}>
+                              {day.status === "holiday_worked" ? "LỄ ×2" : "LỄ"}
+                            </span>
+                          ) : (
+                            <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                          )}
                         </button>
                       );
                     })}
@@ -91,7 +107,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
               {Object.entries(statusLabels).map(([status, label]) => (
                 <div key={status} className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${STATUS_STYLE[status].dot}`} /> {label}
+                  <span className={`w-2 h-2 rounded-full ${styleOf(status).dot}`} /> {label}
                 </div>
               ))}
             </div>
@@ -108,6 +124,20 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
             Ngày {dayModal ? new Date(dayModal.work_date).toLocaleDateString("vi-VN") : ""}
           </ModalHeader>
           <ModalBody className="gap-2">
+            {dayModal?.holiday_name && (
+              <div className="rounded-xl border border-violet-200 dark:border-violet-500/25 bg-violet-50 dark:bg-violet-500/10 p-3">
+                <p className="text-xs font-bold text-violet-700 dark:text-violet-300">
+                  Ngày lễ — {dayModal.holiday_name}
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                  Được nghỉ hưởng nguyên lương, không trừ công dù có nghỉ. Nếu tài xế đi làm
+                  hôm nay thì ngày đó tính <b>200% lương</b>.
+                  {dayModal.has_completed_trip
+                    ? " Hệ thống đã ghi nhận có chuyến hoàn thành trong ngày → đã tự tính ×2."
+                    : " Chưa có chuyến nào hoàn thành trong ngày — nếu tài vẫn đi làm, bấm nút bên dưới để tính ×2."}
+                </p>
+              </div>
+            )}
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Trạng thái hiện tại: <strong>{dayModal ? statusLabels[dayModal.status] : ""}</strong>
               {dayModal?.leave_request_id && !dayModal?.override_id && (
@@ -124,27 +154,43 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
                 Xoá đánh dấu
               </Button>
             )}
-            <Button
-              variant="flat" color="success" size="sm" isLoading={marking}
-              isDisabled={dayModal?.status === "present"}
-              onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "present"); setDayModal(null); }}
-            >
-              Đánh dấu Có mặt
-            </Button>
-            <Button
-              variant="flat" className="bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300" size="sm" isLoading={marking}
-              isDisabled={dayModal?.status === "half_day" || !!dayModal?.leave_request_id}
-              onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "half_day"); setDayModal(null); }}
-            >
-              Nửa công (nghỉ nửa buổi)
-            </Button>
-            <Button
-              variant="flat" color="danger" size="sm" isLoading={marking}
-              isDisabled={dayModal?.status === "absent_unexcused" || !!dayModal?.leave_request_id}
-              onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "absent_unexcused"); setDayModal(null); }}
-            >
-              Vắng không phép
-            </Button>
+
+            {/* Ngày lễ chỉ có 1 quyết định: tài có đi làm hôm đó không. Không trừ công
+                được nên ẩn hẳn nút vắng/nửa công thay vì để bấm rồi BE báo lỗi. */}
+            {dayModal?.holiday_name ? (
+              <Button
+                size="sm" isLoading={marking}
+                className="bg-fuchsia-600 text-white"
+                isDisabled={dayModal?.status === "holiday_worked"}
+                onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "holiday_worked"); setDayModal(null); }}
+              >
+                Đi làm ngày lễ (×2 công)
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="flat" color="success" size="sm" isLoading={marking}
+                  isDisabled={dayModal?.status === "present"}
+                  onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "present"); setDayModal(null); }}
+                >
+                  Đánh dấu Có mặt
+                </Button>
+                <Button
+                  variant="flat" className="bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300" size="sm" isLoading={marking}
+                  isDisabled={dayModal?.status === "half_day" || !!dayModal?.leave_request_id}
+                  onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "half_day"); setDayModal(null); }}
+                >
+                  Nửa công (nghỉ nửa buổi)
+                </Button>
+                <Button
+                  variant="flat" color="danger" size="sm" isLoading={marking}
+                  isDisabled={dayModal?.status === "absent_unexcused" || !!dayModal?.leave_request_id}
+                  onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "absent_unexcused"); setDayModal(null); }}
+                >
+                  Vắng không phép
+                </Button>
+              </>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -278,7 +324,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/10">
           <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Chấm công tài xế</div>
-          <div className="text-xs text-gray-400 dark:text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm).</div>
+          <div className="text-xs text-gray-400 dark:text-gray-400">Mặc định mọi ngày là "Có mặt" — chỉ cần đánh dấu ngoại lệ (vắng không phép, hoặc điều chỉnh lại nếu tài xế xin nghỉ nhưng thực tế vẫn đi làm). Ngày lễ viền tím: nghỉ vẫn hưởng nguyên lương, đi làm được tính 200%.</div>
         </div>
 
         {loading ? (
@@ -295,7 +341,7 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {Object.entries(d.summary).filter(([, c]) => c > 0).map(([status, count]) => (
-                    <Chip key={status} size="sm" variant="flat" className={`${STATUS_STYLE[status].bg} ${STATUS_STYLE[status].text}`}>
+                    <Chip key={status} size="sm" variant="flat" className={`${styleOf(status).bg} ${styleOf(status).text}`}>
                       {statusLabels[status]}: {count}
                     </Chip>
                   ))}

@@ -398,16 +398,12 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
 //
 // action='redeliver' → về TRANSIT, tài đi giao lại (xoá dấu thất bại để chuyến chạy
 //                      lại bình thường; cancel_reason giữ nguyên làm vết audit).
-// action='return'    → sang RETURNING kèm cách tính tiền khách đã chốt:
-//                      no_charge  → actual_price = 0 (DN chịu)
-//                      return_fee → actual_price = phí hoàn hàng coordinator nhập
-//                      full_fare  → actual_price = NULL, để computeReceiptAmount tính
-//                                   như chuyến bình thường (khách trả đủ cước)
+// action='return'    → sang RETURNING, tài chở hàng về điểm lấy.
 //
-// Ghi actual_price ngay tại đây khiến KPI tự đúng: kpiRepository dùng
-// COALESCE(actual_price, estimated_price, 0) nên 0 hoặc phí hoàn hàng sẽ được dùng
-// thay cho giá cước đầy đủ, mà không phải sửa câu KPI.
-const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee, coordinatorId }) => {
+// Không ghi actual_price ở đây: lúc này tài xế CHƯA khai km thực tế. Giá chỉ chốt
+// khi coordinator duyệt phiếu thu — computeReceiptAmount thấy returning_at khác NULL
+// thì nhân đôi (km × đơn giá × 2) vì tài chạy cả chiều đi lẫn chiều về.
+const resolveFailedShipment = async ({ shipmentId, action, coordinatorId }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -442,31 +438,21 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             );
             updated = res.rows[0];
         } else {
-            const actualPrice = chargeType === 'no_charge' ? 0
-                : chargeType === 'return_fee' ? Number(returnFee)
-                : null;
+            // Hoàn hàng: tài chạy CẢ HAI CHIỀU nên chuyến được tính GẤP ĐÔI cước.
+            // Không ghi actual_price ở đây vì lúc này tài xế CHƯA khai km thực tế —
+            // computeReceiptAmount sẽ nhân đôi khi thấy returning_at IS NOT NULL.
+            // returning_at chính là dấu hiệu duy nhất, không cần cột phụ nào.
             const res = await client.query(
                 `UPDATE order_shipments
                  SET status = $2,
                      returning_at = NOW(),
-                     return_charge_type = $3,
-                     return_fee = $4,
-                     actual_price = CASE WHEN $5::boolean THEN $6::numeric ELSE actual_price END,
-                     failed_resolved_by = $7,
+                     failed_resolved_by = $3,
                      failed_resolved_at = NOW(),
                      version = version + 1,
                      updated_at = NOW()
                  WHERE id = $1
                  RETURNING *`,
-                [
-                    shipmentId,
-                    SHIPMENT_STATUS.RETURNING,
-                    chargeType,
-                    chargeType === 'return_fee' ? Number(returnFee) : null,
-                    actualPrice !== null,
-                    actualPrice,
-                    coordinatorId,
-                ],
+                [shipmentId, SHIPMENT_STATUS.RETURNING, coordinatorId],
             );
             updated = res.rows[0];
         }
@@ -483,7 +469,6 @@ const resolveFailedShipment = async ({ shipmentId, action, chargeType, returnFee
             newData: {
                 status: updated.status,
                 resolution: action,
-                ...(action === 'return' ? { return_charge_type: chargeType, return_fee: updated.return_fee } : {}),
             },
         });
 

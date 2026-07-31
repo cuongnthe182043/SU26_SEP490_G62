@@ -2,6 +2,7 @@ const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
 const stopRepository     = require('../repositories/stopRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
+const incidentRepository = require('../repositories/incidentRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -153,17 +154,30 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
 
     fireStatusNotif(driverId, tripId, newStatus);
 
-    // Giao thất bại là việc phải có người xử lý ngay: coordinator liên hệ khách rồi
-    // quyết định giao lại hay trả hàng về, và khách có phải trả tiền hay không.
-    // Trước đây chỉ báo cho chính tài xế (silent) nên coordinator không hề biết.
+    // Giao thất bại = một SỰ CỐ, không chỉ là đổi trạng thái. Tự sinh bản ghi
+    // incidents loại 'customer_refusal' để coordinator xử lý ở màn Sự cố (nơi tập
+    // trung mọi việc cần can thiệp), và để KPI incident_count phản ánh đúng — trước
+    // đây loại sự cố này bị bỏ sót hoàn toàn vì không ai tạo incident.
     if (newStatus === SHIPMENT_STATUS.FAILED) {
+        let incident = null;
+        try {
+            incident = await incidentRepository.createIncident({
+                shipmentId: Number(tripId),
+                reportedBy: Number(driverId),
+                incidentType: 'customer_refusal',
+                severityLevel: 'medium',
+                description: `Giao hàng thất bại: ${reason.trim()}`,
+                location: null,
+            });
+        } catch { /* không tạo được sự cố thì vẫn phải cho đổi trạng thái */ }
+
         const coordinatorIds = await notificationService.getUserIdsByRole('coordinator');
         notificationService.createForUsers(coordinatorIds, {
             title: 'Giao hàng thất bại — cần xử lý',
-            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Hãy liên hệ khách rồi chọn giao lại hoặc hoàn hàng.`,
-            type: 'TRIP_STATUS_UPDATED',
-            entityType: 'shipments',
-            entityId: tripId,
+            message: `Chuyến #${tripId} (đơn #${trip.order_id}) giao thất bại: ${reason.trim()}. Vào màn Sự cố để cho giao lại hoặc cho hoàn hàng.`,
+            type: 'INCIDENT_REPORTED',
+            entityType: 'incidents',
+            entityId: incident?.id ?? null,
         }, { displayMode: 'alert' }).catch(() => {});
 
         try {
@@ -172,6 +186,7 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
                 action: 'failed',
                 shipmentId: Number(tripId),
                 orderId: trip.order_id ?? null,
+                incidentId: incident?.id ?? null,
                 reason: reason.trim(),
             });
         } catch { /* realtime failure must not abort the status change */ }
