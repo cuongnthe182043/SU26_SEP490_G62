@@ -66,6 +66,20 @@ describe('Trip Service', () => {
             );
         });
 
+        // BR-003: trip pool đã lọc theo nhóm xe nên giao diện không hiện chuyến sai nhóm,
+        // nhưng đó chỉ là lọc hiển thị — gọi thẳng API với id chuyến phải bị chặn ở tầng ghi,
+        // nếu không thì xe nhỏ nhận được đơn quá tải trọng của nhóm xe lớn.
+        it('BR-003: translates VEHICLE_GROUP_MISMATCH with prefix so controller trả 422', async () => {
+            mock.method(tripRepository, 'getDriverVehicleId', async () => 3);
+            mock.method(tripRepository, 'claimShipment', async () => { throw new Error('VEHICLE_GROUP_MISMATCH'); });
+
+            await assert.rejects(
+                () => tripService.claimTrip(10, 1),
+                (err) => err.message.startsWith('VEHICLE_GROUP_MISMATCH:')
+                      && err.message.includes('nhóm xe khác'),
+            );
+        });
+
         it('BR-007: throws ALREADY_CLAIMED when repo returns falsy (lost the atomic race)', async () => {
             mock.method(tripRepository, 'getDriverVehicleId', async () => 3);
             mock.method(tripRepository, 'claimShipment', async () => null);
