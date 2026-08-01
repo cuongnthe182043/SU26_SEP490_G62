@@ -10,7 +10,7 @@ const EXPENSE_ALLOWED_STATUSES = [
     'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl }) => {
+const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl, clientRequestId }) => {
     if (!receiptUrl) throw new Error('Ảnh bằng chứng là bắt buộc');
     if (!expenseType || !ALLOWED_EXPENSE_TYPES.includes(expenseType)) throw new Error('Loại chi phí không hợp lệ');
     if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
@@ -35,7 +35,15 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
         expenseType,
         amount: Number(amount),
         description: description?.trim() || null,
+        clientRequestId: clientRequestId || null,
     });
+
+    // App gửi lại đúng thao tác cũ (hàng đợi offline) → bản ghi đã có sẵn, không tạo
+    // thêm ảnh đính kèm và không bắn lại thông báo cho điều phối.
+    if (expense._daTonTai) {
+        delete expense._daTonTai;
+        return expense;
+    }
 
     await expenseRepository.addExpenseAttachment(expense.id, receiptUrl);
 

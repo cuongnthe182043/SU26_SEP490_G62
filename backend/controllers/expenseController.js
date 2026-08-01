@@ -9,7 +9,7 @@ const createExpense = async (req, res) => {
     const filePublicId = req.file?.filename ?? null;
 
     try {
-        const { shipmentId, expenseType, amount, description } = req.body;
+        const { shipmentId, expenseType, amount, description, clientRequestId } = req.body;
 
         if (!shipmentId) return res.status(400).json({ error: 'shipmentId là bắt buộc' });
 
@@ -19,6 +19,7 @@ const createExpense = async (req, res) => {
             amount,
             description,
             receiptUrl,
+            clientRequestId,
         });
 
         res.status(201).json({ expenses });

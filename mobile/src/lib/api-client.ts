@@ -17,6 +17,34 @@ function isUnsafeMethod(method?: string): boolean {
   return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase());
 }
 
+// ─── Chịu lỗi mạng ───────────────────────────────────────────────────────────
+// Tài xế làm việc ngoài đường, sóng 3G chập chờn là chuyện thường. Không có hai
+// thứ dưới đây thì: (1) request treo vô hạn khi "có sóng nhưng không truyền được",
+// nút xoay mãi không biết chờ hay bấm lại; (2) một lần rớt gói là hỏng cả thao tác.
+
+const TIMEOUT_THUONG_MS = 30_000;   // request JSON bình thường
+const TIMEOUT_UPLOAD_MS = 90_000;   // gửi kèm ảnh, mạng yếu cần lâu hơn
+const SO_LAN_THU_LAI    = 2;        // số lần thử THÊM, ngoài lần đầu
+
+// CHỈ tự thử lại request ĐỌC. Request ghi mà tự gửi lại thì có nguy cơ trùng dữ
+// liệu — dù backend đã chặn trùng ở 7 luồng chính, vẫn không nên dựa vào đó ở đây.
+function coTheThuLai(method?: string): boolean {
+  return !isUnsafeMethod(method);
+}
+
+const nghi = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Gọi fetch có hạn giờ. Hết giờ thì huỷ hẳn kết nối thay vì để treo.
+async function fetchCoTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function canBootstrapCsrf(path: string): boolean {
   return ![
     '/auth/login',
@@ -182,22 +210,44 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
 
   let response: Response;
 
-  try {
-    response = await fetch(`${apiBaseUrl}${path}`, {
-      ...options,
-      headers,
-      body,
-    });
-  } catch (err) {
-     
+  const laUpload = body instanceof FormData;
+  const timeoutMs = laUpload ? TIMEOUT_UPLOAD_MS : TIMEOUT_THUONG_MS;
+  const soLanThu = coTheThuLai(options.method) ? SO_LAN_THU_LAI : 0;
+
+  let loiCuoi: unknown = null;
+  let daGui = false;
+
+  for (let lan = 0; lan <= soLanThu; lan += 1) {
+    try {
+      response = await fetchCoTimeout(`${apiBaseUrl}${path}`, { ...options, headers, body }, timeoutMs);
+      daGui = true;
+      break;
+    } catch (err) {
+      loiCuoi = err;
+      // Backoff tăng dần: 0.6s rồi 1.2s. Sóng chập chờn thường chỉ mất vài trăm ms.
+      if (lan < soLanThu) await nghi(600 * (lan + 1));
+    }
+  }
+
+  if (!daGui) {
+    const heoGio = loiCuoi instanceof Error && loiCuoi.name === 'AbortError';
     console.error('[api-client] fetch failed', {
       url: `${apiBaseUrl}${path}`,
       method: options.method,
-      isFormData: body instanceof FormData,
-      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      isFormData: laUpload,
+      timedOut: heoGio,
+      attempts: soLanThu + 1,
+      error: loiCuoi instanceof Error ? `${loiCuoi.name}: ${loiCuoi.message}` : String(loiCuoi),
     });
-    throw new ApiError(ERROR_MESSAGES.network, 0);
+    throw new ApiError(
+      heoGio
+        ? 'Máy chủ phản hồi quá lâu. Kiểm tra lại sóng rồi thử lại.'
+        : ERROR_MESSAGES.network,
+      0,
+    );
   }
+
+  response = response!;
 
   const payload = await response.json().catch(() => null);
   await persistCsrfToken(payload);
