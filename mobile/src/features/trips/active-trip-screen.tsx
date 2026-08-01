@@ -18,6 +18,7 @@ import { TripStatusBadge }      from '@/components/trip-status-badge';
 import { ActiveTripSkeleton }   from '@/components/skeleton';
 import { appTheme }             from '@/theme/app-theme';
 import { appEvents }            from '@/lib/app-events';
+import { nhanThoiDiem }         from '@/lib/offline-cache';
 import { useActiveTrip }        from '@/hooks/use-active-trip';
 import { useCompletionProof }   from '@/hooks/use-completion-proof';
 import { useLoadingProof }      from '@/hooks/use-loading-proof';
@@ -26,6 +27,7 @@ import { useReleaseTrip }       from '@/hooks/use-release-trip';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
 import { useToast, useAppAlert } from '@/providers/ui-provider';
+import { useNetwork }           from '@/providers/network-provider';
 import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
@@ -500,7 +502,9 @@ function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequ
 
 // ─── Active trip content ──────────────────────────────────────────────────────
 
-function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () => void }) {
+function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
+    trip: ActiveTrip; refresh: () => void; ngoaiTuyen?: boolean; luuLuc?: number | null;
+}) {
     const { showToast }   = useToast();
     const { showAlert }   = useAppAlert();
 
@@ -579,6 +583,17 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         if (Number(event?.shipmentId) !== Number(trip.id)) return;
         router.replace('/(tabs)');
     }), [trip.id]);
+
+    // Vừa có mạng trở lại sau khi mất sóng — tải lại để trạng thái chuyến khớp với
+    // server, vì lúc offline mọi cập nhật realtime (WebSocket) đều không tới được.
+    const { vuaOnlineLai } = useNetwork();
+    useEffect(() => {
+        if (vuaOnlineLai > 0) refresh();
+    }, [vuaOnlineLai]);
+
+    // Hàng đợi offline vừa gửi xong việc tồn — trạng thái chuyến trên server đã đổi,
+    // phải tải lại để màn hình không còn hiện bước cũ.
+    useEffect(() => appEvents.on('offline-queue.flushed', () => { refresh(); }), [refresh]);
 
     // Điều phối đã quyết định chuyến giao thất bại (giao lại / hoàn hàng) — tải lại
     // để màn đổi từ "đang chờ điều phối" sang bước tiếp theo mà tài không phải tự F5.
@@ -682,6 +697,23 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 }}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Dữ liệu lấy từ bộ nhớ đệm — nói rõ mốc thời gian để tài xế không
+                    tưởng đang xem trạng thái mới nhất của chuyến. */}
+                {ngoaiTuyen && luuLuc ? (
+                    <XStack
+                        alignItems="center" gap={7}
+                        paddingHorizontal={12} paddingVertical={8}
+                        borderRadius={appTheme.radius.md}
+                        backgroundColor={appTheme.colors.warningSoft}
+                        borderWidth={1} borderColor={appTheme.colors.warningBorder}
+                    >
+                        <Clock size={13} color={appTheme.colors.warningText} />
+                        <Text fontSize={12} color={appTheme.colors.warningText} flex={1}>
+                            Đang xem dữ liệu ngoại tuyến — cập nhật lúc {nhanThoiDiem(luuLuc)}
+                        </Text>
+                    </XStack>
+                ) : null}
+
                 {/* ── Status card ── */}
                 <YStack
                     padding={14} borderRadius={appTheme.radius.lg} gap={12}
@@ -1026,7 +1058,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
 
 export function ActiveTripScreen() {
-    const { trip, isLoading, error, refresh } = useActiveTrip();
+    const { trip, isLoading, error, refresh, ngoaiTuyen, luuLuc } = useActiveTrip();
 
     if (isLoading) {
         return (
@@ -1059,7 +1091,7 @@ export function ActiveTripScreen() {
     return (
         <>
             <StatusBar style="dark" />
-            <ActiveTripContent trip={trip} refresh={refresh} />
+            <ActiveTripContent trip={trip} refresh={refresh} ngoaiTuyen={ngoaiTuyen} luuLuc={luuLuc} />
         </>
     );
 }
