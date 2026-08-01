@@ -327,6 +327,80 @@ describe('L2-FLOW-04/05 — Negative paths (BR violations, invalid input, duplic
         );
     });
 
+    // Sau khi coordinator TỪ CHỐI yêu cầu phiếu thu, hệ thống yêu cầu tài xế sửa lại
+    // chi phí — lúc đó phải sửa được. Nhưng khi tài đã GỬI LẠI và điều phối đang xem
+    // xét thì phải khoá: cho sửa lúc này thì con số điều phối nhìn thấy đổi ngay dưới
+    // tay họ, duyệt theo màn hình cũ trong khi DB đã là số khác.
+    it('N5b — chi phí sửa/xoá được khi yêu cầu phiếu thu đang bị TỪ CHỐI', async () => {
+        await pool.query(`INSERT INTO orders (id, customer_id, created_by, payment_type) VALUES (91, 1, 2, 'cash')`);
+        await pool.query(`
+            INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, status, claimed_at, picking_at, transit_at)
+            VALUES (91, 91, 1, 1, 'transit', NOW(), NOW(), NOW())
+        `);
+        await pool.query(`
+            INSERT INTO shipment_assignment_history (shipment_id, to_driver_id, to_vehicle_id, changed_by, change_reason)
+            VALUES (91, $1, 1, $1, 'self_claim')
+        `, [DRIVER_A]);
+        const created = await expenseService.createExpense(DRIVER_A, {
+            shipmentId: 91, expenseType: 'toll', amount: 200000, receiptUrl: 'https://r.test/t.jpg',
+        });
+        const expenseId = Array.isArray(created) ? created[created.length - 1].id : created.id;
+
+        await pool.query(`
+            INSERT INTO order_receipt_requests (id, order_id, requesting_shipment_id, driver_id, status)
+            VALUES (91, 91, 91, $1, 'rejected')
+        `, [DRIVER_A]);
+
+        await expenseService.updateExpense(DRIVER_A, expenseId, { amount: 80000 });
+        const { rows: [e] } = await pool.query('SELECT amount FROM expenses WHERE id = $1', [expenseId]);
+        assert.strictEqual(Number(e.amount), 80000);
+    });
+
+    it('N5c — chi phí KHÔNG sửa/xoá được khi yêu cầu đang chờ điều phối xử lý', async () => {
+        const { rows: [exp] } = await pool.query(
+            `SELECT id FROM expenses WHERE shipment_id = 91 ORDER BY id DESC LIMIT 1`,
+        );
+
+        // Tài gửi lại → quay về 'pending', điều phối đang xem xét
+        await pool.query(`UPDATE order_receipt_requests SET status = 'pending' WHERE id = 91`);
+
+        await assert.rejects(
+            () => expenseService.updateExpense(DRIVER_A, exp.id, { amount: 999999 }),
+            /Không sửa\/xoá được/,
+        );
+        await assert.rejects(
+            () => expenseService.deleteExpense(DRIVER_A, exp.id),
+            /Không sửa\/xoá được/,
+        );
+
+        // Số tiền phải giữ nguyên đúng con số điều phối đang nhìn
+        const { rows: [e] } = await pool.query('SELECT amount FROM expenses WHERE id = $1', [exp.id]);
+        assert.strictEqual(Number(e.amount), 80000);
+    });
+
+    // Điều phối có thể từ chối vì THIẾU một khoản (vd thiếu hoá đơn phí bãi). Nếu chỉ
+    // cho sửa/xoá khoản cũ thì tài không có đường bổ sung — bế tắc.
+    it('N5d — khai THÊM chi phí được khi yêu cầu phiếu thu đang bị từ chối', async () => {
+        await pool.query(`UPDATE order_shipments SET status = 'completed' WHERE id = 91`);
+        await pool.query(`UPDATE order_receipt_requests SET status = 'rejected' WHERE id = 91`);
+
+        const created = await expenseService.createExpense(DRIVER_A, {
+            shipmentId: 91, expenseType: 'parking', amount: 45000, receiptUrl: 'https://r.test/p.jpg',
+        });
+        assert.ok(created, 'phải tạo được chi phí bổ sung');
+    });
+
+    it('N5e — khai THÊM chi phí bị chặn khi chuyến xong mà yêu cầu KHÔNG bị từ chối', async () => {
+        // Tài gửi lại → điều phối đang xem xét, không cho thêm khoản mới nữa
+        await pool.query(`UPDATE order_receipt_requests SET status = 'pending' WHERE id = 91`);
+        await assert.rejects(
+            () => expenseService.createExpense(DRIVER_A, {
+                shipmentId: 91, expenseType: 'parking', amount: 55000, receiptUrl: 'https://r.test/p2.jpg',
+            }),
+            /đã kết thúc/,
+        );
+    });
+
     it('N6 — approving the same expense twice is rejected the second time', async () => {
         // Cả shipment 1 và 2 đã completed ở phần trên của file — dựng 1 chuyến đang chạy
         // riêng cho Driver A để khai được chi phí mới
