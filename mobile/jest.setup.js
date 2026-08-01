@@ -46,3 +46,36 @@ console.error = (...args) => {
     if (typeof args[0] === 'string' && args[0].includes('Warning:')) return;
     process.stderr.write(args.join(' ') + '\n');
 };
+
+// ─── Offline: netinfo / file-system / async-storage ──────────────────────────
+
+jest.mock('@react-native-community/netinfo', () => ({
+    __esModule: true,
+    default: {
+        addEventListener: jest.fn(() => jest.fn()),
+        fetch: jest.fn(() => Promise.resolve({ isConnected: true, isInternetReachable: true, type: 'wifi' })),
+    },
+}));
+
+jest.mock('expo-file-system/legacy', () => ({
+    documentDirectory: 'file:///doc/',
+    makeDirectoryAsync: jest.fn(() => Promise.resolve()),
+    copyAsync:          jest.fn(() => Promise.resolve()),
+    deleteAsync:        jest.fn(() => Promise.resolve()),
+}));
+
+// AsyncStorage giả lập bằng Map — đủ để kiểm tra logic lưu/đọc/xoá
+jest.mock('@react-native-async-storage/async-storage', () => {
+    const kho = new Map();
+    return {
+        __esModule: true,
+        default: {
+            getItem:      jest.fn((k) => Promise.resolve(kho.has(k) ? kho.get(k) : null)),
+            setItem:      jest.fn((k, v) => { kho.set(k, v); return Promise.resolve(); }),
+            removeItem:   jest.fn((k) => { kho.delete(k); return Promise.resolve(); }),
+            getAllKeys:   jest.fn(() => Promise.resolve([...kho.keys()])),
+            multiRemove:  jest.fn((ks) => { ks.forEach((k) => kho.delete(k)); return Promise.resolve(); }),
+            __kho: kho,
+        },
+    };
+});

@@ -5,20 +5,30 @@ import { Button, XStack } from 'tamagui';
 
 import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
+import { useOnline } from '@/providers/network-provider';
 
 type AppButtonProps = ButtonProps & {
   tone?: 'primary' | 'secondary';
   isLoading?: boolean;
+  /**
+   * Bật cho các nút GỬI dữ liệu lên server. Mất mạng thì tự khoá lại để tài xế
+   * không bấm rồi mất công nhập lại. KHÔNG bật cho nút điều hướng / đóng / huỷ —
+   * những nút đó vẫn phải dùng được khi offline.
+   */
+  requiresNetwork?: boolean;
 };
 
 export function AppButton({
   tone = 'primary',
   isLoading = false,
+  requiresNetwork = false,
   disabled,
   children,
   ...props
 }: AppButtonProps) {
   const isPrimary = tone === 'primary';
+  const online = useOnline();
+  const bikhoaViOffline = requiresNetwork && !online;
   const spinValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export function AppButton({
                 : appTheme.colors.primarySoft,
             }
       }
-      disabled={isLoading || disabled}
+      disabled={isLoading || disabled || bikhoaViOffline}
       opacity={1}
       {...props}
     >

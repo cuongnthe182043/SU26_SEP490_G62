@@ -1,14 +1,28 @@
 const pool = require('../config/database');
 
-const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description }) => {
+const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description, clientRequestId }) => {
     // Driver khai chi phí → pending, chờ coordinator duyệt (ghi sổ FT khi duyệt)
+    //
+    // clientRequestId: khoá chống trùng do app sinh. App có hàng đợi offline nên một
+    // thao tác có thể được gửi lại nhiều lần; ON CONFLICT DO NOTHING khiến lần gửi
+    // thứ hai không tạo thêm bản ghi, và ta trả về đúng bản ghi đã tạo lần đầu để
+    // phía client vẫn thấy thành công (thay vì báo lỗi rồi lại gửi lại nữa).
     const result = await pool.query(
-        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status, client_request_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+         ON CONFLICT (client_request_id) DO NOTHING
          RETURNING *`,
-        [shipmentId, vehicleId ?? null, driverId, expenseType, amount, description ?? null],
+        [shipmentId, vehicleId ?? null, driverId, expenseType, amount, description ?? null, clientRequestId ?? null],
     );
-    return result.rows[0];
+    if (result.rows[0]) return result.rows[0];
+
+    // Không insert được nghĩa là clientRequestId đã tồn tại → lấy lại bản ghi cũ
+    const existing = await pool.query(
+        `SELECT * FROM expenses WHERE client_request_id = $1`,
+        [clientRequestId],
+    );
+    if (!existing.rows[0]) throw new Error('Không tạo được chi phí');
+    return { ...existing.rows[0], _daTonTai: true };
 };
 
 const addExpenseAttachment = async (expenseId, fileUrl) => {

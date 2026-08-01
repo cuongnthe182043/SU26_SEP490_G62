@@ -17,6 +17,7 @@ import { useActiveTrip }       from '@/hooks/use-active-trip';
 import { useClaimTrip }        from '@/hooks/use-claim-trip';
 import { useTripPool }         from '@/hooks/use-trip-pool';
 import { useConfirm, useToast } from '@/providers/ui-provider';
+import { useOnline }           from '@/providers/network-provider';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -43,9 +44,17 @@ export function TripPoolScreen() {
     const { showConfirm } = useConfirm();
     const { showToast }   = useToast();
     const { claim }       = useClaimTrip();
+    const online          = useOnline();
 
     const handleClaim = useCallback(
         async (trip: TripPoolItem) => {
+            // Nhận chuyến KHÔNG thể làm ngoại tuyến: nhiều tài cùng tranh một chuyến,
+            // chỉ server mới phân xử được ai nhận trước. Xếp hàng rồi gửi sau thì tài
+            // tưởng đã nhận được, chạy tới điểm lấy mới biết chuyến của người khác.
+            if (!online) {
+                showToast({ type: 'warning', message: 'Mất mạng — không nhận chuyến được. Chuyến có thể đã có tài khác nhận.' });
+                return;
+            }
             if (hasActiveTrip) {
                 showToast({ type: 'warning', message: 'Bạn đang có chuyến đang thực hiện' });
                 return;
@@ -79,7 +88,7 @@ export function TripPoolScreen() {
                 refresh(false);
             }
         },
-        [hasActiveTrip, claimingId, claim, removeShipment, refresh, showConfirm, showToast],
+        [online, hasActiveTrip, claimingId, claim, removeShipment, refresh, showConfirm, showToast],
     );
 
     const paginationDisabled = isLoading || claimingId !== null;
