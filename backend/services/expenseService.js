@@ -24,7 +24,18 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
         const wasAssigned = await expenseRepository.wasDriverAssignedToShipment(shipmentId, driverId);
         if (!wasAssigned) throw new Error('Bạn không có quyền thêm chi phí cho chuyến này');
     }
-    if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
+    // Chuyến đang chạy thì khai chi phí bình thường. Chuyến đã kết thúc thì CHỈ mở lại
+    // khi yêu cầu phiếu thu của đơn đang bị TỪ CHỐI — đó là lúc hệ thống bắt tài sửa
+    // lại, mà điều phối có thể từ chối chính vì THIẾU một khoản (ví dụ thiếu hoá đơn
+    // phí bãi). Không mở thì tài chỉ sửa/xoá được khoản cũ, không có đường bổ sung.
+    // Tài gửi lại rồi (status 'pending') thì đóng ngay — cùng lý do với sửa/xoá:
+    // không để con số đổi dưới tay điều phối đang xem xét.
+    if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) {
+        const dangBiTuChoi = await expenseRepository.hasRejectedReceiptRequest(shipmentId);
+        if (!dangBiTuChoi) {
+            throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
+        }
+    }
 
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);
 
