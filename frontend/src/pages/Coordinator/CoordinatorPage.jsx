@@ -204,7 +204,8 @@ export default function CoordinatorPage({ user, onLogout }) {
             onNotificationSelect={handleNotificationSelect}
           />
 
-          <main className="flex-1 overflow-y-auto p-6">
+          {/* Luôn chừa chỗ thanh cuộn — xem giải thích ở AccountantPage */}
+          <main className="flex-1 overflow-y-auto p-6" style={{ scrollbarGutter: "stable" }}>
             {activeView === "dashboard" && <DashboardView refreshKey={dashboardRefreshKey} />}
             {activeView === "orders" && (
               <OrdersView ref={ordersViewRef} search={search} refreshKey={ordersRefreshKey} />
