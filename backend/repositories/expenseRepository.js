@@ -83,12 +83,33 @@ const DRIVER_EDITABLE_EXPENSE_CONDITION = `
         FROM order_shipments os
         JOIN order_receipt_requests orr ON orr.order_id = os.order_id
         WHERE os.id = e.shipment_id
-          AND orr.status = 'approved'
+          -- 'approved'   → phiếu thu đã chốt, tiền đã thu của khách, không đổi số nữa.
+          -- 'pending'    → tài đã gửi (hoặc gửi lại) và ĐIỀU PHỐI ĐANG XEM XÉT. Cho sửa
+          --                lúc này thì con số điều phối nhìn thấy đổi ngay dưới tay họ:
+          --                duyệt theo màn hình cũ mà DB đã là số khác.
+          -- 'processing' → điều phối đang xử lý, cùng lý do.
+          -- Chỉ 'rejected' mới được sửa — đó đúng là lúc hệ thống YÊU CẦU tài sửa lại.
+          AND orr.status IN ('approved', 'pending', 'processing')
     )
 `;
 
-const DRIVER_EDIT_DENIED_MESSAGE = 'Không sửa/xoá được: chi phí đã được duyệt (nhờ điều phối gỡ duyệt) '
-    + 'hoặc phiếu thu của đơn đã chốt';
+const DRIVER_EDIT_DENIED_MESSAGE = 'Không sửa/xoá được: chi phí đã được duyệt (nhờ điều phối gỡ duyệt), '
+    + 'hoặc yêu cầu phiếu thu đang chờ điều phối xử lý, hoặc phiếu thu của đơn đã chốt';
+
+// Đơn của chuyến này có yêu cầu phiếu thu đang bị TỪ CHỐI không.
+// Dùng để mở lại quyền khai thêm chi phí cho chuyến đã kết thúc: điều phối từ chối
+// vì thiếu khoản nào đó thì tài phải bổ sung được.
+const hasRejectedReceiptRequest = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT 1
+         FROM order_shipments os
+         JOIN order_receipt_requests orr ON orr.order_id = os.order_id
+         WHERE os.id = $1 AND orr.status = 'rejected'
+         LIMIT 1`,
+        [shipmentId],
+    );
+    return result.rowCount > 0;
+};
 
 const updateExpense = async (expenseId, driverId, { expenseType, amount, description, fileUrl }) => {
     const client = await pool.connect();
@@ -313,6 +334,7 @@ const getExpenseStats = async ({ month, year } = {}) => {
 };
 
 module.exports = {
+    hasRejectedReceiptRequest,
     createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense, unapproveExpense,
     listAllExpenses, getExpenseStats,

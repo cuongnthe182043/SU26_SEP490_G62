@@ -21,6 +21,7 @@ import { ReceiptDetailSkeleton } from '@/components/skeleton';
 import { appTheme }              from '@/theme/app-theme';
 import { tripService }           from '@/services/trip-service';
 import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, OrderShipmentRow, PaymentType } from '@/types/trip';
+import { ExpenseFormModal } from './components/expense-form-modal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -554,6 +555,9 @@ export function ReceiptDetailScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
+    // Điều phối có thể từ chối vì THIẾU một khoản (vd thiếu hoá đơn phí bãi) — lúc bị
+    // từ chối phải cho tài khai bổ sung, không chỉ sửa/xoá khoản cũ.
+    const [themChiPhi,   setThemChiPhi]   = useState(false);
     const [deletingExpenseId, setDeletingExpenseId] = useState<number | null>(null);
     const [resubmitting, setResubmitting] = useState(false);
     const [driverNote,   setDriverNote]   = useState('');
@@ -745,13 +749,29 @@ export function ReceiptDetailScreen() {
     // (chốt rồi là đã thu tiền khách, không được đổi số nữa). Trước đây chỉ xét
     // request_status === 'rejected' nên nút vẫn hiện với khoản đã duyệt rồi tài
     // bấm vào ăn 403 — phải khớp đúng điều kiện backend.
-    const canEditExpense = (expense: ExpenseItem) => !isApproved && expense.status !== 'approved';
-    // Tổng chi phí phát sinh (mọi loại, trừ rejected) — chỉ để hiển thị danh sách.
-    // Tiền khách phải trả = receipt.amount (backend đã gồm cước + chi hộ khách).
-    const totalExpenses = (receipt.order_shipments?.length > 0
-        ? receipt.order_shipments.reduce((s, sh) => s + (sh.expenses ?? []).filter((e) => e.status !== 'rejected').reduce((es, e) => es + Number(e.amount), 0), 0)
-        : receipt.expenses.filter((e) => e.status !== 'rejected').reduce((s, e) => s + Number(e.amount), 0)
-    );
+    // Chỉ sửa/xoá được khi yêu cầu phiếu thu ĐANG BỊ TỪ CHỐI (đó là lúc hệ thống yêu cầu
+    // tài sửa lại), hoặc chưa từng gửi yêu cầu nào. Trong lúc điều phối đang xem xét
+    // ('pending'/'processing') mà cho sửa thì con số họ nhìn đổi ngay dưới tay — duyệt
+    // theo màn hình cũ trong khi DB đã là số khác. Backend chặn 409, đây là lớp giao diện
+    // khớp theo để tài không bấm rồi ăn lỗi.
+    const dangChoXuLy = receipt.request_status === 'pending' || receipt.request_status === 'processing';
+    const canEditExpense = (expense: ExpenseItem) =>
+        !isApproved && !dangChoXuLy && expense.status !== 'approved';
+    // Chi phí phát sinh hiển thị ở khối này là chi phí của CHUYẾN NÀY (receipt.expenses).
+    //
+    // Trước đây tổng lấy từ order_shipments (cộng chi phí của MỌI chuyến trong đơn) trong
+    // khi danh sách bên dưới chỉ liệt kê chuyến của mình — đơn nhiều chuyến thì tổng luôn
+    // to hơn danh sách, tài xế cộng tay lại thấy lệch. Giờ tổng và danh sách cùng một nguồn.
+    const expensesOfTrip = receipt.expenses.filter((e) => e.status !== 'rejected');
+    const totalExpenses  = expensesOfTrip.reduce((s, e) => s + Number(e.amount), 0);
+
+    // Chi phí của các chuyến KHÁC trong cùng đơn — hiện riêng để tài biết vì sao tiền
+    // khách phải trả lớn hơn tổng chi phí của riêng mình, thay vì tưởng hệ thống tính sai.
+    const totalExpensesOtherTrips = (receipt.order_shipments ?? [])
+        .filter((sh) => Number(sh.id) !== Number(receipt.shipment_id))
+        .reduce((s, sh) => s + (sh.expenses ?? [])
+            .filter((e) => e.status !== 'rejected')
+            .reduce((es, e) => es + Number(e.amount), 0), 0);
     const kmDisplay       = receipt.actual_distance_km
         ? `${Number(receipt.actual_distance_km).toLocaleString('vi-VN')} km`
         : receipt.estimated_distance_km
@@ -1030,6 +1050,33 @@ export function ReceiptDetailScreen() {
                                                     </Text>
                                                 ) : null}
                                             </XStack>
+                                            {/* Đơn nhiều chuyến: nói rõ phần chi phí của chuyến khác,
+                                                để tài không tưởng hệ thống cộng sai. */}
+                                            {totalExpensesOtherTrips > 0 ? (
+                                                <Text fontSize={11} color={appTheme.colors.textMuted} paddingBottom={6}>
+                                                    Các chuyến khác trong đơn còn {fmtMoney(totalExpensesOtherTrips)} chi phí — do tài xế chuyến đó khai.
+                                                </Text>
+                                            ) : null}
+
+                                            {/* Điều phối đang xem xét thì khoá sửa/xoá — nói lý do
+                                                thay vì để nút biến mất không giải thích. */}
+                                            {dangChoXuLy && receipt.expenses.length > 0 ? (
+                                                <Text fontSize={11} color={appTheme.colors.warningText} paddingBottom={6}>
+                                                    Đang chờ điều phối xử lý — không sửa/xoá chi phí lúc này. Nếu cần đổi, liên hệ điều phối để họ trả lại yêu cầu.
+                                                </Text>
+                                            ) : null}
+
+                                            {isRejected ? (
+                                                <TouchableOpacity
+                                                    style={styles.themChiPhiBtn}
+                                                    onPress={() => setThemChiPhi(true)}
+                                                >
+                                                    <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
+                                                        + Khai thêm chi phí
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ) : null}
+
                                             {receipt.expenses.length === 0 ? (
                                                 <Text fontSize={11} color={appTheme.colors.textMuted} textAlign="center" paddingVertical={6}>
                                                     Không có chi phí phát sinh
@@ -1239,6 +1286,13 @@ export function ReceiptDetailScreen() {
             </ScrollView>
             </KeyboardAvoidingView>
 
+            <ExpenseFormModal
+                visible={themChiPhi}
+                shipmentId={Number(receipt.shipment_id)}
+                onClose={() => setThemChiPhi(false)}
+                onSuccess={() => { setThemChiPhi(false); load(); }}
+            />
+
             <ExpenseEditModal
                 expense={editExpense}
                 visible={editExpense !== null}
@@ -1253,6 +1307,10 @@ export function ReceiptDetailScreen() {
 
 const styles = StyleSheet.create({
     scroll:         { padding: 16, paddingBottom: 40, gap: 12 },
+    themChiPhiBtn:  {
+        borderWidth: 1, borderColor: appTheme.colors.primaryMuted, borderStyle: 'dashed',
+        borderRadius: appTheme.radius.md, paddingVertical: 9, alignItems: 'center', marginBottom: 8,
+    },
     center:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     card:           {
         backgroundColor: '#fff', borderRadius: 18, padding: 20,

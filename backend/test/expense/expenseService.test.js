@@ -57,10 +57,34 @@ describe('Expense Service Unit Tests (L1)', () => {
 
     it('L1-EXP-07: createExpense - should throw if shipment ended', async () => {
         mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed' }));
+        // Chuyến đã kết thúc thì service còn hỏi: đơn có yêu cầu phiếu thu đang bị TỪ
+        // CHỐI không (nếu có thì cho khai bổ sung). Không mock thì hàm này đập vào DB thật.
+        mock.method(expenseRepository, 'hasRejectedReceiptRequest', async () => false);
         await assert.rejects(
             expenseService.createExpense(1, { shipmentId: 1, expenseType: 'fuel', amount: 100, receiptUrl: 'url' }),
             /Không thể thêm chi phí khi chuyến đã kết thúc/
         );
+    });
+
+    it('L1-EXP-07b: createExpense - chuyến đã xong nhưng yêu cầu phiếu thu BỊ TỪ CHỐI thì vẫn khai được', async () => {
+        mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, status: 'completed' }));
+        mock.method(expenseRepository, 'hasRejectedReceiptRequest', async () => true);
+        mock.method(tripRepository, 'getDriverVehicleId', async () => 99);
+        mock.method(expenseRepository, 'createExpense', async () => ({ id: 7 }));
+        mock.method(expenseRepository, 'addExpenseAttachment', async () => ({}));
+        mock.method(expenseRepository, 'getShipmentExpenses', async () => [{ id: 7 }]);
+        // Sau khi tạo, service bắn thông báo cho điều phối — mock nốt để không đập vào DB
+        const profileRepository = require('../../repositories/profileRepository');
+        const roleRepository    = require('../../repositories/roleRepository');
+        const notificationService = require('../../services/notificationService');
+        mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, full_name: 'Tai Xe Test' }));
+        mock.method(roleRepository, 'getUserIdsByRole', async () => []);
+        mock.method(notificationService, 'createForUsers', async () => {});
+
+        const kq = await expenseService.createExpense(1, {
+            shipmentId: 1, expenseType: 'parking', amount: 50000, receiptUrl: 'url',
+        });
+        assert.ok(kq, 'phải tạo được chi phí bổ sung khi yêu cầu đang bị từ chối');
     });
 
     it('L1-EXP-08: createExpense - should call repositories on success', async () => {
