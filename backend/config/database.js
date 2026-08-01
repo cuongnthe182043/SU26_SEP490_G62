@@ -1,10 +1,6 @@
 const { Pool } = require('pg');
 const logger = require('./logger');
 
-// Cloud Run sets K_SERVICE automatically; only there do we have the
-// /cloudsql Unix socket mounted. Everywhere else (local dev, whether
-// against a local Postgres or the Cloud SQL proxy in TCP mode) use a
-// normal host:port connection.
 const runningOnCloudRun = Boolean(process.env.K_SERVICE);
 
 const poolConfig = {
@@ -15,20 +11,10 @@ const poolConfig = {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    // Ép múi giờ Việt Nam cho MỌI phiên kết nối, không phụ thuộc cấu hình server.
-    // Cần thiết vì NOW(), CURRENT_DATE, ::date và EXTRACT(MONTH FROM timestamptz)
-    // đều quy đổi theo múi giờ phiên: để UTC thì từ 0h-7h sáng giờ VN hệ thống vẫn
-    // coi là "hôm qua" → sai mốc tháng của KPI/lương, sai khớp ngày lễ.
-    // Đặt ở đây (chứ không chỉ trong docker-compose) để lên production dùng DB quản trị
-    // sẵn (Cloud SQL...) vẫn đúng dù không sửa được cấu hình server.
     options: `-c timezone=${process.env.DB_TIMEZONE || 'Asia/Ho_Chi_Minh'}`,
     max: 10,
     idleTimeoutMillis: 30000,
-    // Chờ tối đa 5s để lấy được 1 connection từ pool — tránh request bị treo vô thời hạn
-    // khi pool đã full (mặc định của pg là chờ vô hạn).
     connectionTimeoutMillis: 5000,
-    // Hủy query chạy quá 15s — 1 query chậm/vòng lặp sai không được phép chiếm connection mãi
-    // và làm cạn kiệt pool (chỉ có 10 connection) kéo sập cả hệ thống theo dây chuyền.
     statement_timeout: 15000,
     query_timeout: 15000,
 };
