@@ -74,7 +74,9 @@ const setDriverDefaultVehicleGroup = async (req, res) => {
         if (!driverId) return res.status(400).json({ error: 'Driver ID không hợp lệ' });
         const vehicleGroupId = Number(req.body.vehicleGroupId);
         if (!vehicleGroupId) return res.status(400).json({ error: 'Nhóm xe không hợp lệ' });
-        const result = await kpiService.setDriverDefaultVehicleGroup(driverId, vehicleGroupId);
+        const result = await kpiService.setDriverDefaultVehicleGroup(
+            driverId, vehicleGroupId, req.user.userId, req.body.reason,
+        );
         // Thông điệp do service dựng — nói rõ doanh thu tháng này có chuyển nhóm hay
         // không, để người bấm không phải đoán.
         res.json({ message: result.message, driver: result });
@@ -85,7 +87,21 @@ const setDriverDefaultVehicleGroup = async (req, res) => {
     }
 };
 
+// GET /api/kpi/driver/:driverId/vehicle-group/history
+// Lịch sử đổi nhóm cố định — ai đổi, lúc nào, từ nhóm nào sang nhóm nào
+const getDriverGroupHistory = async (req, res) => {
+    try {
+        const driverId = Number(req.params.driverId);
+        if (!driverId) return res.status(400).json({ error: 'Driver ID không hợp lệ' });
+        const history = await kpiService.getDriverGroupHistory(driverId, req.query.limit);
+        res.json({ history });
+    } catch (err) {
+        const code = err.message.includes('bắt buộc') ? 400 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getMyKPI, getLeaderboard, getAllDriversKPI, getDriverKPIById, getLeaderboardByGroup,
-    setDriverDefaultVehicleGroup,
+    setDriverDefaultVehicleGroup, getDriverGroupHistory,
 };

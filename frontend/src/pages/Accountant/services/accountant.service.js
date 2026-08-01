@@ -18,8 +18,11 @@ export const accountantService = {
   getVehicleGroupsForKpi: () =>
     apiRequest(`${BASE}/vehicle-groups`),
 
-  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
-    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
+  updateDriverVehicleGroup: (driverId, vehicleGroupId, reason) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId, reason } }),
+  // Lịch sử đổi nhóm cố định — ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo
+  getDriverGroupHistory: (driverId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group/history`),
 
   getOrders: (params) =>
     apiRequest(`${BASE}/orders?${new URLSearchParams(params)}`),
