@@ -198,7 +198,7 @@ export function EditProfileScreen() {
                     maxLength={2}
                 />
 
-                <AppButton tone="primary" isLoading={isLoading} onPress={handleSave} style={{ marginTop: 8 }}>
+                <AppButton tone="primary" isLoading={isLoading} requiresNetwork onPress={handleSave} style={{ marginTop: 8 }}>
                     Lưu thay đổi
                 </AppButton>
             </KeyboardSafeScrollView>

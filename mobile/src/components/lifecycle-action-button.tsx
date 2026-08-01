@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable } from 'react-native';
 import { Text, XStack } from 'tamagui';
 import { appTheme } from '@/theme/app-theme';
+import { useOnline } from '@/providers/network-provider';
 
 type Tone = 'primary' | 'secondary' | 'danger';
 
@@ -40,7 +41,10 @@ const TONE_COLORS: Record<Tone, { bg: string; bgPress: string; text: string; bor
 
 export function LifecycleActionButton({ label, onPress, isLoading, disabled, tone = 'primary', icon }: Props) {
     const colors = TONE_COLORS[tone];
-    const isDisabled = disabled || isLoading;
+    // Mọi nút loại này đều gửi request đổi trạng thái chuyến (kèm ảnh). Mất mạng mà
+    // vẫn cho bấm thì tài chờ vô ích rồi mất ảnh vừa chụp — khoá luôn cho rõ ràng.
+    const online = useOnline();
+    const isDisabled = disabled || isLoading || !online;
 
     const spinValue = useRef(new Animated.Value(0)).current;
 
@@ -101,7 +105,7 @@ export function LifecycleActionButton({ label, onPress, isLoading, disabled, ton
                     fontWeight="900"
                     color={isDisabled ? appTheme.colors.textMuted : colors.text}
                 >
-                    {isLoading ? 'Đang xử lý...' : label}
+                    {isLoading ? 'Đang xử lý...' : (!online ? 'Mất mạng — chưa gửi được' : label)}
                 </Text>
             </XStack>
         </Pressable>

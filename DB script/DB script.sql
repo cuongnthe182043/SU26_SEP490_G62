@@ -43,7 +43,8 @@ CREATE TABLE schema_migrations (
 INSERT INTO schema_migrations (filename) VALUES
     ('20260730_return_flow.sql'),
     ('20260731_holiday_attendance.sql'),
-    ('20260731_timezone_vn.sql')
+    ('20260731_timezone_vn.sql'),
+    ('20260731_expense_idempotency.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (
@@ -335,6 +336,12 @@ CREATE TABLE expenses (
     amount          NUMERIC(12,2) NOT NULL CHECK (amount > 0),
     description     TEXT,
     expense_date    DATE NOT NULL DEFAULT CURRENT_DATE,
+
+    -- Khoá chống trùng do CLIENT sinh. App tài xế lưu chi phí vào hàng đợi khi mất
+    -- mạng rồi tự gửi lại lúc có sóng; không có khoá này thì một lần gửi lại là
+    -- thành hai bản ghi chi phí. Các luồng khác được máy trạng thái chặn sẵn, riêng
+    -- khai chi phí thì không có gì chặn nên phải chặn ở đây.
+    client_request_id TEXT UNIQUE,
     status          TEXT NOT NULL DEFAULT 'approved'
                         CHECK (status IN ('pending','approved','rejected')),
     reviewed_by     INT REFERENCES profiles(id),

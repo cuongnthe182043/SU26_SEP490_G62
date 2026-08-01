@@ -337,6 +337,7 @@ export function IncidentEditScreen() {
                             flex={1}
                             tone="primary"
                             isLoading={isSubmitting}
+                            requiresNetwork
                             onPress={handleSave}
                             height={52}
                         >
