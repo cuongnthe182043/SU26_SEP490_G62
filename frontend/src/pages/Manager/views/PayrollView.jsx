@@ -257,7 +257,7 @@ export default function PayrollView() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Tổng bảng lương" value={payrolls.length} icon={RiFileList3Line} border="border-gray-100 dark:border-white/10" lightBg="bg-gray-50 dark:bg-white/5" text="text-gray-700 dark:text-gray-200" gradient="from-gray-400 to-gray-500" />
         <StatCard label="Chờ xác nhận" value={pending} icon={RiTimeLine} border="border-amber-100 dark:border-amber-500/20" lightBg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" gradient="from-amber-500 to-amber-600" />
         <StatCard label="Đã xác nhận" value={reviewed} icon={RiCheckboxCircleLine} border="border-blue-100 dark:border-blue-500/20" lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" gradient="from-blue-500 to-blue-600" />
@@ -315,14 +315,14 @@ export default function PayrollView() {
         <Table removeWrapper aria-label="Bảng lương tài xế" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>TÀI XẾ</TableColumn>
-            <TableColumn>KỲ LƯƠNG</TableColumn>
-            <TableColumn>LƯƠNG CƠ BẢN</TableColumn>
-            <TableColumn>THƯỞNG</TableColumn>
-            <TableColumn>HOÀN CHI PHÍ</TableColumn>
-            <TableColumn>KHẤU TRỪ</TableColumn>
-            <TableColumn>THỰC LĨNH</TableColumn>
-            <TableColumn>TRẠNG THÁI</TableColumn>
-            <TableColumn> </TableColumn>
+            <TableColumn align="center">KỲ LƯƠNG</TableColumn>
+            <TableColumn align="end">LƯƠNG CƠ BẢN</TableColumn>
+            <TableColumn align="end">THƯỞNG</TableColumn>
+            <TableColumn align="end">HOÀN CHI PHÍ</TableColumn>
+            <TableColumn align="end">KHẤU TRỪ</TableColumn>
+            <TableColumn align="end">THỰC LĨNH</TableColumn>
+            <TableColumn align="center">TRẠNG THÁI</TableColumn>
+            <TableColumn align="end"> </TableColumn>
           </TableHeader>
           <TableBody
             items={pagedPayrolls}
@@ -338,20 +338,21 @@ export default function PayrollView() {
                     <span className="text-xs text-gray-400 dark:text-gray-400">{r.driver_phone}</span>
                   </div>
                 </TableCell>
-                <TableCell>{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
-                <TableCell>{fmt(r.base_salary)}</TableCell>
-                <TableCell>{fmt(sumBonus(r))}</TableCell>
-                <TableCell>
+                <TableCell className="text-center">{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
+                {/* tabular-nums: chữ số cùng bề ngang → các cột tiền thẳng hàng nhau */}
+                <TableCell className="text-right tabular-nums">{fmt(r.base_salary)}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(sumBonus(r))}</TableCell>
+                <TableCell className="text-right tabular-nums">
                   {/* Tiền công ty hoàn lại khoản tài đã ứng (chi hộ + chi phí) — không phải thưởng */}
                   <span className={Number(r.expense_reimbursement || 0) > 0 ? "font-semibold text-teal-600 dark:text-teal-300" : "text-gray-400 dark:text-gray-400"}>
                     {fmt(r.expense_reimbursement)}
                   </span>
                 </TableCell>
-                <TableCell>{fmt(sumDeduction(r))}</TableCell>
-                <TableCell><span className="font-bold text-blue-600 dark:text-blue-300">{fmt(net(r))}</span></TableCell>
-                <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(sumDeduction(r))}</TableCell>
+                <TableCell className="text-right tabular-nums"><span className="font-bold text-blue-600 dark:text-blue-300">{fmt(net(r))}</span></TableCell>
+                <TableCell className="text-center"><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 justify-end">
                     {r.status === "pending" && (
                       <Button size="sm" color="primary" startContent={<RiCheckLine size={14} />} isLoading={reviewing === r.id} onPress={() => handleReview(r)}>
                         Xác nhận
