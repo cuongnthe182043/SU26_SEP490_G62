@@ -16,6 +16,7 @@ import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
+import { useNetwork } from '@/providers/network-provider';
 import { useActiveTrip }      from '@/hooks/use-active-trip';
 import { useHomeSummary }     from '@/hooks/use-home-summary';
 import { useNotifications }   from '@/hooks/use-notifications';
@@ -205,6 +206,14 @@ export function DriverHomeScreen() {
     const { unreadCount } = useNotifications();
     const { debt_remaining, open_incident_count, reload: reloadSummary } = useHomeSummary();
     const { trip: activeTrip, isLoading: tripLoading, refresh: refreshActiveTrip } = useActiveTrip();
+
+    // Có mạng trở lại → tải lại toàn bộ số liệu trang chủ. Lúc offline các con số
+    // vẫn nằm nguyên trên màn hình nên rất dễ hiểu nhầm là dữ liệu mới nhất.
+    const { reconnectedAt } = useNetwork();
+    useEffect(() => {
+        if (reconnectedAt === 0) return;
+        refreshProfile(); refreshStats(); reloadSummary(); refreshActiveTrip();
+    }, [reconnectedAt]);
     const { order: pendingReceipt, load: loadPendingReceipt } = usePendingReceipt();
     const [refreshing, setRefreshing] = useState(false);
 

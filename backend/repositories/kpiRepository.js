@@ -87,6 +87,57 @@ const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
     return result.rows[0];
 };
 
+// Ghi vết mỗi lần đổi nhóm cố định — ai đổi, lúc nào, từ nhóm nào sang nhóm nào,
+// và KPI của kỳ nào được cập nhật theo (NULL = không kỳ nào vì lương đã chốt).
+const logDriverGroupChange = async ({
+    driverId, fromGroupId, toGroupId, changedBy, reason,
+    appliedPeriods, kpiSynced,
+}) => {
+    const result = await pool.query(
+        `INSERT INTO driver_vehicle_group_history
+            (driver_id, from_vehicle_group_id, to_vehicle_group_id, changed_by,
+             reason, applied_periods, kpi_synced)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+            driverId, fromGroupId ?? null, toGroupId, changedBy,
+            reason ?? null, appliedPeriods || null, Boolean(kpiSynced),
+        ],
+    );
+    return result.rows[0];
+};
+
+// Các kỳ lương của tài còn ở trạng thái 'pending' — tức CHƯA CHỐT, nên KPI của
+// những kỳ đó vẫn được phép cập nhật khi đổi nhóm cố định.
+const listUnlockedPayrollPeriods = async (driverId) => {
+    const result = await pool.query(
+        `SELECT payroll_month AS month, payroll_year AS year
+         FROM payrolls
+         WHERE driver_id = $1 AND status = 'pending'
+         ORDER BY payroll_year, payroll_month`,
+        [driverId],
+    );
+    return result.rows.map((r) => ({ month: Number(r.month), year: Number(r.year) }));
+};
+
+const listDriverGroupChanges = async (driverId, limit = 50) => {
+    const result = await pool.query(
+        `SELECT h.*,
+                vg_from.name AS from_group_name,
+                vg_to.name   AS to_group_name,
+                p.full_name  AS changed_by_name
+         FROM driver_vehicle_group_history h
+         LEFT JOIN vehicle_groups vg_from ON vg_from.id = h.from_vehicle_group_id
+         JOIN vehicle_groups vg_to        ON vg_to.id   = h.to_vehicle_group_id
+         JOIN profiles p                  ON p.id       = h.changed_by
+         WHERE h.driver_id = $1
+         ORDER BY h.created_at DESC
+         LIMIT $2`,
+        [driverId, Math.min(200, Math.max(1, Number(limit) || 50))],
+    );
+    return result.rows;
+};
+
 const getDriverDefaultVehicleGroup = async (driverId) => {
     const result = await pool.query(
         `SELECT d.profile_id, d.default_vehicle_group_id, p.full_name,
@@ -313,6 +364,13 @@ const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = 
     );
     const { incident_count, major_incident_count, critical_incident_count } = incRes.rows[0];
 
+    // KHOÁ KỲ ĐÃ CHỐT LƯƠNG.
+    //
+    // payrolls đã có `WHERE payrolls.status = 'pending'` nên tiền đã chi không đổi
+    // được. Nhưng kpi_records thì trước đây ghi đè vô điều kiện — chốt phiếu thu trễ
+    // sang tháng sau là tính lại tháng cũ và ghi số mới, trong khi bảng lương giữ số
+    // cũ. Hai con số của cùng một kỳ lệch nhau, kế toán đối chiếu không ra.
+    // Cùng nguyên tắc với payrolls: kỳ đã rời 'pending' thì không ai được sửa nữa.
     const result = await pool.query(
         `INSERT INTO kpi_records
             (driver_id, vehicle_group_id, month, year,
@@ -327,6 +385,13 @@ const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = 
              critical_incident_count = EXCLUDED.critical_incident_count,
              ${syncVehicleGroup ? 'vehicle_group_id        = EXCLUDED.vehicle_group_id,' : ''}
              updated_at              = NOW()
+         WHERE NOT EXISTS (
+             SELECT 1 FROM payrolls p
+             WHERE p.driver_id     = kpi_records.driver_id
+               AND p.payroll_month = kpi_records.month
+               AND p.payroll_year  = kpi_records.year
+               AND p.status <> 'pending'
+         )
          RETURNING *`,
         [
             driverId, vehicleGroupId, month, year,
@@ -334,7 +399,15 @@ const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = 
             Number(incident_count), Number(major_incident_count), Number(critical_incident_count),
         ],
     );
-    return result.rows[0];
+    if (result.rows[0]) return result.rows[0];
+
+    // Không có dòng trả về = bị khoá. Trả lại dòng KPI hiện có để caller không tưởng
+    // là lỗi; dòng này vẫn là số liệu đã chốt của kỳ đó.
+    const isLocked = await pool.query(
+        `SELECT * FROM kpi_records WHERE driver_id = $1 AND month = $2 AND year = $3`,
+        [driverId, month, year],
+    );
+    return isLocked.rows[0] ? { ...isLocked.rows[0], _kyDaChot: true } : null;
 };
 
 module.exports = {
@@ -342,6 +415,9 @@ module.exports = {
     getDriverVehicleGroupId,
     setDriverDefaultVehicleGroup,
     getDriverDefaultVehicleGroup,
+    logDriverGroupChange,
+    listUnlockedPayrollPeriods,
+    listDriverGroupChanges,
     getVehicleGroupById,
     getPayrollStatus,
     getLeaderboard,

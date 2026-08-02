@@ -95,8 +95,8 @@ const exportPeriod = async (req, res) => {
             'so_tien', 'tien_cuoc', 'tien_chi_ho', 'but_toan_dao', 'ref_type', 'ref_id',
         ];
         const lines = rows.map((r) => {
-            const chiHo = r.chi_ho_amount != null ? Number(r.chi_ho_amount) : null;
-            const cuoc  = chiHo != null ? Number(r.amount) - chiHo : null;
+            const passThrough = r.chi_ho_amount != null ? Number(r.chi_ho_amount) : null;
+            const freight  = passThrough != null ? Number(r.amount) - passThrough : null;
             return [
                 r.id,
                 new Date(r.occurred_at).toISOString(),
@@ -105,8 +105,8 @@ const exportPeriod = async (req, res) => {
                 r.debit_account,
                 r.credit_account,
                 r.amount,
-                cuoc != null ? cuoc.toFixed(2) : '',
-                chiHo != null ? chiHo.toFixed(2) : '',
+                freight != null ? freight.toFixed(2) : '',
+                passThrough != null ? passThrough.toFixed(2) : '',
                 r.reversal_of_id ?? '',
                 r.ref_type ?? '',
                 r.ref_id ?? '',

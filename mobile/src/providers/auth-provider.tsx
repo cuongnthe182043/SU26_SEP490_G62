@@ -7,6 +7,8 @@ import { apiClient } from '@/lib/api-client';
 import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
 import { tokenStorage } from '@/services/token-storage';
+import { offlineCache } from '@/lib/offline-cache';
+import { offlineQueue } from '@/lib/offline-queue';
 import type { UserProfile } from '@/types/profile';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -39,6 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     await tokenStorage.clearAll();
+    // Xoá đệm dữ liệu và hàng đợi của tài xế vừa đăng xuất — máy có thể được người
+    // khác dùng, không để lộ chuyến/lương của người trước, và không gửi nhầm thao
+    // tác tồn của người này dưới tài khoản người kia.
+    await offlineCache.clear();
+    await offlineQueue.clear();
     setProfile(null);
     setStatus('unauthenticated');
     router.replace('/login');

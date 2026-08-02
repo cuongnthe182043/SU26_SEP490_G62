@@ -4,8 +4,11 @@ import { TamaguiProvider } from 'tamagui';
 
 import tamaguiConfig from '../tamagui.config';
 import { AuthProvider } from '@/providers/auth-provider';
+import { NetworkProvider } from '@/providers/network-provider';
 import { NotificationsProvider } from '@/providers/notifications-provider';
 import { UIProvider } from '@/providers/ui-provider';
+import { OfflineBanner } from '@/components/offline-banner';
+import { QueueBanner } from '@/components/queue-banner';
 import { useRegisterPushToken } from '@/hooks/use-register-push-token';
 
 // Đăng ký push token (FCM/APNs) sau khi đăng nhập — tách component riêng vì hook
@@ -27,14 +30,20 @@ export default function RootLayout() {
 
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <UIProvider>
-        <AuthProvider>
-          <PushTokenRegistrar />
-          <NotificationsProvider>
-            <Stack screenOptions={{ headerShown: false }} />
-          </NotificationsProvider>
-        </AuthProvider>
-      </UIProvider>
+      {/* NetworkProvider bọc ngoài cùng để mọi màn hình và cả api-client đều biết
+          trạng thái mạng; OfflineBanner ghim đè lên trên toàn bộ Stack. */}
+      <NetworkProvider>
+        <UIProvider>
+          <AuthProvider>
+            <PushTokenRegistrar />
+            <NotificationsProvider>
+              <Stack screenOptions={{ headerShown: false }} />
+              <OfflineBanner />
+              <QueueBanner />
+            </NotificationsProvider>
+          </AuthProvider>
+        </UIProvider>
+      </NetworkProvider>
     </TamaguiProvider>
   );
 }

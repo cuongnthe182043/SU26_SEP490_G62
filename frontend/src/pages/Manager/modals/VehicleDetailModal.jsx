@@ -135,7 +135,8 @@ export default function VehicleDetailModal({ open, vehicle, assignmentHistory, v
           vehicle_group_id: vehicle.vehicle_group_id,
         } : null}
         vehicleGroups={vehicleGroups}
-        onSave={(driverId, vehicleGroupId) => managerService.updateDriverVehicleGroup(driverId, vehicleGroupId)}
+        getHistory={managerService.getDriverGroupHistory}
+        onSave={(driverId, vehicleGroupId, reason) => managerService.updateDriverVehicleGroup(driverId, vehicleGroupId, reason)}
         onClose={() => setEditingDriverGroup(false)}
       />
     </Modal>

@@ -18,8 +18,11 @@ export const accountantService = {
   getVehicleGroupsForKpi: () =>
     apiRequest(`${BASE}/vehicle-groups`),
 
-  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
-    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
+  updateDriverVehicleGroup: (driverId, vehicleGroupId, reason) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId, reason } }),
+  // Lịch sử đổi nhóm cố định — ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo
+  getDriverGroupHistory: (driverId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group/history`),
 
   getOrders: (params) =>
     apiRequest(`${BASE}/orders?${new URLSearchParams(params)}`),
@@ -30,8 +33,17 @@ export const accountantService = {
   createOrder: (data) =>
     apiRequest(`${BASE}/orders`, { method: "POST", body: data }),
 
-  importOrders: (orders) =>
-    apiRequest(`${BASE}/orders/import`, { method: "POST", body: { orders } }),
+  // Đối chiếu trước khi import: mỗi dòng khớp khách nào / tạo khách mới / trùng tên,
+  // và đã từng import chưa. Chỉ đọc, không tạo gì.
+  previewImport: (orders) =>
+    apiRequest(`${BASE}/orders/import/preview`, { method: "POST", body: { orders } }),
+
+  // allowDuplicates = true khi kế toán đã xem danh sách dòng trùng và vẫn muốn nhập lại
+  importOrders: (orders, allowDuplicates = false) =>
+    apiRequest(`${BASE}/orders/import`, {
+      method: "POST",
+      body: { orders, allow_duplicates: allowDuplicates },
+    }),
 
   updateOrder: (orderId, data) =>
     apiRequest(`${BASE}/orders/${orderId}`, { method: "PUT", body: data }),

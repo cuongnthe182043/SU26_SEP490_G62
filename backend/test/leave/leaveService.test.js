@@ -3,9 +3,20 @@ const assert = require('node:assert');
 const leaveService = require('../../services/leaveService');
 const leaveRepository = require('../../repositories/leaveRepository');
 
+// Ngày phải tính THEO HÔM NAY, không gõ cứng: createLeave chặn ngày lùi/tiến quá
+// 3 tháng nên mọi ngày cố định sẽ hỏng test khi thời gian trôi qua.
+const vnDate = (lechNgay = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + lechNgay);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+
 describe('Leave Service Unit Tests (L1)', () => {
     beforeEach(() => {
         mock.restoreAll();
+        // Service tra bảng lương kỳ đó đã chốt chưa — mặc định coi như chưa có,
+        // test nào cần kiểm tra guard này thì tự mock đè lại.
+        mock.method(leaveRepository, 'getPayrollStatus', async () => null);
     });
 
     it('L1-LEAVE-01: getMyLeaves - should call repository without filters', async () => {
@@ -57,8 +68,39 @@ describe('Leave Service Unit Tests (L1)', () => {
 
     it('L1-LEAVE-07: createLeave - should call repo if valid', async () => {
         mock.method(leaveRepository, 'createLeave', async () => ({ id: 5 }));
-        const result = await leaveService.createLeave(2, { leaveDate: '2025-10-10', leaveType: 'paid', reason: 'sick' });
+        const result = await leaveService.createLeave(2, { leaveDate: vnDate(7), leaveType: 'paid', reason: 'sick' });
         assert.strictEqual(result.id, 5);
+    });
+
+    // Ngày do client gửi lên nên không tin được: đồng hồ máy sai hoặc gõ nhầm năm
+    // phải bị chặn ngay ở service, đừng để lọt vào DB rồi sai lúc tính lương.
+    it('L1-LEAVE-09: createLeave - chặn ngày sai định dạng', async () => {
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: '10/10/2026', leaveType: 'paid' }),
+            /định dạng YYYY-MM-DD/,
+        );
+    });
+
+    it('L1-LEAVE-10: createLeave - chặn ngày quá xa trong tương lai', async () => {
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: vnDate(400), leaveType: 'paid' }),
+            /trong vòng 3 tháng tới/,
+        );
+    });
+
+    it('L1-LEAVE-11: createLeave - chặn ngày lùi quá xa', async () => {
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: vnDate(-400), leaveType: 'paid' }),
+            /lùi quá 3 tháng/,
+        );
+    });
+
+    it('L1-LEAVE-12: createLeave - chặn đăng ký lùi vào kỳ lương đã chốt', async () => {
+        mock.method(leaveRepository, 'getPayrollStatus', async () => 'approved');
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: vnDate(-1), leaveType: 'unpaid' }),
+            /đã chốt/,
+        );
     });
 
     it('L1-LEAVE-08: deleteLeave - should call repo', async () => {

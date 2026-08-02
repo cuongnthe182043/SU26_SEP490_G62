@@ -28,6 +28,7 @@ router.get('/leaderboard/group/:vehicleGroupId', staffOnly, kpiController.getLea
 router.get('/driver/:driverId', financeStaff, kpiController.getDriverKPIById);
 
 // Sửa tay nhóm xe KPI cố định của tài xế — Body: { vehicleGroupId }
-router.patch('/driver/:driverId/vehicle-group', financeStaff, kpiController.setDriverDefaultVehicleGroup);
+router.patch('/driver/:driverId/vehicle-group',         financeStaff, kpiController.setDriverDefaultVehicleGroup);
+router.get  ('/driver/:driverId/vehicle-group/history', financeStaff, kpiController.getDriverGroupHistory);
 
 module.exports = router;

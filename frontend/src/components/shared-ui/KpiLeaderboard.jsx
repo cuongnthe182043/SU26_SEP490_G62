@@ -241,7 +241,7 @@ function LeaderboardRow({ row, rank, maxRevenue, sortBy }) {
   );
 }
 
-export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup, onUpdateDriverGroup }) {
+export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup, onUpdateDriverGroup, getDriverGroupHistory }) {
   const [tab, setTab] = useState("kpi");
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -456,8 +456,9 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
           open={!!editingDriver}
           driver={editingDriver}
           vehicleGroups={vehicleGroups}
-          onSave={async (driverId, nextVehicleGroupId) => {
-            const res = await onUpdateDriverGroup(driverId, nextVehicleGroupId);
+          getHistory={getDriverGroupHistory}
+          onSave={async (driverId, nextVehicleGroupId, reason) => {
+            const res = await onUpdateDriverGroup(driverId, nextVehicleGroupId, reason);
             setReloadToken((t) => t + 1);
             return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
           }}

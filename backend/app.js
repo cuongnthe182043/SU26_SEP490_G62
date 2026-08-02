@@ -174,9 +174,20 @@ const shutdown = (signal) => {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-// Start server
-server.listen(port, () => {
-    logger.info(`Server listening on port ${port}`);
-});
+// Áp migration TRƯỚC khi nhận request. Lên request mà schema chưa đúng thì app gọi
+// cột chưa tồn tại → lỗi 500 hàng loạt, khó lần ra nguyên nhân hơn nhiều so với việc
+// container chết ngay ở đây kèm log rõ ràng.
+const { runMigrations } = require('./migrate');
+
+runMigrations()
+    .then(() => {
+        server.listen(port, () => {
+            logger.info(`Server listening on port ${port}`);
+        });
+    })
+    .catch((err) => {
+        logger.error(`[migrate] Không khởi động được vì migration lỗi: ${err.message}`);
+        process.exit(1);
+    });
 
 module.exports = app;

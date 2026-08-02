@@ -269,6 +269,7 @@ export function LoginScreen() {
                 disabled={!canSubmit}
                 opacity={!canSubmit ? 0.45 : 1}
                 isLoading={isLoading}
+                requiresNetwork
                 onPress={handleSubmit}
                 marginTop="$2"
               >

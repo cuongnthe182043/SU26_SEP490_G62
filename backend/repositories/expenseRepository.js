@@ -1,14 +1,28 @@
 const pool = require('../config/database');
 
-const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description }) => {
+const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description, clientRequestId }) => {
     // Driver khai chi phí → pending, chờ coordinator duyệt (ghi sổ FT khi duyệt)
+    //
+    // clientRequestId: khoá chống trùng do app sinh. App có hàng đợi offline nên một
+    // thao tác có thể được gửi lại nhiều lần; ON CONFLICT DO NOTHING khiến lần gửi
+    // thứ hai không tạo thêm bản ghi, và ta trả về đúng bản ghi đã tạo lần đầu để
+    // phía client vẫn thấy thành công (thay vì báo lỗi rồi lại gửi lại nữa).
     const result = await pool.query(
-        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status, client_request_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+         ON CONFLICT (client_request_id) DO NOTHING
          RETURNING *`,
-        [shipmentId, vehicleId ?? null, driverId, expenseType, amount, description ?? null],
+        [shipmentId, vehicleId ?? null, driverId, expenseType, amount, description ?? null, clientRequestId ?? null],
     );
-    return result.rows[0];
+    if (result.rows[0]) return result.rows[0];
+
+    // Không insert được nghĩa là clientRequestId đã tồn tại → lấy lại bản ghi cũ
+    const existing = await pool.query(
+        `SELECT * FROM expenses WHERE client_request_id = $1`,
+        [clientRequestId],
+    );
+    if (!existing.rows[0]) throw new Error('Không tạo được chi phí');
+    return { ...existing.rows[0], _daTonTai: true };
 };
 
 const addExpenseAttachment = async (expenseId, fileUrl) => {
@@ -69,12 +83,33 @@ const DRIVER_EDITABLE_EXPENSE_CONDITION = `
         FROM order_shipments os
         JOIN order_receipt_requests orr ON orr.order_id = os.order_id
         WHERE os.id = e.shipment_id
-          AND orr.status = 'approved'
+          -- 'approved'   → phiếu thu đã chốt, tiền đã thu của khách, không đổi số nữa.
+          -- 'pending'    → tài đã gửi (hoặc gửi lại) và ĐIỀU PHỐI ĐANG XEM XÉT. Cho sửa
+          --                lúc này thì con số điều phối nhìn thấy đổi ngay dưới tay họ:
+          --                duyệt theo màn hình cũ mà DB đã là số khác.
+          -- 'processing' → điều phối đang xử lý, cùng lý do.
+          -- Chỉ 'rejected' mới được sửa — đó đúng là lúc hệ thống YÊU CẦU tài sửa lại.
+          AND orr.status IN ('approved', 'pending', 'processing')
     )
 `;
 
-const DRIVER_EDIT_DENIED_MESSAGE = 'Không sửa/xoá được: chi phí đã được duyệt (nhờ điều phối gỡ duyệt) '
-    + 'hoặc phiếu thu của đơn đã chốt';
+const DRIVER_EDIT_DENIED_MESSAGE = 'Không sửa/xoá được: chi phí đã được duyệt (nhờ điều phối gỡ duyệt), '
+    + 'hoặc yêu cầu phiếu thu đang chờ điều phối xử lý, hoặc phiếu thu của đơn đã chốt';
+
+// Đơn của chuyến này có yêu cầu phiếu thu đang bị TỪ CHỐI không.
+// Dùng để mở lại quyền khai thêm chi phí cho chuyến đã kết thúc: điều phối từ chối
+// vì thiếu khoản nào đó thì tài phải bổ sung được.
+const hasRejectedReceiptRequest = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT 1
+         FROM order_shipments os
+         JOIN order_receipt_requests orr ON orr.order_id = os.order_id
+         WHERE os.id = $1 AND orr.status = 'rejected'
+         LIMIT 1`,
+        [shipmentId],
+    );
+    return result.rowCount > 0;
+};
 
 const updateExpense = async (expenseId, driverId, { expenseType, amount, description, fileUrl }) => {
     const client = await pool.connect();
@@ -299,6 +334,7 @@ const getExpenseStats = async ({ month, year } = {}) => {
 };
 
 module.exports = {
+    hasRejectedReceiptRequest,
     createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense, unapproveExpense,
     listAllExpenses, getExpenseStats,

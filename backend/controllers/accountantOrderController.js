@@ -1,6 +1,7 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
-const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('../utils/accountantValidate');
+const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
+const { buildImportFingerprint } = require('../utils/importFingerprint');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
 // driver_paid: tài xế đã thu tiền VÀ đã nộp về công ty (import đơn cũ) — nợ tạo + tất toán ngay
@@ -15,8 +16,8 @@ const getOrders = async (req, res) => {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
             customer:    req.query.customer?.trim()    || null,
-            dateFrom:    req.query.dateFrom?.trim()     || null,
-            dateTo:      req.query.dateTo?.trim()       || null,
+            dateFrom:    validDate(req.query.dateFrom, 'Ngày bắt đầu'),
+            dateTo:      validDate(req.query.dateTo, 'Ngày kết thúc'),
             sort:        req.query.sort?.trim()         || null,
         };
 
@@ -35,8 +36,8 @@ const exportOrdersReport = async (req, res) => {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
             customer:    req.query.customer?.trim()    || null,
-            dateFrom:    req.query.dateFrom?.trim()     || null,
-            dateTo:      req.query.dateTo?.trim()       || null,
+            dateFrom:    validDate(req.query.dateFrom, 'Ngày bắt đầu'),
+            dateTo:      validDate(req.query.dateTo, 'Ngày kết thúc'),
         };
         const rows = await accountantOrderService.exportOrdersReport(filters);
         res.json({ rows });
@@ -76,7 +77,9 @@ const findCustomerByPhone = async (req, res) => {
 };
 
 // Validate 1 payload đơn ngoài (dùng chung cho tạo tay + import Excel)
-const validateOrderBody = (body, { requirePhone = true } = {}) => {
+// requireName = false chỉ dùng cho import: dòng Excel được phép chỉ có SĐT mà không có
+// tên (và ngược lại) — đủ một trong hai là định danh được khách.
+const validateOrderBody = (body, { requirePhone = true, requireName = true } = {}) => {
     const {
         customer_name, customer_phone, customer_company,
         customer_id, order_date, notes, prepaid_amount,
@@ -85,7 +88,7 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
     } = body;
 
     if (!customer_id) {
-        if (!customer_name?.trim())
+        if (requireName && !customer_name?.trim())
             throw err400('Tên khách hàng là bắt buộc.');
         if (requirePhone) {
             if (!customer_phone?.trim())
@@ -197,11 +200,70 @@ const createOrder = async (req, res) => {
     }
 };
 
-// POST /accountant/orders/import — import hàng loạt từ template Excel
-// Body: { orders: [payload như createOrder, kèm row_index để báo lỗi theo dòng] }
-const importOrders = async (req, res) => {
+/**
+ * Chuẩn hoá một dòng Excel về payload chuẩn, dùng CHUNG cho xem trước và import thật.
+ *
+ * Bắt buộc dùng chung: vân tay chống trùng được tính TRÊN payload đã chuẩn hoá. Nếu xem
+ * trước tính trên dữ liệu thô còn import tính trên dữ liệu đã chuẩn hoá thì hai vân tay
+ * khác nhau — màn xem trước sẽ báo "dòng mới" rồi import lại bỏ qua vì trùng, hoặc
+ * ngược lại. Sai kiểu đó rất khó lần ra vì trông như hệ thống lúc nhớ lúc quên.
+ */
+const normalizeImportOrder = (order) => {
+    // Phải đọc tên GỐC trước khi gán mặc định "Khách lẻ", nếu không thì kiểm tra
+    // "có tên hay không" bên dưới lúc nào cũng đúng.
+    const hasName = Boolean(order.customer_name?.trim());
+    const hasPhone = Boolean(order.customer_phone?.trim());
+    const out = { ...order };
+
+    // Chỉ gán nhãn "Khách lẻ" khi KHÔNG có cả tên lẫn SĐT. Có SĐT mà gán "Khách lẻ" thì
+    // hồ sơ trông như khách vãng lai trong khi thực ra định danh được.
+    if (!out.customer_id && !hasName && !hasPhone) out.customer_name = 'Khách lẻ';
+    // customers.phone NOT NULL — khách không SĐT gom chung 1 hồ sơ phone rỗng
+    if (!out.customer_id && !hasPhone) out.customer_phone = '';
+
+    return { order: out, hasName, hasPhone };
+};
+
+// POST /accountant/orders/import/preview — mỗi dòng sẽ khớp khách nào, tạo khách mới,
+// trùng tên, và ĐÃ TỪNG IMPORT hay chưa. Chỉ ĐỌC, không tạo gì.
+const previewImport = async (req, res) => {
     try {
         const { orders } = req.body;
+        if (!Array.isArray(orders)) throw err400('Thiếu danh sách dòng cần đối chiếu.');
+        if (orders.length > 1000) throw err400('Tối đa 1000 dòng mỗi lần.');
+
+        const prepared = orders.map((raw) => {
+            const { order } = normalizeImportOrder(raw);
+            let fingerprint = null;
+            try {
+                // Dòng sai định dạng thì bỏ qua phần vân tay — trình đọc file đã chặn
+                // trước rồi, ở đây chỉ cần không làm hỏng cả lượt xem trước.
+                fingerprint = buildImportFingerprint(validateOrderBody(order, { requirePhone: false, requireName: false }));
+            } catch { /* để null */ }
+            return {
+                row_index: raw.row_index ?? null,
+                name: order.customer_name,
+                phone: order.customer_phone,
+                company_name: order.customer_company,
+                fingerprint,
+            };
+        });
+
+        const results = await accountantOrderService.previewImport(prepared);
+        res.json({ results });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// POST /accountant/orders/import — import hàng loạt từ template Excel
+// Body: {
+//   orders: [payload như createOrder, kèm row_index để báo lỗi theo dòng],
+//   allow_duplicates?: boolean   — bỏ qua kiểm tra trùng (kế toán xác nhận cố ý nhập lại)
+// }
+const importOrders = async (req, res) => {
+    try {
+        const { orders, allow_duplicates: allowDuplicates } = req.body;
         if (!Array.isArray(orders) || orders.length === 0)
             throw err400('Không có đơn nào để import.');
         if (orders.length > 1000)
@@ -209,27 +271,30 @@ const importOrders = async (req, res) => {
 
         const imported = [];
         const errors = [];
+        const duplicates = [];
         const newDrivers = [];
 
         for (const order of orders) {
-            const rowLabel = order.row_index != null ? `Dòng ${order.row_index}` : `Đơn thứ ${imported.length + errors.length + 1}`;
+            const rowLabel = order.row_index != null
+                ? `Dòng ${order.row_index}`
+                : `Đơn thứ ${imported.length + errors.length + duplicates.length + 1}`;
             try {
-                // Import cho phép khách lẻ không SĐT/không tên (khác tạo tay)
-                if (!order.customer_id && !order.customer_name?.trim()) {
-                    order.customer_name = 'Khách lẻ';
-                }
-                // Khách nợ bắt buộc có SĐT — không định danh được thì không theo dõi nợ được
+                const { order: chuan, hasName, hasPhone } = normalizeImportOrder(order);
+
+                // Khách nợ chỉ cần MỘT trong hai (tên hoặc SĐT) để định danh — không có
+                // cả hai thì không biết ghi nợ cho ai. Khớp khách theo SĐT trước, không
+                // có SĐT thì theo tên (xem findCustomerByIdentity).
                 const hasClientCredit = (order.shipments || []).some((s) => s.payment_type === 'client_credit');
-                if (hasClientCredit && !order.customer_id && !order.customer_phone?.trim()) {
-                    throw err400('Chuyến "Khách nợ" bắt buộc có SĐT khách hàng để theo dõi công nợ.');
+                if (hasClientCredit && !order.customer_id && !hasName && !hasPhone) {
+                    throw err400('Chuyến "Khách nợ" phải có tên khách hoặc SĐT để theo dõi công nợ.');
                 }
-                // customers.phone NOT NULL — khách lẻ không SĐT gom chung 1 hồ sơ phone rỗng
-                if (!order.customer_id && !order.customer_phone?.trim()) {
-                    order.customer_phone = '';
-                }
-                const payload = validateOrderBody(order, { requirePhone: false });
+
+                const payload = validateOrderBody(chuan, { requirePhone: false, requireName: false });
                 const created = await accountantOrderService.createOrder({
                     ...payload,
+                    // Vân tay tính SAU khi chuẩn hoá payload để cùng một dòng luôn ra cùng
+                    // kết quả. allow_duplicates → để NULL, tức kế toán chấp nhận nhập trùng.
+                    import_fingerprint: allowDuplicates ? null : buildImportFingerprint(payload),
                     created_by: req.user.userId,
                     suppress_notifications: true,
                 });
@@ -238,7 +303,11 @@ const importOrders = async (req, res) => {
                     newDrivers.push({ row_index: order.row_index ?? null, driver_name: d.driverName, driver_id: d.driverId });
                 });
             } catch (err) {
-                errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                if (err.isDuplicateImport) {
+                    duplicates.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                } else {
+                    errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                }
             }
         }
 
@@ -247,12 +316,22 @@ const importOrders = async (req, res) => {
             actorId: req.user.userId,
         });
 
-        res.status(errors.length > 0 && imported.length === 0 ? 400 : 201).json({
-            message: `Import xong: ${imported.length} đơn thành công${errors.length ? `, ${errors.length} dòng lỗi` : ''}.`,
+        const parts = [`${imported.length} đơn thành công`];
+        if (duplicates.length) parts.push(`${duplicates.length} dòng đã import trước đó (bỏ qua)`);
+        if (errors.length)     parts.push(`${errors.length} dòng lỗi`);
+
+        // Chỉ coi là thất bại khi có lỗi THẬT mà không dòng nào vào được. Cả file toàn
+        // dòng trùng không phải lỗi — nghĩa là dữ liệu đã nằm sẵn trong hệ thống rồi.
+        const failed = errors.length > 0 && imported.length === 0;
+
+        res.status(failed ? 400 : 201).json({
+            message: `Import xong: ${parts.join(', ')}.`,
             imported_count: imported.length,
             error_count: errors.length,
+            duplicate_count: duplicates.length,
             imported,
             errors,
+            duplicates,
             new_drivers: newDrivers,
         });
     } catch (err) {
@@ -378,6 +457,7 @@ module.exports = {
     getVehicleDriverLookup,
     createOrder,
     importOrders,
+    previewImport,
     getPayments,
     getCustomerDebt,
     createPayment,
