@@ -2,7 +2,10 @@ const bonusRuleRepository = require('../repositories/bonusRuleRepository');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
 
-const normalizePayload = (payload = {}) => {
+// unchangedBonusType / wasActive: trạng thái RULE ĐANG CÓ (chỉ truyền khi sửa). Dùng để
+// phân biệt "đưa một loại thưởng vào dùng" với "giữ nguyên hiện trạng" — xem chú thích ở
+// chỗ kiểm tra IMPLEMENTED_BONUS_TYPES.
+const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive = false } = {}) => {
     const title = String(payload.title || '').trim();
     if (!title) throw new Error('Tên quy tắc thưởng là bắt buộc');
 
@@ -25,6 +28,21 @@ const normalizePayload = (payload = {}) => {
         throw new Error('Hệ số thưởng không hợp lệ');
     }
 
+    const isActive = payload.is_active !== undefined ? Boolean(payload.is_active) : true;
+
+    // Rule đã tắt thì không tham gia tính lương, nên cấu hình của nó đúng hay sai cũng
+    // không ảnh hưởng đồng nào. Bỏ qua mọi kiểm tra NỘI DUNG bên dưới để việc TẮT một
+    // rule hỏng luôn thực hiện được — nếu chặn, cách duy nhất để vô hiệu hoá nó là xoá
+    // hẳn, tức ép người dùng chọn hành động phá huỷ hơn. (Các kiểm tra phía TRÊN vẫn
+    // chạy vì chúng chặn giá trị sai kiểu, thứ không được phép ghi xuống DB dù rule tắt.)
+    if (!isActive) {
+        return {
+            vehicleGroupId, title, bonusType, rewardAmount, rewardMultiplier,
+            conditionsJson: payload.conditions_json ?? null,
+            isActive: false,
+        };
+    }
+
     if (rewardAmount == null && rewardMultiplier == null) {
         throw new Error('Cần nhập ít nhất Số tiền thưởng hoặc Hệ số thưởng');
     }
@@ -33,7 +51,13 @@ const normalizePayload = (payload = {}) => {
     // zero_incident, overtime, custom) trước đây vẫn lưu được nhưng không công thức nào
     // tiêu thụ — quản lý cấu hình xong tưởng đã có hiệu lực, thực tế thưởng luôn bằng 0.
     // Chặn ngay từ đây thay vì để rule chết nằm im trong DB.
-    if (!bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.includes(bonusType)) {
+    //
+    // Chỉ chặn khi thao tác này ĐƯA loại thưởng đó vào dùng — tức tạo mới, đổi sang loại
+    // khác, hoặc bật lại một rule đang tắt. Nếu rule vốn đã bật sẵn với loại đó (dữ liệu
+    // cũ trong DB) thì cho sửa bình thường: chặn cũng không làm nó bớt vô tác dụng, chỉ
+    // khiến người quản lý không sửa nổi cả tiêu đề.
+    const dangDuaVaoDung = bonusType !== unchangedBonusType || !wasActive;
+    if (dangDuaVaoDung && !bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.includes(bonusType)) {
         throw new Error(
             `Loại thưởng "${bonusType}" chưa được bộ tính lương hỗ trợ nên sẽ không có hiệu lực. `
             + `Hiện hỗ trợ: ${bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.join(', ')}.`,
@@ -129,7 +153,7 @@ const updateRule = async (id, payload) => {
         reward_multiplier: payload.reward_multiplier !== undefined ? payload.reward_multiplier : existing.reward_multiplier,
         conditions_json: payload.conditions_json !== undefined ? payload.conditions_json : existing.conditions_json,
         is_active: payload.is_active !== undefined ? payload.is_active : existing.is_active,
-    });
+    }, { unchangedBonusType: existing.bonus_type, wasActive: Boolean(existing.is_active) });
 
     const updated = await bonusRuleRepository.updateRule(id, normalized);
     if (!updated) throw new Error('Không thể cập nhật quy tắc thưởng');
