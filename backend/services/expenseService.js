@@ -31,8 +31,8 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
     // Tài gửi lại rồi (status 'pending') thì đóng ngay — cùng lý do với sửa/xoá:
     // không để con số đổi dưới tay điều phối đang xem xét.
     if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) {
-        const dangBiTuChoi = await expenseRepository.hasRejectedReceiptRequest(shipmentId);
-        if (!dangBiTuChoi) {
+        const wasRejected = await expenseRepository.hasRejectedReceiptRequest(shipmentId);
+        if (!wasRejected) {
             throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
         }
     }

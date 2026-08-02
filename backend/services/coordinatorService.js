@@ -897,8 +897,8 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
 
     // rowCount = 0 nghĩa là yêu cầu vừa bị request khác xử lý xong trong lúc mình
     // đang chạy — dừng ở đây, đừng gửi thông báo trùng cho tài xế.
-    const daDoi = await coordinatorRepository.rejectReceiptRequestRow(coordinatorId, notes, requestId);
-    if (!daDoi) throw new Error('Yêu cầu này đã được xử lý rồi');
+    const changed = await coordinatorRepository.rejectReceiptRequestRow(coordinatorId, notes, requestId);
+    if (!changed) throw new Error('Yêu cầu này đã được xử lý rồi');
 
     const notificationService = require('./notificationService');
     notificationService.createForUser(req.driver_id, {

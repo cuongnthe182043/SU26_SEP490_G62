@@ -37,30 +37,163 @@ const buildOrderPaymentType = (shipments = []) => {
     return uniqueTypes.length === 1 ? uniqueTypes[0] : null;
 };
 
+const WALK_IN_NAME = 'Khách lẻ';
+
+// Chuẩn hoá tên khách để so khớp: gộp khoảng trắng thừa, bỏ phân biệt hoa/thường.
+// KHÔNG bỏ dấu tiếng Việt — "Hùng" và "Hưng" là hai khách khác nhau, gộp lại là gộp
+// luôn công nợ của hai người.
+const normalizeCustomerName = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+const normalizedCustomerNameSql = (col) => `lower(regexp_replace(btrim(${col}), '\\s+', ' ', 'g'))`;
+const CUSTOMER_NAME_COL = `COALESCE(full_name, company_name, '')`;
+
+/**
+ * Tìm khách theo định danh có trong dòng nhập. Trả về:
+ *   { status: 'matched',   customerId, matchedName }      — khớp đúng 1 khách đã có
+ *   { status: 'new' }                                     — chưa có, sẽ tạo mới
+ *   { status: 'ambiguous', matchedName, candidates: [] }  — tên khớp nhiều khách, cần SĐT
+ *
+ * Dùng CHUNG cho cả lúc import thật lẫn lúc xem trước, để những gì kế toán thấy ở màn
+ * xem trước đúng bằng những gì sẽ xảy ra — nếu tách làm hai bản logic thì sớm muộn
+ * cũng lệch nhau.
+ *
+ * Thứ tự ưu tiên:
+ *   1. Có SĐT  → khớp theo SĐT. Đây là khoá tự nhiên, gõ sai định dạng vẫn khớp được.
+ *   2. Không SĐT nhưng có tên → khớp theo tên đã chuẩn hoá. Trùng tên thì KHÔNG đoán,
+ *      báo về để kế toán điền SĐT — gán nhầm khách là đòi nợ nhầm người.
+ *   3. Không cả hai → hồ sơ "Khách lẻ" dùng chung (khách vãng lai, không theo dõi nợ).
+ */
+const findCustomerByIdentity = async (client, { phone, name, companyName }) => {
+    const cleanPhone = normalizeVietnamPhone(phone);
+    const inputName = trimToNull(name) || trimToNull(companyName);
+
+    if (cleanPhone) {
+        // So khớp cả hồ sơ cũ đang lưu ở định dạng chưa chuẩn — chuẩn hoá luôn cột phone trong SQL.
+        const { rows } = await client.query(
+            `SELECT id, ${CUSTOMER_NAME_COL} AS matched_name FROM customers
+             WHERE ${normalizedPhoneSql('phone')} = $1
+             ORDER BY id ASC LIMIT 1`,
+            [cleanPhone],
+        );
+        return rows.length
+            ? { status: 'matched', customerId: rows[0].id, matchedName: rows[0].matched_name }
+            : { status: 'new' };
+    }
+
+    if (inputName && normalizeCustomerName(inputName) !== normalizeCustomerName(WALK_IN_NAME)) {
+        const { rows } = await client.query(
+            `SELECT id, ${CUSTOMER_NAME_COL} AS matched_name, phone FROM customers
+             WHERE ${normalizedCustomerNameSql(CUSTOMER_NAME_COL)} = $1
+             ORDER BY id ASC LIMIT 5`,
+            [normalizeCustomerName(inputName)],
+        );
+        if (rows.length > 1) {
+            return {
+                status: 'ambiguous',
+                matchedName: inputName,
+                candidates: rows.map((r) => ({ id: r.id, name: r.matched_name, phone: r.phone })),
+            };
+        }
+        return rows.length
+            ? { status: 'matched', customerId: rows[0].id, matchedName: rows[0].matched_name }
+            : { status: 'new' };
+    }
+
+    const { rows } = await client.query(
+        `SELECT id, ${CUSTOMER_NAME_COL} AS matched_name FROM customers
+         WHERE ${normalizedPhoneSql('phone')} = ''
+           AND ${normalizedCustomerNameSql(CUSTOMER_NAME_COL)} = $1
+         ORDER BY id ASC LIMIT 1`,
+        [normalizeCustomerName(WALK_IN_NAME)],
+    );
+    return rows.length
+        ? { status: 'matched', customerId: rows[0].id, matchedName: rows[0].matched_name }
+        : { status: 'new' };
+};
+
 const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
-    // customers.phone NOT NULL — khách lẻ không SĐT dùng phone rỗng (gom chung 1 hồ sơ)
-    // SĐT được chuẩn hoá (bỏ dấu cách/gạch, +84→0...) để khớp khách cũ dù gõ khác định dạng.
+    // customers.phone NOT NULL — khách không SĐT lưu chuỗi rỗng
     const cleanPhone = normalizeVietnamPhone(phone);
     const cleanName = trimToNull(name);
     const cleanCompanyName = trimToNull(companyName);
 
-    // So khớp cả hồ sơ cũ đang lưu ở định dạng chưa chuẩn — chuẩn hoá luôn cột phone trong SQL.
-    const lookup = await client.query(
-        `SELECT id, full_name, company_name
-         FROM customers
-         WHERE ${normalizedPhoneSql('phone')} = $1
-         ORDER BY id ASC LIMIT 1`,
-        [cleanPhone]
-    );
-    if (lookup.rows.length > 0) {
-        return lookup.rows[0].id;
+    const match = await findCustomerByIdentity(client, { phone, name, companyName });
+
+    if (match.status === 'ambiguous') {
+        const candidatePhones = match.candidates.map((c) => c.phone || '(không có SĐT)').join(', ');
+        throw new Error(
+            `Có ${match.candidates.length} khách cùng tên "${match.matchedName}" (${candidatePhones}) — `
+            + 'điền SĐT vào cột "SĐT khách hàng" để chọn đúng người.',
+        );
     }
+
+    if (match.status === 'matched') {
+        // Khớp được nhờ SĐT nhưng hồ sơ cũ chưa có tên → điền tên vừa nhập vào cho đỡ trống.
+        // Chỉ điền khi đang TRỐNG, không ghi đè tên có sẵn.
+        if (cleanName || cleanCompanyName) {
+            await client.query(
+                `UPDATE customers SET full_name = COALESCE(NULLIF(BTRIM(full_name), ''), $2),
+                                      company_name = COALESCE(NULLIF(BTRIM(company_name), ''), $3),
+                                      updated_at = NOW()
+                 WHERE id = $1
+                   AND (NULLIF(BTRIM(COALESCE(full_name,'')), '') IS NULL
+                        AND NULLIF(BTRIM(COALESCE(company_name,'')), '') IS NULL)`,
+                [match.customerId, cleanName, cleanCompanyName],
+            );
+        }
+        return match.customerId;
+    }
+
     const insert = await client.query(
         `INSERT INTO customers (customer_type, full_name, company_name, phone, address, created_at, updated_at)
          VALUES ('individual', $1, $2, $3, '', NOW(), NOW()) RETURNING id`,
-        [cleanName, cleanCompanyName, cleanPhone]
+        [cleanName, cleanCompanyName, cleanPhone],
     );
     return insert.rows[0].id;
+};
+
+/**
+ * Xem trước cả file: mỗi dòng khớp khách nào / tạo khách mới / trùng tên, và đã từng
+ * import chưa. Chỉ ĐỌC.
+ *
+ * Vân tay được tra theo LÔ bằng một câu query. Trước đây dòng trùng chỉ lộ ra lúc import
+ * thật, mỗi dòng tốn trọn một transaction (tra khách, insert, đụng unique, rollback) —
+ * file 500 dòng gộp thêm 10 dòng mới là 490 transaction vứt đi.
+ */
+const previewImport = async (items = []) => {
+    const client = await pool.connect();
+    try {
+        const fingerprints = items.map((i) => i.fingerprint).filter(Boolean);
+        const existing = new Set();
+        if (fingerprints.length > 0) {
+            const { rows } = await client.query(
+                `SELECT import_fingerprint FROM orders WHERE import_fingerprint = ANY($1::text[])`,
+                [fingerprints],
+            );
+            for (const r of rows) existing.add(r.import_fingerprint);
+        }
+
+        // Hai dòng giống hệt nhau trong CÙNG một file: dòng đầu là mới, dòng sau là bản
+        // sao của chính nó. Không xét thì xem trước báo cả hai đều mới, import xong lại
+        // ra một dòng bị bỏ qua — đúng kiểu sai lệch giữa xem trước và thực tế.
+        const seen = new Set();
+        const results = [];
+        for (const item of items) {
+            const match = await findCustomerByIdentity(client, {
+                phone: item.phone, name: item.name, companyName: item.company_name,
+            });
+            const fp = item.fingerprint;
+            const alreadyImported = Boolean(fp) && (existing.has(fp) || seen.has(fp));
+            if (fp) seen.add(fp);
+            results.push({
+                row_index: item.row_index ?? null,
+                customer: match,
+                already_imported: alreadyImported,
+            });
+        }
+        return results;
+    } finally {
+        client.release();
+    }
 };
 
 // Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) cho màn Nhập đơn ngoài.
@@ -536,7 +669,7 @@ const createOrderWithShipments = async (orderData) => {
         // trùng" thay vì trộn lẫn với các dòng sai định dạng.
         if (err.code === '23505' && String(err.constraint) === 'uq_orders_import_fingerprint') {
             const trung = new Error('Dòng này đã được import trước đó — bỏ qua để không nhân đôi doanh thu.');
-            trung.laTrungImport = true;
+            trung.isDuplicateImport = true;
             throw trung;
         }
         throw err;
@@ -1084,5 +1217,6 @@ module.exports = {
     updateOrder,
     exportOrdersReport,
     searchCustomersByPhone,
+    previewImport,
 };
 

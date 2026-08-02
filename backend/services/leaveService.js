@@ -24,35 +24,35 @@ const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
     if (!leaveDate) throw new Error('Ngày nghỉ là bắt buộc');
     if (!VALID_TYPES.includes(leaveType)) throw new Error('Loại nghỉ không hợp lệ (paid / unpaid)');
 
-    const ngay = String(leaveDate).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay)) throw new Error('Ngày nghỉ không hợp lệ (định dạng YYYY-MM-DD)');
-    const d = new Date(`${ngay}T00:00:00+07:00`);
+    const day = String(leaveDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Ngày nghỉ không hợp lệ (định dạng YYYY-MM-DD)');
+    const d = new Date(`${day}T00:00:00+07:00`);
     if (Number.isNaN(d.getTime())) throw new Error('Ngày nghỉ không hợp lệ');
 
     const homNay = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-    // Chặn ngày quá xa ở CẢ HAI PHÍA — đồng hồ máy sai hoặc gõ nhầm năm thì chặn ngay
+    // Chặn ngày quá xa ở CẢ HAI PHÍA — đồng hồ máy sai hoặc gõ nhầm năm thì chặn day
     // tại đây, không để lọt vào DB rồi mới phát hiện lúc tính lương.
-    const hanCuoi = new Date(`${homNay}T00:00:00+07:00`);
-    hanCuoi.setMonth(hanCuoi.getMonth() + MAX_MONTHS_AHEAD);
-    if (d > hanCuoi) {
+    const windowEnd = new Date(`${homNay}T00:00:00+07:00`);
+    windowEnd.setMonth(windowEnd.getMonth() + MAX_MONTHS_AHEAD);
+    if (d > windowEnd) {
         throw new Error(`Chỉ đăng ký nghỉ trong vòng ${MAX_MONTHS_AHEAD} tháng tới`);
     }
-    const hanDau = new Date(`${homNay}T00:00:00+07:00`);
-    hanDau.setMonth(hanDau.getMonth() - MAX_MONTHS_BACK);
-    if (d < hanDau) {
+    const windowStart = new Date(`${homNay}T00:00:00+07:00`);
+    windowStart.setMonth(windowStart.getMonth() - MAX_MONTHS_BACK);
+    if (d < windowStart) {
         throw new Error(`Không đăng ký nghỉ lùi quá ${MAX_MONTHS_BACK} tháng`);
     }
 
     // Chặn đăng ký lùi vào kỳ lương ĐÃ CHỐT: số công tháng đó đã dùng để trả tiền,
     // thêm ngày nghỉ vào sẽ làm bảng lương và thực tế lệch nhau.
-    const [y, m] = ngay.split('-').map(Number);
-    const trangThaiLuong = await leaveRepository.getPayrollStatus(driverId, m, y);
-    if (trangThaiLuong && trangThaiLuong !== 'pending') {
+    const [y, m] = day.split('-').map(Number);
+    const payrollStatus = await leaveRepository.getPayrollStatus(driverId, m, y);
+    if (payrollStatus && payrollStatus !== 'pending') {
         throw new Error(`Bảng lương tháng ${m}/${y} đã chốt — không đăng ký nghỉ lùi vào kỳ này được. Liên hệ kế toán nếu cần điều chỉnh.`);
     }
 
-    return leaveRepository.createLeave(driverId, { leaveDate: ngay, leaveType, reason });
+    return leaveRepository.createLeave(driverId, { leaveDate: day, leaveType, reason });
 };
 
 const deleteLeave = async (driverId, leaveId) => {

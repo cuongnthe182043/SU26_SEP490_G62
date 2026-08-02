@@ -21,8 +21,8 @@ import { tokenStorage } from '@/services/token-storage';
  */
 
 const KEY_QUEUE = 'offline_queue_v1';
-const THU_MUC_ANH = `${FileSystem.documentDirectory}queue-photos/`;
-const SO_LAN_THU_TOI_DA = 5;
+const PHOTO_DIR = `${FileSystem.documentDirectory}queue-photos/`;
+const MAX_ATTEMPTS = 5;
 
 export type QueueItem = {
     id: string;
@@ -48,7 +48,7 @@ type Listener = (items: QueueItem[]) => void;
 const listeners = new Set<Listener>();
 let cache: QueueItem[] | null = null;
 
-const taoId = () =>
+const makeId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 async function doc(): Promise<QueueItem[]> {
@@ -73,16 +73,16 @@ async function ghi(items: QueueItem[]): Promise<void> {
  * Ảnh do expo-camera chụp nằm trong thư mục cache — hệ điều hành có quyền dọn bất cứ
  * lúc nào khi máy thiếu bộ nhớ. Nằm trong hàng đợi vài giờ mà bị dọn thì mất trắng.
  */
-async function giuAnh(uri: string, id: string): Promise<string> {
-    await FileSystem.makeDirectoryAsync(THU_MUC_ANH, { intermediates: true }).catch(() => {});
-    const duoi = uri.split('.').pop()?.split('?')[0] || 'jpg';
-    const dich = `${THU_MUC_ANH}${id}.${duoi}`;
-    await FileSystem.copyAsync({ from: uri, to: dich });
-    return dich;
+async function persistPhoto(uri: string, id: string): Promise<string> {
+    await FileSystem.makeDirectoryAsync(PHOTO_DIR, { intermediates: true }).catch(() => {});
+    const ext = uri.split('.').pop()?.split('?')[0] || 'jpg';
+    const dest = `${PHOTO_DIR}${id}.${ext}`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    return dest;
 }
 
-async function xoaAnh(uri: string | null): Promise<void> {
-    if (!uri || !uri.startsWith(THU_MUC_ANH)) return;
+async function deletePhoto(uri: string | null): Promise<void> {
+    if (!uri || !uri.startsWith(PHOTO_DIR)) return;
     await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
 }
 
@@ -90,7 +90,7 @@ async function xoaAnh(uri: string | null): Promise<void> {
 
 export const offlineQueue = {
     /** Đưa một thao tác vào hàng đợi. Trả về item đã tạo. */
-    async them(input: {
+    async enqueue(input: {
         path: string;
         method?: 'POST' | 'PATCH';
         fields?: Record<string, string>;
@@ -98,8 +98,8 @@ export const offlineQueue = {
         photoField?: string;
         label: string;
     }): Promise<QueueItem> {
-        const id = taoId();
-        const photoUri = input.photoUri ? await giuAnh(input.photoUri, id) : null;
+        const id = makeId();
+        const photoUri = input.photoUri ? await persistPhoto(input.photoUri, id) : null;
 
         const item: QueueItem = {
             id,
@@ -120,23 +120,23 @@ export const offlineQueue = {
         return item;
     },
 
-    async danhSach(): Promise<QueueItem[]> {
+    async list(): Promise<QueueItem[]> {
         return [...(await doc())];
     },
 
     /** Số việc còn chờ gửi (không tính việc đã hỏng hẳn) */
-    async soCho(): Promise<number> {
+    async pendingCount(): Promise<number> {
         return (await doc()).filter((i) => !i.failedPermanently).length;
     },
 
-    async xoa(id: string): Promise<void> {
+    async remove(id: string): Promise<void> {
         const items = await doc();
         const item = items.find((i) => i.id === id);
-        await xoaAnh(item?.photoUri ?? null);
+        await deletePhoto(item?.photoUri ?? null);
         await ghi(items.filter((i) => i.id !== id));
     },
 
-    theoDoi(fn: Listener): () => void {
+    subscribe(fn: Listener): () => void {
         listeners.add(fn);
         void doc().then(fn);
         return () => listeners.delete(fn);
@@ -147,66 +147,66 @@ export const offlineQueue = {
      * Gửi TUẦN TỰ chứ không song song: các thao tác trên cùng một chuyến phụ thuộc
      * thứ tự (lấy hàng phải trước giao hàng), gửi song song sẽ hỏng máy trạng thái.
      */
-    async xuLy(): Promise<{ thanhCong: number; thatBai: number }> {
+    async flush(): Promise<{ succeeded: number; failed: number }> {
         const items = (await doc()).filter((i) => !i.failedPermanently);
-        let thanhCong = 0;
-        let thatBai = 0;
+        let succeeded = 0;
+        let failed = 0;
 
         for (const item of items) {
-            const ketQua = await gui(item);
+            const result = await sendItem(item);
 
-            if (ketQua === 'ok') {
-                await offlineQueue.xoa(item.id);
-                thanhCong += 1;
+            if (result === 'ok') {
+                await offlineQueue.remove(item.id);
+                succeeded += 1;
                 continue;
             }
 
-            thatBai += 1;
-            const hienTai = await doc();
-            const capNhat = hienTai.map((i) => {
+            failed += 1;
+            const current = await doc();
+            const updated = current.map((i) => {
                 if (i.id !== item.id) return i;
-                const soLan = i.attempts + 1;
+                const attemptCount = i.attempts + 1;
                 return {
                     ...i,
-                    attempts: soLan,
-                    lastError: ketQua.loi,
+                    attempts: attemptCount,
+                    lastError: result.errorText,
                     // Server từ chối vì nghiệp vụ (4xx) thì gửi lại bao nhiêu lần cũng
                     // hỏng — dừng lại để tài xế xem và tự xử, đừng quay vòng vô ích.
-                    failedPermanently: ketQua.vinhVien || soLan >= SO_LAN_THU_TOI_DA,
+                    failedPermanently: result.permanent || attemptCount >= MAX_ATTEMPTS,
                 };
             });
-            await ghi(capNhat);
+            await ghi(updated);
 
             // Lỗi mạng thì các việc sau cũng sẽ lỗi — dừng luôn, đợi lần sau
-            if (!ketQua.vinhVien) break;
+            if (!result.permanent) break;
         }
 
-        return { thanhCong, thatBai };
+        return { succeeded, failed };
     },
 
     /** Dọn sạch — chỉ dùng khi đăng xuất */
-    async xoaTat(): Promise<void> {
+    async clear(): Promise<void> {
         const items = await doc();
-        await Promise.all(items.map((i) => xoaAnh(i.photoUri)));
+        await Promise.all(items.map((i) => deletePhoto(i.photoUri)));
         await ghi([]);
     },
 };
 
 // ─── Gửi một item ─────────────────────────────────────────────────────────────
 
-type KetQuaGui = 'ok' | { loi: string; vinhVien: boolean };
+type KetQuaGui = 'ok' | { errorText: string; permanent: boolean };
 
-async function gui(item: QueueItem): Promise<KetQuaGui> {
+async function sendItem(item: QueueItem): Promise<KetQuaGui> {
     const token = await tokenStorage.getToken();
     const csrf = await tokenStorage.getCsrfToken();
 
     const form = new FormData();
     for (const [k, v] of Object.entries(item.fields)) form.append(k, v);
     if (item.photoUri) {
-        const ten = item.photoUri.split('/').pop() ?? 'photo.jpg';
+        const fileName = item.photoUri.split('/').pop() ?? 'photo.jpg';
         form.append(item.photoField, {
             uri: item.photoUri,
-            name: ten,
+            name: fileName,
             type: 'image/jpeg',
         } as unknown as Blob);
     }
@@ -233,19 +233,19 @@ async function gui(item: QueueItem): Promise<KetQuaGui> {
         if (res.ok) return 'ok';
 
         const payload = await res.json().catch(() => null);
-        const loi = (payload as { error?: string })?.error ?? `Lỗi ${res.status}`;
+        const errorText = (payload as { error?: string })?.error ?? `Lỗi ${res.status}`;
 
         // 409 = trạng thái đã đổi rồi (thường là chính việc này đã gửi thành công ở
         // lần trước nhưng phản hồi không về tới máy) → coi như xong, đừng giữ lại.
         if (res.status === 409) return 'ok';
 
         // 5xx và 401 còn cơ hội thử lại; 4xx khác là lỗi nghiệp vụ, giữ nguyên chờ tài xử.
-        const vinhVien = res.status >= 400 && res.status < 500 && res.status !== 401;
-        return { loi, vinhVien };
+        const permanent = res.status >= 400 && res.status < 500 && res.status !== 401;
+        return { errorText, permanent };
     } catch (err) {
         return {
-            loi: err instanceof Error ? err.message : 'Không gửi được',
-            vinhVien: false,
+            errorText: err instanceof Error ? err.message : 'Không gửi được',
+            permanent: false,
         };
     }
 }
