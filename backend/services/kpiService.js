@@ -118,7 +118,7 @@ const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId, actorId = 
         };
     }
 
-    const nhomCu = driver.default_vehicle_group_id ?? null;
+    const previousGroup = driver.default_vehicle_group_id ?? null;
     const updated = await kpiRepository.setDriverDefaultVehicleGroup(parsedDriverId, parsedGroupId);
 
     const now   = new Date();
@@ -128,49 +128,49 @@ const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId, actorId = 
     // MỌI kỳ chưa chốt lương đều được cập nhật, không chỉ tháng hiện tại: có khi
     // bảng lương tháng trước vẫn còn 'pending', kỳ đó chưa chốt nên phải theo nhóm
     // mới — nếu bỏ qua thì lúc kế toán chạy lương tháng đó sẽ lấy ngưỡng của nhóm cũ.
-    const kyChuaChot = await kpiRepository.listUnlockedPayrollPeriods(parsedDriverId);
+    const openPeriods = await kpiRepository.listUnlockedPayrollPeriods(parsedDriverId);
 
     // Tháng hiện tại luôn nằm trong danh sách: bảng lương tháng này thường chưa được
     // tạo (getPayrollStatus trả null) nên không xuất hiện trong truy vấn ở trên.
     const payrollStatus = await kpiRepository.getPayrollStatus(parsedDriverId, month, year);
     const payrollLocked = payrollStatus !== null && payrollStatus !== 'pending';
-    if (!payrollLocked && !kyChuaChot.some((k) => k.month === month && k.year === year)) {
-        kyChuaChot.push({ month, year });
+    if (!payrollLocked && !openPeriods.some((k) => k.month === month && k.year === year)) {
+        openPeriods.push({ month, year });
     }
 
-    const daCapNhat = [];
-    for (const ky of kyChuaChot) {
+    const updatedPeriods = [];
+    for (const period of openPeriods) {
         // await (không fire-and-forget) để trả về đúng kết quả cho người bấm.
         // Tầng repository còn một lớp khoá nữa nên kỳ đã chốt có lọt vào đây cũng
         // không ghi đè được — trả về _kyDaChot.
         const kq = await kpiRepository.recalculateDriverKPI(
-            parsedDriverId, ky.month, ky.year, { syncVehicleGroup: true },
+            parsedDriverId, period.month, period.year, { syncVehicleGroup: true },
         );
-        if (kq && !kq._kyDaChot) daCapNhat.push(`${ky.month}/${ky.year}`);
+        if (kq && !kq._kyDaChot) updatedPeriods.push(`${period.month}/${period.year}`);
     }
-    const kpiSynced = daCapNhat.length > 0;
+    const kpiSynced = updatedPeriods.length > 0;
 
     // Ghi vết: thao tác này đổi ngưỡng thưởng KPI và bảng tranh giải của tài xế,
     // phải biết ai đổi và đổi lúc nào. Ghi lỗi không được chặn việc đổi nhóm.
     await kpiRepository.logDriverGroupChange({
         driverId: parsedDriverId,
-        fromGroupId: nhomCu,
+        fromGroupId: previousGroup,
         toGroupId: parsedGroupId,
         changedBy: Number(actorId) || parsedDriverId,
         reason,
-        appliedPeriods: daCapNhat.join(', '),
+        appliedPeriods: updatedPeriods.join(', '),
         kpiSynced,
     }).catch(() => {});
 
     const message = kpiSynced
-        ? `Đã đổi nhóm cố định sang "${group.name}". KPI và doanh thu các kỳ ${daCapNhat.join(', ')} đã chuyển sang nhóm mới. Các kỳ đã chốt lương giữ nguyên nhóm cũ.`
+        ? `Đã đổi nhóm cố định sang "${group.name}". KPI và doanh thu các kỳ ${updatedPeriods.join(', ')} đã chuyển sang nhóm mới. Các kỳ đã chốt lương giữ nguyên nhóm cũ.`
         : `Đã đổi nhóm cố định sang "${group.name}". Mọi kỳ đều đã chốt lương nên KPI giữ nguyên nhóm cũ — nhóm mới áp dụng từ kỳ sau.`;
 
     return {
         ...updated,
         vehicle_group_name: group.name,
         kpi_synced: kpiSynced,
-        applied_periods: daCapNhat,
+        applied_periods: updatedPeriods,
         payroll_locked: payrollLocked,
         payroll_status: payrollStatus,
         message,

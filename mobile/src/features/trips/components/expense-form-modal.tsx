@@ -16,7 +16,7 @@ import { FormField }  from '@/components/form-field';
 import { appTheme }   from '@/theme/app-theme';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { tripService } from '@/services/trip-service';
-import { guiHoacXepHang } from '@/lib/gui-hoac-xep-hang';
+import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
 
@@ -160,7 +160,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
             const clientRequestId = `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
             formData.append('clientRequestId', clientRequestId);
 
-            const kq = await guiHoacXepHang(
+            const kq = await sendOrQueue(
                 () => tripService.createExpense(formData),
                 {
                     path: '/api/expenses',
@@ -177,7 +177,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                 },
             );
 
-            if (!kq.daGui) {
+            if (!kq.sent) {
                 setFormError(null);
                 setDaXepHang(true);
                 return;

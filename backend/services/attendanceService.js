@@ -132,21 +132,21 @@ const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) =
     // So sánh theo chuỗi ngày giờ Việt Nam, KHÔNG dùng new Date(workDate) > new Date():
     // 'YYYY-MM-DD' được parse thành 00:00 UTC = 07:00 giờ VN, nên chấm công cho chính
     // hôm nay trước 7h sáng sẽ bị hiểu nhầm là "ngày trong tương lai" và bị chặn oan.
-    const ngay = String(workDate).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay)) {
+    const day = String(workDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
         throw new AttendanceError('Ngày chấm công không hợp lệ (định dạng YYYY-MM-DD)');
     }
     const todayVN = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
-    if (ngay > todayVN) {
+    if (day > todayVN) {
         throw new AttendanceError('Không thể chấm công cho ngày trong tương lai');
     }
 
     // Chấm lùi vào kỳ lương ĐÃ CHỐT làm số công lệch với số tiền đã trả — chặn lại,
     // muốn điều chỉnh thì phải mở lại bảng lương kỳ đó trước.
-    const [y, m] = ngay.split('-').map(Number);
-    const trangThaiLuong = await attendanceRepository.getPayrollStatus(Number(driverId), m, y);
-    if (trangThaiLuong && trangThaiLuong !== 'pending') {
-        throw new AttendanceError(`Bảng lương tháng ${m}/${y} đã chốt (${trangThaiLuong}) — không sửa chấm công kỳ này được. Mở lại bảng lương trước nếu cần điều chỉnh.`);
+    const [y, m] = day.split('-').map(Number);
+    const payrollStatus = await attendanceRepository.getPayrollStatus(Number(driverId), m, y);
+    if (payrollStatus && payrollStatus !== 'pending') {
+        throw new AttendanceError(`Bảng lương tháng ${m}/${y} đã chốt (${payrollStatus}) — không sửa chấm công kỳ này được. Mở lại bảng lương trước nếu cần điều chỉnh.`);
     }
 
     // Ngày lễ hưởng nguyên lương nên không trừ công được; ngược lại "đi làm ngày lễ"
@@ -176,7 +176,7 @@ const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) =
     });
 
     // Chấm công ăn thẳng vào lương (vắng/nửa công trừ tiền, đi làm ngày lễ cộng 200%)
-    // nên tài xế phải được báo ngay, đừng để tới lúc nhận lương mới biết rồi khiếu nại.
+    // nên tài xế phải được báo day, đừng để tới lúc nhận lương mới biết rồi khiếu nại.
     notifyDriver(Number(driverId), workDate, status, notes);
 
     return saved;

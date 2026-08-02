@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { tripService } from '@/services/trip-service';
-import { guiHoacXepHang } from '@/lib/gui-hoac-xep-hang';
+import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ActiveTrip } from '@/types/trip';
 
 type State = {
@@ -38,7 +38,7 @@ export function useCompletionProof(onSuccess?: (completedTrip: ActiveTrip) => vo
             } as unknown as Blob);
 
             // Mất mạng → cất ảnh vào hàng đợi thay vì báo lỗi và làm tài mất ảnh
-            const kq = await guiHoacXepHang(
+            const kq = await sendOrQueue(
                 () => tripService.completeWithProof(tripId, formData),
                 {
                     path: `/api/trips/${tripId}/complete`,
@@ -48,9 +48,9 @@ export function useCompletionProof(onSuccess?: (completedTrip: ActiveTrip) => vo
                 },
             );
 
-            if (kq.daGui) {
+            if (kq.sent) {
                 setState({ isUploading: false, error: null, daXepHang: false });
-                onSuccess?.(kq.ketQua.trip);
+                onSuccess?.(kq.result.trip);
             } else {
                 setState({ isUploading: false, error: null, daXepHang: true });
             }

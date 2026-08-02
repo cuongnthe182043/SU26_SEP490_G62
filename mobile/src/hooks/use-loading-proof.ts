@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { tripService } from '@/services/trip-service';
-import { guiHoacXepHang } from '@/lib/gui-hoac-xep-hang';
+import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ActiveTrip } from '@/types/trip';
 
 type State = { isUploading: boolean; error: string | null; daXepHang: boolean };
@@ -27,7 +27,7 @@ export function useLoadingProof(onSuccess?: (trip: ActiveTrip) => void) {
             formData.append('proof', { uri: compressed, type: 'image/jpeg', name: 'loading.jpg' } as unknown as Blob);
 
             // Mất mạng → cất ảnh vào hàng đợi, tài không phải quay lại chụp lại
-            const kq = await guiHoacXepHang(
+            const kq = await sendOrQueue(
                 () => tripService.submitLoadingProof(tripId, formData),
                 {
                     path: `/api/trips/${tripId}/start-transit`,
@@ -37,13 +37,13 @@ export function useLoadingProof(onSuccess?: (trip: ActiveTrip) => void) {
                 },
             );
 
-            if (!kq.daGui) {
+            if (!kq.sent) {
                 setState({ isUploading: false, error: null, daXepHang: true });
                 return null;
             }
             setState({ isUploading: false, error: null, daXepHang: false });
-            onSuccess?.(kq.ketQua.trip);
-            return kq.ketQua.trip;
+            onSuccess?.(kq.result.trip);
+            return kq.result.trip;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể xác nhận lấy hàng';
             setState({ isUploading: false, error: message, daXepHang: false });

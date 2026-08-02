@@ -418,11 +418,11 @@ const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = 
 
     // Không có dòng trả về = bị khoá. Trả lại dòng KPI hiện có để caller không tưởng
     // là lỗi; dòng này vẫn là số liệu đã chốt của kỳ đó.
-    const daKhoa = await pool.query(
+    const isLocked = await pool.query(
         `SELECT * FROM kpi_records WHERE driver_id = $1 AND month = $2 AND year = $3`,
         [driverId, month, year],
     );
-    return daKhoa.rows[0] ? { ...daKhoa.rows[0], _kyDaChot: true } : null;
+    return isLocked.rows[0] ? { ...isLocked.rows[0], _kyDaChot: true } : null;
 };
 
 module.exports = {

@@ -21,7 +21,7 @@ const MONEY_COLS = new Set([
 
 // Ngày chạy phải đọc theo giờ VN, không theo giờ máy người xuất: chuyến chạy 00:30 ngày
 // 02/05 (+07) mà máy đặt múi giờ khác sẽ ra 01/05 — lệch ngày là lệch cả kỳ doanh thu.
-const dinhDangNgayVN = new Intl.DateTimeFormat("vi-VN", {
+const vnDateFormatter = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
   day: "2-digit", month: "2-digit", year: "numeric",
 });
@@ -30,8 +30,8 @@ const fmtDate = (v) => {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "";
-  const phan = Object.fromEntries(dinhDangNgayVN.formatToParts(d).map((p) => [p.type, p.value]));
-  return `${phan.day}/${phan.month}/${phan.year}`;
+  const parts = Object.fromEntries(vnDateFormatter.formatToParts(d).map((p) => [p.type, p.value]));
+  return `${parts.day}/${parts.month}/${parts.year}`;
 };
 
 export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {}) {
