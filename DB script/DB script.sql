@@ -48,7 +48,7 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260801_driver_group_history.sql'),
     ('20260802_import_fingerprint.sql'),
     ('20260802_holiday_bonus_rule.sql'),
-    ('20260802_optional_staff_email.sql')
+    ('20260802_optional_staff_email.sql'),
     ('20260802_customer_name_lookup.sql')
 ON CONFLICT (filename) DO NOTHING;
 
