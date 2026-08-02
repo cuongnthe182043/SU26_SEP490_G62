@@ -107,22 +107,22 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
                    ${expanded ? "bg-violet-50/40 dark:bg-violet-500/10" : "hover:bg-gray-50/60 dark:hover:bg-white/5"}`}
         onClick={() => setExpanded((v) => !v)}
       >
-        <td className="py-3.5 pl-4 w-9">
+        <td className="py-3.5 pl-4">
           <span className="text-gray-400 dark:text-gray-400">
             {expanded ? <RiArrowUpSLine size={17} /> : <RiArrowDownSLine size={17} />}
           </span>
         </td>
         <td className="py-3.5 pr-4">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{row.driver_name}</span>
             {row.driver_phone && (
               <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{row.driver_phone}</span>
             )}
           </div>
         </td>
         <td className="py-3.5 pr-4 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">{row.vehicle_group || "—"}</span>
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{row.vehicle_group || "—"}</span>
             <Button
               isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
               onPress={() => onEditGroup(row)}
@@ -131,19 +131,20 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
             </Button>
           </div>
         </td>
-        <td className="py-3.5 pr-4">
+        {/* tabular-nums: các chữ số cùng bề ngang → cột tiền thẳng hàng, không rung khi số đổi */}
+        <td className="py-3.5 pr-4 text-right tabular-nums">
           <MoneyText amount={row.gross_salary} className="text-sm font-semibold text-gray-700 dark:text-gray-200" />
         </td>
-        <td className="py-3.5 pr-4">
+        <td className="py-3.5 pr-4 text-right tabular-nums">
           <MoneyText amount={row.net_salary} className="text-sm font-bold text-violet-700 dark:text-violet-300" />
         </td>
-        <td className="py-3.5 pr-4">
+        <td className="py-3.5 pr-4 text-center">
           <Chip size="sm" color={chip.color} variant="flat" className="text-[11px]">
             {chip.label}
           </Chip>
         </td>
-        <td className="py-3.5 pr-4 w-44" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-1.5 items-center">
+        <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1.5 items-center justify-end">
             {row.status === "reviewed" && (
               <Button
                 size="sm" color="primary" variant="flat"
@@ -240,14 +241,14 @@ function AdvanceRow({ row, onDisburse, disbursing }) {
   return (
     <tr className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
       <td className="py-3.5 pl-4 pr-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.driver_name}</span>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{row.driver_name}</span>
           {row.driver_phone && (
             <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{row.driver_phone}</span>
           )}
         </div>
       </td>
-      <td className="py-3.5 pr-4">
+      <td className="py-3.5 pr-4 text-right tabular-nums">
         <MoneyText amount={row.amount} className="text-sm font-bold text-amber-700 dark:text-amber-300" />
       </td>
       <td className="py-3.5 pr-4 hidden sm:table-cell">
@@ -258,7 +259,7 @@ function AdvanceRow({ row, onDisburse, disbursing }) {
       <td className="py-3.5 pr-4 hidden sm:table-cell">
         <span className="text-xs text-gray-400 dark:text-gray-400 line-clamp-1">{row.reason || "—"}</span>
       </td>
-      <td className="py-3.5 pr-4">
+      <td className="py-3.5 pr-4 text-center">
         <Chip
           size="sm"
           color={isApproved ? "warning" : row.status === "paid" ? "success" : "default"}
@@ -268,17 +269,19 @@ function AdvanceRow({ row, onDisburse, disbursing }) {
           {isApproved ? "Chờ giải ngân" : row.status === "paid" ? "Đã giải ngân" : row.status}
         </Chip>
       </td>
-      <td className="py-3.5 pr-4 w-32" onClick={(e) => e.stopPropagation()}>
-        {isApproved && (
-          <Button
-            size="sm" color="warning" variant="flat"
-            className="h-7 text-[11px]"
-            isLoading={disbursing === row.id}
-            onPress={() => onDisburse(row)}
-          >
-            Giải ngân
-          </Button>
-        )}
+      <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end">
+          {isApproved && (
+            <Button
+              size="sm" color="warning" variant="flat"
+              className="h-7 text-[11px]"
+              isLoading={disbursing === row.id}
+              onPress={() => onDisburse(row)}
+            >
+              Giải ngân
+            </Button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -555,6 +558,11 @@ export function PayrollView({ defaultTab = "payroll" }) {
     return advances.slice(start, start + advPageSize);
   }, [advances, advPage, advPageSize]);
 
+  // Chỉ che toàn bộ bảng bằng spinner ở lần tải đầu. Những lần tải lại sau (đổi tháng,
+  // bấm làm mới, sau khi duyệt/chi) vẫn giữ bảng cũ và chỉ làm mờ — nếu tháo bảng ra thì
+  // khung co lại rồi bung ra, cả trang giật lên giật xuống.
+  const isInitialLoad = loading && payrolls.length === 0;
+
   const payTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / payPageSize));
   const advTotalPages = Math.max(1, Math.ceil(advances.length / advPageSize));
 
@@ -635,34 +643,34 @@ export function PayrollView({ defaultTab = "payroll" }) {
       {tab === "payroll" && (
         <>
           {}
-          {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* Luôn dựng sẵn 4 thẻ (số 0 khi chưa có dữ liệu) — nếu ẩn đi lúc chưa tải xong
+              thì khi số về, cả khối bên dưới bị đẩy xuống ~140px, nhìn như trang bị giật. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <StatCard
                 label="Tổng tài xế"
-                value={stats.total_drivers ?? 0}
+                value={stats?.total_drivers ?? 0}
                 icon={RiGroupLine}
                 bg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
               />
               <StatCard
                 label="Chờ xác nhận"
-                value={stats.reviewed_count ?? 0}
+                value={stats?.reviewed_count ?? 0}
                 icon={RiTimeLine}
                 bg="bg-amber-50 dark:bg-amber-500/10" text="text-amber-600 dark:text-amber-300" border="border-amber-100 dark:border-amber-500/20"
               />
               <StatCard
                 label="Tổng lương gộp"
-                value={VND(stats.total_gross)}
+                value={VND(stats?.total_gross)}
                 icon={RiLineChartLine}
                 bg="bg-violet-50 dark:bg-violet-500/10" text="text-violet-600 dark:text-violet-300" border="border-violet-100 dark:border-violet-500/20"
               />
               <StatCard
                 label="Tổng thực nhận"
-                value={VND(stats.total_net)}
+                value={VND(stats?.total_net)}
                 icon={RiMoneyDollarCircleLine}
                 bg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" border="border-emerald-100 dark:border-emerald-500/20"
               />
-            </div>
-          )}
+          </div>
 
           {}
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -755,7 +763,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
           {}
           <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
-            {loading ? (
+            {isInitialLoad ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner color="secondary" label="Đang tải..." size="lg" />
               </div>
@@ -782,22 +790,26 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <p className="text-gray-500 dark:text-gray-400 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full">
+              <div className={`overflow-x-auto transition-opacity duration-150
+                              ${loading ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+              {/* table-fixed: khoá bề ngang cột theo hàng tiêu đề. Để auto thì mỗi lần
+                  lọc / đổi trang / mở dòng chi tiết (td colSpan) trình duyệt tính lại
+                  bề ngang → cả bảng nhảy. */}
+              <table className="w-full table-fixed min-w-[820px]">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {[
-                      { label: "", cls: "w-9" },
-                      { label: "Tài xế" },
-                      { label: "Nhóm xe", cls: "hidden sm:table-cell" },
-                      { label: "Lương gộp" },
-                      { label: "Thực nhận" },
-                      { label: "Trạng thái" },
-                      { label: "", cls: "w-44" },
+                      { label: "", cls: "w-11 text-left" },
+                      { label: "Tài xế", cls: "w-[24%] text-left" },
+                      { label: "Nhóm xe", cls: "w-[16%] text-left hidden sm:table-cell" },
+                      { label: "Lương gộp", cls: "w-[16%] text-right" },
+                      { label: "Thực nhận", cls: "w-[16%] text-right" },
+                      { label: "Trạng thái", cls: "w-[15%] text-center" },
+                      { label: "", cls: "w-[13%] text-right" },
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
-                        className={`text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
+                        className={`text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                                    tracking-wider py-3 pr-4 first:pl-4 ${cls ?? ""}`}
                       >
                         {label}
@@ -826,7 +838,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
           </div>
 
           {}
-          {!loading && filteredPayrolls.length > 0 && (
+          {filteredPayrolls.length > 0 && (
             <PaginationBar
               page={Math.min(payPage, payTotalPages)}
               pageSize={payPageSize}
@@ -867,7 +879,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
           {}
           <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
-            {advLoading ? (
+            {advLoading && advances.length === 0 ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner color="warning" label="Đang tải..." size="lg" />
               </div>
@@ -879,21 +891,22 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <p className="text-gray-500 dark:text-gray-400 text-sm">Không có yêu cầu ứng lương nào.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full">
+              <div className={`overflow-x-auto transition-opacity duration-150
+                              ${advLoading ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+              <table className="w-full table-fixed min-w-[760px]">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {[
-                      { label: "Tài xế" },
-                      { label: "Số tiền" },
-                      { label: "Kỳ lương", cls: "hidden sm:table-cell" },
-                      { label: "Lý do", cls: "hidden sm:table-cell" },
-                      { label: "Trạng thái" },
-                      { label: "", cls: "w-32" },
+                      { label: "Tài xế", cls: "w-[22%] text-left" },
+                      { label: "Số tiền", cls: "w-[16%] text-right" },
+                      { label: "Kỳ lương", cls: "w-[14%] text-left hidden sm:table-cell" },
+                      { label: "Lý do", cls: "w-[22%] text-left hidden sm:table-cell" },
+                      { label: "Trạng thái", cls: "w-[14%] text-center" },
+                      { label: "", cls: "w-[12%] text-right" },
                     ].map(({ label, cls }, i) => (
                       <th
                         key={i}
-                        className={`text-left text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
+                        className={`text-[11px] font-semibold text-gray-400 dark:text-gray-400 uppercase
                                    tracking-wider py-3 pr-4 first:pl-4 ${cls ?? ""}`}
                       >
                         {label}
@@ -917,7 +930,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
           </div>
 
           {}
-          {!advLoading && advances.length > 0 && (
+          {advances.length > 0 && (
             <PaginationBar
               page={Math.min(advPage, advTotalPages)}
               pageSize={advPageSize}
@@ -958,8 +971,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
         open={!!editingDriver}
         driver={editingDriver}
         vehicleGroups={vehicleGroups}
-        onSave={async (driverId, vehicleGroupId) => {
-          const res = await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId);
+        getHistory={accountantService.getDriverGroupHistory}
+        onSave={async (driverId, vehicleGroupId, reason) => {
+          const res = await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId, reason);
           refetch();
           return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
         }}

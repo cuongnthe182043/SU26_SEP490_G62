@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { tripService } from '@/services/trip-service';
+import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ActiveTrip } from '@/types/trip';
 
-type State = { isUploading: boolean; error: string | null };
+type State = { isUploading: boolean; error: string | null; daXepHang: boolean };
 
 async function compress(uri: string): Promise<string> {
     const r = await ImageManipulator.manipulateAsync(
@@ -16,25 +17,40 @@ async function compress(uri: string): Promise<string> {
 
 // PICKING → TRANSIT: ảnh lấy hàng bắt buộc (BR-013/014)
 export function useLoadingProof(onSuccess?: (trip: ActiveTrip) => void) {
-    const [state, setState] = useState<State>({ isUploading: false, error: null });
+    const [state, setState] = useState<State>({ isUploading: false, error: null, daXepHang: false });
 
     const submitLoadingProof = async (tripId: number, photoUri: string) => {
-        setState({ isUploading: true, error: null });
+        setState({ isUploading: true, error: null, daXepHang: false });
         try {
             const compressed = await compress(photoUri);
             const formData = new FormData();
             formData.append('proof', { uri: compressed, type: 'image/jpeg', name: 'loading.jpg' } as unknown as Blob);
-            const { trip } = await tripService.submitLoadingProof(tripId, formData);
-            setState({ isUploading: false, error: null });
-            onSuccess?.(trip);
-            return trip;
+
+            // Mất mạng → cất ảnh vào hàng đợi, tài không phải quay lại chụp lại
+            const kq = await sendOrQueue(
+                () => tripService.submitLoadingProof(tripId, formData),
+                {
+                    path: `/api/trips/${tripId}/start-transit`,
+                    photoUri: compressed,
+                    photoField: 'proof',
+                    label: `Xác nhận lấy hàng chuyến #${tripId}`,
+                },
+            );
+
+            if (!kq.sent) {
+                setState({ isUploading: false, error: null, daXepHang: true });
+                return null;
+            }
+            setState({ isUploading: false, error: null, daXepHang: false });
+            onSuccess?.(kq.result.trip);
+            return kq.result.trip;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể xác nhận lấy hàng';
-            setState({ isUploading: false, error: message });
+            setState({ isUploading: false, error: message, daXepHang: false });
             return null;
         }
     };
 
-    const clearError = () => setState(s => ({ ...s, error: null }));
+    const clearError = () => setState(s => ({ ...s, error: null, daXepHang: false }));
     return { ...state, submitLoadingProof, clearError };
 }

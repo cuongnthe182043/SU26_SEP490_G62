@@ -324,13 +324,19 @@ const getReceiptRequestById = async (requestId) => {
     return result.rows[0] ?? null;
 };
 
+// Chỉ đổi được yêu cầu còn 'pending'. Điều kiện nằm ngay trong WHERE nên bấm nhiều
+// lần (mạng lag / spam nút) chỉ có lần đầu ăn — các lần sau update 0 dòng và caller
+// biết để không gửi thông báo trùng. Cũng chặn luôn việc từ chối một yêu cầu vừa
+// được duyệt xong bởi request khác chạy song song.
 const rejectReceiptRequestRow = async (coordinatorId, notes, requestId) => {
-    await pool.query(
+    const result = await pool.query(
         `UPDATE order_receipt_requests
          SET status = 'rejected', processed_by = $1, processed_at = NOW(), coordinator_notes = $2
-         WHERE id = $3`,
+         WHERE id = $3 AND status = 'pending'
+         RETURNING id`,
         [coordinatorId, notes ?? null, requestId],
     );
+    return result.rowCount > 0;
 };
 
 const getDashboardStats = async () => {

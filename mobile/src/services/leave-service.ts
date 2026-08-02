@@ -13,11 +13,38 @@ export type LeaveRequest = {
     created_at: string;
 };
 
+// working_days = min(28, số ngày lịch − nghỉ không lương − vắng không phép − nửa công×0.5)
+// Ba nguồn trừ công phải hiện đủ trên màn hình, nếu không tài xế thấy số công tụt mà
+// không biết vì sao (kế toán chấm vắng/nửa công thì tài không hề được báo).
+// Ngày lễ được loại khỏi mọi phép trừ (Điều V.1) và đi làm ngày lễ thì tính 200%.
 export type AttendanceSummary = {
     total_leaves: string;
     unpaid_days: string;
     paid_days: string;
-    working_days: number;
+    unexcused_days: number;
+    half_days: number;
+    working_days: number | string;
+    holiday_days: number;
+    holiday_days_worked: number;
+};
+
+// Chấm công từng ngày trong tháng của chính tài xế. status trùng bộ nhãn của kế toán:
+// present | holiday | holiday_worked | leave_paid | leave_unpaid | absent_unexcused | half_day
+export type AttendanceDay = {
+    work_date: string;
+    status: string;
+    status_label: string;
+    holiday_name: string | null;
+    has_completed_trip: boolean;
+    override_notes: string | null;
+};
+
+export type MyAttendance = {
+    month: number;
+    year: number;
+    days: AttendanceDay[];
+    summary: Record<string, number>;
+    status_labels: Record<string, string>;
 };
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -32,6 +59,9 @@ export const leaveService = {
 
     getSummary: (month: number, year: number): Promise<AttendanceSummary> =>
         apiClient.get(`/api/leave/summary?month=${month}&year=${year}`),
+
+    getMyAttendance: (month: number, year: number): Promise<MyAttendance> =>
+        apiClient.get(`/api/leave/attendance?month=${month}&year=${year}`),
 
     create: (payload: {
         leaveDate: string;

@@ -10,7 +10,7 @@ const EXPENSE_ALLOWED_STATUSES = [
     'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl }) => {
+const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl, clientRequestId }) => {
     if (!receiptUrl) throw new Error('Ảnh bằng chứng là bắt buộc');
     if (!expenseType || !ALLOWED_EXPENSE_TYPES.includes(expenseType)) throw new Error('Loại chi phí không hợp lệ');
     if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
@@ -24,7 +24,18 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
         const wasAssigned = await expenseRepository.wasDriverAssignedToShipment(shipmentId, driverId);
         if (!wasAssigned) throw new Error('Bạn không có quyền thêm chi phí cho chuyến này');
     }
-    if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
+    // Chuyến đang chạy thì khai chi phí bình thường. Chuyến đã kết thúc thì CHỈ mở lại
+    // khi yêu cầu phiếu thu của đơn đang bị TỪ CHỐI — đó là lúc hệ thống bắt tài sửa
+    // lại, mà điều phối có thể từ chối chính vì THIẾU một khoản (ví dụ thiếu hoá đơn
+    // phí bãi). Không mở thì tài chỉ sửa/xoá được khoản cũ, không có đường bổ sung.
+    // Tài gửi lại rồi (status 'pending') thì đóng ngay — cùng lý do với sửa/xoá:
+    // không để con số đổi dưới tay điều phối đang xem xét.
+    if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) {
+        const wasRejected = await expenseRepository.hasRejectedReceiptRequest(shipmentId);
+        if (!wasRejected) {
+            throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
+        }
+    }
 
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);
 
@@ -35,7 +46,15 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
         expenseType,
         amount: Number(amount),
         description: description?.trim() || null,
+        clientRequestId: clientRequestId || null,
     });
+
+    // App gửi lại đúng thao tác cũ (hàng đợi offline) → bản ghi đã có sẵn, không tạo
+    // thêm ảnh đính kèm và không bắn lại thông báo cho điều phối.
+    if (expense._daTonTai) {
+        delete expense._daTonTai;
+        return expense;
+    }
 
     await expenseRepository.addExpenseAttachment(expense.id, receiptUrl);
 

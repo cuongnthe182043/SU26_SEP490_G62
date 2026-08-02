@@ -16,6 +16,7 @@ import { FormField }  from '@/components/form-field';
 import { appTheme }   from '@/theme/app-theme';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { tripService } from '@/services/trip-service';
+import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
 
@@ -92,6 +93,8 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     const [showTypePicker, setShowTypePicker] = useState(false);
     const [isSubmitting,   setSubmitting]     = useState(false);
     const [formError,      setFormError]      = useState<string | null>(null);
+    // Mất mạng: chi phí đã cất vào hàng đợi, hiện thông báo riêng thay vì báo lỗi đỏ
+    const [daXepHang,      setDaXepHang]      = useState(false);
 
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView>(null);
@@ -152,7 +155,33 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                 uri: receiptUri, name: filename, type: mimeMap[ext] ?? 'image/jpeg',
             } as unknown as Blob);
 
-            await tripService.createExpense(formData);
+            // Khoá chống trùng: hàng đợi offline có thể gửi lại thao tác này, backend
+            // dựa vào clientRequestId để không tạo hai bản ghi chi phí.
+            const clientRequestId = `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+            formData.append('clientRequestId', clientRequestId);
+
+            const kq = await sendOrQueue(
+                () => tripService.createExpense(formData),
+                {
+                    path: '/api/expenses',
+                    photoUri: receiptUri,
+                    photoField: 'receipt',
+                    label: `Khai chi phí ${amt.toLocaleString('vi-VN')}đ — chuyến #${shipmentId}`,
+                    fields: {
+                        shipmentId: String(shipmentId),
+                        expenseType,
+                        amount: String(amt),
+                        clientRequestId,
+                        ...(description.trim() ? { description: description.trim() } : {}),
+                    },
+                },
+            );
+
+            if (!kq.sent) {
+                setFormError(null);
+                setDaXepHang(true);
+                return;
+            }
             closeWithAnimation(() => { reset(); onSuccess(); });
         } catch (err) {
             setFormError(err instanceof Error ? err.message : 'Không thể thêm chi phí');
@@ -350,6 +379,20 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                                 <AppText variant="caption" tone="danger">{formError}</AppText>
                             </YStack>
                         ) : null}
+
+                        {/* Mất mạng — đã cất vào hàng đợi, không phải lỗi */}
+                        {daXepHang ? (
+                            <YStack
+                                padding={10} borderRadius={8} marginBottom={12}
+                                backgroundColor={appTheme.colors.warningSoft}
+                                borderWidth={1} borderColor={appTheme.colors.warningBorder}
+                            >
+                                <AppText variant="caption">
+                                    Đang mất mạng — chi phí đã được lưu lại và sẽ tự gửi khi có sóng.
+                                    Bạn có thể đóng cửa sổ này.
+                                </AppText>
+                            </YStack>
+                        ) : null}
                     </ScrollView>
 
                     {/* Actions — ngoài ScrollView, luôn visible */}
@@ -361,6 +404,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                             flex={1}
                             tone="primary"
                             isLoading={isSubmitting}
+                            requiresNetwork
                             onPress={handleSubmit}
                             height={48}
                         >

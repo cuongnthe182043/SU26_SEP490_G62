@@ -241,7 +241,10 @@ export default function AccountantPage({ user, onLogout }) {
             onNotificationSelect={handleNotificationSelect}
           />
 
-          <main className="flex-1 overflow-y-auto p-6">
+          {/* scrollbarGutter stable: luôn chừa chỗ cho thanh cuộn. Không chừa thì mỗi lần
+              nội dung dài/ngắn qua mức tràn (mở dòng chi tiết, lọc, đổi trang) thanh cuộn
+              hiện rồi mất, kéo cả trang dịch ngang vài px — nhìn như UI bị giật. */}
+          <main className="flex-1 overflow-y-auto p-6" style={{ scrollbarGutter: "stable" }}>
             {activeView === "revenue" && (
               <RevenueView refreshKey={revenueRefreshKey} search={search} />
             )}

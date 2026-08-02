@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {
     AlertTriangle, CalendarDays, CalendarOff, CheckCircle2,
-    ChevronLeft, ChevronRight, Trash2,
+    ChevronLeft, ChevronRight, PartyPopper, Trash2,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -19,7 +19,7 @@ import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { useConfirm }  from '@/providers/ui-provider';
 import { useLeave, useCreateLeave, useDeleteLeave } from '@/hooks/use-leave';
-import type { LeaveRequest, LeaveType } from '@/services/leave-service';
+import type { LeaveRequest, LeaveType, AttendanceDay } from '@/services/leave-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,12 +35,125 @@ const fmtDate = (iso: string) => {
 
 const isoToDate = (iso: string) => new Date(iso + 'T00:00:00');
 
+// ─── Lịch chấm công từng ngày ────────────────────────────────────────────────
+// Tài xế phải xem được mình bị chấm vắng/nửa công vào NGÀY NÀO để còn khiếu nại
+// đúng chỗ — trước đây chỉ thấy con số tổng, không biết ngày nào.
+
+const DAY_STYLE: Record<string, { bg: string; fg: string; ky: string }> = {
+    present:          { bg: appTheme.colors.successSoft, fg: appTheme.colors.successText, ky: '' },
+    holiday:          { bg: appTheme.colors.statusReturningSoft, fg: appTheme.colors.statusReturningText, ky: 'LỄ' },
+    holiday_worked:   { bg: appTheme.colors.statusReturning, fg: '#FFFFFF', ky: 'LỄ×2' },
+    leave_paid:       { bg: appTheme.colors.primarySoft, fg: appTheme.colors.primary,     ky: 'P' },
+    leave_unpaid:     { bg: appTheme.colors.warningSoft, fg: appTheme.colors.warningText, ky: 'KL' },
+    half_day:         { bg: appTheme.colors.warningSoft, fg: appTheme.colors.warningText, ky: '½' },
+    absent_unexcused: { bg: appTheme.colors.dangerSoft,  fg: appTheme.colors.dangerText,  ky: 'V' },
+};
+const dayStyle = (s: string) => DAY_STYLE[s] ?? { bg: appTheme.colors.surfaceSoft, fg: appTheme.colors.textMuted, ky: '' };
+
+const WEEKDAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+function AttendanceCalendar({ days, labels }: { days: AttendanceDay[]; labels: Record<string, string> }) {
+    const [picked, setPicked] = useState<AttendanceDay | null>(null);
+    if (days.length === 0) return null;
+
+    // Chèn ô trống đầu tháng để ngày 1 rơi đúng cột thứ trong tuần (T2 = cột 0)
+    const firstDow = (isoToDate(String(days[0].work_date).slice(0, 10)).getDay() + 6) % 7;
+    const cells: (AttendanceDay | null)[] = [...Array(firstDow).fill(null), ...days];
+
+    // Chỉ liệt kê những trạng thái THỰC SỰ có trong tháng, tránh chú thích thừa
+    const present = [...new Set(days.map((d) => d.status))].filter((s) => s !== 'present');
+
+    return (
+        <YStack gap={10}>
+            <Text fontSize={13} fontWeight="900" color={appTheme.colors.textMuted}>
+                CHẤM CÔNG TỪNG NGÀY
+            </Text>
+
+            <XStack>
+                {WEEKDAYS.map((w) => (
+                    <View key={w} style={{ flex: 1, alignItems: 'center' }}>
+                        <Text fontSize={10} color={appTheme.colors.textMuted}>{w}</Text>
+                    </View>
+                ))}
+            </XStack>
+
+            <XStack flexWrap="wrap">
+                {cells.map((d, i) => {
+                    if (!d) return <View key={`e${i}`} style={{ width: `${100 / 7}%`, height: 42 }} />;
+                    const st = dayStyle(d.status);
+                    return (
+                        <Pressable
+                            key={d.work_date}
+                            onPress={() => setPicked(d)}
+                            style={{ width: `${100 / 7}%`, height: 42, padding: 2 }}
+                        >
+                            <View style={{
+                                flex: 1, borderRadius: 8, backgroundColor: st.bg,
+                                alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <Text fontSize={12} fontWeight="700" color={st.fg}>
+                                    {isoToDate(String(d.work_date).slice(0, 10)).getDate()}
+                                </Text>
+                                {st.ky ? (
+                                    <Text fontSize={8} fontWeight="900" color={st.fg}>{st.ky}</Text>
+                                ) : null}
+                            </View>
+                        </Pressable>
+                    );
+                })}
+            </XStack>
+
+            {present.length > 0 ? (
+                <XStack gap={12} flexWrap="wrap">
+                    {present.map((s) => (
+                        <XStack key={s} gap={4} alignItems="center">
+                            <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: dayStyle(s).bg }} />
+                            <Text fontSize={11} color={appTheme.colors.textMuted}>{labels[s] ?? s}</Text>
+                        </XStack>
+                    ))}
+                </XStack>
+            ) : null}
+
+            {picked ? (
+                <YStack
+                    padding={12} borderRadius={appTheme.radius.lg}
+                    backgroundColor={dayStyle(picked.status).bg} gap={4}
+                >
+                    <Text fontSize={13} fontWeight="900" color={dayStyle(picked.status).fg}>
+                        Ngày {isoToDate(String(picked.work_date).slice(0, 10)).toLocaleDateString('vi-VN')} — {picked.status_label}
+                    </Text>
+                    {picked.holiday_name ? (
+                        <Text fontSize={11} color={appTheme.colors.textMuted}>
+                            Ngày lễ: {picked.holiday_name}. Nghỉ vẫn hưởng nguyên lương
+                            {picked.status === 'holiday_worked' ? ', đi làm được tính 200%.' : '.'}
+                        </Text>
+                    ) : null}
+                    {picked.override_notes ? (
+                        <Text fontSize={11} color={appTheme.colors.textMuted}>
+                            Ghi chú của kế toán: {picked.override_notes}
+                        </Text>
+                    ) : null}
+                    {picked.status === 'absent_unexcused' || picked.status === 'half_day' ? (
+                        <Text fontSize={11} color={appTheme.colors.dangerText}>
+                            Ngày này bị trừ công. Nếu không đúng, liên hệ kế toán để chỉnh lại.
+                        </Text>
+                    ) : null}
+                </YStack>
+            ) : null}
+        </YStack>
+    );
+}
+
 // ─── Attendance summary bar ───────────────────────────────────────────────────
 
-function AttendanceSummary({ working, unpaid, paid }: {
+function AttendanceSummary({ working, unpaid, paid, unexcused, halfDays, holidays, holidaysWorked }: {
     working: number; unpaid: number; paid: number;
+    unexcused: number; halfDays: number; holidays: number; holidaysWorked: number;
 }) {
     const pct = Math.max(0, Math.min(100, (working / 28) * 100));
+    // Nửa công trừ 0.5 nên số công có thể lẻ — hiện "27,5" thay vì làm tròn sai
+    const workingLabel = Number.isInteger(working) ? String(working) : working.toFixed(1).replace('.', ',');
+    const unpaidLeave = unpaid > 0 || unexcused > 0 || halfDays > 0;
     return (
         <YStack
             padding={20} borderRadius={appTheme.radius.xl}
@@ -55,7 +168,7 @@ function AttendanceSummary({ working, unpaid, paid }: {
                     fontSize={22} fontWeight="900"
                     color={working >= 28 ? appTheme.colors.successText : appTheme.colors.warningText}
                 >
-                    {working} <Text fontSize={14} fontWeight="400" color={appTheme.colors.textMuted}>/ 28</Text>
+                    {workingLabel} <Text fontSize={14} fontWeight="400" color={appTheme.colors.textMuted}>/ 28</Text>
                 </Text>
             </XStack>
 
@@ -68,12 +181,31 @@ function AttendanceSummary({ working, unpaid, paid }: {
                 }} />
             </View>
 
-            <XStack gap={16}>
+            {/* Liệt kê ĐỦ mọi khoản làm số công thay đổi. Vắng không phép và nửa công
+                do kế toán chấm — tài xế không được thông báo, nên nếu không hiện ở đây
+                thì tài chỉ thấy số công tụt mà không biết lý do. */}
+            <XStack gap={16} flexWrap="wrap">
                 {unpaid > 0 ? (
                     <XStack gap={5} alignItems="center">
                         <CalendarOff size={13} color={appTheme.colors.danger} />
                         <Text fontSize={12} color={appTheme.colors.dangerText}>
                             {unpaid} ngày nghỉ không lương
+                        </Text>
+                    </XStack>
+                ) : null}
+                {unexcused > 0 ? (
+                    <XStack gap={5} alignItems="center">
+                        <AlertTriangle size={13} color={appTheme.colors.danger} />
+                        <Text fontSize={12} color={appTheme.colors.dangerText}>
+                            {unexcused} ngày vắng không phép
+                        </Text>
+                    </XStack>
+                ) : null}
+                {halfDays > 0 ? (
+                    <XStack gap={5} alignItems="center">
+                        <AlertTriangle size={13} color={appTheme.colors.warning} />
+                        <Text fontSize={12} color={appTheme.colors.warningText}>
+                            {halfDays} buổi nửa công (−{(halfDays * 0.5).toFixed(1).replace('.', ',')} công)
                         </Text>
                     </XStack>
                 ) : null}
@@ -85,12 +217,30 @@ function AttendanceSummary({ working, unpaid, paid }: {
                         </Text>
                     </XStack>
                 ) : null}
-                {unpaid === 0 && paid === 0 ? (
+                {!unpaidLeave && paid === 0 ? (
                     <Text fontSize={12} color={appTheme.colors.successText} fontWeight="700">
                         Không có ngày nghỉ — Chuyên cần xuất sắc!
                     </Text>
                 ) : null}
             </XStack>
+
+            {/* Ngày lễ: nghỉ vẫn hưởng nguyên lương, đi làm được tính 200% (Điều V.1) */}
+            {holidays > 0 ? (
+                <XStack
+                    gap={6} alignItems="center" flexWrap="wrap"
+                    paddingTop={10} borderTopWidth={1} borderTopColor={appTheme.colors.border}
+                >
+                    <PartyPopper size={13} color={appTheme.colors.textMuted} />
+                    <Text fontSize={12} color={appTheme.colors.textMuted}>
+                        Tháng này có {holidays} ngày lễ — nghỉ vẫn hưởng nguyên lương.
+                    </Text>
+                    {holidaysWorked > 0 ? (
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.successText}>
+                            Bạn đi làm {holidaysWorked} ngày, được tính 200% lương.
+                        </Text>
+                    ) : null}
+                </XStack>
+            ) : null}
         </YStack>
     );
 }
@@ -317,7 +467,7 @@ export function LeaveScreen() {
     const [year,  setYear]  = useState(now.getFullYear());
     const [showForm, setShowForm] = useState(false);
 
-    const { leaves, summary, isLoading, error, reload } = useLeave(month, year);
+    const { leaves, summary, days, statusLabels, isLoading, error, reload } = useLeave(month, year);
     const { remove } = useDeleteLeave();
 
     useEffect(() => { reload(); }, [reload]);
@@ -365,9 +515,13 @@ export function LeaveScreen() {
                 {/* Attendance summary */}
                 {summary ? (
                     <AttendanceSummary
-                        working={summary.working_days}
+                        working={Number(summary.working_days)}
                         unpaid={Number(summary.unpaid_days)}
                         paid={Number(summary.paid_days)}
+                        unexcused={Number(summary.unexcused_days ?? 0)}
+                        halfDays={Number(summary.half_days ?? 0)}
+                        holidays={Number(summary.holiday_days ?? 0)}
+                        holidaysWorked={Number(summary.holiday_days_worked ?? 0)}
                     />
                 ) : null}
 

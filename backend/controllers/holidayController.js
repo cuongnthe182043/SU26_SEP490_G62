@@ -1,4 +1,5 @@
 const holidayService = require('../services/holidayService');
+const { optMonth, optYear } = require('../utils/accountantValidate');
 
 const sendError = (res, err) => {
     const code = err.message.includes('Không tìm thấy') ? 404
@@ -10,7 +11,7 @@ const sendError = (res, err) => {
 // GET /api/admin/holidays?year=2026
 const listHolidays = async (req, res) => {
     try {
-        const year = Number(req.query.year) || null;
+        const year = optYear(req.query.year, null);
         const holidays = await holidayService.listHolidays(year);
         res.json({ holidays });
     } catch (err) {

@@ -1,5 +1,6 @@
 const bonusService   = require('../services/bonusService');
 const bonusRepository = require('../repositories/bonusRepository');
+const { optMonth, optYear } = require('../utils/accountantValidate');
 
 const _posInt = (v, label) => {
     const n = parseInt(v, 10);
@@ -29,7 +30,7 @@ const getAll = async (req, res) => {
         const result = await bonusService.getAll({
             type:     type   || null,
             status:   status || null,
-            year:     year   ? Number(year) : null,
+            year:     optYear(year, null),
             search:   search?.trim() || null,
             driverId: driver_id ? Number(driver_id) : null,
             sort:     sort   || null,
@@ -53,7 +54,7 @@ const getAll = async (req, res) => {
 
 const getStats = async (req, res) => {
     try {
-        const year = req.query.year ? Number(req.query.year) : null;
+        const year = optYear(req.query.year, null);
         const stats = await bonusService.getStats(year);
         res.json(stats);
     } catch (err) { _send(res, err); }
@@ -79,7 +80,7 @@ const getMyBonuses = async (req, res) => {
 
 const previewTet = async (req, res) => {
     try {
-        const year = Number(req.query.year) || new Date().getFullYear();
+        const year = optYear(req.query.year, new Date().getFullYear());
         const data = await bonusService.previewTet(year);
         res.json({ year, previews: data });
     } catch (err) { _send(res, err); }
@@ -87,7 +88,7 @@ const previewTet = async (req, res) => {
 
 const generateTet = async (req, res) => {
     try {
-        const year = Number(req.body.year) || new Date().getFullYear();
+        const year = optYear(req.body.year, new Date().getFullYear());
         const result = await bonusService.generateTet(year, req.user.userId);
         res.status(201).json({
             message: `Đã tạo ${result.inserted} phiếu thưởng Tết ${year}` +
@@ -116,7 +117,7 @@ const create = async (req, res) => {
             type,
             amount:    amount ? Number(amount) : null,
             notes,
-            year:      year ? Number(year) : null,
+            year:      optYear(year, null),
             beneficiary_name,
             beneficiary_relation,
             proof_url,

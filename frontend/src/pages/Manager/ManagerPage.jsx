@@ -160,7 +160,8 @@ export default function ManagerPage({ user, onLogout }) {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <TopBar title={meta.title} subtitle={meta.subtitle} onNotificationSelect={handleNotificationSelect} />
 
-          <main className="flex-1 overflow-y-auto p-6">
+          {/* Luôn chừa chỗ thanh cuộn — xem giải thích ở AccountantPage */}
+          <main className="flex-1 overflow-y-auto p-6" style={{ scrollbarGutter: "stable" }}>
             {activeView === "dashboard" && <DashboardView user={currentUser} />}
             {activeView === "business-report" && <BusinessReportView />}
             {activeView === "partners" && <PartnersView user={currentUser} />}

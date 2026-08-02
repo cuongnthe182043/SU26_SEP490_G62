@@ -636,6 +636,7 @@ export function IncidentFormScreen() {
                             flex={1}
                             tone="primary"
                             isLoading={isSubmitting}
+                            requiresNetwork
                             onPress={handleSubmit}
                             height={52}
                         >
