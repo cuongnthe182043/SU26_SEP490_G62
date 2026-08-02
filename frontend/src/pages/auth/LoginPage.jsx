@@ -12,6 +12,7 @@ import {
 import { apiRequest } from "../../services/apiClient";
 import { loadGoogleIdentityScript } from "../../services/googleIdentity";
 import { getRememberedEmail } from "../../services/storage";
+import { getIdentifierError } from "../../services/loginIdentifier";
 import LoadingState from "../../components/LoadingState";
 import { notify } from "../../components/shared-ui/Toast";
 import ThemeToggle from "../../theme/ThemeToggle";
@@ -48,14 +49,12 @@ function getRateLimitMessage(error) {
   return error.message || "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.";
 }
 
+// `email` ở đây là ĐỊNH DANH đăng nhập — email hoặc số điện thoại. Giữ nguyên tên biến
+// để không phải đổi loạt chỗ dùng; thông báo lỗi tự bám theo thứ người dùng đang gõ.
 function validateCredentials(email, password) {
   const errors = { email: "", password: "" };
 
-  if (!email) {
-    errors.email = "Vui lòng nhập email.";
-  } else if (!emailRegex.test(email)) {
-    errors.email = "Email không hợp lệ.";
-  }
+  errors.email = getIdentifierError(email);
 
   if (!password) {
     errors.password = "Vui lòng nhập mật khẩu.";
@@ -294,7 +293,7 @@ export default function LoginPage({ onLoginSuccess }) {
     try {
       const data = await apiRequest("/auth/login", {
         method: "POST",
-        body: { email, password },
+        body: { identifier: email, password },
       });
 
       const { user } = data;
@@ -495,25 +494,30 @@ export default function LoginPage({ onLoginSuccess }) {
 
             <div className="my-[18px] mb-2 flex items-center gap-3 text-xs uppercase tracking-[0.12em] text-[#7d8794] dark:text-[#8b93a5]">
               <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
-              <span className="whitespace-nowrap">hoặc đăng nhập bằng email</span>
+              <span className="whitespace-nowrap">hoặc đăng nhập bằng email / số điện thoại</span>
               <span className="h-px flex-1 bg-[#e2e8f0] dark:bg-white/10" />
             </div>
 
             <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-[18px] text-left" noValidate>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="login-email" className="text-sm font-medium text-[#2d3a4f] dark:text-[#c7ccd8]">
-                  Email
+                  Email hoặc số điện thoại
                 </label>
                 <Input
                   id="login-email"
                   autoFocus
                   isRequired
-                  aria-label="Email"
-                  name="email"
-                  autoComplete="email"
-                  type="email"
+                  aria-label="Email hoặc số điện thoại"
+                  name="identifier"
+                  // "username" thay cho "email": trình duyệt vẫn gợi ý tài khoản đã lưu,
+                  // nhưng không ép người dùng phải nhập đúng dạng email.
+                  autoComplete="username"
+                  // type="text" chứ không phải "email" — type="email" khiến trình duyệt
+                  // tự chặn chuỗi toàn số trước cả khi form được submit.
+                  type="text"
+                  inputMode="text"
                   variant="bordered"
-                  placeholder="you@example.com"
+                  placeholder="you@example.com hoặc 0901000001"
                   value={email}
                   onValueChange={(nextEmail) => {
                     setEmail(nextEmail);

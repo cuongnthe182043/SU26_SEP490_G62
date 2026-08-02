@@ -30,6 +30,7 @@ import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
 import BusinessReportView from "./views/BusinessReportView";
+import { APP_NAME } from "../../constants/brand";
 
 const SpendingView = lazy(() => import("./views/SpendingView"));
 
@@ -145,7 +146,7 @@ export default function ManagerPage({ user, onLogout }) {
       <div className="flex h-screen bg-gray-50 dark:bg-[#0e1016] overflow-hidden">
         <Sidebar
           navGroups={NAV_GROUPS}
-          brandLabel="LogisCount"
+          brandLabel={APP_NAME}
           brandSubLabel="Quản lý"
           activeView={activeView}
           onViewChange={handleViewChange}

@@ -1,10 +1,11 @@
 const swaggerJsdoc = require('swagger-jsdoc');
+const { API_TITLE } = require('../constants/brandConstants');
 
 const options = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'SEP490 G62 — Logistics API',
+            title: API_TITLE,
             version: '1.0.0',
             description: [
                 '## Hướng dẫn sử dụng',

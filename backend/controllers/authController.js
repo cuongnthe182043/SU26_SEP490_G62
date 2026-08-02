@@ -74,8 +74,10 @@ const readCookieValue = (cookieHeader, cookieName) => {
 // POST /auth/login
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
-        const result = await authService.login(email, password);
+        // `identifier` là tên trường mới (email hoặc số điện thoại). Vẫn nhận `email`
+        // để client cũ (bản mobile đã phát hành) không gãy khi backend lên trước.
+        const { identifier, email, password } = req.body;
+        const result = await authService.login(identifier ?? email, password);
         setSessionCookies(res, result.token, result.refreshToken);
         const csrfToken = setCsrfCookie(res);
 

@@ -2,6 +2,16 @@ const pool = require('../config/database');
 
 const BONUS_RULE_TYPES = ['kpi', 'top_revenue', 'top_trips', 'zero_incident', 'overtime', 'holiday', 'custom'];
 
+// Tập con của BONUS_RULE_TYPES thực sự được bộ tính lương đọc:
+//   kpi         → payrolls.kpi_bonus        (reward_amount khi doanh thu > min_revenue)
+//   top_revenue → payrolls.top_driver_bonus (reward_amount khi revenue_rank = 1)
+//   holiday     → payrolls.holiday_bonus    (reward_multiplier nhân lương ngày)
+// Các loại còn lại vẫn nằm trong CHECK của DB (dữ liệu cũ có thể đang dùng) nhưng
+// không cho tạo mới — xem chú thích ở bonusRuleService.normalizePayload.
+// 'overtime' còn thiếu nguồn dữ liệu: hệ thống chưa ghi nhận giờ/ngày tăng ca ở bất kỳ
+// bảng nào, nên chưa có gì để nhân với hệ số.
+const IMPLEMENTED_BONUS_TYPES = ['kpi', 'top_revenue', 'holiday'];
+
 const listRules = async ({ vehicleGroupId = null, bonusType = null, isActive = null } = {}) => {
     const conditions = [];
     const params = [];
@@ -59,4 +69,12 @@ const deleteRule = async (id) => {
     return result.rows[0] ?? null;
 };
 
-module.exports = { BONUS_RULE_TYPES, listRules, getRuleById, createRule, updateRule, deleteRule };
+module.exports = {
+    BONUS_RULE_TYPES,
+    IMPLEMENTED_BONUS_TYPES,
+    listRules,
+    getRuleById,
+    createRule,
+    updateRule,
+    deleteRule,
+};

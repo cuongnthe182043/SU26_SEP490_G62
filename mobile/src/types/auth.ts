@@ -9,7 +9,8 @@ export type AuthUser = {
 };
 
 export type LoginRequest = {
-  email: string;
+  /** Email hoặc số điện thoại — backend tự phân loại (xem utils/loginIdentifier.js). */
+  identifier: string;
   password: string;
 };
 

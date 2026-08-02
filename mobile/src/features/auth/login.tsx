@@ -156,14 +156,16 @@ export function LoginScreen() {
             {/* Form */}
             <YStack gap="$4">
               <FormField
-                label="Email"
+                label="Email hoặc số điện thoại"
                 value={email}
                 onChangeText={(value) => {
                   setEmail(value);
                   if (formErrors.email)
                     setFormErrors((c) => ({ ...c, email: undefined }));
                 }}
-                placeholder="Nhập email công việc"
+                placeholder="Email công việc hoặc số điện thoại"
+                // "email-address" chứ không phải bàn phím số: ô này nhận cả hai kiểu,
+                // và bàn phím email vẫn gõ số được, còn bàn phím số thì không gõ được chữ.
                 keyboardType="email-address"
                 autoCapitalize="none"
                 error={formErrors.email}

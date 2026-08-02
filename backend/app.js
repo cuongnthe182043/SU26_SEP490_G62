@@ -14,6 +14,7 @@ const logger = require('./config/logger');
 const authService = require('./services/authService');
 const { initNotificationGateway } = require('./services/notificationGateway');
 const { initCronJobs }           = require('./cron/debtCron');
+const { API_TITLE }              = require('./constants/brandConstants');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -127,7 +128,7 @@ if (!isProduction) {
             filter: true,
             tryItOutEnabled: true,
         },
-        customSiteTitle: 'G62 Logistics API',
+        customSiteTitle: API_TITLE,
     }));
 }
 
