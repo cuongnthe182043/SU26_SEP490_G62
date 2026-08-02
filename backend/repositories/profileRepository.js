@@ -3,6 +3,10 @@ const pool = require('../config/database');
 const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address', 'city', 'country', 'national_id', 'tax_code', 'emergency_contact_name', 'emergency_contact_phone', 'notes'];
 
 const getAccountByEmail = async (email) => {
+    // Từ khi email thành tuỳ chọn, có tài khoản mang email NULL. Chuỗi rỗng/không phải
+    // chuỗi thì không tra gì cả — tránh việc một ô email bỏ trống vô tình khớp phải
+    // nhóm tài khoản không có email.
+    if (typeof email !== 'string' || !email.trim()) return undefined;
     const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
         `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_active, a.must_change_password, a.last_login_at, a.created_at, a.updated_at
@@ -10,6 +14,24 @@ const getAccountByEmail = async (email) => {
          JOIN roles r ON a.role_id = r.id
          WHERE LOWER(a.email) = $1`,
         [normalizedEmail],
+    );
+    return result.rows[0];
+};
+
+// Đăng nhập bằng số điện thoại. Số nằm ở profiles (UNIQUE), không nằm ở accounts,
+// nên phải JOIN. So sánh trên phần CHỈ CÒN CHỮ SỐ của cả hai vế: cùng một thuê bao có
+// thể được lưu là '0901000001', '0901 000 001' hay '+84901000001' tuỳ người nhập, và
+// người đăng nhập cũng gõ mỗi lúc một kiểu. Bảng profiles chỉ chứa nhân sự công ty
+// (vài chục dòng) nên việc không dùng được index ở đây không đáng kể.
+// $1 = dạng nội địa chỉ số ('0901000001'), $2 = dạng quốc tế chỉ số ('84901000001').
+const getAccountByPhone = async (localDigits, intlDigits) => {
+    const result = await pool.query(
+        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_active, a.must_change_password, a.last_login_at, a.created_at, a.updated_at
+         FROM accounts a
+         JOIN profiles p ON p.id = a.id
+         JOIN roles r ON a.role_id = r.id
+         WHERE regexp_replace(COALESCE(p.phone, ''), '\\D', '', 'g') IN ($1, $2)`,
+        [localDigits, intlDigits],
     );
     return result.rows[0];
 };
@@ -150,11 +172,18 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
     try {
         await client.query('BEGIN');
 
+        // email có thể null (nhân viên không có email) — chỉ hạ chữ thường khi có chuỗi.
+        // Chuỗi rỗng cũng quy về null: '' vẫn đụng UNIQUE nên tài khoản thứ hai để trống
+        // sẽ lỗi trùng khoá, trong khi NULL thì Postgres coi mỗi cái là khác nhau.
+        const normalizedEmail = typeof email === 'string' && email.trim()
+            ? email.trim().toLowerCase()
+            : null;
+
         const accountResult = await client.query(
             `INSERT INTO accounts (email, password_hash, role_id, is_active, must_change_password)
              VALUES ($1, $2, $3, true, true)
              RETURNING id`,
-            [email.toLowerCase(), passwordHash, roleId],
+            [normalizedEmail, passwordHash, roleId],
         );
         const accountId = accountResult.rows[0].id;
 
@@ -295,6 +324,7 @@ const resetPassword = async (userId, newHash) => {
 
 module.exports = {
     getAccountByEmail,
+    getAccountByPhone,
     getAccountById,
     getProfileByAccountId,
     getProfileWithRole,

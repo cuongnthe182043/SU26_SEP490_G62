@@ -1,6 +1,7 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
+const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -120,6 +121,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const { rows: [kpi] } = await client.query(`
         SELECT
             COALESCE(k.total_revenue, 0)                             AS total_revenue,
+            k.vehicle_group_id,
             lb.revenue_rank,
             br_kpi.reward_amount                                      AS kpi_bonus_reward,
             (br_kpi.conditions_json->>'min_revenue')::numeric         AS kpi_threshold,
@@ -129,22 +131,8 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
             ON lb.driver_id = k.driver_id
            AND lb.vehicle_group_id = k.vehicle_group_id
            AND lb.year = k.year AND lb.month = k.month
-        LEFT JOIN LATERAL (
-            SELECT reward_amount, conditions_json
-            FROM bonus_rules
-            WHERE vehicle_group_id = k.vehicle_group_id
-              AND bonus_type = 'kpi'
-              AND is_active = TRUE
-            ORDER BY id LIMIT 1
-        ) br_kpi ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT reward_amount
-            FROM bonus_rules
-            WHERE vehicle_group_id = k.vehicle_group_id
-              AND bonus_type = 'top_revenue'
-              AND is_active = TRUE
-            ORDER BY id LIMIT 1
-        ) br_top ON TRUE
+        LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'kpi')}) br_kpi ON TRUE
+        LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'top_revenue')}) br_top ON TRUE
         WHERE k.driver_id = $1 AND k.month = $2 AND k.year = $3
     `, [driver.driver_id, month, year]);
 
@@ -182,8 +170,10 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
-    // Đi làm ngày lễ = 200% lương (Điều V.1): lương cứng đã gồm 100% (lễ không trừ công),
-    // cộng thêm 100% lương ngày cho mỗi ngày lễ tài xế có đi làm.
+    // Đi làm ngày lễ hưởng hệ số lương theo Điều V.1 (mặc định 200%): lương cứng đã gồm
+    // 100% (lễ không trừ công), nên chỉ cộng thêm phần vượt — (hệ số - 1) lương ngày cho
+    // mỗi ngày lễ tài xế có đi làm. Hệ số lấy từ bonus_rules(bonus_type='holiday'), không
+    // còn hardcode, để thay đổi chính sách không phải sửa mã và deploy lại.
     // Bằng chứng đi làm: hoàn thành chuyến trong ngày (tự nhận), HOẶC kế toán chấm tay
     // 'holiday_worked' (tài chạy xuyên đêm nên chuyến rơi sang hôm sau, trực kho...).
     const { rows: [holidayRow] } = await client.query(`
@@ -209,7 +199,13 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           )
     `, [driver.driver_id, month, year]);
     const holidayDaysWorked = Number(holidayRow?.days ?? 0);
-    const holidayBonus      = Math.round(baseSalary / WORKING_DAYS_PER_MONTH) * holidayDaysWorked;
+    // Nhóm xe của KỲ ĐÓ (kpi_records) chứ không phải nhóm hiện tại của tài — trùng với
+    // cách rule KPI/top tài đang tra, nên đổi nhóm không làm lệch lương kỳ cũ. Tài chưa
+    // có KPI tháng đó (không chạy chuyến nào nhưng vẫn trực lễ) thì lấy nhóm cố định.
+    const holidayGroupId    = kpi?.vehicle_group_id ?? driver.default_vehicle_group_id ?? null;
+    const holidayMultiplier = await getHolidayMultiplier(client, holidayGroupId);
+    const holidayDailyWage  = Math.round(baseSalary / WORKING_DAYS_PER_MONTH);
+    const holidayBonus      = Math.round(holidayDailyWage * holidayDaysWorked * (holidayMultiplier - 1));
 
     // Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
     // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi, không cộng lại (tránh chi 2 lần)
@@ -257,6 +253,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         topDriverBonus,
         holidayBonus,
         holidayDaysWorked,
+        holidayMultiplier,
         bonusWelfareTotal,
         expenseReimbursement,
         phoneAllowance: PHONE_ALLOWANCE,
@@ -354,7 +351,8 @@ const calculateAndUpsertPayrolls = async (month, year) => {
         const { rows: drivers } = await client.query(`
             SELECT d.profile_id AS driver_id,
                    d.hire_date,
-                   d.revenue_share_percent
+                   d.revenue_share_percent,
+                   d.default_vehicle_group_id
             FROM drivers d
             JOIN accounts a ON a.id = d.profile_id
             WHERE a.is_active = TRUE

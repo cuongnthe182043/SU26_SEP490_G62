@@ -81,8 +81,11 @@ const changePassword = async (userId, { currentPassword, newPassword } = {}) => 
 
 const sendEmailChangeCode = async (userId) => {
     const profile = await profileRepository.getFullProfile(userId);
+    // Luồng này đổi email CŨ sang email MỚI, mã xác nhận gửi vào hộp thư cũ để chứng
+    // minh quyền sở hữu. Tài khoản chưa từng có email thì không có gì để gửi vào —
+    // nói rõ lối đi thay vì báo "không tìm thấy email" khiến người dùng tưởng lỗi hệ thống.
     if (!profile?.email) {
-        throw new Error('Không tìm thấy email hiện tại');
+        throw new Error('Tài khoản của bạn chưa có email. Vui lòng liên hệ quản lý để được thêm email lần đầu.');
     }
 
     const existingVerification = emailVerificationStore.get(String(userId));
@@ -137,7 +140,8 @@ const verifyEmailChangeCode = async (userId, { code, newEmail } = {}) => {
         throw new Error('Không tìm thấy hồ sơ');
     }
 
-    if (normalizedNewEmail === String(currentProfile.email).trim().toLowerCase()) {
+    // email có thể null — String(null) cho ra chuỗi 'null', không được để lọt vào so sánh
+    if (normalizedNewEmail === String(currentProfile.email ?? '').trim().toLowerCase()) {
         emailVerificationStore.delete(String(userId));
         return { message: 'Email không thay đổi', email: normalizedNewEmail };
     }

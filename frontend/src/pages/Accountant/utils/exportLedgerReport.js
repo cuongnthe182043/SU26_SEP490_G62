@@ -1,3 +1,4 @@
+import { APP_NAME } from "../../../constants/brand";
 const BRAND_BLUE = "FF2563EB";
 const BRAND_DARK = "FF1E293B";
 const HEADER_TEXT = "FFFFFFFF";
@@ -135,7 +136,7 @@ function addInfoSheet(wb, { from, to, rowCount, totalAmount }) {
     ["Thời điểm xuất", new Date()],
     ["Số bút toán", rowCount],
     ["Tổng phát sinh", totalAmount],
-    ["Ghi chú", "File được tạo từ dữ liệu đã chốt kỳ trên hệ thống LogisCount."],
+    ["Ghi chú", `File được tạo từ dữ liệu đã chốt kỳ trên hệ thống ${APP_NAME}.`],
   ];
 
   rows.forEach((values, index) => {
@@ -159,7 +160,7 @@ export async function exportLedgerCsvToExcel(csv, { from, to } = {}) {
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "LogisCount";
+  wb.creator = APP_NAME;
   wb.created = new Date();
 
   const ws = wb.addWorksheet("NHAT_KY_TAI_CHINH", {

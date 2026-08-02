@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const revenueAllocationRepository = require('./revenueAllocationRepository');
+const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,9 @@ const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
 const PHONE_ALLOWANCE        = 200_000;
 const MAX_ADVANCE_AMOUNT     = 5_000_000;
+// Phải khớp accountantPayrollRepository — xem trước lệch số công với lúc chốt lương
+// là tài xế nhìn thấy một con số rồi nhận một con số khác.
+const WORKING_DAYS_PER_MONTH = 28;
 
 const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
     const hireDate = new Date(hireDateValue);
@@ -108,12 +112,12 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
 
     // 1. Thông tin driver
     const driverRes = await pool.query(
-        `SELECT d.hire_date, d.revenue_share_percent
+        `SELECT d.hire_date, d.revenue_share_percent, d.default_vehicle_group_id
          FROM drivers d WHERE d.profile_id = $1`,
         [driverId],
     );
     if (!driverRes.rows[0]) throw new Error('Driver không tồn tại');
-    const { hire_date, revenue_share_percent } = driverRes.rows[0];
+    const { hire_date, revenue_share_percent, default_vehicle_group_id } = driverRes.rows[0];
 
     const monthsOfService = getMonthsOfServiceAtPeriodEnd(hire_date, month, year);
     const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
@@ -166,6 +170,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const kpiRes = await pool.query(
         `SELECT
             k.total_revenue,
+            k.vehicle_group_id,
             lb.revenue_rank,
             br_kpi.reward_amount                                AS kpi_bonus_reward,
             (br_kpi.conditions_json->>'min_revenue')::numeric   AS kpi_threshold,
@@ -174,16 +179,8 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
          LEFT JOIN v_leaderboard lb
             ON lb.driver_id = k.driver_id AND lb.vehicle_group_id = k.vehicle_group_id
             AND lb.year = k.year AND lb.month = k.month
-         LEFT JOIN LATERAL (
-             SELECT reward_amount, conditions_json FROM bonus_rules
-             WHERE vehicle_group_id = k.vehicle_group_id AND bonus_type = 'kpi' AND is_active = TRUE
-             ORDER BY id LIMIT 1
-         ) br_kpi ON TRUE
-         LEFT JOIN LATERAL (
-             SELECT reward_amount FROM bonus_rules
-             WHERE vehicle_group_id = k.vehicle_group_id AND bonus_type = 'top_revenue' AND is_active = TRUE
-             ORDER BY id LIMIT 1
-         ) br_top ON TRUE
+         LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'kpi')}) br_kpi ON TRUE
+         LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'top_revenue')}) br_top ON TRUE
          WHERE k.driver_id = $1 AND k.month = $2 AND k.year = $3`,
         [driverId, month, year],
     );
@@ -226,8 +223,9 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
 
-    // 5b. Đi làm ngày lễ = 200% lương: cộng thêm 100% lương ngày cho mỗi ngày lễ tài
-    // có đi làm — có chuyến hoàn thành trong ngày, hoặc kế toán chấm tay 'holiday_worked'
+    // 5b. Đi làm ngày lễ hưởng hệ số theo bonus_rules(bonus_type='holiday') — mặc định
+    // 200%, cộng thêm (hệ số - 1) lương ngày cho mỗi ngày lễ tài có đi làm: có chuyến
+    // hoàn thành trong ngày, hoặc kế toán chấm tay 'holiday_worked'
     const holidayRes = await pool.query(
         `SELECT COUNT(DISTINCT h.holiday_date)::int AS days
          FROM company_holidays h
@@ -252,7 +250,11 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         [driverId, month, year],
     );
     const holidayDaysWorked = Number(holidayRes.rows[0]?.days ?? 0);
-    const holidayBonus      = Math.round(baseSalary / 28) * holidayDaysWorked;
+    const holidayGroupId    = kpi.vehicle_group_id ?? default_vehicle_group_id ?? null;
+    const holidayMultiplier = await getHolidayMultiplier(pool, holidayGroupId);
+    const holidayBonus      = Math.round(
+        Math.round(baseSalary / WORKING_DAYS_PER_MONTH) * holidayDaysWorked * (holidayMultiplier - 1),
+    );
 
     // 6. Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
     // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi (qua lương kỳ trước hoặc chi lẻ), không cộng lại

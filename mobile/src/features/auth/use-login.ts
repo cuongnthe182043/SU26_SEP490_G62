@@ -20,11 +20,12 @@ const initialState: LoginState = {
 export function useLogin() {
   const [state, setState] = useState<LoginState>(initialState);
 
-  const login = async (email: string, password: string) => {
+  // identifier = email hoặc số điện thoại; backend tự phân loại.
+  const login = async (identifier: string, password: string) => {
     setState((current) => ({ ...current, isLoading: true, error: null }));
 
     try {
-      const result = await authService.login({ email: email.trim(), password });
+      const result = await authService.login({ identifier: identifier.trim(), password });
       setState({ isLoading: false, error: null, user: result.user });
       return result;
     } catch (error) {
