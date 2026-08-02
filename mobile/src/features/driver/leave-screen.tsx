@@ -153,7 +153,7 @@ function AttendanceSummary({ working, unpaid, paid, unexcused, halfDays, holiday
     const pct = Math.max(0, Math.min(100, (working / 28) * 100));
     // Nửa công trừ 0.5 nên số công có thể lẻ — hiện "27,5" thay vì làm tròn sai
     const workingLabel = Number.isInteger(working) ? String(working) : working.toFixed(1).replace('.', ',');
-    const coTruCong = unpaid > 0 || unexcused > 0 || halfDays > 0;
+    const unpaidLeave = unpaid > 0 || unexcused > 0 || halfDays > 0;
     return (
         <YStack
             padding={20} borderRadius={appTheme.radius.xl}
@@ -217,7 +217,7 @@ function AttendanceSummary({ working, unpaid, paid, unexcused, halfDays, holiday
                         </Text>
                     </XStack>
                 ) : null}
-                {!coTruCong && paid === 0 ? (
+                {!unpaidLeave && paid === 0 ? (
                     <Text fontSize={12} color={appTheme.colors.successText} fontWeight="700">
                         Không có ngày nghỉ — Chuyên cần xuất sắc!
                     </Text>

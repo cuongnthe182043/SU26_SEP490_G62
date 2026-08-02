@@ -14,41 +14,41 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *   * Đệm theo TÀI XẾ: đăng xuất là xoá sạch, không để lộ dữ liệu người này cho người khác.
  */
 
-const TIEN_TO = 'cache_v1:';
+const KEY_PREFIX = 'cache_v1:';
 
-export type BanGhiCache<T> = {
+export type CachedRecord<T> = {
     data: T;
-    luuLuc: number;
+    savedAt: number;
 };
 
 export const offlineCache = {
-    async doc<T>(khoa: string): Promise<BanGhiCache<T> | null> {
+    async read<T>(key: string): Promise<CachedRecord<T> | null> {
         try {
-            const raw = await AsyncStorage.getItem(TIEN_TO + khoa);
+            const raw = await AsyncStorage.getItem(KEY_PREFIX + key);
             if (!raw) return null;
-            const parsed = JSON.parse(raw) as BanGhiCache<T>;
-            if (!parsed || typeof parsed.luuLuc !== 'number') return null;
+            const parsed = JSON.parse(raw) as CachedRecord<T>;
+            if (!parsed || typeof parsed.savedAt !== 'number') return null;
             return parsed;
         } catch {
             return null;
         }
     },
 
-    async ghi<T>(khoa: string, data: T): Promise<void> {
-        const ban: BanGhiCache<T> = { data, luuLuc: Date.now() };
-        await AsyncStorage.setItem(TIEN_TO + khoa, JSON.stringify(ban)).catch(() => {});
+    async write<T>(key: string, data: T): Promise<void> {
+        const ban: CachedRecord<T> = { data, savedAt: Date.now() };
+        await AsyncStorage.setItem(KEY_PREFIX + key, JSON.stringify(ban)).catch(() => {});
     },
 
-    async xoa(khoa: string): Promise<void> {
-        await AsyncStorage.removeItem(TIEN_TO + khoa).catch(() => {});
+    async remove(key: string): Promise<void> {
+        await AsyncStorage.removeItem(KEY_PREFIX + key).catch(() => {});
     },
 
     /** Xoá toàn bộ cache — gọi khi đăng xuất */
-    async xoaTat(): Promise<void> {
+    async clear(): Promise<void> {
         try {
             const keys = await AsyncStorage.getAllKeys();
-            const cua_ta = keys.filter((k) => k.startsWith(TIEN_TO));
-            if (cua_ta.length > 0) await AsyncStorage.multiRemove(cua_ta);
+            const ourKeys = keys.filter((k) => k.startsWith(KEY_PREFIX));
+            if (ourKeys.length > 0) await AsyncStorage.multiRemove(ourKeys);
         } catch {
             // Không xoá được cache không phải lỗi chặn đăng xuất
         }
@@ -56,12 +56,12 @@ export const offlineCache = {
 };
 
 /** "14:05 hôm nay" / "14:05 30/07" — cho nhãn "số liệu lúc ..." */
-export function nhanThoiDiem(luuLuc: number): string {
-    const d = new Date(luuLuc);
-    const gio = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+export function formatCachedAt(savedAt: number): string {
+    const d = new Date(savedAt);
+    const hhmm = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const homNay = new Date().toDateString() === d.toDateString();
-    if (homNay) return `${gio} hôm nay`;
-    return `${gio} ${d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`;
+    if (homNay) return `${hhmm} hôm nay`;
+    return `${hhmm} ${d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`;
 }
 
 export default offlineCache;

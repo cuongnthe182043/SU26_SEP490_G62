@@ -10,29 +10,29 @@ import { appTheme } from '@/theme/app-theme';
 /**
  * Dải hiển thị số thao tác đang chờ gửi, kèm việc TỰ GỬI khi có mạng.
  *
- * Đặt một lần ở tầng gốc: vừa là nơi chạy nền của hàng đợi (tuGui = true), vừa cho
+ * Đặt một lần ở tầng gốc: vừa là nơi chạy nền của hàng đợi (autoFlush = true), vừa cho
  * tài xế thấy rõ "việc của mình chưa lên server" thay vì tưởng đã xong.
  * Nằm dưới OfflineBanner nên lúc mất mạng cả hai cùng hiện, không đè nhau.
  */
 export function QueueBanner() {
     const { online } = useNetwork();
-    const { soCho, soHong, dangGui, xuLy } = useOfflineQueue({ tuGui: true });
+    const { pendingCount, failedCount, isFlushing, flush } = useOfflineQueue({ autoFlush: true });
     const insets = useSafeAreaInsets();
 
-    if (soCho === 0 && soHong === 0) return null;
+    if (pendingCount === 0 && failedCount === 0) return null;
 
     // Mất mạng thì OfflineBanner đã chiếm chỗ trên cùng — đẩy dải này xuống dưới nó
     const top = online ? insets.top + 6 : insets.top + 36;
 
-    const noiDung = dangGui
-        ? `Đang gửi ${soCho} thao tác...`
-        : soHong > 0 && soCho === 0
-            ? `${soHong} thao tác gửi lỗi — chạm để thử lại`
-            : `${soCho} thao tác chờ gửi${soHong > 0 ? ` · ${soHong} lỗi` : ''}`;
+    const text = isFlushing
+        ? `Đang gửi ${pendingCount} thao tác...`
+        : failedCount > 0 && pendingCount === 0
+            ? `${failedCount} thao tác gửi lỗi — chạm để thử lại`
+            : `${pendingCount} thao tác chờ gửi${failedCount > 0 ? ` · ${failedCount} lỗi` : ''}`;
 
     return (
         <Pressable
-            onPress={() => { if (online && !dangGui) void xuLy(); }}
+            onPress={() => { if (online && !isFlushing) void flush(); }}
             style={{
                 position: 'absolute',
                 top,
@@ -47,13 +47,13 @@ export function QueueBanner() {
                 gap={8}
                 alignItems="center"
                 justifyContent="center"
-                backgroundColor={soHong > 0 ? appTheme.colors.warning : appTheme.colors.primary}
+                backgroundColor={failedCount > 0 ? appTheme.colors.warning : appTheme.colors.primary}
             >
-                {dangGui
+                {isFlushing
                     ? <RefreshCw size={13} color="#FFFFFF" />
                     : <CloudUpload size={13} color="#FFFFFF" />}
                 <Text fontSize={12} fontWeight="700" color="#FFFFFF">
-                    {noiDung}
+                    {text}
                 </Text>
             </XStack>
         </Pressable>

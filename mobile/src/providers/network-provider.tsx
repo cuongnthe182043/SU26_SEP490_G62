@@ -19,48 +19,48 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 type NetworkState = {
     online: boolean;
     /** Vừa mới có mạng trở lại — dùng để tự tải lại dữ liệu */
-    vuaOnlineLai: number;
-    loaiKetNoi: string | null;
+    reconnectedAt: number;
+    connectionType: string | null;
 };
 
 const NetworkContext = createContext<NetworkState>({
     online: true,
-    vuaOnlineLai: 0,
-    loaiKetNoi: null,
+    reconnectedAt: 0,
+    connectionType: null,
 });
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
     const [online, setOnline] = useState(true);
-    const [loaiKetNoi, setLoaiKetNoi] = useState<string | null>(null);
-    const [vuaOnlineLai, setVuaOnlineLai] = useState(0);
-    const truocDo = useRef(true);
+    const [connectionType, setLoaiKetNoi] = useState<string | null>(null);
+    const [reconnectedAt, setVuaOnlineLai] = useState(0);
+    const wasOnline = useRef(true);
 
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener((state) => {
-            const dangOnline = Boolean(state.isConnected)
+            const isOnline = Boolean(state.isConnected)
                 && state.isInternetReachable !== false;
 
             setLoaiKetNoi(state.type ?? null);
-            setOnline(dangOnline);
+            setOnline(isOnline);
 
             // Chuyển từ mất mạng → có mạng: phát tín hiệu để màn hình tự tải lại
-            if (dangOnline && !truocDo.current) setVuaOnlineLai((n) => n + 1);
-            truocDo.current = dangOnline;
+            if (isOnline && !wasOnline.current) setVuaOnlineLai((n) => n + 1);
+            wasOnline.current = isOnline;
         });
 
         // Lấy trạng thái ngay lúc mở app, không đợi sự kiện đầu tiên
         NetInfo.fetch().then((state) => {
-            const dangOnline = Boolean(state.isConnected) && state.isInternetReachable !== false;
-            setOnline(dangOnline);
+            const isOnline = Boolean(state.isConnected) && state.isInternetReachable !== false;
+            setOnline(isOnline);
             setLoaiKetNoi(state.type ?? null);
-            truocDo.current = dangOnline;
+            wasOnline.current = isOnline;
         }).catch(() => {});
 
         return () => unsubscribe();
     }, []);
 
     return (
-        <NetworkContext.Provider value={{ online, vuaOnlineLai, loaiKetNoi }}>
+        <NetworkContext.Provider value={{ online, reconnectedAt, connectionType }}>
             {children}
         </NetworkContext.Provider>
     );

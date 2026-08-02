@@ -5,7 +5,7 @@ const leaveRepository = require('../../repositories/leaveRepository');
 
 // Ngày phải tính THEO HÔM NAY, không gõ cứng: createLeave chặn ngày lùi/tiến quá
 // 3 tháng nên mọi ngày cố định sẽ hỏng test khi thời gian trôi qua.
-const ngayVN = (lechNgay = 0) => {
+const vnDate = (lechNgay = 0) => {
     const d = new Date();
     d.setDate(d.getDate() + lechNgay);
     return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -68,7 +68,7 @@ describe('Leave Service Unit Tests (L1)', () => {
 
     it('L1-LEAVE-07: createLeave - should call repo if valid', async () => {
         mock.method(leaveRepository, 'createLeave', async () => ({ id: 5 }));
-        const result = await leaveService.createLeave(2, { leaveDate: ngayVN(7), leaveType: 'paid', reason: 'sick' });
+        const result = await leaveService.createLeave(2, { leaveDate: vnDate(7), leaveType: 'paid', reason: 'sick' });
         assert.strictEqual(result.id, 5);
     });
 
@@ -83,14 +83,14 @@ describe('Leave Service Unit Tests (L1)', () => {
 
     it('L1-LEAVE-10: createLeave - chặn ngày quá xa trong tương lai', async () => {
         await assert.rejects(
-            leaveService.createLeave(2, { leaveDate: ngayVN(400), leaveType: 'paid' }),
+            leaveService.createLeave(2, { leaveDate: vnDate(400), leaveType: 'paid' }),
             /trong vòng 3 tháng tới/,
         );
     });
 
     it('L1-LEAVE-11: createLeave - chặn ngày lùi quá xa', async () => {
         await assert.rejects(
-            leaveService.createLeave(2, { leaveDate: ngayVN(-400), leaveType: 'paid' }),
+            leaveService.createLeave(2, { leaveDate: vnDate(-400), leaveType: 'paid' }),
             /lùi quá 3 tháng/,
         );
     });
@@ -98,7 +98,7 @@ describe('Leave Service Unit Tests (L1)', () => {
     it('L1-LEAVE-12: createLeave - chặn đăng ký lùi vào kỳ lương đã chốt', async () => {
         mock.method(leaveRepository, 'getPayrollStatus', async () => 'approved');
         await assert.rejects(
-            leaveService.createLeave(2, { leaveDate: ngayVN(-1), leaveType: 'unpaid' }),
+            leaveService.createLeave(2, { leaveDate: vnDate(-1), leaveType: 'unpaid' }),
             /đã chốt/,
         );
     });

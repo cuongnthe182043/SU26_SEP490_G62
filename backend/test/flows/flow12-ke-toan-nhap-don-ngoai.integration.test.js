@@ -11,19 +11,19 @@
  */
 const assert = require('node:assert');
 const { setupTestDb } = require('../helpers/testDb');
-const { taoVanTayImport } = require('../../utils/importFingerprint');
+const { buildImportFingerprint } = require('../../utils/importFingerprint');
 
 let pool;
 let teardown;
 let repo;
 
-const KE_TOAN = 3;
-const TAI_A = 4;
+const ACCOUNTANT_ID = 3;
+const DRIVER_A = 4;
 
-const donCoBan = (overrides = {}) => ({
+const baseOrder = (overrides = {}) => ({
     customer_name: 'Khach Le',
     customer_phone: '0909000111',
-    created_by: KE_TOAN,
+    created_by: ACCOUNTANT_ID,
     prepaid_amount: 0,
     completed_at: '2026-08-10',
     shipments: [{
@@ -39,8 +39,8 @@ const donCoBan = (overrides = {}) => ({
     ...overrides,
 });
 
-const donVoi = (shipmentOverrides) => donCoBan({
-    shipments: [{ ...donCoBan().shipments[0], ...shipmentOverrides }],
+const orderWithShipment = (shipmentOverrides) => baseOrder({
+    shipments: [{ ...baseOrder().shipments[0], ...shipmentOverrides }],
 });
 
 beforeAll(async () => {
@@ -78,59 +78,59 @@ afterAll(async () => {
 
 describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và ghi sổ', () => {
     it('B1 — tạo được đơn ngoài (chốt chặn lỗi suy kiểu tham số $2 làm hỏng toàn bộ luồng)', async () => {
-        const order = await repo.createOrderWithShipments(donCoBan());
+        const order = await repo.createOrderWithShipments(baseOrder());
 
         assert.ok(order?.id, 'phải tạo được đơn');
-        const { rows: chuyen } = await pool.query(
+        const { rows: shipments } = await pool.query(
             'SELECT id, status, estimated_price FROM order_shipments WHERE order_id = $1',
             [order.id],
         );
-        assert.strictEqual(chuyen.length, 1);
-        assert.strictEqual(chuyen[0].status, 'completed', 'đơn ngoài là đơn đã chạy xong');
-        assert.strictEqual(Number(chuyen[0].estimated_price), 1000000);
+        assert.strictEqual(shipments.length, 1);
+        assert.strictEqual(shipments[0].status, 'completed', 'đơn ngoài là đơn đã chạy xong');
+        assert.strictEqual(Number(shipments[0].estimated_price), 1000000);
     });
 
     it('B1b — nhánh có tiền ứng trước cũng chạy (CASE WHEN prepaid > 0 gán người xác nhận)', async () => {
-        const order = await repo.createOrderWithShipments(donCoBan({ prepaid_amount: 400000 }));
+        const order = await repo.createOrderWithShipments(baseOrder({ prepaid_amount: 400000 }));
 
-        const { rows: [don] } = await pool.query(
+        const { rows: [savedOrder] } = await pool.query(
             'SELECT prepaid_amount, prepaid_status, prepaid_confirmed_by FROM orders WHERE id = $1',
             [order.id],
         );
-        assert.strictEqual(Number(don.prepaid_amount), 400000);
-        assert.strictEqual(don.prepaid_status, 'confirmed', 'kế toán tự thu nên xác nhận ngay');
-        assert.strictEqual(don.prepaid_confirmed_by, KE_TOAN);
+        assert.strictEqual(Number(savedOrder.prepaid_amount), 400000);
+        assert.strictEqual(savedOrder.prepaid_status, 'confirmed', 'kế toán tự thu nên xác nhận ngay');
+        assert.strictEqual(savedOrder.prepaid_confirmed_by, ACCOUNTANT_ID);
     });
 
     it('B2 — biển số viết khác hoa/thường và khác dấu phân cách vẫn khớp đúng xe', async () => {
-        for (const bienSo of ['51e-100.01', '51E 100 01', '51E10001', '  51E-100.01  ']) {
-            const order = await repo.createOrderWithShipments(donVoi({ vehicle_plate: bienSo }));
+        for (const plate of ['51e-100.01', '51E 100 01', '51E10001', '  51E-100.01  ']) {
+            const order = await repo.createOrderWithShipments(orderWithShipment({ vehicle_plate: plate }));
             const { rows: [ch] } = await pool.query(
                 `SELECT sc.vehicle_id FROM order_shipments os
                  JOIN v_shipment_current sc ON sc.shipment_id = os.id
                  WHERE os.order_id = $1`,
                 [order.id],
             );
-            assert.strictEqual(ch.vehicle_id, 1, `biển số "${bienSo}" phải khớp xe id=1`);
+            assert.strictEqual(ch.vehicle_id, 1, `biển số "${plate}" phải khớp xe id=1`);
         }
     });
 
     it('B3 — tên tài xế thừa khoảng trắng / khác hoa thường vẫn khớp đúng người', async () => {
-        for (const ten of ['pham van tien', 'PHAM VAN TIEN', 'Pham  Van   Tien', ' Pham Van Tien ']) {
-            const order = await repo.createOrderWithShipments(donVoi({ driver_name: ten }));
+        for (const name of ['pham van tien', 'PHAM VAN TIEN', 'Pham  Van   Tien', ' Pham Van Tien ']) {
+            const order = await repo.createOrderWithShipments(orderWithShipment({ driver_name: name }));
             const { rows: [ch] } = await pool.query(
                 `SELECT sc.owner_driver_id FROM order_shipments os
                  JOIN v_shipment_current sc ON sc.shipment_id = os.id
                  WHERE os.order_id = $1`,
                 [order.id],
             );
-            assert.strictEqual(ch.owner_driver_id, TAI_A, `tên "${ten}" phải khớp tài xế id=${TAI_A}`);
+            assert.strictEqual(ch.owner_driver_id, DRIVER_A, `tên "${name}" phải khớp tài xế id=${DRIVER_A}`);
         }
     });
 
     it('B4 — xe chưa có trong hệ thống thì từ chối kèm biển số, không âm thầm tạo xe mới', async () => {
         await assert.rejects(
-            () => repo.createOrderWithShipments(donVoi({ vehicle_plate: '99Z-999.99' })),
+            () => repo.createOrderWithShipments(orderWithShipment({ vehicle_plate: '99Z-999.99' })),
             /99Z-999\.99.*chưa có trong hệ thống/s,
         );
         const { rows } = await pool.query(`SELECT id FROM vehicles WHERE plate_number ILIKE '%99Z%'`);
@@ -139,7 +139,7 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
 
     it('B5 — tài xế chưa có tài khoản thì từ chối kèm tên, không âm thầm tạo hồ sơ', async () => {
         await assert.rejects(
-            () => repo.createOrderWithShipments(donVoi({ driver_name: 'Nguyen Van Khong Co' })),
+            () => repo.createOrderWithShipments(orderWithShipment({ driver_name: 'Nguyen Van Khong Co' })),
             /Nguyen Van Khong Co.*chưa có tài khoản/s,
         );
         const { rows } = await pool.query(`SELECT id FROM profiles WHERE full_name = 'Nguyen Van Khong Co'`);
@@ -147,13 +147,13 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
     });
 
     it('B7 — import lại cùng một dòng bị chặn, không nhân đôi doanh thu', async () => {
-        const don = donCoBan({ customer_phone: '0909000222', completed_at: '2026-09-01' });
-        const lan1 = await repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) });
-        assert.ok(lan1?.id);
+        const order = baseOrder({ customer_phone: '0909000222', completed_at: '2026-09-01' });
+        const first = await repo.createOrderWithShipments({ ...order, import_fingerprint: buildImportFingerprint(order) });
+        assert.ok(first?.id);
 
         await assert.rejects(
-            () => repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) }),
-            (err) => err.laTrungImport === true,
+            () => repo.createOrderWithShipments({ ...order, import_fingerprint: buildImportFingerprint(order) }),
+            (err) => err.isDuplicateImport === true,
             'lần import thứ hai phải bị nhận ra là trùng',
         );
 
@@ -165,50 +165,193 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
     });
 
     it('B8 — vân tay bỏ qua khác biệt định dạng: cùng dòng gõ khác kiểu vẫn là trùng', async () => {
-        const goc = donCoBan({ customer_phone: '0909000333', completed_at: '2026-09-02' });
-        const gõLại = donCoBan({
+        const original = baseOrder({ customer_phone: '0909000333', completed_at: '2026-09-02' });
+        const retyped = baseOrder({
             customer_phone: '0909000333',
             completed_at: '2026-09-02',
-            shipments: [{ ...goc.shipments[0], vehicle_plate: '51e 100 01', driver_name: 'pham  van   tien' }],
+            shipments: [{ ...original.shipments[0], vehicle_plate: '51e 100 01', driver_name: 'pham  van   tien' }],
         });
 
         assert.strictEqual(
-            taoVanTayImport(goc), taoVanTayImport(gõLại),
+            buildImportFingerprint(original), buildImportFingerprint(retyped),
             'biển số/tên khác định dạng phải cho cùng vân tay',
         );
 
-        await repo.createOrderWithShipments({ ...goc, import_fingerprint: taoVanTayImport(goc) });
+        await repo.createOrderWithShipments({ ...original, import_fingerprint: buildImportFingerprint(original) });
         await assert.rejects(
-            () => repo.createOrderWithShipments({ ...gõLại, import_fingerprint: taoVanTayImport(gõLại) }),
-            (err) => err.laTrungImport === true,
+            () => repo.createOrderWithShipments({ ...retyped, import_fingerprint: buildImportFingerprint(retyped) }),
+            (err) => err.isDuplicateImport === true,
         );
     });
 
     it('B9 — sửa số liệu thật (đổi cước) thì KHÔNG bị coi là trùng', async () => {
-        const don = donCoBan({ customer_phone: '0909000444', completed_at: '2026-09-03' });
-        const donKhac = donCoBan({
+        const order = baseOrder({ customer_phone: '0909000444', completed_at: '2026-09-03' });
+        const changedOrder = baseOrder({
             customer_phone: '0909000444',
             completed_at: '2026-09-03',
-            shipments: [{ ...don.shipments[0], cargo_fee: 1500000 }],
+            shipments: [{ ...order.shipments[0], cargo_fee: 1500000 }],
         });
 
-        await repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) });
-        const ket = await repo.createOrderWithShipments({ ...donKhac, import_fingerprint: taoVanTayImport(donKhac) });
-        assert.ok(ket?.id, 'chuyến khác giá là chuyến khác, phải vào được');
+        await repo.createOrderWithShipments({ ...order, import_fingerprint: buildImportFingerprint(order) });
+        const created = await repo.createOrderWithShipments({ ...changedOrder, import_fingerprint: buildImportFingerprint(changedOrder) });
+        assert.ok(created?.id, 'chuyến khác giá là chuyến khác, phải vào được');
     });
 
     it('B10 — kế toán chủ động cho phép trùng (fingerprint NULL) thì không bị chặn', async () => {
-        const don = donCoBan({ customer_phone: '0909000555', completed_at: '2026-09-04' });
-        await repo.createOrderWithShipments({ ...don, import_fingerprint: null });
-        const lan2 = await repo.createOrderWithShipments({ ...don, import_fingerprint: null });
-        assert.ok(lan2?.id, 'fingerprint NULL không bị UNIQUE ràng buộc');
+        const order = baseOrder({ customer_phone: '0909000555', completed_at: '2026-09-04' });
+        await repo.createOrderWithShipments({ ...order, import_fingerprint: null });
+        const second = await repo.createOrderWithShipments({ ...order, import_fingerprint: null });
+        assert.ok(second?.id, 'fingerprint NULL không bị UNIQUE ràng buộc');
     });
 
     it('B11 — đơn nhập tay (không có fingerprint) không bị cơ chế này đụng tới', async () => {
-        const don = donCoBan({ customer_phone: '0909000666', completed_at: '2026-09-05' });
-        await repo.createOrderWithShipments(don);
-        const lan2 = await repo.createOrderWithShipments(don);
-        assert.ok(lan2?.id, 'nhập tay hai đơn giống nhau vẫn phải được phép');
+        const order = baseOrder({ customer_phone: '0909000666', completed_at: '2026-09-05' });
+        await repo.createOrderWithShipments(order);
+        const second = await repo.createOrderWithShipments(order);
+        assert.ok(second?.id, 'nhập tay hai đơn giống nhau vẫn phải được phép');
+    });
+
+    // ─── Định danh khách: chỉ cần TÊN hoặc SĐT ────────────────────────────────
+    // Trước đây khách chỉ được tra theo SĐT. Dòng không có SĐT khớp vào "khách đầu tiên
+    // có SĐT rỗng", nên MỌI dòng không SĐT đều dồn vào CÙNG một hồ sơ và tên gõ trong
+    // Excel bị vứt đi — công nợ, doanh thu theo khách đều sai.
+
+    const orderForCustomer = (khach) => baseOrder({ ...khach, completed_at: '2026-10-01' });
+
+    it('C1 — chỉ có TÊN vẫn khớp đúng khách đã có, không đẻ hồ sơ mới', async () => {
+        await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone, address)
+                          VALUES (900, 'individual', 'Cong ty Hung Dung', '0912000900', '')`);
+        const before = await pool.query('SELECT COUNT(*)::int AS n FROM customers');
+
+        const order = await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: 'Cong ty Hung Dung', customer_phone: '' }),
+        );
+
+        const { rows: [savedOrder] } = await pool.query('SELECT customer_id FROM orders WHERE id = $1', [order.id]);
+        assert.strictEqual(savedOrder.customer_id, 900);
+        const after = await pool.query('SELECT COUNT(*)::int AS n FROM customers');
+        assert.strictEqual(after.rows[0].n, before.rows[0].n, 'không được tạo thêm khách');
+    });
+
+    it('C2 — tên khác hoa/thường và thừa khoảng trắng vẫn là cùng một khách', async () => {
+        const order = await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: '  cong ty   HUNG dung ', customer_phone: '' }),
+        );
+        const { rows: [savedOrder] } = await pool.query('SELECT customer_id FROM orders WHERE id = $1', [order.id]);
+        assert.strictEqual(savedOrder.customer_id, 900);
+    });
+
+    it('C3 — chỉ có SĐT vẫn khớp đúng khách (SĐT là khoá mạnh nhất)', async () => {
+        const order = await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: '', customer_phone: '0912000900' }),
+        );
+        const { rows: [savedOrder] } = await pool.query('SELECT customer_id FROM orders WHERE id = $1', [order.id]);
+        assert.strictEqual(savedOrder.customer_id, 900);
+    });
+
+    it('C4 — tên chưa từng có thì tạo khách mới, KHÔNG dồn vào hồ sơ khách lẻ', async () => {
+        const order = await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: 'Khach Hoan Toan Moi', customer_phone: '' }),
+        );
+        const { rows: [savedOrder] } = await pool.query(
+            `SELECT c.id, c.full_name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
+            [order.id],
+        );
+        assert.strictEqual(savedOrder.full_name, 'Khach Hoan Toan Moi');
+        assert.notStrictEqual(savedOrder.id, 900);
+    });
+
+    it('C5 — trùng tên thì từ chối kèm SĐT các ứng viên, không đoán bừa', async () => {
+        await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone, address) VALUES
+            (901, 'individual', 'Nguyen Van A', '0912000901', ''),
+            (902, 'individual', 'Nguyen Van A', '0912000902', '')`);
+
+        await assert.rejects(
+            () => repo.createOrderWithShipments(orderForCustomer({ customer_name: 'Nguyen Van A', customer_phone: '' })),
+            /2 khách cùng tên "Nguyen Van A".*0912000901.*0912000902.*điền SĐT/s,
+        );
+    });
+
+    it('C6 — trùng tên nhưng có SĐT thì chọn đúng người', async () => {
+        const order = await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: 'Nguyen Van A', customer_phone: '0912000902' }),
+        );
+        const { rows: [savedOrder] } = await pool.query('SELECT customer_id FROM orders WHERE id = $1', [order.id]);
+        assert.strictEqual(savedOrder.customer_id, 902);
+    });
+
+    it('C7 — không tên không SĐT thì gom chung vào một hồ sơ "Khách lẻ"', async () => {
+        const a = await repo.createOrderWithShipments(orderForCustomer({ customer_name: 'Khách lẻ', customer_phone: '' }));
+        const b = await repo.createOrderWithShipments(orderForCustomer({ customer_name: 'Khách lẻ', customer_phone: '', prepaid_amount: 1 }));
+        const { rows } = await pool.query('SELECT customer_id FROM orders WHERE id = ANY($1::int[])', [[a.id, b.id]]);
+        assert.strictEqual(rows[0].customer_id, rows[1].customer_id, 'khách vãng lai dùng chung 1 hồ sơ');
+    });
+
+    it('C8 — khớp theo SĐT mà hồ sơ chưa có tên thì điền tên vừa nhập vào', async () => {
+        await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone, address)
+                          VALUES (903, 'individual', NULL, '0912000903', '')`);
+        await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: 'Ten Bo Sung', customer_phone: '0912000903' }),
+        );
+        const { rows: [c] } = await pool.query('SELECT full_name FROM customers WHERE id = 903');
+        assert.strictEqual(c.full_name, 'Ten Bo Sung');
+    });
+
+    it('C9 — KHÔNG ghi đè tên đã có sẵn của khách', async () => {
+        await repo.createOrderWithShipments(
+            orderForCustomer({ customer_name: 'Ten Khac Hoan Toan', customer_phone: '0912000900' }),
+        );
+        const { rows: [c] } = await pool.query('SELECT full_name FROM customers WHERE id = 900');
+        assert.strictEqual(c.full_name, 'Cong ty Hung Dung', 'tên cũ phải giữ nguyên');
+    });
+
+    // ─── Xem trước: dòng nào đã có, dòng nào mới ─────────────────────────────
+    // Luồng thật của DN: giữ MỘT file tổng, tháng nào cũng thêm dòng vào cuối rồi import
+    // lại cả file. Dòng cũ phải bị bỏ qua LẶNG LẼ và kế toán phải thấy trước khi bấm.
+
+    it('D1 — xem trước chỉ ra đúng dòng nào đã có, dòng nào mới', async () => {
+        const daCo = baseOrder({ customer_phone: '0909000777', completed_at: '2026-11-01' });
+        await repo.createOrderWithShipments({ ...daCo, import_fingerprint: buildImportFingerprint(daCo) });
+
+        const moi = baseOrder({ customer_phone: '0909000778', completed_at: '2026-11-02' });
+
+        const results = await repo.previewImport([
+            { row_index: 2, phone: daCo.customer_phone, name: daCo.customer_name, fingerprint: buildImportFingerprint(daCo) },
+            { row_index: 3, phone: moi.customer_phone,  name: moi.customer_name,  fingerprint: buildImportFingerprint(moi) },
+        ]);
+
+        assert.strictEqual(results[0].already_imported, true,  'dòng đã import phải bị đánh dấu');
+        assert.strictEqual(results[1].already_imported, false, 'dòng mới phải được nhập');
+        assert.ok(results[0].customer, 'vẫn kèm kết quả đối chiếu khách');
+    });
+
+    it('D2 — hai dòng giống hệt nhau trong CÙNG file: dòng sau là bản sao', async () => {
+        const don = baseOrder({ customer_phone: '0909000779', completed_at: '2026-11-03' });
+        const fp = buildImportFingerprint(don);
+
+        const results = await repo.previewImport([
+            { row_index: 2, phone: don.customer_phone, name: don.customer_name, fingerprint: fp },
+            { row_index: 3, phone: don.customer_phone, name: don.customer_name, fingerprint: fp },
+        ]);
+
+        assert.strictEqual(results[0].already_imported, false, 'dòng đầu vẫn là dòng mới');
+        assert.strictEqual(results[1].already_imported, true,  'dòng sau là bản sao của dòng đầu');
+    });
+
+    it('D3 — vân tay xem trước TRÙNG KHÍT vân tay lúc import (nếu lệch là xem trước nói dối)', async () => {
+        const don = baseOrder({ customer_phone: '0909000780', completed_at: '2026-11-04' });
+        const fp = buildImportFingerprint(don);
+
+        await repo.createOrderWithShipments({ ...don, import_fingerprint: fp });
+        const { rows } = await pool.query(
+            'SELECT import_fingerprint FROM orders WHERE import_fingerprint = $1', [fp],
+        );
+        assert.strictEqual(rows.length, 1);
+
+        const results = await repo.previewImport([
+            { row_index: 2, phone: don.customer_phone, name: don.customer_name, fingerprint: fp },
+        ]);
+        assert.strictEqual(results[0].already_imported, true);
     });
 
     it('B6 — hai tài xế trùng tên thì báo lỗi thay vì gán bừa cho người đầu tiên', async () => {
@@ -220,7 +363,7 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
         `);
 
         await assert.rejects(
-            () => repo.createOrderWithShipments(donVoi({ driver_name: 'Pham Van Tien' })),
+            () => repo.createOrderWithShipments(orderWithShipment({ driver_name: 'Pham Van Tien' })),
             /nhiều tài xế cùng tên/,
         );
 

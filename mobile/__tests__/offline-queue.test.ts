@@ -31,20 +31,20 @@ const dapUng = (status: number, body: unknown = {}) => ({
 describe('MỨC 2 — Hàng đợi offline', () => {
     beforeEach(async () => {
         jest.clearAllMocks();
-        await offlineQueue.xoaTat();
+        await offlineQueue.clear();
         (global as unknown as { fetch: jest.Mock }).fetch = jest.fn();
     });
 
     it('G62-OFF-01: thêm việc vào hàng đợi và đếm được số việc đang chờ', async () => {
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
-        await offlineQueue.them({ path: '/api/trips/2/complete', label: 'Giao hàng #2' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/2/complete', label: 'Giao hàng #2' });
 
-        expect(await offlineQueue.soCho()).toBe(2);
+        expect(await offlineQueue.pendingCount()).toBe(2);
     });
 
     it('G62-OFF-02: ảnh được COPY sang thư mục riêng của app, không dùng đường dẫn cache gốc', async () => {
         // Ảnh expo-camera nằm trong cache — hệ điều hành có quyền dọn bất cứ lúc nào
-        const item = await offlineQueue.them({
+        const item = await offlineQueue.enqueue({
             path: '/api/trips/1/complete',
             photoUri: 'file:///cache/anh-tam.jpg',
             label: 'Giao hàng #1',
@@ -60,14 +60,14 @@ describe('MỨC 2 — Hàng đợi offline', () => {
 
     it('G62-OFF-03: gửi thành công → xoá khỏi hàng đợi và xoá file ảnh', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(dapUng(200));
-        await offlineQueue.them({
+        await offlineQueue.enqueue({
             path: '/api/trips/1/complete', photoUri: 'file:///cache/a.jpg', label: 'Giao hàng #1',
         });
 
-        const kq = await offlineQueue.xuLy();
+        const kq = await offlineQueue.flush();
 
-        expect(kq.thanhCong).toBe(1);
-        expect(await offlineQueue.soCho()).toBe(0);
+        expect(kq.succeeded).toBe(1);
+        expect(await offlineQueue.pendingCount()).toBe(0);
         expect(mockFS.deleteAsync).toHaveBeenCalled();
     });
 
@@ -78,10 +78,10 @@ describe('MỨC 2 — Hàng đợi offline', () => {
             return Promise.resolve(dapUng(200));
         });
 
-        await offlineQueue.them({ path: '/api/trips/1/start-transit', label: 'Lấy hàng' });
-        await offlineQueue.them({ path: '/api/trips/1/complete',      label: 'Giao hàng' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/start-transit', label: 'Lấy hàng' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete',      label: 'Giao hàng' });
 
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
         expect(goi).toEqual([
             'http://test/api/trips/1/start-transit',
@@ -91,11 +91,11 @@ describe('MỨC 2 — Hàng đợi offline', () => {
 
     it('G62-OFF-05: lỗi MẠNG → giữ lại trong hàng đợi, tăng số lần thử, KHÔNG đánh hỏng', async () => {
         (global.fetch as jest.Mock).mockRejectedValue(new Error('Network request failed'));
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
-        const items = await offlineQueue.danhSach();
+        const items = await offlineQueue.list();
         expect(items).toHaveLength(1);
         expect(items[0].attempts).toBe(1);
         expect(items[0].failedPermanently).toBe(false);
@@ -103,12 +103,12 @@ describe('MỨC 2 — Hàng đợi offline', () => {
 
     it('G62-OFF-06: lỗi mạng ở việc đầu → DỪNG luôn, không đốt lượt thử của các việc sau', async () => {
         (global.fetch as jest.Mock).mockRejectedValue(new Error('Network request failed'));
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Việc 1' });
-        await offlineQueue.them({ path: '/api/trips/2/complete', label: 'Việc 2' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Việc 1' });
+        await offlineQueue.enqueue({ path: '/api/trips/2/complete', label: 'Việc 2' });
 
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
-        const items = await offlineQueue.danhSach();
+        const items = await offlineQueue.list();
         expect(items[0].attempts).toBe(1);
         expect(items[1].attempts).toBe(0);   // chưa đụng tới
         expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -118,45 +118,45 @@ describe('MỨC 2 — Hàng đợi offline', () => {
         (global.fetch as jest.Mock).mockResolvedValue(
             dapUng(422, { error: 'Chuyến không ở trạng thái "arrived"' }),
         );
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
-        const items = await offlineQueue.danhSach();
+        const items = await offlineQueue.list();
         expect(items[0].failedPermanently).toBe(true);
         expect(items[0].lastError).toContain('arrived');
-        expect(await offlineQueue.soCho()).toBe(0);   // không còn nằm chờ
+        expect(await offlineQueue.pendingCount()).toBe(0);   // không còn nằm chờ
     });
 
     it('G62-OFF-08: 409 coi như THÀNH CÔNG — việc đã gửi được lần trước, chỉ mất phản hồi', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(
             dapUng(409, { error: 'Chuyến này đã được tài xế khác nhận' }),
         );
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
-        const kq = await offlineQueue.xuLy();
+        const kq = await offlineQueue.flush();
 
-        expect(kq.thanhCong).toBe(1);
-        expect(await offlineQueue.danhSach()).toHaveLength(0);
+        expect(kq.succeeded).toBe(1);
+        expect(await offlineQueue.list()).toHaveLength(0);
     });
 
     it('G62-OFF-09: lỗi 5xx vẫn được thử lại (không đánh hỏng)', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(dapUng(500, { error: 'Lỗi máy chủ' }));
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
-        const items = await offlineQueue.danhSach();
+        const items = await offlineQueue.list();
         expect(items[0].failedPermanently).toBe(false);
     });
 
     it('G62-OFF-10: quá 5 lần thử → tự đánh hỏng, không quay vòng mãi', async () => {
         (global.fetch as jest.Mock).mockRejectedValue(new Error('Network request failed'));
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
-        for (let i = 0; i < 5; i += 1) await offlineQueue.xuLy();
+        for (let i = 0; i < 5; i += 1) await offlineQueue.flush();
 
-        const items = await offlineQueue.danhSach();
+        const items = await offlineQueue.list();
         expect(items[0].attempts).toBe(5);
         expect(items[0].failedPermanently).toBe(true);
     });
@@ -168,14 +168,14 @@ describe('MỨC 2 — Hàng đợi offline', () => {
             return Promise.resolve(dapUng(200));
         });
 
-        await offlineQueue.them({
+        await offlineQueue.enqueue({
             path: '/api/expenses',
             photoUri: 'file:///cache/bill.jpg',
             photoField: 'receipt',
             fields: { shipmentId: '55', amount: '150000', clientRequestId: 'exp-abc' },
             label: 'Khai chi phí',
         });
-        await offlineQueue.xuLy();
+        await offlineQueue.flush();
 
         expect(form).not.toBeNull();
         expect((form as unknown as FormData).get('shipmentId')).toBe('55');
@@ -191,15 +191,15 @@ describe('MỨC 2 — Hàng đợi offline', () => {
             return Promise.resolve(dapUng(200));
         });
 
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng' });
-        await offlineQueue.xuLy();
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng' });
+        await offlineQueue.flush();
 
         expect(headers.Authorization).toBe('Bearer token-gia');
         expect(headers['X-CSRF-Token']).toBe('csrf-gia');
     });
 
     it('G62-OFF-13: dữ liệu hàng đợi được lưu bền, không mất khi khởi động lại app', async () => {
-        await offlineQueue.them({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
+        await offlineQueue.enqueue({ path: '/api/trips/1/complete', label: 'Giao hàng #1' });
 
         // Mô phỏng mở lại app: đọc thẳng từ kho lưu trữ
         const raw = await AsyncStorage.getItem('offline_queue_v1');
@@ -208,24 +208,24 @@ describe('MỨC 2 — Hàng đợi offline', () => {
     });
 
     it('G62-OFF-14: đăng xuất → xoá sạch hàng đợi và file ảnh của người dùng cũ', async () => {
-        await offlineQueue.them({
+        await offlineQueue.enqueue({
             path: '/api/trips/1/complete', photoUri: 'file:///cache/a.jpg', label: 'Giao hàng',
         });
 
-        await offlineQueue.xoaTat();
+        await offlineQueue.clear();
 
-        expect(await offlineQueue.danhSach()).toHaveLength(0);
+        expect(await offlineQueue.list()).toHaveLength(0);
         expect(mockFS.deleteAsync).toHaveBeenCalled();
     });
 
     it('G62-OFF-15: xoá một việc cụ thể cũng xoá file ảnh kèm theo', async () => {
-        const item = await offlineQueue.them({
+        const item = await offlineQueue.enqueue({
             path: '/api/trips/1/complete', photoUri: 'file:///cache/a.jpg', label: 'Giao hàng',
         });
 
-        await offlineQueue.xoa(item.id);
+        await offlineQueue.remove(item.id);
 
-        expect(await offlineQueue.danhSach()).toHaveLength(0);
+        expect(await offlineQueue.list()).toHaveLength(0);
         expect(mockFS.deleteAsync).toHaveBeenCalledWith(item.photoUri, { idempotent: true });
     });
 });

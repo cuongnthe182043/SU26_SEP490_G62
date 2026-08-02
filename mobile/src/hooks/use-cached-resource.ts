@@ -25,12 +25,12 @@ type KetQua<T> = {
     /** Đang hiện dữ liệu từ cache vì không gọi được server */
     ngoaiTuyen: boolean;
     /** Mốc lưu cache, null nếu dữ liệu vừa lấy từ server */
-    luuLuc: number | null;
+    savedAt: number | null;
     refresh: () => Promise<void>;
 };
 
 export function useCachedResource<T>(
-    khoa: string,
+    key: string,
     taiVe: () => Promise<T>,
     { tuTai = true }: { tuTai?: boolean } = {},
 ): KetQua<T> {
@@ -38,40 +38,40 @@ export function useCachedResource<T>(
     const [isLoading, setLoading]   = useState(true);
     const [error, setError]         = useState<string | null>(null);
     const [ngoaiTuyen, setNgoai]    = useState(false);
-    const [luuLuc, setLuuLuc]       = useState<number | null>(null);
+    const [savedAt, setLuuLuc]       = useState<number | null>(null);
 
     // taiVe thường là hàm inline, đổi mỗi lần render — giữ trong ref để useCallback
     // bên dưới không phải phụ thuộc vào nó (nếu không sẽ tải lại vô hạn).
-    const taiVeRef = useRef(taiVe);
-    taiVeRef.current = taiVe;
+    const inFlightRef = useRef(taiVe);
+    inFlightRef.current = taiVe;
 
     const conSong = useRef(true);
     useEffect(() => () => { conSong.current = false; }, []);
 
     const refresh = useCallback(async () => {
         // Bước 1 — dựng từ cache trước để có gì đó hiện ngay
-        const cache = await offlineCache.doc<T>(khoa);
+        const cache = await offlineCache.read<T>(key);
         if (cache && conSong.current) {
             setData(cache.data);
-            setLuuLuc(cache.luuLuc);
+            setLuuLuc(cache.savedAt);
             setLoading(false);
         }
 
         // Bước 2 — gọi server
         try {
-            const moi = await taiVeRef.current();
+            const fresh = await inFlightRef.current();
             if (!conSong.current) return;
-            setData(moi);
+            setData(fresh);
             setError(null);
             setNgoai(false);
             setLuuLuc(null);
             setLoading(false);
-            await offlineCache.ghi(khoa, moi);
+            await offlineCache.write(key, fresh);
         } catch (err) {
             if (!conSong.current) return;
-            const laLoiMang = err instanceof ApiError && err.status === 0;
+            const isNetworkError = err instanceof ApiError && err.status === 0;
 
-            if (laLoiMang && cache) {
+            if (isNetworkError && cache) {
                 // Có dữ liệu cũ để dùng — không coi là lỗi
                 setNgoai(true);
                 setError(null);
@@ -81,11 +81,11 @@ export function useCachedResource<T>(
             }
             setLoading(false);
         }
-    }, [khoa]);
+    }, [key]);
 
     useEffect(() => {
         if (tuTai) void refresh();
     }, [tuTai, refresh]);
 
-    return { data, isLoading, error, ngoaiTuyen, luuLuc, refresh };
+    return { data, isLoading, error, ngoaiTuyen, savedAt, refresh };
 }

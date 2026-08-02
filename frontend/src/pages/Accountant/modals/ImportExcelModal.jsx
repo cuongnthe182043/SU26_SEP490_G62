@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Chip, Spinner,
@@ -8,49 +8,19 @@ import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { notify } from "../../../components/shared-ui/Toast";
+import {
+  PAYMENT_OPTIONS, parseWorkbook,
+} from "../utils/parseImportRows";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
 
-const PAYMENT_MAP = {
-  "ck cong ty":             { payment_type: "bank_transfer", driver_payment_state: "company_received" },
-  "tien mat - tai da nop":  { payment_type: "cash",          driver_payment_state: "driver_paid" },
-  "tien mat - tai dang giu":{ payment_type: "cash",          driver_payment_state: "driver_holding" },
-  "khach no":               { payment_type: "client_credit", driver_payment_state: "company_received" },
-};
-
-const stripVN = (s) => String(s ?? "")
-  .normalize("NFD").replace(/[̀-ͯ]/g, "")
-  .replace(/đ/g, "d").replace(/Đ/g, "D")
-  .toLowerCase().trim();
-
-// Header template → key nội bộ (so khớp sau khi bỏ dấu + bỏ "(*)")
-const HEADER_KEYS = [
-  ["ngay chay",            "date"],
-  ["bien so xe",           "plate"],
-  ["ten tai xe",           "driver"],
-  ["ten khach hang",       "customer_name"],
-  ["sdt khach hang",       "customer_phone"],
-  ["diem lay hang",        "pickup"],
-  ["diem giao hang",       "delivery"],
-  ["quang duong",          "distance"],
-  ["so luot",              "runs"],
-  ["ten hang",             "cargo_name"],
-  ["cuoc xe",              "cargo_fee"],
-  ["phi cau duong",        "toll"],
-  ["phi do xe",            "parking"],
-  ["xang dau",             "fuel"],
-  ["sua xe",               "repair"],
-  ["thanh toan",           "payment"],
-  ["tien tai dang giu",    "holding"],
-  ["ghi chu",              "notes"],
-];
 
 // ─── Sinh & tải template mẫu ngay trên trình duyệt ────────────────────────────
 const TEMPLATE_HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)",
   "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
@@ -65,20 +35,19 @@ const TEMPLATE_EXAMPLES = [
     "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, 30000, "", 1450075, "",
     "Khách nợ", "", ""],
   ["08/05/2026", "29E-080.32", "Tân", "", "",
-    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 1500000, "", "", 900133, "",
-    "CK công ty", "", "Hệ thống tách thành 5 chuyến, cước chia đều"],
+    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", 900133, "",
+    "CK công ty", "", "Cước 300.000 MỘT LƯỢT × 5 lượt → doanh thu 1.500.000"],
   ["09/05/2026", "29E-080.32", "Tân", "Ngọc Hà", "0905111222",
     "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, "", "", "", "",
     "Tiền mặt - tài đang giữ", 900000, "Tài đã nộp trước 100k"],
 ];
 
-const PAYMENT_OPTIONS = ["CK công ty", "Tiền mặt - tài đã nộp", "Tiền mặt - tài đang giữ", "Khách nợ"];
 const REQUIRED_COLS = new Set([
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Điểm lấy hàng (*)",
-  "Điểm giao hàng (*)", "Cước xe (đ) (*)", "Thanh toán (*)",
+  "Điểm giao hàng (*)", "Cước xe 1 lượt (đ) (*)", "Thanh toán (*)",
 ]);
 const MONEY_COLS = new Set([
-  "Cước xe (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
 ]);
 
 const BRAND_BLUE = "FF2563EB";
@@ -230,9 +199,13 @@ const downloadTemplate = async () => {
   });
 
   wsGuide.addRow([]);
-  addNote("SĐT khách: hệ thống nhận diện khách cũ/mới và gom công nợ theo SĐT — khách quen bắt buộc điền.");
-  addNote("Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách N chuyến, cước chia đều.");
-  addNote("Tiền tài đang giữ: chỉ điền khi KHÁC (cước + phí khách chịu) — vd khách trả thiếu, tài nộp một phần.");
+  addNote("Khách hàng: điền TÊN hoặc SĐT, có một trong hai là đủ. Có SĐT thì hệ thống khớp khách theo SĐT (chắc nhất); không có SĐT thì khớp theo tên.");
+  addNote("Trùng tên: nếu tên khách trùng với khách khác đang có, hệ thống sẽ báo và yêu cầu điền SĐT vào ĐÚNG CỘT \"SĐT khách hàng\" — đừng viết số vào sau tên, viết vào tên thì không tra cứu hay nhắc nợ được.");
+  addNote("Gõ sai tên (thừa/thiếu dấu, viết tắt khác đi) sẽ tạo ra khách MỚI và tách đôi công nợ. Màn xem trước lúc import có báo dòng nào tạo khách mới — kiểm lại trước khi bấm.");
+  addNote("Bỏ trống cả tên lẫn SĐT chỉ dùng cho khách vãng lai trả tiền ngay; dòng \"Khách nợ\" bắt buộc có ít nhất một trong hai.");
+  addNote("Cước xe: giá của MỘT lượt. Chạy nhiều lượt thì hệ thống tự nhân lên — vd cước 250.000, Số lượt 2 → doanh thu 500.000.");
+  addNote("Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách thành N chuyến, mỗi chuyến mang trọn cước 1 lượt. Điền số nguyên (1, 2, 3...), đừng để ô ở định dạng thập phân.");
+  addNote("Tiền tài đang giữ: TỔNG số tiền tài đang cầm của cả dòng (không phải của 1 lượt). Chỉ điền khi khác số khách phải trả — vd khách trả thiếu, tài nộp trước một phần. Không có thì để TRỐNG, đừng gõ số 0.");
   addNote("Phí cầu đường/đỗ xe: KHÁCH chịu (cộng vào tiền khách phải trả). Xăng dầu/Sửa xe: CÔNG TY chịu.");
 
   const buf = await wb.xlsx.writeBuffer();
@@ -245,206 +218,6 @@ const downloadTemplate = async () => {
   URL.revokeObjectURL(url);
 };
 
-// Trả { value, negative } — số âm phải BÁO LỖI chứ không được lặng lẽ đổi thành dương.
-// Trước đây "-500000" (kế toán gõ nhầm dấu, hoặc ô Excel định dạng kế toán hiển thị số
-// âm trong ngoặc) bị biến thành +500000 và ghi thẳng vào doanh thu.
-const parseMoneyCell = (v) => {
-  const s = String(v ?? "").trim();
-  const digits = s.replace(/[^\d]/g, "");
-  const negative = digits !== "" && (s.startsWith("-") || /^\(.*\)$/.test(s));
-  return { value: digits ? Number(digits) : 0, negative };
-};
-
-const parseMoney = (v) => parseMoneyCell(v).value;
-
-// Các cột tiền phụ cần kiểm tra dấu âm (cước xe kiểm riêng vì còn phải > 0)
-const MONEY_FIELD_LABELS = [
-  ["toll", "Phí cầu đường/vé"],
-  ["parking", "Phí đỗ xe/bãi"],
-  ["fuel", "Xăng dầu"],
-  ["repair", "Sửa xe"],
-  ["holding", "Tiền tài đang giữ"],
-];
-
-const parseKm = (v) => {
-  const s = String(v ?? "").replace(",", ".").replace(/[^\d.]/g, "");
-  const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
-
-// Đọc trực tiếp cell gốc (không qua sheet_to_json) để tránh SheetJS tự format lại
-// text của ô kiểu "Date" theo bảng định dạng dựng sẵn (thiên về kiểu Mỹ m/d/yy),
-// khiến chuỗi hiển thị khác với dd/mm/yyyy dù Excel vẫn hiện đúng dd/mm/yyyy.
-const parseDateCell = (cell, XLSX) => {
-  if (!cell) return null;
-
-  if (cell.t === "n" && typeof cell.v === "number") {
-    const d = XLSX.SSF.parse_date_code(cell.v);
-    if (!d) return null;
-    return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-  }
-
-  if (cell.v instanceof Date && !Number.isNaN(cell.v.getTime())) {
-    return `${cell.v.getUTCFullYear()}-${String(cell.v.getUTCMonth() + 1).padStart(2, "0")}-${String(cell.v.getUTCDate()).padStart(2, "0")}`;
-  }
-
-  const s = String(cell.w ?? cell.v ?? "").trim();
-  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-  if (!m) return null;
-  let [, d, mo, y] = m;
-  if (y.length === 2) y = (Number(y) < 70 ? "20" : "19") + y;
-  const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  return Number.isNaN(new Date(iso).getTime()) ? null : iso;
-};
-
-// Tách nhiều điểm lấy/trả trong cùng 1 ô — phân cách bằng "|" hoặc xuống dòng (Alt+Enter)
-const splitStops = (v) => String(v ?? "")
-  .split(/\r?\n|\|/)
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-// Parse workbook → { rows: [{rowIndex, order, display}], errors: [string] }
-function parseWorkbook(wb, XLSX) {
-  const sheetName = wb.SheetNames.includes("DON_HANG") ? "DON_HANG" : wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
-  if (raw.length < 2) return { rows: [], errors: ["File không có dữ liệu."] };
-
-  // Map cột theo header
-  const headerRow = raw[0].map((h) => stripVN(h).replace(/\(\*\)/g, "").trim());
-  const colIndex = {};
-  for (const [prefix, key] of HEADER_KEYS) {
-    const idx = headerRow.findIndex((h) => h.startsWith(prefix));
-    if (idx >= 0) colIndex[key] = idx;
-  }
-  const missing = ["date", "plate", "driver", "pickup", "delivery", "cargo_fee", "payment"]
-    .filter((k) => colIndex[k] === undefined);
-  if (missing.length) {
-    return { rows: [], errors: [`File thiếu cột bắt buộc — hãy dùng đúng template. Thiếu: ${missing.join(", ")}`] };
-  }
-
-  const get = (r, key) => (colIndex[key] !== undefined ? r[colIndex[key]] : "");
-  const rows = [];
-  const errors = [];
-
-  for (let i = 1; i < raw.length; i += 1) {
-    const r = raw[i];
-    if (!r || r.every((c) => String(c).trim() === "")) continue;
-    // Dòng tổng cộng của file báo cáo xuất ra — bỏ qua để file vừa export có thể mở lại
-    // và import ngược. Trước đây dòng này bị coi là dữ liệu và sinh 5 lỗi giả.
-    if (r.some((c) => stripVN(c) === "tong cong")) continue;
-    const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
-    const rowErr = [];
-
-    const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
-    const dateIso = parseDateCell(ws[dateCellAddr], XLSX);
-    if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
-
-    const plate = String(get(r, "plate")).trim();
-    if (!plate) rowErr.push("Thiếu biển số xe");
-    const driver = String(get(r, "driver")).trim();
-    if (!driver) rowErr.push("Thiếu tên tài xế");
-
-    const pickups = splitStops(get(r, "pickup"));
-    const deliveries = splitStops(get(r, "delivery"));
-    if (pickups.length === 0) rowErr.push("Thiếu điểm lấy hàng");
-    if (deliveries.length === 0) rowErr.push("Thiếu điểm giao hàng");
-
-    const cargoFeeCell = parseMoneyCell(get(r, "cargo_fee"));
-    const cargoFee = cargoFeeCell.value;
-    if (cargoFeeCell.negative) rowErr.push("Cước xe không được âm");
-    else if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
-
-    // Các cột tiền còn lại: âm là sai dữ liệu, không được tự đổi dấu
-    for (const [key, label] of MONEY_FIELD_LABELS) {
-      if (parseMoneyCell(get(r, key)).negative) rowErr.push(`${label} không được âm`);
-    }
-
-    const paymentRaw = String(get(r, "payment")).trim();
-    const payment = PAYMENT_MAP[stripVN(paymentRaw)];
-    if (!paymentRaw) rowErr.push('Thiếu cột "Thanh toán" (bắt buộc)');
-    else if (!payment) {
-      rowErr.push(
-        `Giá trị Thanh toán không hợp lệ: "${paymentRaw}" — chỉ nhận: ${PAYMENT_OPTIONS.join(" / ")}`,
-      );
-    }
-
-    const phone = String(get(r, "customer_phone")).replace(/[^\d]/g, "");
-    if (phone && !/^0\d{9}$/.test(phone)) rowErr.push("SĐT khách không hợp lệ (10 số, bắt đầu bằng 0)");
-
-    const runs = Math.max(1, Math.round(Number(String(get(r, "runs")).replace(/[^\d]/g, "")) || 1));
-    const holdingRaw = String(get(r, "holding")).trim();
-    const holding = holdingRaw ? parseMoney(holdingRaw) : null;
-    if (runs > 1 && holding != null) {
-      rowErr.push('Dòng tăng bo (Số lượt > 1) không dùng được cột "Tiền tài đang giữ" — tách dòng thủ công');
-    }
-
-    if (rowErr.length) {
-      errors.push(`Dòng ${rowNo}: ${rowErr.join("; ")}`);
-      continue;
-    }
-
-    const toll = parseMoney(get(r, "toll"));
-    const parking = parseMoney(get(r, "parking"));
-    const fuel = parseMoney(get(r, "fuel"));
-    const repair = parseMoney(get(r, "repair"));
-    const distance = parseKm(get(r, "distance"));
-    const notes = String(get(r, "notes")).trim() || null;
-    const customerName = String(get(r, "customer_name")).trim() || null;
-
-    // Tăng bo N lượt → N chuyến, cước chia đều (chuyến 1 nhận phần dư + toàn bộ chi phí)
-    const feePerRun = Math.floor(cargoFee / runs);
-    const feeFirst = cargoFee - feePerRun * (runs - 1);
-
-    const shipments = [];
-    for (let run = 0; run < runs; run += 1) {
-      const isFirst = run === 0;
-      const expenses = [];
-      if (isFirst) {
-        if (toll > 0)    expenses.push({ expense_type: "toll",    amount: toll });
-        if (parking > 0) expenses.push({ expense_type: "parking", amount: parking });
-        if (fuel > 0)    expenses.push({ expense_type: "fuel",    amount: fuel });
-        if (repair > 0)  expenses.push({ expense_type: "repair",  amount: repair });
-      }
-      shipments.push({
-        vehicle_plate: plate,
-        driver_name: driver,
-        pickup_addresses: pickups,
-        delivery_addresses: deliveries,
-        cargo_fee: isFirst ? feeFirst : feePerRun,
-        cargo_name: String(get(r, "cargo_name")).trim() || null,
-        distance_km: isFirst ? distance : null,
-        expenses,
-        payment_type: payment.payment_type,
-        driver_payment_state: payment.driver_payment_state,
-        driver_holding_amount: isFirst ? holding : null,
-        notes: runs > 1 ? `${notes ? `${notes} | ` : ""}Tăng bo lượt ${run + 1}/${runs}` : notes,
-      });
-    }
-
-    rows.push({
-      rowIndex: rowNo,
-      display: {
-        date: get(r, "date"), plate, driver,
-        customer: customerName || "Khách lẻ",
-        pickups, deliveries,
-        cargoFee, paymentRaw, runs,
-      },
-      order: {
-        row_index: rowNo,
-        customer_name: customerName,
-        customer_phone: phone || null,
-        order_date: get(r, "date"),
-        completed_at: dateIso,
-        prepaid_amount: 0,
-        notes,
-        shipments,
-      },
-    });
-  }
-
-  return { rows, errors };
-}
 
 const getBackendImportError = (result) =>
   result?.errors?.[0]?.error || result?.message || "Import thất bại.";
@@ -462,14 +235,39 @@ const notifyImportResult = (result) => {
     notify.warning(`${result.message || "Import chưa hoàn tất."} ${getBackendImportError(result)}`);
     return;
   }
-  // Toàn bộ file đã có sẵn trong hệ thống — không phải lỗi, nhưng cũng không phải
-  // thành công: kế toán cần biết là không có gì mới được ghi vào.
-  if (duplicated > 0) {
-    notify.warning(result?.message || `Đã bỏ qua ${duplicated} dòng vì đã import trước đó.`);
+  // Có dòng trùng nhưng vẫn nhập được dòng mới → thành công bình thường. Trùng là hệ quả
+  // đương nhiên của việc gộp thêm dòng vào file cũ rồi import lại, không phải sự cố.
+  if (imported === 0 && duplicated > 0) {
+    notify.info(result?.message || `Không có dòng mới — ${duplicated} dòng đã có sẵn trong hệ thống.`);
     return;
   }
   notify.success(result?.message || "Import Excel thành công.");
 };
+
+/** Nhãn nhỏ dưới tên khách ở bảng xem trước: khớp khách cũ / tạo mới / trùng tên */
+function CustomerMatchBadge({ info }) {
+  if (!info) return null;
+
+  if (info.status === "ambiguous") {
+    return (
+      <div className="text-[10px] text-red-600 dark:text-red-300 font-medium">
+        trùng {info.candidates?.length} khách cùng tên — cần điền SĐT
+      </div>
+    );
+  }
+  if (info.status === "new") {
+    return (
+      <div className="text-[10px] text-amber-600 dark:text-amber-300">
+        sẽ tạo khách mới
+      </div>
+    );
+  }
+  return (
+    <div className="text-[10px] text-emerald-600 dark:text-emerald-300">
+      khớp khách có sẵn{info.matchedName ? `: ${info.matchedName}` : ""}
+    </div>
+  );
+}
 
 export function ImportExcelModal({ isOpen, onClose, onImported }) {
   const fileRef = useRef(null);
@@ -478,27 +276,60 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);      // response từ BE
   const [fatalError, setFatalError] = useState(null);
+  // Đối chiếu trước khi import: { [rowIndex]: { customer, already_imported } }.
+  // Hỏi BE để kế toán thấy TRƯỚC là dòng nào đã có, dòng nào mới, dòng nào đẻ khách mới.
+  // Gộp thêm dòng vào file cũ rồi import lại là luồng bình thường của DN, nên phải nói rõ
+  // "chỉ N dòng mới sẽ vào" ngay từ màn xem trước thay vì để tới lúc import xong mới báo.
+  const [previewByRow, setPreviewByRow] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const reset = () => {
     setFileName(null); setParsed(null); setResult(null); setFatalError(null);
+    setPreviewByRow(null);
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const runPreview = async (rows) => {
+    if (!rows?.length) return;
+    setPreviewing(true);
+    try {
+      const { results } = await accountantService.previewImport(rows.map((r) => r.order));
+      setPreviewByRow(Object.fromEntries(results.map((x) => [x.row_index, x])));
+    } catch {
+      // Không đối chiếu được thì vẫn cho import — đây là thông tin hỗ trợ, không phải
+      // điều kiện bắt buộc. Backend vẫn chặn trùng khi import thật.
+      setPreviewByRow(null);
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setResult(null); setFatalError(null);
+    setResult(null); setFatalError(null); setPreviewByRow(null);
     setFileName(file.name);
     try {
       const buf = await file.arrayBuffer();
       const XLSX = await loadXLSX();
       const wb = XLSX.read(buf, { type: "array" });
-      setParsed(parseWorkbook(wb, XLSX));
+      const parsedResult = parseWorkbook(wb, XLSX);
+      setParsed(parsedResult);
+      if (parsedResult.errors.length === 0) void runPreview(parsedResult.rows);
     } catch (err) {
       setParsed(null);
       setFatalError(`Không đọc được file: ${err.message}`);
     }
   };
+
+  // Dòng sẽ thực sự gửi lên: bỏ những dòng đã có trong hệ thống. Trước đây gửi cả file
+  // rồi để backend từ chối từng dòng — file 500 dòng gộp thêm 10 dòng là 490 lượt bị
+  // từ chối, vừa chậm vừa hiện một bảng cảnh báo dài dằng dặc cho việc hoàn toàn bình thường.
+  const newRows = useMemo(() => {
+    if (!parsed?.rows?.length) return [];
+    if (!previewByRow) return parsed.rows;
+    return parsed.rows.filter((r) => !previewByRow[r.rowIndex]?.already_imported);
+  }, [parsed, previewByRow]);
 
   const handleImport = async (allowDuplicates = false) => {
     if (!parsed || parsed.rows.length === 0) return;
@@ -506,9 +337,11 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     // Ép nhập dòng trùng thì CHỈ gửi lại đúng những dòng bị bỏ qua. Gửi lại cả file sẽ
     // nhân đôi thật những dòng đã vào thành công ở lần trước — đúng cái mà cơ chế này
     // sinh ra để ngăn.
-    const rowsToSend = allowDuplicates && result?.duplicates?.length
-      ? parsed.rows.filter((r) => result.duplicates.some((d) => d.row_index === r.rowIndex))
-      : parsed.rows;
+    const rowsToSend = allowDuplicates
+      ? (result?.duplicates?.length
+          ? parsed.rows.filter((r) => result.duplicates.some((d) => d.row_index === r.rowIndex))
+          : parsed.rows.filter((r) => previewByRow?.[r.rowIndex]?.already_imported))
+      : newRows;
     if (rowsToSend.length === 0) return;
 
     setSubmitting(true);
@@ -529,16 +362,30 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     }
   };
 
-  const canImport = parsed && parsed.rows.length > 0 && parsed.errors.length === 0 && !submitting && !result;
+  const previewSummary = useMemo(() => {
+    if (!previewByRow) return null;
+    const v = Object.values(previewByRow);
+    return {
+      alreadyImported: v.filter((x) => x.already_imported).length,
+      newRows:         v.filter((x) => !x.already_imported).length,
+      newCustomers:    v.filter((x) => !x.already_imported && x.customer?.status === "new").length,
+      ambiguous:       v.filter((x) => !x.already_imported && x.customer?.status === "ambiguous").length,
+    };
+  }, [previewByRow]);
+
+  const canImport = parsed && parsed.errors.length === 0 && newRows.length > 0 && !submitting && !result && !previewing;
+
   const resultHasErrors = Number(result?.error_count || 0) > 0;
   const resultFailedAll = resultHasErrors && Number(result?.imported_count || 0) === 0;
   const resultDuplicates = Number(result?.duplicate_count || 0);
+  // Dòng trùng KHÔNG phải cảnh báo: gộp file rồi import lại là luồng bình thường, dòng cũ
+  // bị bỏ qua đúng như mong đợi. Chỉ tô vàng/đỏ khi có lỗi thật.
   const resultBoxClass = resultFailedAll
     ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25"
-    : resultHasErrors || resultDuplicates > 0
+    : resultHasErrors
       ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25"
       : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25";
-  const ResultIcon = resultHasErrors || resultDuplicates > 0 ? RiErrorWarningLine : RiCheckboxCircleLine;
+  const ResultIcon = resultHasErrors ? RiErrorWarningLine : RiCheckboxCircleLine;
 
   return (
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} size="4xl" scrollBehavior="inside">
@@ -595,9 +442,40 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
           {/* Preview */}
           {parsed && parsed.rows.length > 0 && !result && (
             <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 dark:bg-white/5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Xem trước {parsed.rows.length} chuyến hợp lệ
+              <div className="px-4 py-2 bg-gray-50 dark:bg-white/5 text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-wrap">
+                <span>Đọc được {parsed.rows.length} chuyến từ file</span>
+                {previewing && (
+                  <span className="font-normal text-gray-400 dark:text-gray-400">· đang đối chiếu với hệ thống...</span>
+                )}
+                {previewSummary && (
+                  <span className="font-normal">
+                    <span className="text-emerald-600 dark:text-emerald-300">· {previewSummary.newRows} dòng mới sẽ nhập </span>
+                    {previewSummary.alreadyImported > 0 && (
+                      <span className="text-gray-400 dark:text-gray-400">· {previewSummary.alreadyImported} dòng đã có, sẽ bỏ qua </span>
+                    )}
+                    {previewSummary.newCustomers > 0 && <span className="text-amber-600 dark:text-amber-300">· {previewSummary.newCustomers} khách mới </span>}
+                    {previewSummary.ambiguous > 0 && <span className="text-red-600 dark:text-red-300">· {previewSummary.ambiguous} trùng tên khách </span>}
+                  </span>
+                )}
               </div>
+              {previewSummary?.newRows === 0 && (
+                <div className="px-4 py-2 bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 text-xs text-gray-500 dark:text-gray-400">
+                  Toàn bộ dòng trong file đã có trong hệ thống — không có gì mới để nhập. Thêm dòng mới vào
+                  file rồi chọn lại là được.
+                </div>
+              )}
+              {previewSummary?.ambiguous > 0 && (
+                <div className="px-4 py-2 bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/25 text-xs text-red-700 dark:text-red-300">
+                  Có {previewSummary.ambiguous} dòng mà tên khách trùng với nhiều khách đang có. Những dòng đó sẽ bị
+                  từ chối khi import — điền SĐT vào cột <b>SĐT khách hàng</b> để chỉ đúng người, các dòng còn lại vẫn vào bình thường.
+                </div>
+              )}
+              {previewSummary?.newCustomers > 0 && (
+                <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/25 text-xs text-amber-700 dark:text-amber-300">
+                  {previewSummary.newCustomers} dòng sẽ tạo khách MỚI. Kiểm tra lại chính tả tên khách — gõ sai một dấu là
+                  hệ thống hiểu thành khách khác và công nợ bị tách làm hai hồ sơ.
+                </div>
+              )}
               <div className="max-h-72 overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-400 sticky top-0">
@@ -612,20 +490,50 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {parsed.rows.map(({ rowIndex, display }) => (
-                      <tr key={rowIndex} className="border-t border-gray-100 dark:border-white/10">
+                    {parsed.rows.map(({ rowIndex, display }) => {
+                      const info = previewByRow?.[rowIndex];
+                      const daCo = Boolean(info?.already_imported);
+                      return (
+                      // Dòng đã có thì làm mờ đi — nó không tham gia lần import này nữa,
+                      // để đậm ngang dòng mới thì kế toán không biết cái nào thật sự vào.
+                      <tr key={rowIndex} className={`border-t border-gray-100 dark:border-white/10 ${daCo ? "opacity-45" : ""}`}>
                         <td className="px-3 py-1.5 text-gray-400 dark:text-gray-400">{rowIndex}</td>
-                        <td className="px-3 py-1.5">{display.date}</td>
+                        <td className="px-3 py-1.5">
+                          {display.date}
+                          {daCo && (
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400">đã có — bỏ qua</div>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
-                        <td className="px-3 py-1.5">{display.customer}</td>
+                        <td className="px-3 py-1.5">
+                          {display.customer}
+                          {!daCo && <CustomerMatchBadge info={info?.customer} />}
+                        </td>
                         <td className="px-3 py-1.5 max-w-55">
                           <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
                           {display.runs > 1 ? <span className="text-gray-400 dark:text-gray-400"> (x{display.runs})</span> : null}
                         </td>
-                        <td className="px-3 py-1.5 text-right font-semibold"><MoneyText amount={display.cargoFee} /></td>
-                        <td className="px-3 py-1.5">{display.paymentRaw}</td>
+                        {/* Dòng tăng bo: hiện TỔNG sẽ ghi nhận kèm phép tính, để kế toán
+                            thấy ngay hệ thống hiểu cước là giá 1 lượt chứ không phải tổng */}
+                        <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+                          <MoneyText amount={display.totalFee} />
+                          {display.runs > 1 && (
+                            <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
+                              {display.cargoFee.toLocaleString("vi-VN")} × {display.runs} lượt
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {display.paymentRaw}
+                          {display.holding != null && (
+                            <div className="text-[10px] text-gray-400 dark:text-gray-400">
+                              tài giữ {display.holding.toLocaleString("vi-VN")}đ
+                            </div>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -650,28 +558,25 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                 </ul>
               )}
 
-              {/* Dòng trùng tách riêng khỏi dòng lỗi: đây không phải sai dữ liệu mà là
-                  dữ liệu đã nằm sẵn trong hệ thống — bỏ qua chính là hành vi đúng. */}
+              {/* Dòng trùng KHÔNG liệt kê từng cái nữa: file gộp 500 dòng thêm 10 dòng mới
+                  sẽ đẻ ra 490 gạch đầu dòng cho một việc hoàn toàn bình thường. Chỉ nói tổng,
+                  ai cần chi tiết thì mở ra. */}
               {result.duplicates?.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">
-                    {result.duplicates.length} dòng đã có trong hệ thống — đã bỏ qua để không nhân đôi doanh thu:
-                  </div>
-                  <ul className="text-xs list-disc pl-5 max-h-32 overflow-y-auto text-amber-700 dark:text-amber-300">
+                <details className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                  <summary className="cursor-pointer select-none">
+                    {result.duplicates.length} dòng đã có sẵn nên được bỏ qua — xem danh sách
+                  </summary>
+                  <ul className="list-disc pl-5 max-h-32 overflow-y-auto mt-1">
                     {result.duplicates.map((e, i) => <li key={i}>{e.error}</li>)}
                   </ul>
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Nếu đây thật sự là những chuyến khác nhau (chạy lại đúng tuyến, đúng giá, cùng ngày),
-                    bấm <span className="font-semibold">Nhập cả dòng trùng</span> bên dưới.
-                  </p>
-                </div>
+                </details>
               )}
             </div>
           )}
 
           {submitting && (
             <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <Spinner size="sm" /> Đang import {resultDuplicates > 0 ? resultDuplicates : parsed?.rows.length} chuyến...
+              <Spinner size="sm" /> Đang import {resultDuplicates > 0 ? resultDuplicates : newRows.length} chuyến...
             </div>
           )}
         </ModalBody>
@@ -694,7 +599,9 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
             <>
               <Button variant="light" onPress={() => { reset(); onClose(); }} isDisabled={submitting}>Huỷ</Button>
               <Button color="primary" onPress={() => handleImport(false)} isDisabled={!canImport} isLoading={submitting}>
-                Import {parsed?.rows.length ? `${parsed.rows.length} chuyến` : ""}
+                {previewSummary
+                  ? `Import ${previewSummary.newRows} chuyến mới`
+                  : `Import ${parsed?.rows.length ?? ""} chuyến`}
               </Button>
             </>
           )}

@@ -561,7 +561,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
   // Chỉ che toàn bộ bảng bằng spinner ở lần tải đầu. Những lần tải lại sau (đổi tháng,
   // bấm làm mới, sau khi duyệt/chi) vẫn giữ bảng cũ và chỉ làm mờ — nếu tháo bảng ra thì
   // khung co lại rồi bung ra, cả trang giật lên giật xuống.
-  const dangTaiLanDau = loading && payrolls.length === 0;
+  const isInitialLoad = loading && payrolls.length === 0;
 
   const payTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / payPageSize));
   const advTotalPages = Math.max(1, Math.ceil(advances.length / advPageSize));
@@ -763,7 +763,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
           {}
           <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
-            {dangTaiLanDau ? (
+            {isInitialLoad ? (
               <div className="flex items-center justify-center py-20">
                 <Spinner color="secondary" label="Đang tải..." size="lg" />
               </div>

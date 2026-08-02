@@ -209,11 +209,11 @@ export function DriverHomeScreen() {
 
     // Có mạng trở lại → tải lại toàn bộ số liệu trang chủ. Lúc offline các con số
     // vẫn nằm nguyên trên màn hình nên rất dễ hiểu nhầm là dữ liệu mới nhất.
-    const { vuaOnlineLai } = useNetwork();
+    const { reconnectedAt } = useNetwork();
     useEffect(() => {
-        if (vuaOnlineLai === 0) return;
+        if (reconnectedAt === 0) return;
         refreshProfile(); refreshStats(); reloadSummary(); refreshActiveTrip();
-    }, [vuaOnlineLai]);
+    }, [reconnectedAt]);
     const { order: pendingReceipt, load: loadPendingReceipt } = usePendingReceipt();
     const [refreshing, setRefreshing] = useState(false);
 
