@@ -452,6 +452,7 @@ const getBackendImportError = (result) =>
 const notifyImportResult = (result) => {
   const imported = Number(result?.imported_count || 0);
   const failed = Number(result?.error_count || 0);
+  const duplicated = Number(result?.duplicate_count || 0);
 
   if (failed > 0 && imported === 0) {
     notify.error(`${result.message || "Import thất bại."} ${getBackendImportError(result)}`);
@@ -459,6 +460,12 @@ const notifyImportResult = (result) => {
   }
   if (failed > 0) {
     notify.warning(`${result.message || "Import chưa hoàn tất."} ${getBackendImportError(result)}`);
+    return;
+  }
+  // Toàn bộ file đã có sẵn trong hệ thống — không phải lỗi, nhưng cũng không phải
+  // thành công: kế toán cần biết là không có gì mới được ghi vào.
+  if (duplicated > 0) {
+    notify.warning(result?.message || `Đã bỏ qua ${duplicated} dòng vì đã import trước đó.`);
     return;
   }
   notify.success(result?.message || "Import Excel thành công.");
@@ -493,12 +500,24 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (allowDuplicates = false) => {
     if (!parsed || parsed.rows.length === 0) return;
+
+    // Ép nhập dòng trùng thì CHỈ gửi lại đúng những dòng bị bỏ qua. Gửi lại cả file sẽ
+    // nhân đôi thật những dòng đã vào thành công ở lần trước — đúng cái mà cơ chế này
+    // sinh ra để ngăn.
+    const rowsToSend = allowDuplicates && result?.duplicates?.length
+      ? parsed.rows.filter((r) => result.duplicates.some((d) => d.row_index === r.rowIndex))
+      : parsed.rows;
+    if (rowsToSend.length === 0) return;
+
     setSubmitting(true);
     setFatalError(null);
     try {
-      const res = await accountantService.importOrders(parsed.rows.map((r) => r.order));
+      const res = await accountantService.importOrders(
+        rowsToSend.map((r) => r.order),
+        allowDuplicates,
+      );
       setResult(res);
       notifyImportResult(res);
       if (res.imported_count > 0) onImported?.();
@@ -513,12 +532,13 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
   const canImport = parsed && parsed.rows.length > 0 && parsed.errors.length === 0 && !submitting && !result;
   const resultHasErrors = Number(result?.error_count || 0) > 0;
   const resultFailedAll = resultHasErrors && Number(result?.imported_count || 0) === 0;
+  const resultDuplicates = Number(result?.duplicate_count || 0);
   const resultBoxClass = resultFailedAll
     ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25"
-    : resultHasErrors
+    : resultHasErrors || resultDuplicates > 0
       ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25"
       : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25";
-  const ResultIcon = resultHasErrors ? RiErrorWarningLine : RiCheckboxCircleLine;
+  const ResultIcon = resultHasErrors || resultDuplicates > 0 ? RiErrorWarningLine : RiCheckboxCircleLine;
 
   return (
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} size="4xl" scrollBehavior="inside">
@@ -629,23 +649,51 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                   {result.errors.map((e, i) => <li key={i}>{e.error}</li>)}
                 </ul>
               )}
+
+              {/* Dòng trùng tách riêng khỏi dòng lỗi: đây không phải sai dữ liệu mà là
+                  dữ liệu đã nằm sẵn trong hệ thống — bỏ qua chính là hành vi đúng. */}
+              {result.duplicates?.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">
+                    {result.duplicates.length} dòng đã có trong hệ thống — đã bỏ qua để không nhân đôi doanh thu:
+                  </div>
+                  <ul className="text-xs list-disc pl-5 max-h-32 overflow-y-auto text-amber-700 dark:text-amber-300">
+                    {result.duplicates.map((e, i) => <li key={i}>{e.error}</li>)}
+                  </ul>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Nếu đây thật sự là những chuyến khác nhau (chạy lại đúng tuyến, đúng giá, cùng ngày),
+                    bấm <span className="font-semibold">Nhập cả dòng trùng</span> bên dưới.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {submitting && (
             <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <Spinner size="sm" /> Đang import {parsed?.rows.length} chuyến...
+              <Spinner size="sm" /> Đang import {resultDuplicates > 0 ? resultDuplicates : parsed?.rows.length} chuyến...
             </div>
           )}
         </ModalBody>
 
         <ModalFooter>
           {result ? (
-            <Button color="primary" onPress={() => { reset(); onClose(); }}>Đóng</Button>
+            <>
+              {resultDuplicates > 0 && (
+                <Button
+                  color="warning" variant="flat"
+                  isLoading={submitting}
+                  onPress={() => handleImport(true)}
+                >
+                  Nhập cả dòng trùng
+                </Button>
+              )}
+              <Button color="primary" onPress={() => { reset(); onClose(); }}>Đóng</Button>
+            </>
           ) : (
             <>
               <Button variant="light" onPress={() => { reset(); onClose(); }} isDisabled={submitting}>Huỷ</Button>
-              <Button color="primary" onPress={handleImport} isDisabled={!canImport} isLoading={submitting}>
+              <Button color="primary" onPress={() => handleImport(false)} isDisabled={!canImport} isLoading={submitting}>
                 Import {parsed?.rows.length ? `${parsed.rows.length} chuyến` : ""}
               </Button>
             </>

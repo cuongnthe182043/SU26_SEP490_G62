@@ -33,8 +33,12 @@ export const accountantService = {
   createOrder: (data) =>
     apiRequest(`${BASE}/orders`, { method: "POST", body: data }),
 
-  importOrders: (orders) =>
-    apiRequest(`${BASE}/orders/import`, { method: "POST", body: { orders } }),
+  // allowDuplicates = true khi kế toán đã xem danh sách dòng trùng và vẫn muốn nhập lại
+  importOrders: (orders, allowDuplicates = false) =>
+    apiRequest(`${BASE}/orders/import`, {
+      method: "POST",
+      body: { orders, allow_duplicates: allowDuplicates },
+    }),
 
   updateOrder: (orderId, data) =>
     apiRequest(`${BASE}/orders/${orderId}`, { method: "PUT", body: data }),
