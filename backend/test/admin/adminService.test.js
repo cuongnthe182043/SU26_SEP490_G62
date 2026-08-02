@@ -36,9 +36,13 @@ describe('Admin Service', () => {
             mock.method(profileRepository, 'getAccountByEmail', async () => null);
             mock.method(profileRepository, 'adminCreateUser', async () => 100);
 
-            const newId = await adminService.createUser('test@example.com', 'Full Name', '0123456789', 'admin');
+            // Email không còn bắt buộc, nên createUser phải trả về cả kết quả gửi thư:
+            // tài khoản tạo KHÔNG có email thì mật khẩu ban đầu chỉ đến tay người quản lý
+            // qua giá trị trả về này — trả mỗi id là mất luôn đường giao mật khẩu.
+            const created = await adminService.createUser('test@example.com', 'Full Name', '0123456789', 'admin');
 
-            assert.strictEqual(newId, 100);
+            assert.strictEqual(created.id, 100);
+            assert.strictEqual(created.welcomeEmailSent, true);
             assert.strictEqual(emailService.sendWelcomeEmail.mock.calls.length, 1);
         });
     });

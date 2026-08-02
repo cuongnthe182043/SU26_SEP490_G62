@@ -17,8 +17,19 @@ const authLimiter = rateLimit({
 
 // Chặn sớm các giá trị sai kiểu (object, array...) trước khi rơi xuống service —
 // tránh lỗi 500 khó hiểu khi ví dụ email là object thay vì string.
+// Định danh đăng nhập là email HOẶC số điện thoại, nằm ở trường `identifier`. Client cũ
+// (bản mobile đã phát hành) vẫn gửi `email`, nên chấp nhận cả hai và chỉ đòi có ít nhất
+// một. Ràng buộc phải gắn vào 'identifier' chứ không gắn riêng 'email': express-validator
+// vẫn chạy custom validator khi trường vắng mặt, nhờ đó bắt được cả trường hợp client
+// mới gửi `identifier` lẫn client cũ gửi `email`.
 const loginRules = [
-    body('email').isString().withMessage('Email là bắt buộc').bail().trim().notEmpty().withMessage('Email là bắt buộc'),
+    body('identifier').custom((value, { req }) => {
+        const raw = value ?? req.body?.email;
+        if (typeof raw !== 'string' || !raw.trim()) {
+            throw new Error('Email hoặc số điện thoại là bắt buộc');
+        }
+        return true;
+    }),
     body('password').isString().withMessage('Mật khẩu là bắt buộc').bail().notEmpty().withMessage('Mật khẩu là bắt buộc'),
 ];
 const googleLoginRules = [

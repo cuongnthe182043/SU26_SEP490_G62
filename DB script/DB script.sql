@@ -3,8 +3,8 @@
 -- ║  lên một DB đang có dữ liệu sẽ XOÁ SẠCH TOÀN BỘ, không lấy lại được.   ║
 -- ║                                                                        ║
 -- ║  File này CHỈ dùng để dựng DB MỚI từ đầu.                              ║
--- ║  DB đang chạy mà cần đổi schema → dùng DB script/migrations/            ║
--- ║  (đọc migrations/README.md).                                           ║
+-- ║  DB đang chạy mà cần đổi schema → dùng backend/migrations/              ║
+-- ║  (đọc backend/migrations/README.md).                                   ║
 -- ╚════════════════════════════════════════════════════════════════════════╝
 DROP SCHEMA IF EXISTS public CASCADE;
 CREATE SCHEMA public;
@@ -48,7 +48,7 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260801_driver_group_history.sql'),
     ('20260802_import_fingerprint.sql'),
     ('20260802_holiday_bonus_rule.sql'),
-    ('20260802_optional_staff_email.sql')
+    ('20260802_optional_staff_email.sql'),
     ('20260802_customer_name_lookup.sql')
 ON CONFLICT (filename) DO NOTHING;
 
