@@ -349,12 +349,13 @@ const createOrderWithShipments = async (orderData) => {
             cargo_name, payment_type,
             total_estimated_price, prepaid_amount,
             prepaid_status, prepaid_method, prepaid_confirmed_by, prepaid_confirmed_at,
-            derived_status, notes, partner_id, partner_name, created_at, updated_at
+            derived_status, notes, partner_id, partner_name, import_fingerprint,
+            created_at, updated_at
         )
          VALUES ($1, $2, $2, $3, $4, $5, $6, $10, $11,
                  CASE WHEN $6::numeric > 0 THEN $2::int ELSE NULL END,
                  CASE WHEN $6::numeric > 0 THEN NOW() ELSE NULL END,
-                 'completed', $7, $8, $9, NOW(), NOW())
+                 'completed', $7, $8, $9, $12, NOW(), NOW())
          RETURNING *`,
         // Ép kiểu $2::int và $6::numeric là BẮT BUỘC, không phải cho đẹp: trong CASE,
         // Postgres suy kiểu kết quả độc lập với cột đích, gặp "THEN $2 ELSE NULL" thì
@@ -373,6 +374,7 @@ const createOrderWithShipments = async (orderData) => {
             orderData.partner_name || null,
             prepaidStatus,
             prepaidMethod,
+            orderData.import_fingerprint || null,
         ]
     );
         const newOrder = orderResult.rows[0];
@@ -529,6 +531,14 @@ const createOrderWithShipments = async (orderData) => {
         return { ...result.rows[0], kpiTriggers, autoResolvedDrivers };
     } catch (err) {
         await client.query('ROLLBACK');
+        // Đụng UNIQUE vân tay = dòng này đã import trước đó rồi. Đây KHÔNG phải lỗi dữ
+        // liệu của kế toán nên đánh dấu riêng để tầng trên xếp vào nhóm "bỏ qua vì
+        // trùng" thay vì trộn lẫn với các dòng sai định dạng.
+        if (err.code === '23505' && String(err.constraint) === 'uq_orders_import_fingerprint') {
+            const trung = new Error('Dòng này đã được import trước đó — bỏ qua để không nhân đôi doanh thu.');
+            trung.laTrungImport = true;
+            throw trung;
+        }
         throw err;
     } finally {
         client.release();

@@ -11,6 +11,7 @@
  */
 const assert = require('node:assert');
 const { setupTestDb } = require('../helpers/testDb');
+const { taoVanTayImport } = require('../../utils/importFingerprint');
 
 let pool;
 let teardown;
@@ -143,6 +144,71 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
         );
         const { rows } = await pool.query(`SELECT id FROM profiles WHERE full_name = 'Nguyen Van Khong Co'`);
         assert.strictEqual(rows.length, 0, 'không được tự tạo hồ sơ tài xế mới');
+    });
+
+    it('B7 — import lại cùng một dòng bị chặn, không nhân đôi doanh thu', async () => {
+        const don = donCoBan({ customer_phone: '0909000222', completed_at: '2026-09-01' });
+        const lan1 = await repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) });
+        assert.ok(lan1?.id);
+
+        await assert.rejects(
+            () => repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) }),
+            (err) => err.laTrungImport === true,
+            'lần import thứ hai phải bị nhận ra là trùng',
+        );
+
+        const { rows } = await pool.query(
+            `SELECT COUNT(*)::int AS n FROM orders WHERE customer_id =
+                (SELECT id FROM customers WHERE phone = '0909000222')`,
+        );
+        assert.strictEqual(rows[0].n, 1, 'chỉ được tồn tại đúng 1 đơn');
+    });
+
+    it('B8 — vân tay bỏ qua khác biệt định dạng: cùng dòng gõ khác kiểu vẫn là trùng', async () => {
+        const goc = donCoBan({ customer_phone: '0909000333', completed_at: '2026-09-02' });
+        const gõLại = donCoBan({
+            customer_phone: '0909000333',
+            completed_at: '2026-09-02',
+            shipments: [{ ...goc.shipments[0], vehicle_plate: '51e 100 01', driver_name: 'pham  van   tien' }],
+        });
+
+        assert.strictEqual(
+            taoVanTayImport(goc), taoVanTayImport(gõLại),
+            'biển số/tên khác định dạng phải cho cùng vân tay',
+        );
+
+        await repo.createOrderWithShipments({ ...goc, import_fingerprint: taoVanTayImport(goc) });
+        await assert.rejects(
+            () => repo.createOrderWithShipments({ ...gõLại, import_fingerprint: taoVanTayImport(gõLại) }),
+            (err) => err.laTrungImport === true,
+        );
+    });
+
+    it('B9 — sửa số liệu thật (đổi cước) thì KHÔNG bị coi là trùng', async () => {
+        const don = donCoBan({ customer_phone: '0909000444', completed_at: '2026-09-03' });
+        const donKhac = donCoBan({
+            customer_phone: '0909000444',
+            completed_at: '2026-09-03',
+            shipments: [{ ...don.shipments[0], cargo_fee: 1500000 }],
+        });
+
+        await repo.createOrderWithShipments({ ...don, import_fingerprint: taoVanTayImport(don) });
+        const ket = await repo.createOrderWithShipments({ ...donKhac, import_fingerprint: taoVanTayImport(donKhac) });
+        assert.ok(ket?.id, 'chuyến khác giá là chuyến khác, phải vào được');
+    });
+
+    it('B10 — kế toán chủ động cho phép trùng (fingerprint NULL) thì không bị chặn', async () => {
+        const don = donCoBan({ customer_phone: '0909000555', completed_at: '2026-09-04' });
+        await repo.createOrderWithShipments({ ...don, import_fingerprint: null });
+        const lan2 = await repo.createOrderWithShipments({ ...don, import_fingerprint: null });
+        assert.ok(lan2?.id, 'fingerprint NULL không bị UNIQUE ràng buộc');
+    });
+
+    it('B11 — đơn nhập tay (không có fingerprint) không bị cơ chế này đụng tới', async () => {
+        const don = donCoBan({ customer_phone: '0909000666', completed_at: '2026-09-05' });
+        await repo.createOrderWithShipments(don);
+        const lan2 = await repo.createOrderWithShipments(don);
+        assert.ok(lan2?.id, 'nhập tay hai đơn giống nhau vẫn phải được phép');
     });
 
     it('B6 — hai tài xế trùng tên thì báo lỗi thay vì gán bừa cho người đầu tiên', async () => {
