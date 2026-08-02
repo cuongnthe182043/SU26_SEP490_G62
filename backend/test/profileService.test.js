@@ -121,7 +121,9 @@ describe('Profile Service', () => {
 
         await assert.rejects(
             () => profileService.sendEmailChangeCode(101),
-            { message: 'Không tìm thấy email hiện tại' },
+            // Tài khoản được phép không có email, nên đây là trạng thái hợp lệ chứ không
+            // phải lỗi dữ liệu — thông báo phải chỉ ra lối đi (nhờ quản lý thêm email).
+            { message: /chưa có email/ },
         );
     });
 

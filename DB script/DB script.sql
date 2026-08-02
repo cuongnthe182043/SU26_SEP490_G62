@@ -3,8 +3,8 @@
 -- ║  lên một DB đang có dữ liệu sẽ XOÁ SẠCH TOÀN BỘ, không lấy lại được.   ║
 -- ║                                                                        ║
 -- ║  File này CHỈ dùng để dựng DB MỚI từ đầu.                              ║
--- ║  DB đang chạy mà cần đổi schema → dùng DB script/migrations/            ║
--- ║  (đọc migrations/README.md).                                           ║
+-- ║  DB đang chạy mà cần đổi schema → dùng backend/migrations/              ║
+-- ║  (đọc backend/migrations/README.md).                                   ║
 -- ╚════════════════════════════════════════════════════════════════════════╝
 DROP SCHEMA IF EXISTS public CASCADE;
 CREATE SCHEMA public;
