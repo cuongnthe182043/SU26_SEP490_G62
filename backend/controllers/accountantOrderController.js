@@ -1,6 +1,7 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
 const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
+const { taoVanTayImport } = require('../utils/importFingerprint');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
 // driver_paid: tài xế đã thu tiền VÀ đã nộp về công ty (import đơn cũ) — nợ tạo + tất toán ngay
@@ -198,10 +199,13 @@ const createOrder = async (req, res) => {
 };
 
 // POST /accountant/orders/import — import hàng loạt từ template Excel
-// Body: { orders: [payload như createOrder, kèm row_index để báo lỗi theo dòng] }
+// Body: {
+//   orders: [payload như createOrder, kèm row_index để báo lỗi theo dòng],
+//   allow_duplicates?: boolean   — bỏ qua kiểm tra trùng (kế toán xác nhận cố ý nhập lại)
+// }
 const importOrders = async (req, res) => {
     try {
-        const { orders } = req.body;
+        const { orders, allow_duplicates: allowDuplicates } = req.body;
         if (!Array.isArray(orders) || orders.length === 0)
             throw err400('Không có đơn nào để import.');
         if (orders.length > 1000)
@@ -209,10 +213,13 @@ const importOrders = async (req, res) => {
 
         const imported = [];
         const errors = [];
+        const duplicates = [];
         const newDrivers = [];
 
         for (const order of orders) {
-            const rowLabel = order.row_index != null ? `Dòng ${order.row_index}` : `Đơn thứ ${imported.length + errors.length + 1}`;
+            const rowLabel = order.row_index != null
+                ? `Dòng ${order.row_index}`
+                : `Đơn thứ ${imported.length + errors.length + duplicates.length + 1}`;
             try {
                 // Import cho phép khách lẻ không SĐT/không tên (khác tạo tay)
                 if (!order.customer_id && !order.customer_name?.trim()) {
@@ -230,6 +237,9 @@ const importOrders = async (req, res) => {
                 const payload = validateOrderBody(order, { requirePhone: false });
                 const created = await accountantOrderService.createOrder({
                     ...payload,
+                    // Vân tay tính SAU khi chuẩn hoá payload để cùng một dòng luôn ra cùng
+                    // kết quả. allow_duplicates → để NULL, tức kế toán chấp nhận nhập trùng.
+                    import_fingerprint: allowDuplicates ? null : taoVanTayImport(payload),
                     created_by: req.user.userId,
                     suppress_notifications: true,
                 });
@@ -238,7 +248,11 @@ const importOrders = async (req, res) => {
                     newDrivers.push({ row_index: order.row_index ?? null, driver_name: d.driverName, driver_id: d.driverId });
                 });
             } catch (err) {
-                errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                if (err.laTrungImport) {
+                    duplicates.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                } else {
+                    errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+                }
             }
         }
 
@@ -247,12 +261,22 @@ const importOrders = async (req, res) => {
             actorId: req.user.userId,
         });
 
-        res.status(errors.length > 0 && imported.length === 0 ? 400 : 201).json({
-            message: `Import xong: ${imported.length} đơn thành công${errors.length ? `, ${errors.length} dòng lỗi` : ''}.`,
+        const phan = [`${imported.length} đơn thành công`];
+        if (duplicates.length) phan.push(`${duplicates.length} dòng đã import trước đó (bỏ qua)`);
+        if (errors.length)     phan.push(`${errors.length} dòng lỗi`);
+
+        // Chỉ coi là thất bại khi có lỗi THẬT mà không dòng nào vào được. Cả file toàn
+        // dòng trùng không phải lỗi — nghĩa là dữ liệu đã nằm sẵn trong hệ thống rồi.
+        const thatBai = errors.length > 0 && imported.length === 0;
+
+        res.status(thatBai ? 400 : 201).json({
+            message: `Import xong: ${phan.join(', ')}.`,
             imported_count: imported.length,
             error_count: errors.length,
+            duplicate_count: duplicates.length,
             imported,
             errors,
+            duplicates,
             new_drivers: newDrivers,
         });
     } catch (err) {
