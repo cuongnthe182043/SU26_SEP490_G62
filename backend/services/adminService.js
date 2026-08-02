@@ -14,6 +14,7 @@ const {
     normalizeOptionalText,
     normalizeNationalId,
     normalizeEmail,
+    normalizeOptionalEmail,
     assertBoolean,
     isProtectedUserRole,
 } = require('../utils/userValidation');
@@ -112,9 +113,13 @@ const getAllUsers = async () => {
 
 const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes, actorId = null) => {
     const password = generateRandomPassword();
-    if (!email || !role) {
-        throw new AdminError('Thiếu thông tin bắt buộc (email, role).', 400);
+    if (!role) {
+        throw new AdminError('Thiếu thông tin bắt buộc (role).', 400);
     }
+
+    // Email tuỳ chọn: để trống → null. Nhân viên không có email vẫn đăng nhập được
+    // bằng số điện thoại (utils/loginIdentifier).
+    const normalizedEmail = normalizeOptionalEmail(email, { errorFactory: createAdminError });
 
     const normalizedFullName = normalizeFullName(full_name || '');
     const normalizedPhone = normalizeUserPhone(phone);
@@ -131,9 +136,12 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
     const normalizedRole = normalizeManagerRole(role);
     const roleId = await ensureRoleExists(normalizedRole);
 
-    const existingAccount = await profileRepository.getAccountByEmail(email);
-    if (existingAccount) {
-        throw new AdminError('Email đã tồn tại.', 409);
+    // Chỉ kiểm tra trùng khi CÓ email — nhiều tài khoản cùng để trống là hợp lệ.
+    if (normalizedEmail) {
+        const existingAccount = await profileRepository.getAccountByEmail(normalizedEmail);
+        if (existingAccount) {
+            throw new AdminError('Email đã tồn tại.', 409);
+        }
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -141,7 +149,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
 
     try {
         const newId = await profileRepository.adminCreateUser(
-            email,
+            normalizedEmail,
             passwordHash,
             roleId,
             normalizedFullName,
@@ -158,7 +166,10 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
             normalizedNotes,
             normalizedRole === 'driver',
         );
-        emailService.sendWelcomeEmail(email, password, normalizedFullName, normalizedRole);
+        // Có email thì gửi mail chào mừng kèm mật khẩu; không có thì bỏ qua.
+        if (normalizedEmail) {
+            emailService.sendWelcomeEmail(normalizedEmail, password, normalizedFullName, normalizedRole);
+        }
         notificationGateway.broadcastToRole('manager', {
             type: 'manager.users.changed',
             action: 'created',
@@ -171,7 +182,16 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
             entityType: 'users',
             entityId: newId,
         }, { excludeUserId: actorId, displayMode: 'toast' });
-        return newId;
+
+        // Không có email thì KHÔNG có đường nào khác để giao mật khẩu khởi tạo —
+        // trả về đúng một lần cho màn quản lý hiển thị để giao tận tay. Có email rồi
+        // thì cố tình KHÔNG trả, để mật khẩu không nằm thừa trong log/response.
+        return {
+            id: newId,
+            email: normalizedEmail,
+            welcomeEmailSent: Boolean(normalizedEmail),
+            initialPassword: normalizedEmail ? null : password,
+        };
     } catch (err) {
         if (err.code === '23505') {
             throw new AdminError('Số điện thoại hoặc Email đã tồn tại.', 409);
@@ -267,7 +287,12 @@ const resetUserPassword = async (userId, currentUserId) => {
         throw new AdminError('Người dùng không tồn tại.', 404);
     }
 
-    emailService.sendPasswordResetEmail(updated.email, newPassword, existingUser.full_name);
+    // Tài khoản không có email: mật khẩu mới không có đường nào đi tới người dùng.
+    // Bỏ qua bước gửi mail rồi im lặng là khoá luôn tài khoản đó — phải trả mật khẩu
+    // về màn quản lý để giao tận tay.
+    if (updated.email) {
+        emailService.sendPasswordResetEmail(updated.email, newPassword, existingUser.full_name);
+    }
     notificationGateway.broadcastToRole('manager', {
         type: 'manager.users.changed',
         action: 'password_reset',
@@ -275,11 +300,18 @@ const resetUserPassword = async (userId, currentUserId) => {
     });
     notifyRolesSafe(['manager'], {
         title: 'Mật khẩu tài khoản đã được reset',
-        message: `Mật khẩu tài khoản ${existingUser.full_name || updated.email} vừa được reset.`,
+        message: `Mật khẩu tài khoản ${existingUser.full_name || updated.email || normalizedUserId} vừa được reset.`,
         type: 'USER_PASSWORD_RESET',
         entityType: 'users',
         entityId: normalizedUserId,
     }, { excludeUserId: normalizedCurrentUserId, displayMode: 'toast' });
+
+    return {
+        id: normalizedUserId,
+        email: updated.email ?? null,
+        resetEmailSent: Boolean(updated.email),
+        newPassword: updated.email ? null : newPassword,
+    };
 };
 
 const toggleUserStatus = async (userId, is_active, currentUserId) => {

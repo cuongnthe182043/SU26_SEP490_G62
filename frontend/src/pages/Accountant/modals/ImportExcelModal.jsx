@@ -8,6 +8,7 @@ import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { notify } from "../../../components/shared-ui/Toast";
+import { APP_NAME } from "../../../constants/brand";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
@@ -99,7 +100,7 @@ const loadXLSX = async () => import("xlsx");
 const downloadTemplate = async () => {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
-  wb.creator = "LogisCount";
+  wb.creator = APP_NAME;
   wb.created = new Date();
 
   // ─── Sheet 1: DON_HANG ───────────────────────────────────────────────────

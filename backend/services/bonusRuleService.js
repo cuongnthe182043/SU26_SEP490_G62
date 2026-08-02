@@ -29,6 +29,17 @@ const normalizePayload = (payload = {}) => {
         throw new Error('Cần nhập ít nhất Số tiền thưởng hoặc Hệ số thưởng');
     }
 
+    // Chỉ những loại dưới đây được bộ tính lương đọc. Các loại còn lại (top_trips,
+    // zero_incident, overtime, custom) trước đây vẫn lưu được nhưng không công thức nào
+    // tiêu thụ — quản lý cấu hình xong tưởng đã có hiệu lực, thực tế thưởng luôn bằng 0.
+    // Chặn ngay từ đây thay vì để rule chết nằm im trong DB.
+    if (!bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.includes(bonusType)) {
+        throw new Error(
+            `Loại thưởng "${bonusType}" chưa được bộ tính lương hỗ trợ nên sẽ không có hiệu lực. `
+            + `Hiện hỗ trợ: ${bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.join(', ')}.`,
+        );
+    }
+
     let conditionsJson = payload.conditions_json ?? null;
     if (bonusType === 'kpi') {
         const minRevenue = conditionsJson?.min_revenue != null ? Number(conditionsJson.min_revenue) : null;
@@ -36,6 +47,18 @@ const normalizePayload = (payload = {}) => {
             throw new Error('Thưởng vượt KPI cần cấu hình ngưỡng doanh thu tối thiểu (min_revenue)');
         }
         conditionsJson = { min_revenue: minRevenue };
+    }
+
+    // Thưởng ngày lễ tính bằng HỆ SỐ nhân lương ngày, không phải số tiền cố định.
+    // Hệ số < 1 nghĩa là đi làm lễ được trả ít hơn ngày thường — phần thưởng thêm
+    // (hệ số - 1) sẽ âm, tức trừ tiền tài xế, nên chặn tại đây.
+    if (bonusType === 'holiday') {
+        if (rewardMultiplier == null) {
+            throw new Error('Thưởng ngày lễ cần cấu hình Hệ số thưởng (vd 2 = hưởng 200% lương ngày)');
+        }
+        if (rewardMultiplier < 1) {
+            throw new Error('Hệ số thưởng ngày lễ phải từ 1 trở lên');
+        }
     }
 
     return {

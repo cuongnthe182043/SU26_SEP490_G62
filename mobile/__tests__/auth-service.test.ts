@@ -16,18 +16,27 @@ describe('authService', () => {
             mockApi.post = jest.fn().mockResolvedValue({ token: 'abc', user: { role: 'driver' } });
             mockSecureStore.setItemAsync.mockResolvedValue(undefined);
 
-            const result = await authService.login({ email: 'd@g62.com', password: '123456' });
+            const result = await authService.login({ identifier: 'd@g62.com', password: '123456' });
 
-            expect(mockApi.post).toHaveBeenCalledWith('/auth/login', { email: 'd@g62.com', password: '123456' });
+            expect(mockApi.post).toHaveBeenCalledWith('/auth/login', { identifier: 'd@g62.com', password: '123456' });
             expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith('auth_token', 'abc');
             expect(result.user.role).toBe('driver');
+        });
+
+        it('G62-FE-18b: login bằng số điện thoại → gửi identifier là số, không phải email', async () => {
+            mockApi.post = jest.fn().mockResolvedValue({ token: 'abc', user: { role: 'driver' } });
+            mockSecureStore.setItemAsync.mockResolvedValue(undefined);
+
+            await authService.login({ identifier: '0901000001', password: '123456' });
+
+            expect(mockApi.post).toHaveBeenCalledWith('/auth/login', { identifier: '0901000001', password: '123456' });
         });
 
         it('G62-FE-19: login role != driver → throw ApiError 403, xóa token', async () => {
             mockApi.post = jest.fn().mockResolvedValue({ token: 'abc', user: { role: 'accountant' } });
             mockSecureStore.deleteItemAsync.mockResolvedValue(undefined);
 
-            const err = await authService.login({ email: 'd@g62.com', password: '123456' }).catch(e => e);
+            const err = await authService.login({ identifier: 'd@g62.com', password: '123456' }).catch(e => e);
 
             expect(err).toBeInstanceOf(ApiError);
             expect(err.status).toBe(403);
@@ -37,7 +46,7 @@ describe('authService', () => {
         it('G62-FE-20: login sai mật khẩu → API 401 → reject', async () => {
             mockApi.post = jest.fn().mockRejectedValue(new ApiError('Sai mật khẩu', 401));
 
-            const err = await authService.login({ email: 'd@g62.com', password: 'wrong' }).catch(e => e);
+            const err = await authService.login({ identifier: 'd@g62.com', password: 'wrong' }).catch(e => e);
 
             expect(err).toBeInstanceOf(ApiError);
             expect(err.status).toBe(401);

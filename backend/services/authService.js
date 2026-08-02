@@ -5,6 +5,7 @@ const profileRepository = require('../repositories/profileRepository');
 const authRepository = require('../repositories/authRepository');
 const { OAuth2Client } = require('google-auth-library');
 const emailService = require('./emailService');
+const { classifyLoginIdentifier } = require('../utils/loginIdentifier');
 
 // KHÔNG dùng secret hardcode — thiếu JWT_SECRET là lỗi cấu hình:
 // production: chặn khởi động; dev: sinh secret ngẫu nhiên mỗi lần boot (token cũ vô hiệu) + cảnh báo
@@ -175,7 +176,8 @@ const issueSession = async (account) => {
 
 const validateActiveAccount = async (account) => {
     if (!account) {
-        throw new AuthError('Email không tồn tại.', 404);
+        // "Tài khoản" chứ không phải "Email": định danh đăng nhập giờ có thể là số điện thoại.
+        throw new AuthError('Tài khoản không tồn tại.', 404);
     }
     if (!account.role) {
         throw new AuthError('Tài khoản chưa được gán vai trò.', 403);
@@ -185,13 +187,18 @@ const validateActiveAccount = async (account) => {
     }
 };
 
-const login = async (email, password) => {
-    if (!email || !password) {
-        throw new AuthError('Email và mật khẩu là bắt buộc.', 400);
+// identifier = email HOẶC số điện thoại. Tài xế nhớ số điện thoại của mình chứ hiếm khi
+// nhớ email công ty cấp, nên chấp nhận cả hai. Tham số vẫn giữ tên cũ ở tầng gọi để
+// không phải sửa loạt nơi khác; phân loại nằm ở utils/loginIdentifier.
+const login = async (identifier, password) => {
+    if (!identifier || !password) {
+        throw new AuthError('Email hoặc số điện thoại và mật khẩu là bắt buộc.', 400);
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const account = await profileRepository.getAccountByEmail(normalizedEmail);
+    const parsed = classifyLoginIdentifier(identifier);
+    const account = parsed.type === 'phone'
+        ? await profileRepository.getAccountByPhone(parsed.localDigits, parsed.intlDigits)
+        : await profileRepository.getAccountByEmail(parsed.email);
     await validateActiveAccount(account);
 
     const validPassword = await bcrypt.compare(password, account.password_hash);
