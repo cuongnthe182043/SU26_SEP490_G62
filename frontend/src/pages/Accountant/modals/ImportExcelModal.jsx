@@ -8,6 +8,7 @@ import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { notify } from "../../../components/shared-ui/Toast";
+import { APP_NAME } from "../../../constants/brand";
 import {
   PAYMENT_OPTIONS, parseWorkbook,
 } from "../utils/parseImportRows";
@@ -68,7 +69,7 @@ const loadXLSX = async () => import("xlsx");
 const downloadTemplate = async () => {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
-  wb.creator = "LogisCount";
+  wb.creator = APP_NAME;
   wb.created = new Date();
 
   // ─── Sheet 1: DON_HANG ───────────────────────────────────────────────────
@@ -339,8 +340,8 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     // sinh ra để ngăn.
     const rowsToSend = allowDuplicates
       ? (result?.duplicates?.length
-          ? parsed.rows.filter((r) => result.duplicates.some((d) => d.row_index === r.rowIndex))
-          : parsed.rows.filter((r) => previewByRow?.[r.rowIndex]?.already_imported))
+        ? parsed.rows.filter((r) => result.duplicates.some((d) => d.row_index === r.rowIndex))
+        : parsed.rows.filter((r) => previewByRow?.[r.rowIndex]?.already_imported))
       : newRows;
     if (rowsToSend.length === 0) return;
 
@@ -367,9 +368,9 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
     const v = Object.values(previewByRow);
     return {
       alreadyImported: v.filter((x) => x.already_imported).length,
-      newRows:         v.filter((x) => !x.already_imported).length,
-      newCustomers:    v.filter((x) => !x.already_imported && x.customer?.status === "new").length,
-      ambiguous:       v.filter((x) => !x.already_imported && x.customer?.status === "ambiguous").length,
+      newRows: v.filter((x) => !x.already_imported).length,
+      newCustomers: v.filter((x) => !x.already_imported && x.customer?.status === "new").length,
+      ambiguous: v.filter((x) => !x.already_imported && x.customer?.status === "ambiguous").length,
     };
   }, [previewByRow]);
 
@@ -494,44 +495,44 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                       const info = previewByRow?.[rowIndex];
                       const daCo = Boolean(info?.already_imported);
                       return (
-                      // Dòng đã có thì làm mờ đi — nó không tham gia lần import này nữa,
-                      // để đậm ngang dòng mới thì kế toán không biết cái nào thật sự vào.
-                      <tr key={rowIndex} className={`border-t border-gray-100 dark:border-white/10 ${daCo ? "opacity-45" : ""}`}>
-                        <td className="px-3 py-1.5 text-gray-400 dark:text-gray-400">{rowIndex}</td>
-                        <td className="px-3 py-1.5">
-                          {display.date}
-                          {daCo && (
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400">đã có — bỏ qua</div>
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
-                        <td className="px-3 py-1.5">
-                          {display.customer}
-                          {!daCo && <CustomerMatchBadge info={info?.customer} />}
-                        </td>
-                        <td className="px-3 py-1.5 max-w-55">
-                          <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
-                          {display.runs > 1 ? <span className="text-gray-400 dark:text-gray-400"> (x{display.runs})</span> : null}
-                        </td>
-                        {/* Dòng tăng bo: hiện TỔNG sẽ ghi nhận kèm phép tính, để kế toán
+                        // Dòng đã có thì làm mờ đi — nó không tham gia lần import này nữa,
+                        // để đậm ngang dòng mới thì kế toán không biết cái nào thật sự vào.
+                        <tr key={rowIndex} className={`border-t border-gray-100 dark:border-white/10 ${daCo ? "opacity-45" : ""}`}>
+                          <td className="px-3 py-1.5 text-gray-400 dark:text-gray-400">{rowIndex}</td>
+                          <td className="px-3 py-1.5">
+                            {display.date}
+                            {daCo && (
+                              <div className="text-[10px] text-gray-400 dark:text-gray-400">đã có — bỏ qua</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
+                          <td className="px-3 py-1.5">
+                            {display.customer}
+                            {!daCo && <CustomerMatchBadge info={info?.customer} />}
+                          </td>
+                          <td className="px-3 py-1.5 max-w-55">
+                            <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
+                            {display.runs > 1 ? <span className="text-gray-400 dark:text-gray-400"> (x{display.runs})</span> : null}
+                          </td>
+                          {/* Dòng tăng bo: hiện TỔNG sẽ ghi nhận kèm phép tính, để kế toán
                             thấy ngay hệ thống hiểu cước là giá 1 lượt chứ không phải tổng */}
-                        <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
-                          <MoneyText amount={display.totalFee} />
-                          {display.runs > 1 && (
-                            <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
-                              {display.cargoFee.toLocaleString("vi-VN")} × {display.runs} lượt
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          {display.paymentRaw}
-                          {display.holding != null && (
-                            <div className="text-[10px] text-gray-400 dark:text-gray-400">
-                              tài giữ {display.holding.toLocaleString("vi-VN")}đ
-                            </div>
-                          )}
-                        </td>
-                      </tr>
+                          <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+                            <MoneyText amount={display.totalFee} />
+                            {display.runs > 1 && (
+                              <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
+                                {display.cargoFee.toLocaleString("vi-VN")} × {display.runs} lượt
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            {display.paymentRaw}
+                            {display.holding != null && (
+                              <div className="text-[10px] text-gray-400 dark:text-gray-400">
+                                tài giữ {display.holding.toLocaleString("vi-VN")}đ
+                              </div>
+                            )}
+                          </td>
+                        </tr>
                       );
                     })}
                   </tbody>

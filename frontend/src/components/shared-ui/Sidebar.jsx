@@ -7,6 +7,7 @@ import {
 } from "react-icons/ri";
 import Logo from "../../theme/Logo";
 import { confirmDialog } from "./confirm";
+import { APP_NAME } from "../../constants/brand";
 
 function NavItem({ navKey, label, icon: Icon, disabled, active, collapsed, onViewChange }) {
   const base =
@@ -95,7 +96,7 @@ function UserAvatar({ user, collapsed, fallbackName }) {
 
 export function Sidebar({
   navGroups,
-  brandLabel = "LogisCount",
+  brandLabel = APP_NAME,
   brandSubLabel = "",
   activeView,
   onViewChange,

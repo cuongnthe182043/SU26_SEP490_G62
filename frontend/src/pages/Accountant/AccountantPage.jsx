@@ -24,6 +24,7 @@ import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
+import { APP_NAME } from "../../constants/brand";
 
 const SpendingView = lazy(() => import("./views/SpendingView"));
 
@@ -217,7 +218,7 @@ export default function AccountantPage({ user, onLogout }) {
       <div className="flex h-screen bg-gray-50 dark:bg-[#0e1016] overflow-hidden">
         <Sidebar
           navGroups={NAV_GROUPS}
-          brandLabel="LogisCount"
+          brandLabel={APP_NAME}
           brandSubLabel="Kế toán"
           activeView={activeView}
           onViewChange={handleViewChange}

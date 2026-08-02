@@ -25,6 +25,7 @@ import CustomersView from "./views/CustomersView";
 import KpiView from "./views/KpiView";
 import AttendanceView from "./views/AttendanceView";
 import ExpensesView from "./views/ExpensesView";
+import { APP_NAME } from "../../constants/brand";
 
 const NAV_GROUPS = [
   {
@@ -182,7 +183,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       <div className="flex h-screen bg-gray-50 dark:bg-[#0e1016] overflow-hidden">
         <Sidebar
           navGroups={NAV_GROUPS}
-          brandLabel="LogisCount"
+          brandLabel={APP_NAME}
           brandSubLabel="Điều phối"
           activeView={activeView}
           onViewChange={handleViewChange}

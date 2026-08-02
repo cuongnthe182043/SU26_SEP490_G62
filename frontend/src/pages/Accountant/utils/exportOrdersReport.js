@@ -1,3 +1,4 @@
+import { APP_NAME } from "../../../constants/brand";
 // Dựng & tải file Excel báo cáo doanh thu — cùng phong cách trình bày với
 // "Template Import Don Ngoai.xlsx" (ImportExcelModal.jsx) nhưng là báo cáo XUẤT RA
 // (dữ liệu thật, có thêm chi phí + trạng thái thanh toán), không phải template nhập vào.
@@ -37,7 +38,7 @@ const fmtDate = (v) => {
 export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {}) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "LogisCount";
+  wb.creator = APP_NAME;
   wb.created = new Date();
 
   const ws = wb.addWorksheet("BAO_CAO_DOANH_THU", { views: [{ state: "frozen", ySplit: 1 }] });

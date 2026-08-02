@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { Button, Input, Spinner } from "@heroui/react";
 import { RiCloseLine, RiSendPlaneFill } from "react-icons/ri";
 import { chatbotService } from "../../services/chatbot.service";
+import { APP_NAME } from "../../constants/brand";
 
 // Ngôi sao 4 cánh lấp lánh kiểu Gemini. `gradient=false` → tô 1 màu (dùng trên nền màu).
 function GeminiSpark({ size = 22, gradient = true, color = "#fff" }) {
@@ -28,7 +29,7 @@ function GeminiSpark({ size = 22, gradient = true, color = "#fff" }) {
 const GREETING = {
   role: "assistant",
   content:
-    "Chào anh/chị 👋 Em là trợ lý dữ liệu LogisCount. Anh/chị có thể hỏi em về doanh thu, công nợ, KPI, chuyến xe, sự cố... hoặc quy trình nghiệp vụ.\n\nVí dụ: \"Doanh thu tháng này bao nhiêu?\"",
+    `Chào anh/chị 👋 Em là trợ lý dữ liệu ${APP_NAME}. Anh/chị có thể hỏi em về doanh thu, công nợ, KPI, chuyến xe, sự cố... hoặc quy trình nghiệp vụ.\n\nVí dụ: "Doanh thu tháng này bao nhiêu?"`,
 };
 
 const SUGGESTIONS = [

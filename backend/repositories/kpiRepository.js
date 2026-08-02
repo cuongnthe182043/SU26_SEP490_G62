@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const revenueAllocationRepository = require('./revenueAllocationRepository');
+const { ruleLateralSql } = require('./bonusRuleLookup');
 
 // ─── Driver: KPI cá nhân + bonus eligibility ──────────────────────────────────
 // Trả thêm:
@@ -51,26 +52,10 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
             AND lb.month            = k.month
 
          -- Rule 5 rule config
-         LEFT JOIN LATERAL (
-             SELECT id, reward_amount, conditions_json
-             FROM bonus_rules
-             WHERE vehicle_group_id = k.vehicle_group_id
-               AND bonus_type = 'kpi'
-               AND is_active  = TRUE
-             ORDER BY id
-             LIMIT 1
-         ) br_kpi ON TRUE
+         LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'kpi')}) br_kpi ON TRUE
 
          -- Rule 4 rule config
-         LEFT JOIN LATERAL (
-             SELECT id, reward_amount
-             FROM bonus_rules
-             WHERE vehicle_group_id = k.vehicle_group_id
-               AND bonus_type = 'top_revenue'
-               AND is_active  = TRUE
-             ORDER BY id
-             LIMIT 1
-         ) br_top ON TRUE
+         LEFT JOIN LATERAL (${ruleLateralSql('k.vehicle_group_id', 'top_revenue')}) br_top ON TRUE
 
          WHERE ${conditions.join(' AND ')}
          ORDER BY k.year DESC, k.month DESC`,

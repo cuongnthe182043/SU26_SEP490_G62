@@ -45,8 +45,12 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
   };
 
   const handleOk = () => {
-    if (!form.email.trim()) return showError("Vui lòng nhập email.");
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) return showError("Email không hợp lệ.");
+    // Email KHÔNG bắt buộc — nhân viên không có email vẫn đăng nhập được bằng số điện
+    // thoại. Nhưng đã nhập thì phải đúng định dạng: địa chỉ sai chính tả còn tệ hơn bỏ
+    // trống, vì mật khẩu khởi tạo sẽ gửi đi lạc mà không ai biết.
+    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) {
+      return showError("Email không hợp lệ.");
+    }
     if (!form.full_name.trim()) return showError("Vui lòng nhập họ và tên.");
     if (!/^0\d{9,10}$/.test(form.phone)) return showError("Số điện thoại không hợp lệ.");
     if (form.emergency_contact_phone && !/^0\d{9,10}$/.test(form.emergency_contact_phone)) {
@@ -63,7 +67,15 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Email *" value={form.email} onValueChange={update("email")} variant="bordered" startContent={ic(RiMailLine)} />
+            <Input
+              label="Email"
+              description="Không bắt buộc. Có email thì hệ thống gửi mật khẩu qua mail; không có thì giao tận tay."
+              placeholder="Để trống nếu nhân viên không có email"
+              value={form.email}
+              onValueChange={update("email")}
+              variant="bordered"
+              startContent={ic(RiMailLine)}
+            />
             <Select label="Vai trò *" selectedKeys={[form.role]} onSelectionChange={(k) => update("role")([...k][0])} variant="bordered" startContent={ic(RiShieldUserLine)}>
               <SelectItem key="coordinator">Coordinator (Điều phối)</SelectItem>
               <SelectItem key="accountant">Accountant (Kế toán)</SelectItem>

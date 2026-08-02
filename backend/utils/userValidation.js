@@ -120,6 +120,21 @@ const normalizeEmail = (value, { errorFactory } = {}) => {
     return normalizedEmail;
 };
 
+// Email nhân viên KHÔNG bắt buộc — phần lớn tài xế không có, ép nhập chỉ khiến người
+// dùng bịa địa chỉ giả cho qua form. Để trống → null (một cách biểu diễn duy nhất, khớp
+// ràng buộc chk_accounts_email_not_blank). CÓ nhập thì vẫn phải đúng định dạng: một địa
+// chỉ sai chính tả còn tệ hơn không có, vì mail chào mừng/đặt lại mật khẩu sẽ đi lạc mà
+// không ai biết.
+const normalizeOptionalEmail = (value, { errorFactory } = {}) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') {
+        fail('Email không hợp lệ.', 400, errorFactory);
+    }
+    if (!value.trim()) return null;
+
+    return normalizeEmail(value, { errorFactory });
+};
+
 const normalizeNationalId = (value, { errorFactory } = {}) => {
     if (value === undefined || value === null || value === '') return null;
     if (typeof value !== 'string') {
@@ -154,6 +169,7 @@ module.exports = {
     normalizeDob,
     normalizeRole,
     normalizeEmail,
+    normalizeOptionalEmail,
     normalizeNationalId,
     assertBoolean,
     isProtectedUserRole,

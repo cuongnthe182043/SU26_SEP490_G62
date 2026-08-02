@@ -9,6 +9,7 @@ import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import UserFormModal from "../modals/UserFormModal";
 import { managerService } from "../services/manager.service";
+import { APP_NAME } from "../../../constants/brand";
 
 const GENDER_LABEL = { male: "Nam", female: "Nữ", other: "Khác" };
 const ROLE_COLOR = { manager: "danger", coordinator: "primary", accountant: "secondary", driver: "warning" };
@@ -31,6 +32,15 @@ const SAMPLE_ROWS = [
     role: "driver", gender: "female", dob: "1997-08-21", city: "Da Nang",
     address: "88 Le Loi, Hai Chau", country: "VN", national_id: "079197987654", tax_code: "",
     emergency_contact_name: "Tran Van B", emergency_contact_phone: "0907654321", notes: "Lưu ý điền đầy đủ các cột bắt buộc",
+  },
+  // Dòng mẫu CỐ Ý để trống email — cho người nhập thấy ngay là được phép, thay vì
+  // phải đọc sheet hướng dẫn mới biết.
+  {
+    email: "", full_name: "Lê Tài Xế Không Email", phone: "0978123456",
+    role: "driver", gender: "male", dob: "1990-03-02", city: "Ha Noi",
+    address: "5 Tran Duy Hung, Cau Giay", country: "VN", national_id: "001190445566", tax_code: "",
+    emergency_contact_name: "Le Thi C", emergency_contact_phone: "0912000333",
+    notes: "Không có email — mật khẩu sẽ hiện ở bảng kết quả import, nhớ chép lại",
   },
 ];
 
@@ -108,6 +118,9 @@ export default function UsersView({ user }) {
   const [toggleTarget, setToggleTarget] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
+  // Mật khẩu của tài khoản không có email — chỉ tồn tại đúng một lần trong response,
+  // hiển thị riêng để quản lý chép lại trước khi đóng.
+  const [passwordHandover, setPasswordHandover] = useState(null);
   const fileInputRef = useRef(null);
 
   const fetchUsers = async () => {
@@ -161,7 +174,9 @@ export default function UsersView({ user }) {
 
   const handleDownloadSample = async () => {
     const ExcelJS = await loadExcelJS();
-    const REQUIRED_HEADERS = new Set(["email", "full_name", "phone", "role"]);
+    // email KHÔNG nằm trong danh sách bắt buộc — nhân viên không có email vẫn đăng nhập
+    // được bằng số điện thoại, ép nhập chỉ khiến người dùng bịa địa chỉ giả cho qua form.
+    const REQUIRED_HEADERS = new Set(["full_name", "phone", "role"]);
     const BRAND_BLUE = "FF2563EB";
     const HEADER_TEXT = "FFFFFFFF";
     const REQUIRED_FILL = "FFF59E0B";
@@ -170,7 +185,7 @@ export default function UsersView({ user }) {
     const thinBorder = { style: "thin", color: { argb: BORDER_COLOR } };
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = "LogisCount";
+    wb.creator = APP_NAME;
     wb.created = new Date();
 
     const ws = wb.addWorksheet("users", { views: [{ state: "frozen", ySplit: 1 }] });
@@ -234,7 +249,10 @@ export default function UsersView({ user }) {
       row.getCell(1).font = { size: 10.5 };
       row.getCell(1).alignment = { wrapText: true, vertical: "top" };
     };
-    addNote("• Cột có nền cam ở sheet \"users\" (email, full_name, phone, role) là BẮT BUỘC — thiếu sẽ bị từ chối.");
+    addNote("• Cột có nền cam ở sheet \"users\" (full_name, phone, role) là BẮT BUỘC — thiếu sẽ bị từ chối.");
+    addNote("• email KHÔNG bắt buộc. Nhân viên không có email vẫn đăng nhập được bằng số điện thoại.");
+    addNote("• Có email: hệ thống gửi mật khẩu khởi tạo qua mail. Không có email: mật khẩu hiện ở bảng kết quả import — hãy chép lại và giao tận tay, vì không xem lại được.");
+    addNote("• Đã nhập email thì phải đúng định dạng (vd nguyenvana@gmail.com) — sai sẽ bị từ chối cả dòng.");
     addNote("• Ngày sinh (dob) nhập dạng yyyy-mm-dd hoặc dd/mm/yyyy.");
     addNote("• country để trống sẽ mặc định là VN.");
     wsGuide.addRow([]);
@@ -306,20 +324,41 @@ export default function UsersView({ user }) {
 
       for (const { row, rowNumber } of importRows) {
         const payload = buildImportedPayload(row);
-        if (!payload.email || !payload.full_name || !payload.phone || !payload.role) {
-          failures.push({ row: rowNumber, message: "Thiếu email, full_name, phone hoặc role." });
+        // email KHÔNG còn bắt buộc — nhân viên không có email vẫn đăng nhập bằng SĐT.
+        if (!payload.full_name || !payload.phone || !payload.role) {
+          failures.push({ row: rowNumber, message: "Thiếu full_name, phone hoặc role." });
+          continue;
+        }
+        // Có nhập thì phải đúng định dạng: địa chỉ sai chính tả khiến mật khẩu khởi tạo
+        // gửi đi lạc mà không ai biết — tệ hơn là bỏ trống.
+        if (payload.email && !/^\S+@\S+\.\S+$/.test(payload.email)) {
+          failures.push({ row: rowNumber, message: `Email không hợp lệ: ${payload.email}` });
           continue;
         }
         try {
-          await managerService.createUser(payload);
-          successes.push({ row: rowNumber, email: payload.email });
+          const created = await managerService.createUser(payload);
+          successes.push({
+            row: rowNumber,
+            email: payload.email,
+            full_name: payload.full_name,
+            // Dòng không có email thì mật khẩu khởi tạo CHỈ có ở đây — hiển thị để quản
+            // lý chép lại, không có lần thứ hai để lấy.
+            initialPassword: created?.initial_password ?? null,
+          });
         } catch (error) {
           failures.push({ row: rowNumber, message: error.message || "Không thể tạo người dùng." });
         }
       }
 
       if (successes.length > 0) await fetchUsers();
-      setImportResult({ successes, failures, skippedRows, total: importRows.length });
+      setImportResult({
+        successes,
+        failures,
+        skippedRows,
+        total: importRows.length,
+        // Chỉ những dòng backend trả về mật khẩu (tức là không có email) mới cần giao tay
+        needPasswordHandover: successes.filter((s) => s.initialPassword),
+      });
       notify.success(`Import xong: ${successes.length} thành công, ${failures.length} lỗi.`);
     } catch (error) {
       notify.error(error.message || "Không thể import file Excel.");
@@ -334,8 +373,18 @@ export default function UsersView({ user }) {
         await managerService.updateUser(editingUser.id, formData);
         notify.success("Đã cập nhật tài khoản.");
       } else {
-        await managerService.createUser(formData);
-        notify.success("Đã tạo tài khoản.");
+        const created = await managerService.createUser(formData);
+        // Không có email → mật khẩu khởi tạo chỉ có trong response này, phải cho quản lý
+        // chép lại ngay chứ không nằm trong toast rồi biến mất.
+        if (created?.initial_password) {
+          setPasswordHandover({
+            title: "Đã tạo tài khoản — chưa có email",
+            full_name: formData.full_name,
+            password: created.initial_password,
+          });
+        } else {
+          notify.success("Đã tạo tài khoản. Thông tin đăng nhập đã gửi qua email.");
+        }
       }
       setModalOpen(false);
       fetchUsers();
@@ -360,9 +409,18 @@ export default function UsersView({ user }) {
     if (!resetTarget) return;
     setResetting(true);
     try {
-      await managerService.resetUserPassword(resetTarget.id);
+      const result = await managerService.resetUserPassword(resetTarget.id);
+      const targetName = resetTarget.full_name || resetTarget.email || `#${resetTarget.id}`;
       setResetTarget(null);
-      notify.success("Đã reset mật khẩu. Mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+      if (result?.new_password) {
+        setPasswordHandover({
+          title: "Đã reset mật khẩu — tài khoản chưa có email",
+          full_name: targetName,
+          password: result.new_password,
+        });
+      } else {
+        notify.success("Đã reset mật khẩu. Mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+      }
     } catch (error) {
       notify.error(error.message || "Không thể reset mật khẩu.");
     } finally {
@@ -452,7 +510,8 @@ export default function UsersView({ user }) {
             {(u) => (
               <TableRow key={u.id}>
                 <TableCell>{u.full_name || <span className="text-gray-300">Chưa cập nhật</span>}</TableCell>
-                <TableCell>{u.email}</TableCell>
+                {/* email có thể trống — hiện dấu gạch để phân biệt với ô lỗi render */}
+                <TableCell>{u.email || <span className="text-gray-300 dark:text-gray-600">Không có</span>}</TableCell>
                 <TableCell>{u.phone || "-"}</TableCell>
                 <TableCell>{GENDER_LABEL[u.gender] || "-"}</TableCell>
                 <TableCell>{formatDate(u.dob) || "-"}</TableCell>
@@ -516,12 +575,52 @@ export default function UsersView({ user }) {
           <ModalHeader>Reset mật khẩu</ModalHeader>
           <ModalBody>
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              Đặt lại mật khẩu cho tài khoản "{resetTarget?.full_name || resetTarget?.email}"? Mật khẩu tạm thời sẽ được gửi qua email <strong>{resetTarget?.email}</strong> — mật khẩu cũ sẽ ngừng hoạt động ngay và nhân viên phải đổi mật khẩu ở lần đăng nhập kế tiếp.
+              Đặt lại mật khẩu cho tài khoản "{resetTarget?.full_name || resetTarget?.email || `#${resetTarget?.id}`}"?
+              {resetTarget?.email ? (
+                <> Mật khẩu tạm thời sẽ được gửi qua email <strong>{resetTarget.email}</strong>.</>
+              ) : (
+                <> Tài khoản này <strong>chưa có email</strong> nên mật khẩu tạm thời sẽ hiện ra ngay sau đó để bạn giao tận tay — hãy chép lại trước khi đóng.</>
+              )}
+              {" "}Mật khẩu cũ sẽ ngừng hoạt động ngay và nhân viên phải đổi mật khẩu ở lần đăng nhập kế tiếp.
             </p>
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setResetTarget(null)} isDisabled={resetting}>Hủy</Button>
             <Button color="warning" onPress={handleResetPassword} isLoading={resetting}>Reset mật khẩu</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Mật khẩu của tài khoản chưa có email — không gửi đi đâu được, không xem lại được */}
+      <Modal isOpen={!!passwordHandover} onOpenChange={(open) => !open && setPasswordHandover(null)} size="sm">
+        <ModalContent>
+          <ModalHeader>{passwordHandover?.title}</ModalHeader>
+          <ModalBody className="gap-2">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Nhân viên <strong>{passwordHandover?.full_name}</strong> chưa có email nên hệ thống không gửi mật khẩu đi được.
+              Hãy chép lại và giao tận tay — <strong>đóng cửa sổ này là không xem lại được</strong>.
+            </p>
+            <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/10 px-3 py-2 text-center">
+              <span className="font-mono text-lg font-bold tracking-wider text-gray-900 dark:text-gray-50">
+                {passwordHandover?.password}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-400">
+              Nhân viên đăng nhập bằng số điện thoại và sẽ phải đổi mật khẩu ở lần đăng nhập đầu tiên.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              onPress={() => {
+                navigator.clipboard?.writeText(passwordHandover?.password ?? "")
+                  .then(() => notify.success("Đã chép mật khẩu."))
+                  .catch(() => notify.error("Trình duyệt không cho phép chép tự động."));
+              }}
+            >
+              Chép mật khẩu
+            </Button>
+            <Button color="primary" onPress={() => setPasswordHandover(null)}>Tôi đã lưu lại</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -542,6 +641,54 @@ export default function UsersView({ user }) {
                     {importResult.failures.slice(0, 20).map((f) => (
                       <p key={`${f.row}-${f.message}`} className="text-xs text-rose-500">Dòng {f.row}: {f.message}</p>
                     ))}
+                  </div>
+                )}
+
+                {/* Nhân viên không có email: mật khẩu khởi tạo KHÔNG được gửi đi đâu cả
+                    và không xem lại được sau khi đóng — phải cho quản lý chép ngay. */}
+                {importResult.needPasswordHandover.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/10 p-3">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">
+                      {importResult.needPasswordHandover.length} nhân viên không có email — hãy giao mật khẩu tận tay
+                    </p>
+                    <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 mb-2">
+                      Đóng cửa sổ này là không xem lại được. Nếu lỡ mất, dùng chức năng "Reset mật khẩu" để cấp lại.
+                    </p>
+                    <div className="max-h-52 overflow-y-auto rounded-lg bg-white/70 dark:bg-black/20">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-amber-800/70 dark:text-amber-200/70">
+                            <th className="px-2 py-1 font-semibold">Dòng</th>
+                            <th className="px-2 py-1 font-semibold">Họ tên</th>
+                            <th className="px-2 py-1 font-semibold">Mật khẩu tạm thời</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importResult.needPasswordHandover.map((s) => (
+                            <tr key={s.row} className="border-t border-amber-100 dark:border-amber-500/20">
+                              <td className="px-2 py-1 text-gray-600 dark:text-gray-300">{s.row}</td>
+                              <td className="px-2 py-1 text-gray-700 dark:text-gray-200">{s.full_name}</td>
+                              <td className="px-2 py-1 font-mono font-semibold text-gray-900 dark:text-gray-50">{s.initialPassword}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      className="mt-2"
+                      onPress={() => {
+                        const text = importResult.needPasswordHandover
+                          .map((s) => `${s.full_name}\t${s.initialPassword}`)
+                          .join("\n");
+                        navigator.clipboard?.writeText(text)
+                          .then(() => notify.success("Đã chép danh sách mật khẩu."))
+                          .catch(() => notify.error("Trình duyệt không cho phép chép tự động."));
+                      }}
+                    >
+                      Chép danh sách
+                    </Button>
                   </div>
                 )}
               </>
