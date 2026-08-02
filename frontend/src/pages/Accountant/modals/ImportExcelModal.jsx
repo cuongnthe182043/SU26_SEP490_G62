@@ -124,16 +124,10 @@ const downloadTemplate = async () => {
   });
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: TEMPLATE_HEADERS.length } };
 
-  TEMPLATE_EXAMPLES.forEach((rowValues, i) => {
-    const row = ws.addRow(rowValues);
-    row.eachCell((cell, colNumber) => {
-      const h = TEMPLATE_HEADERS[colNumber - 1];
-      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
-      cell.alignment = { vertical: "middle", horizontal: MONEY_COLS.has(h) ? "right" : "left" };
-      if (MONEY_COLS.has(h) && typeof cell.value === "number") cell.numFmt = "#,##0";
-      if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
-    });
-  });
+  // Sheet DON_HANG để TRỐNG (chỉ tiêu đề + dropdown). Dòng ví dụ nằm ở sheet VI_DU_MAU
+  // riêng: biển số/tên tài trong ví dụ là số liệu bịa, nếu để lẫn trong sheet dữ liệu thì
+  // kế toán tải template về nhập thêm bên dưới rồi import là dính đúng 5 dòng lỗi
+  // "xe chưa có trong hệ thống" mỗi lần.
 
   // Dropdown chọn sẵn cho cột "Thanh toán (*)" — áp dụng cho 500 dòng đầu để chừa chỗ nhập thêm
   const paymentColIndex = TEMPLATE_HEADERS.indexOf("Thanh toán (*)") + 1;
@@ -148,7 +142,39 @@ const downloadTemplate = async () => {
     };
   }
 
-  // ─── Sheet 2: HUONG_DAN ──────────────────────────────────────────────────
+  // ─── Sheet 2: VI_DU_MAU (chỉ để xem, không import) ───────────────────────
+  const wsExample = wb.addWorksheet("VI_DU_MAU", { views: [{ state: "frozen", ySplit: 2 }] });
+  wsExample.columns = TEMPLATE_HEADERS.map((h) => ({ key: h, width: Math.max(h.length + 2, 16) }));
+
+  const exNote = wsExample.addRow(["VÍ DỤ MINH HOẠ — KHÔNG IMPORT SHEET NÀY. Chép cách nhập sang sheet DON_HANG và thay bằng xe/tài xế có thật."]);
+  wsExample.mergeCells(`A1:${String.fromCharCode(64 + TEMPLATE_HEADERS.length)}1`);
+  exNote.height = 24;
+  exNote.getCell(1).font = { bold: true, color: { argb: HEADER_TEXT } };
+  exNote.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDC2626" } };
+  exNote.getCell(1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+
+  const exHeader = wsExample.addRow(TEMPLATE_HEADERS);
+  exHeader.height = 26;
+  exHeader.eachCell((cell, colNumber) => {
+    const h = TEMPLATE_HEADERS[colNumber - 1];
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REQUIRED_COLS.has(h) ? "FFF59E0B" : BRAND_BLUE } };
+    cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+  });
+
+  TEMPLATE_EXAMPLES.forEach((rowValues, i) => {
+    const row = wsExample.addRow(rowValues);
+    row.eachCell((cell, colNumber) => {
+      const h = TEMPLATE_HEADERS[colNumber - 1];
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+      cell.alignment = { vertical: "middle", horizontal: MONEY_COLS.has(h) ? "right" : "left" };
+      if (MONEY_COLS.has(h) && typeof cell.value === "number") cell.numFmt = "#,##0";
+      if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+    });
+  });
+
+  // ─── Sheet 3: HUONG_DAN ──────────────────────────────────────────────────
   const wsGuide = wb.addWorksheet("HUONG_DAN", { views: [{ showGridLines: false }] });
   wsGuide.columns = [{ width: 32 }, { width: 78 }];
 
@@ -167,11 +193,13 @@ const downloadTemplate = async () => {
     row.getCell(1).font = { size: 10.5 };
     row.getCell(1).alignment = { wrapText: true, vertical: "top" };
   };
+  addNote("• Nhập dữ liệu vào sheet DON_HANG. Sheet VI_DU_MAU chỉ để xem cách nhập — hệ thống KHÔNG đọc sheet đó.");
   addNote("• Mỗi dòng = 1 chuyến đã chạy xong. Cột có nền vàng ở sheet DON_HANG là BẮT BUỘC — thiếu sẽ bị từ chối.");
-  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy). Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
+  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy) và KHÔNG ÂM. Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
   addNote("• Nhiều điểm lấy/điểm trả trong 1 chuyến: gõ nhiều dòng trong CÙNG 1 ô (Alt+Enter) hoặc phân cách bằng dấu \"|\", vd: Kho A|Kho B.");
   addNote("• KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng.");
-  addNote("• Biển số xe và Tên tài xế PHẢI khớp đúng với xe/tài khoản đã có sẵn trong hệ thống — hệ thống KHÔNG tự tạo xe hoặc tài khoản tài xế mới nữa. Nếu chưa có, nhờ Manager thêm xe/tạo tài khoản tài xế trước khi import (dòng không khớp sẽ báo lỗi và không được import).");
+  addNote("• Biển số xe và Tên tài xế PHẢI có sẵn trong hệ thống — hệ thống KHÔNG tự tạo xe hoặc tài khoản tài xế. Nếu chưa có, nhờ Manager thêm xe/tạo tài khoản trước khi import (dòng không khớp sẽ báo lỗi và không được import).");
+  addNote("• Biển số không phân biệt hoa/thường và dấu cách/chấm/gạch: 51C-123.45 = 51c 123 45. Tên tài xế phải đúng dấu tiếng Việt (Tiến ≠ Tiền) nhưng không phân biệt hoa/thường.");
 
   wsGuide.addRow([]);
   const sectionRow = wsGuide.addRow(["Cột \"Thanh toán\" — chọn từ dropdown (đã cấu hình sẵn trong sheet DON_HANG):"]);
@@ -217,10 +245,26 @@ const downloadTemplate = async () => {
   URL.revokeObjectURL(url);
 };
 
-const parseMoney = (v) => {
-  const digits = String(v ?? "").replace(/[^\d]/g, "");
-  return digits ? Number(digits) : 0;
+// Trả { value, negative } — số âm phải BÁO LỖI chứ không được lặng lẽ đổi thành dương.
+// Trước đây "-500000" (kế toán gõ nhầm dấu, hoặc ô Excel định dạng kế toán hiển thị số
+// âm trong ngoặc) bị biến thành +500000 và ghi thẳng vào doanh thu.
+const parseMoneyCell = (v) => {
+  const s = String(v ?? "").trim();
+  const digits = s.replace(/[^\d]/g, "");
+  const negative = digits !== "" && (s.startsWith("-") || /^\(.*\)$/.test(s));
+  return { value: digits ? Number(digits) : 0, negative };
 };
+
+const parseMoney = (v) => parseMoneyCell(v).value;
+
+// Các cột tiền phụ cần kiểm tra dấu âm (cước xe kiểm riêng vì còn phải > 0)
+const MONEY_FIELD_LABELS = [
+  ["toll", "Phí cầu đường/vé"],
+  ["parking", "Phí đỗ xe/bãi"],
+  ["fuel", "Xăng dầu"],
+  ["repair", "Sửa xe"],
+  ["holding", "Tiền tài đang giữ"],
+];
 
 const parseKm = (v) => {
   const s = String(v ?? "").replace(",", ".").replace(/[^\d.]/g, "");
@@ -286,6 +330,9 @@ function parseWorkbook(wb, XLSX) {
   for (let i = 1; i < raw.length; i += 1) {
     const r = raw[i];
     if (!r || r.every((c) => String(c).trim() === "")) continue;
+    // Dòng tổng cộng của file báo cáo xuất ra — bỏ qua để file vừa export có thể mở lại
+    // và import ngược. Trước đây dòng này bị coi là dữ liệu và sinh 5 lỗi giả.
+    if (r.some((c) => stripVN(c) === "tong cong")) continue;
     const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
     const rowErr = [];
 
@@ -303,13 +350,24 @@ function parseWorkbook(wb, XLSX) {
     if (pickups.length === 0) rowErr.push("Thiếu điểm lấy hàng");
     if (deliveries.length === 0) rowErr.push("Thiếu điểm giao hàng");
 
-    const cargoFee = parseMoney(get(r, "cargo_fee"));
-    if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
+    const cargoFeeCell = parseMoneyCell(get(r, "cargo_fee"));
+    const cargoFee = cargoFeeCell.value;
+    if (cargoFeeCell.negative) rowErr.push("Cước xe không được âm");
+    else if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
+
+    // Các cột tiền còn lại: âm là sai dữ liệu, không được tự đổi dấu
+    for (const [key, label] of MONEY_FIELD_LABELS) {
+      if (parseMoneyCell(get(r, key)).negative) rowErr.push(`${label} không được âm`);
+    }
 
     const paymentRaw = String(get(r, "payment")).trim();
     const payment = PAYMENT_MAP[stripVN(paymentRaw)];
     if (!paymentRaw) rowErr.push('Thiếu cột "Thanh toán" (bắt buộc)');
-    else if (!payment) rowErr.push(`Giá trị Thanh toán không hợp lệ: "${paymentRaw}"`);
+    else if (!payment) {
+      rowErr.push(
+        `Giá trị Thanh toán không hợp lệ: "${paymentRaw}" — chỉ nhận: ${PAYMENT_OPTIONS.join(" / ")}`,
+      );
+    }
 
     const phone = String(get(r, "customer_phone")).replace(/[^\d]/g, "");
     if (phone && !/^0\d{9}$/.test(phone)) rowErr.push("SĐT khách không hợp lệ (10 số, bắt đầu bằng 0)");

@@ -19,11 +19,19 @@ const MONEY_COLS = new Set([
   "Cước xe (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
 ]);
 
+// Ngày chạy phải đọc theo giờ VN, không theo giờ máy người xuất: chuyến chạy 00:30 ngày
+// 02/05 (+07) mà máy đặt múi giờ khác sẽ ra 01/05 — lệch ngày là lệch cả kỳ doanh thu.
+const dinhDangNgayVN = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit", month: "2-digit", year: "numeric",
+});
+
 const fmtDate = (v) => {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  const phan = Object.fromEntries(dinhDangNgayVN.formatToParts(d).map((p) => [p.type, p.value]));
+  return `${phan.day}/${phan.month}/${phan.year}`;
 };
 
 export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {}) {
@@ -71,9 +79,11 @@ export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {})
     totalHolding  += Number(r.driver_holding) || 0;
   });
 
-  // Dòng tổng cộng
+  // Dòng tổng cộng — nhãn đặt ở cột ĐẦU TIÊN để trình nhập nhận ra và bỏ qua, nhờ vậy
+  // file vừa xuất mở lên sửa rồi import ngược lại được (trước đây dòng này bị đọc như
+  // một chuyến và sinh loạt lỗi giả "thiếu biển số / thiếu tài xế").
   const totalRow = ws.addRow([
-    "", "", "", "", "", "", "", "", "", "", "TỔNG CỘNG",
+    "TỔNG CỘNG", "", "", "", "", "", "", "", "", "", "",
     totalCargoFee, totalToll, totalParking, totalFuel, totalRepair, "", totalHolding, "",
   ]);
   totalRow.eachCell((cell, colNumber) => {

@@ -91,13 +91,25 @@ const findVehicleById = async (client, id) => {
     return result.rows.length > 0 ? result.rows[0].id : null;
 };
 
+// So khớp biển số BỎ QUA hoa/thường và mọi dấu phân cách. Kế toán gõ tay trong Excel
+// nên "51C-123.45", "51c 123.45", "51C12345" đều là cùng một xe — trước đây so khớp
+// nguyên văn nên chỉ lệch một dấu chấm là cả dòng bị từ chối.
+// Trả về null nếu không có, ném lỗi nếu chuẩn hoá xong lại khớp nhiều xe (không được
+// đoán bừa vì gán sai xe là sai luôn doanh thu/KPI của tài xế khác).
 const findVehicleByPlate = async (client, plate) => {
     if (!plate) return null;
     const result = await client.query(
-        `SELECT id FROM vehicles WHERE plate_number = $1 LIMIT 1`,
+        `SELECT id, plate_number FROM vehicles
+         WHERE REGEXP_REPLACE(UPPER(plate_number), '[^A-Z0-9]', '', 'g')
+             = REGEXP_REPLACE(UPPER($1), '[^A-Z0-9]', '', 'g')
+         LIMIT 2`,
         [plate.trim()]
     );
-    return result.rows.length > 0 ? result.rows[0].id : null;
+    if (result.rows.length === 0) return null;
+    if (result.rows.length > 1) {
+        throw new Error(`Biển số "${plate.trim()}" khớp nhiều xe trong hệ thống — sửa lại cho chính xác.`);
+    }
+    return result.rows[0].id;
 };
 
 const findDriverById = async (client, id) => {
@@ -113,17 +125,27 @@ const findDriverById = async (client, id) => {
     return result.rows.length > 0 ? result.rows[0].id : null;
 };
 
+// So khớp tên tài xế bỏ qua hoa/thường và gộp khoảng trắng thừa ("Phạm  Văn Tiền"
+// dán từ Excel vẫn ra đúng người). KHÔNG bỏ dấu tiếng Việt — "Tiến" và "Tiền" là hai
+// người khác nhau, bỏ dấu sẽ gán nhầm doanh thu.
+// Trùng tên thì ném lỗi thay vì lấy bừa người đầu tiên: gán sai tài xế là sai KPI,
+// sai lương, sai công nợ của cả hai người và rất khó phát hiện về sau.
 const findDriverByName = async (client, name) => {
     if (!name) return null;
     const result = await client.query(
-        `SELECT p.id
+        `SELECT p.id, p.full_name
          FROM profiles p
          JOIN drivers d ON d.profile_id = p.id
-         WHERE LOWER(p.full_name) = LOWER($1)
-         LIMIT 1`,
+         WHERE LOWER(REGEXP_REPLACE(BTRIM(p.full_name), '\\s+', ' ', 'g'))
+             = LOWER(REGEXP_REPLACE(BTRIM($1),          '\\s+', ' ', 'g'))
+         LIMIT 2`,
         [name.trim()]
     );
-    return result.rows.length > 0 ? result.rows[0].id : null;
+    if (result.rows.length === 0) return null;
+    if (result.rows.length > 1) {
+        throw new Error(`Có nhiều tài xế cùng tên "${name.trim()}" — nhập đơn bằng form thay vì Excel để chọn đúng người.`);
+    }
+    return result.rows[0].id;
 };
 
 const insertShipmentWithStopsAndExpenses = async (client, {
@@ -329,10 +351,16 @@ const createOrderWithShipments = async (orderData) => {
             prepaid_status, prepaid_method, prepaid_confirmed_by, prepaid_confirmed_at,
             derived_status, notes, partner_id, partner_name, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, $10, $11, CASE WHEN $6 > 0 THEN $2 ELSE NULL END,
-                 CASE WHEN $6 > 0 THEN NOW() ELSE NULL END,
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $10, $11,
+                 CASE WHEN $6::numeric > 0 THEN $2::int ELSE NULL END,
+                 CASE WHEN $6::numeric > 0 THEN NOW() ELSE NULL END,
                  'completed', $7, $8, $9, NOW(), NOW())
          RETURNING *`,
+        // Ép kiểu $2::int và $6::numeric là BẮT BUỘC, không phải cho đẹp: trong CASE,
+        // Postgres suy kiểu kết quả độc lập với cột đích, gặp "THEN $2 ELSE NULL" thì
+        // cả hai nhánh đều vô định nên rơi về text — trong khi $2 ở created_by lại là
+        // integer, gây "inconsistent types deduced for parameter $2" và HỎNG TOÀN BỘ
+        // việc tạo đơn ngoài (cả nhập tay lẫn import Excel).
         [
             customerId,
             orderData.created_by,
