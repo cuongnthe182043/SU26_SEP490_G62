@@ -19,51 +19,51 @@ const crypto = require('crypto');
  *     luôn cho cùng kết quả.
  */
 
-const chuan = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+const normalizeText = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 // Biển số: bỏ mọi ký tự không phải chữ/số — khớp với cách tra xe ở repository
-const chuanBienSo = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const normalizePlate = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const chuanTien = (v) => String(Math.round(Number(v ?? 0)));
+const normalizeAmount = (v) => String(Math.round(Number(v ?? 0)));
 
-const chuanDiem = (list) => (Array.isArray(list) ? list : [list])
-    .map((d) => chuan(d))
+const normalizeStops = (list) => (Array.isArray(list) ? list : [list])
+    .map((d) => normalizeText(d))
     .filter(Boolean)
     .join('>');
 
-const chuanChiPhi = (expenses = []) => (Array.isArray(expenses) ? expenses : [])
-    .map((e) => `${chuan(e.expense_type)}:${chuanTien(e.amount)}`)
+const normalizeExpenses = (expenses = []) => (Array.isArray(expenses) ? expenses : [])
+    .map((e) => `${normalizeText(e.expense_type)}:${normalizeAmount(e.amount)}`)
     .sort()
     .join(',');
 
-const chuanChuyen = (s = {}) => [
-    chuanBienSo(s.vehicle_plate),
-    chuan(s.driver_name),
-    chuanDiem(s.pickup_addresses),
-    chuanDiem(s.delivery_addresses ?? s.delivery_address),
-    chuanTien(s.cargo_fee),
-    chuan(s.cargo_name),
-    s.distance_km != null ? chuanTien(s.distance_km) : '',
-    chuan(s.payment_type),
-    chuan(s.driver_payment_state),
-    s.driver_holding_amount != null ? chuanTien(s.driver_holding_amount) : '',
-    chuanChiPhi(s.expenses),
+const normalizeShipment = (s = {}) => [
+    normalizePlate(s.vehicle_plate),
+    normalizeText(s.driver_name),
+    normalizeStops(s.pickup_addresses),
+    normalizeStops(s.delivery_addresses ?? s.delivery_address),
+    normalizeAmount(s.cargo_fee),
+    normalizeText(s.cargo_name),
+    s.distance_km != null ? normalizeAmount(s.distance_km) : '',
+    normalizeText(s.payment_type),
+    normalizeText(s.driver_payment_state),
+    s.driver_holding_amount != null ? normalizeAmount(s.driver_holding_amount) : '',
+    normalizeExpenses(s.expenses),
 ].join('|');
 
 /**
  * @param {object} order payload một dòng Excel (như gửi lên /accountant/orders/import)
  * @returns {string} chuỗi hex SHA-256
  */
-const taoVanTayImport = (order = {}) => {
-    const phan = [
-        chuan(order.completed_at || order.order_date),
-        chuan(order.customer_phone),
-        chuan(order.customer_name),
-        chuanTien(order.prepaid_amount),
-        ...(order.shipments || []).map(chuanChuyen),
+const buildImportFingerprint = (order = {}) => {
+    const parts = [
+        normalizeText(order.completed_at || order.order_date),
+        normalizeText(order.customer_phone),
+        normalizeText(order.customer_name),
+        normalizeAmount(order.prepaid_amount),
+        ...(order.shipments || []).map(normalizeShipment),
     ].join('||');
 
-    return crypto.createHash('sha256').update(phan, 'utf8').digest('hex');
+    return crypto.createHash('sha256').update(parts, 'utf8').digest('hex');
 };
 
-module.exports = { taoVanTayImport };
+module.exports = { buildImportFingerprint };

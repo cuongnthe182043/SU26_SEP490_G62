@@ -18,7 +18,7 @@ import { TripStatusBadge }      from '@/components/trip-status-badge';
 import { ActiveTripSkeleton }   from '@/components/skeleton';
 import { appTheme }             from '@/theme/app-theme';
 import { appEvents }            from '@/lib/app-events';
-import { nhanThoiDiem }         from '@/lib/offline-cache';
+import { formatCachedAt }         from '@/lib/offline-cache';
 import { useActiveTrip }        from '@/hooks/use-active-trip';
 import { useCompletionProof }   from '@/hooks/use-completion-proof';
 import { useLoadingProof }      from '@/hooks/use-loading-proof';
@@ -502,8 +502,8 @@ function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequ
 
 // ─── Active trip content ──────────────────────────────────────────────────────
 
-function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
-    trip: ActiveTrip; refresh: () => void; ngoaiTuyen?: boolean; luuLuc?: number | null;
+function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
+    trip: ActiveTrip; refresh: () => void; ngoaiTuyen?: boolean; savedAt?: number | null;
 }) {
     const { showToast }   = useToast();
     const { showAlert }   = useAppAlert();
@@ -586,10 +586,10 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
 
     // Vừa có mạng trở lại sau khi mất sóng — tải lại để trạng thái chuyến khớp với
     // server, vì lúc offline mọi cập nhật realtime (WebSocket) đều không tới được.
-    const { vuaOnlineLai } = useNetwork();
+    const { reconnectedAt } = useNetwork();
     useEffect(() => {
-        if (vuaOnlineLai > 0) refresh();
-    }, [vuaOnlineLai]);
+        if (reconnectedAt > 0) refresh();
+    }, [reconnectedAt]);
 
     // Hàng đợi offline vừa gửi xong việc tồn — trạng thái chuyến trên server đã đổi,
     // phải tải lại để màn hình không còn hiện bước cũ.
@@ -699,7 +699,7 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
             >
                 {/* Dữ liệu lấy từ bộ nhớ đệm — nói rõ mốc thời gian để tài xế không
                     tưởng đang xem trạng thái mới nhất của chuyến. */}
-                {ngoaiTuyen && luuLuc ? (
+                {ngoaiTuyen && savedAt ? (
                     <XStack
                         alignItems="center" gap={7}
                         paddingHorizontal={12} paddingVertical={8}
@@ -709,7 +709,7 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
                     >
                         <Clock size={13} color={appTheme.colors.warningText} />
                         <Text fontSize={12} color={appTheme.colors.warningText} flex={1}>
-                            Đang xem dữ liệu ngoại tuyến — cập nhật lúc {nhanThoiDiem(luuLuc)}
+                            Đang xem dữ liệu ngoại tuyến — cập nhật lúc {formatCachedAt(savedAt)}
                         </Text>
                     </XStack>
                 ) : null}
@@ -1058,7 +1058,7 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, luuLuc }: {
 
 
 export function ActiveTripScreen() {
-    const { trip, isLoading, error, refresh, ngoaiTuyen, luuLuc } = useActiveTrip();
+    const { trip, isLoading, error, refresh, ngoaiTuyen, savedAt } = useActiveTrip();
 
     if (isLoading) {
         return (
@@ -1091,7 +1091,7 @@ export function ActiveTripScreen() {
     return (
         <>
             <StatusBar style="dark" />
-            <ActiveTripContent trip={trip} refresh={refresh} ngoaiTuyen={ngoaiTuyen} luuLuc={luuLuc} />
+            <ActiveTripContent trip={trip} refresh={refresh} ngoaiTuyen={ngoaiTuyen} savedAt={savedAt} />
         </>
     );
 }

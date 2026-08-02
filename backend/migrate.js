@@ -27,14 +27,14 @@ const logger = require('./config/logger');
  *    chạy ghi bù ở bước sau.
  */
 
-const THU_MUC = path.join(__dirname, 'migrations');
-const KHOA_MIGRATION = 62999;   // id cố định cho pg_advisory_lock
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const MIGRATION_LOCK_ID = 62999;   // id cố định cho pg_advisory_lock
 
 // Kết nối riêng, KHÔNG kế thừa statement_timeout của pool app
-function taoKetNoi() {
-    const chayTrenCloudRun = Boolean(process.env.K_SERVICE);
+function createClient() {
+    const onCloudRun = Boolean(process.env.K_SERVICE);
     const config = {
-        host: chayTrenCloudRun
+        host: onCloudRun
             ? `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`
             : (process.env.DB_HOST || '127.0.0.1'),
         port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
@@ -45,14 +45,14 @@ function taoKetNoi() {
         connectionTimeoutMillis: 15000,
         // statement_timeout: KHÔNG đặt — migration được phép chạy lâu
     };
-    const dungSsl = process.env.DB_SSL && String(process.env.DB_SSL).toLowerCase() !== 'false';
-    if (dungSsl) config.ssl = { rejectUnauthorized: false };
+    const useSsl = process.env.DB_SSL && String(process.env.DB_SSL).toLowerCase() !== 'false';
+    if (useSsl) config.ssl = { rejectUnauthorized: false };
     return new Client(config);
 }
 
 function docDanhSachFile() {
-    if (!fs.existsSync(THU_MUC)) return [];
-    return fs.readdirSync(THU_MUC)
+    if (!fs.existsSync(MIGRATIONS_DIR)) return [];
+    return fs.readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith('.sql'))
         // Tên file bắt đầu bằng ngày (YYYYMMDD) nên sắp theo tên là đúng thứ tự thời gian
         .sort();
@@ -70,13 +70,13 @@ async function runMigrations() {
         return { applied: [] };
     }
 
-    const client = taoKetNoi();
+    const client = createClient();
     await client.connect();
 
-    const daAp = [];
+    const applied = [];
     try {
         // Chờ tới khi lấy được khoá — instance khác đang chạy thì đứng đây
-        await client.query('SELECT pg_advisory_lock($1)', [KHOA_MIGRATION]);
+        await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
 
         // DB cũ có thể chưa có bảng này (tạo trước khi cơ chế migration ra đời)
         await client.query(`
@@ -87,19 +87,19 @@ async function runMigrations() {
         `);
 
         const { rows } = await client.query('SELECT filename FROM schema_migrations');
-        const daCo = new Set(rows.map((r) => r.filename));
+        const existing = new Set(rows.map((r) => r.filename));
 
-        const canAp = danhSach.filter((f) => !daCo.has(f));
-        if (canAp.length === 0) {
+        const toApply = danhSach.filter((f) => !existing.has(f));
+        if (toApply.length === 0) {
             logger.info(`[migrate] Schema đã mới nhất (${danhSach.length} migration)`);
             return { applied: [] };
         }
 
-        logger.info(`[migrate] Cần áp ${canAp.length} migration: ${canAp.join(', ')}`);
+        logger.info(`[migrate] Cần áp ${toApply.length} migration: ${toApply.join(', ')}`);
 
-        for (const ten of canAp) {
-            const sql = fs.readFileSync(path.join(THU_MUC, ten), 'utf8');
-            const batDau = Date.now();
+        for (const fileName of toApply) {
+            const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, fileName), 'utf8');
+            const startedAt = Date.now();
             try {
                 // File tự có BEGIN/COMMIT — chạy nguyên văn
                 await client.query(sql);
@@ -107,24 +107,24 @@ async function runMigrations() {
                 // Lỗi giữa chừng: rollback phần dở dang rồi ném ra để container không lên.
                 // Schema sai mà app vẫn chạy còn nguy hiểm hơn là chết hẳn ở đây.
                 await client.query('ROLLBACK').catch(() => {});
-                logger.error(`[migrate] LỖI ở ${ten}: ${err.message}`);
-                throw new Error(`Migration "${ten}" thất bại: ${err.message}`);
+                logger.error(`[migrate] LỖI ở ${fileName}: ${err.message}`);
+                throw new Error(`Migration "${fileName}" thất bại: ${err.message}`);
             }
 
             // Ghi bù nếu file quên tự đăng ký
             await client.query(
                 `INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING`,
-                [ten],
+                [fileName],
             );
 
-            daAp.push(ten);
-            logger.info(`[migrate] OK ${ten} (${Date.now() - batDau}ms)`);
+            applied.push(fileName);
+            logger.info(`[migrate] OK ${fileName} (${Date.now() - startedAt}ms)`);
         }
 
-        logger.info(`[migrate] Xong — đã áp ${daAp.length} migration`);
-        return { applied: daAp };
+        logger.info(`[migrate] Xong — đã áp ${applied.length} migration`);
+        return { applied: applied };
     } finally {
-        await client.query('SELECT pg_advisory_unlock($1)', [KHOA_MIGRATION]).catch(() => {});
+        await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID]).catch(() => {});
         await client.end().catch(() => {});
     }
 }

@@ -33,6 +33,11 @@ export const accountantService = {
   createOrder: (data) =>
     apiRequest(`${BASE}/orders`, { method: "POST", body: data }),
 
+  // Đối chiếu trước khi import: mỗi dòng khớp khách nào / tạo khách mới / trùng tên,
+  // và đã từng import chưa. Chỉ đọc, không tạo gì.
+  previewImport: (orders) =>
+    apiRequest(`${BASE}/orders/import/preview`, { method: "POST", body: { orders } }),
+
   // allowDuplicates = true khi kế toán đã xem danh sách dòng trùng và vẫn muốn nhập lại
   importOrders: (orders, allowDuplicates = false) =>
     apiRequest(`${BASE}/orders/import`, {

@@ -12,10 +12,10 @@ type State = {
     /** Đang hiện dữ liệu đệm vì không gọi được server */
     ngoaiTuyen: boolean;
     /** Mốc lưu đệm — null khi dữ liệu vừa lấy từ server */
-    luuLuc: number | null;
+    savedAt: number | null;
 };
 
-const KHOA = 'active-trip';
+const CACHE_KEY = 'active-trip';
 
 /**
  * Quyết định làm gì khi gọi server hỏng. Tách ra hàm thuần để kiểm thử được —
@@ -28,9 +28,9 @@ const KHOA = 'active-trip';
  * Lỗi server (403/500) mà hiện dữ liệu đệm kèm chữ "ngoại tuyến" là nói dối người
  * dùng: dữ liệu vẫn tải được, chỉ là tài khoản không có quyền hoặc server hỏng.
  */
-export function quyetDinhKhiLoi(err: unknown, coDem: boolean): 'ngoai-tuyen' | 'bao-loi' {
-    const laLoiMang = err instanceof ApiError && err.status === 0;
-    return laLoiMang && coDem ? 'ngoai-tuyen' : 'bao-loi';
+export function decideOnError(err: unknown, hasCache: boolean): 'ngoai-tuyen' | 'bao-loi' {
+    const isNetworkError = err instanceof ApiError && err.status === 0;
+    return isNetworkError && hasCache ? 'ngoai-tuyen' : 'bao-loi';
 }
 
 /**
@@ -42,7 +42,7 @@ export function quyetDinhKhiLoi(err: unknown, coDem: boolean): 'ngoai-tuyen' | '
  */
 export function useActiveTrip() {
     const [state, setState] = useState<State>({
-        trip: null, isLoading: true, error: null, ngoaiTuyen: false, luuLuc: null,
+        trip: null, isLoading: true, error: null, ngoaiTuyen: false, savedAt: null,
     });
 
     const conSong = useRef(true);
@@ -50,11 +50,11 @@ export function useActiveTrip() {
 
     const fetch = useCallback(async () => {
         // Dựng từ đệm trước để không có màn trắng
-        const cache = await offlineCache.doc<ActiveTrip | null>(KHOA);
+        const cache = await offlineCache.read<ActiveTrip | null>(CACHE_KEY);
         if (cache && conSong.current) {
             setState((s) => (s.trip ? s : {
                 trip: cache.data, isLoading: false, error: null,
-                ngoaiTuyen: true, luuLuc: cache.luuLuc,
+                ngoaiTuyen: true, savedAt: cache.savedAt,
             }));
         }
 
@@ -62,21 +62,21 @@ export function useActiveTrip() {
         try {
             const { trip } = await tripService.getActiveTrip();
             if (!conSong.current) return;
-            setState({ trip, isLoading: false, error: null, ngoaiTuyen: false, luuLuc: null });
-            await offlineCache.ghi(KHOA, trip);
+            setState({ trip, isLoading: false, error: null, ngoaiTuyen: false, savedAt: null });
+            await offlineCache.write(CACHE_KEY, trip);
         } catch (err) {
             if (!conSong.current) return;
 
             // Mất mạng mà có dữ liệu đệm → giữ nguyên màn hình, chỉ đánh dấu ngoại tuyến.
             // Lỗi khác (403/500) thì phải báo thật, không được giả vờ là dữ liệu cũ.
-            if (quyetDinhKhiLoi(err, Boolean(cache)) === 'ngoai-tuyen' && cache) {
+            if (decideOnError(err, Boolean(cache)) === 'ngoai-tuyen' && cache) {
                 setState((s) => ({
                     ...s,
                     trip: s.trip ?? cache.data,
                     isLoading: false,
                     error: null,
                     ngoaiTuyen: true,
-                    luuLuc: cache.luuLuc,
+                    savedAt: cache.savedAt,
                 }));
                 return;
             }

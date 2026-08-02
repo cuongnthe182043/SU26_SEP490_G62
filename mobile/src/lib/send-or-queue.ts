@@ -10,16 +10,16 @@ import { offlineQueue } from '@/lib/offline-queue';
  *     hiển thị, KHÔNG xếp hàng (gửi lại cũng hỏng y như vậy)
  *
  * Trả về:
- *   { daGui: true, ketQua }        — gửi thẳng thành công
- *   { daGui: false, xepHang: true } — mất mạng, đã cất vào hàng đợi
+ *   { sent: true, result }        — gửi thẳng thành công
+ *   { sent: false, queued: true } — mất mạng, đã cất vào hàng đợi
  */
-export type KetQuaGuiHoacXepHang<T> =
-    | { daGui: true; ketQua: T }
-    | { daGui: false; xepHang: true };
+export type SendOrQueueResult<T> =
+    | { sent: true; result: T }
+    | { sent: false; queued: true };
 
-export async function guiHoacXepHang<T>(
+export async function sendOrQueue<T>(
     guiNgay: () => Promise<T>,
-    xepHang: {
+    queued: {
         path: string;
         method?: 'POST' | 'PATCH';
         fields?: Record<string, string>;
@@ -27,15 +27,15 @@ export async function guiHoacXepHang<T>(
         photoField?: string;
         label: string;
     },
-): Promise<KetQuaGuiHoacXepHang<T>> {
+): Promise<SendOrQueueResult<T>> {
     try {
-        const ketQua = await guiNgay();
-        return { daGui: true, ketQua };
+        const result = await guiNgay();
+        return { sent: true, result };
     } catch (err) {
-        const laLoiMang = err instanceof ApiError && err.status === 0;
-        if (!laLoiMang) throw err;
+        const isNetworkError = err instanceof ApiError && err.status === 0;
+        if (!isNetworkError) throw err;
 
-        await offlineQueue.them(xepHang);
-        return { daGui: false, xepHang: true };
+        await offlineQueue.enqueue(queued);
+        return { sent: false, queued: true };
     }
 }

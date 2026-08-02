@@ -754,9 +754,9 @@ export function ReceiptDetailScreen() {
     // ('pending'/'processing') mà cho sửa thì con số họ nhìn đổi ngay dưới tay — duyệt
     // theo màn hình cũ trong khi DB đã là số khác. Backend chặn 409, đây là lớp giao diện
     // khớp theo để tài không bấm rồi ăn lỗi.
-    const dangChoXuLy = receipt.request_status === 'pending' || receipt.request_status === 'processing';
+    const isUnderReview = receipt.request_status === 'pending' || receipt.request_status === 'processing';
     const canEditExpense = (expense: ExpenseItem) =>
-        !isApproved && !dangChoXuLy && expense.status !== 'approved';
+        !isApproved && !isUnderReview && expense.status !== 'approved';
     // Chi phí phát sinh hiển thị ở khối này là chi phí của CHUYẾN NÀY (receipt.expenses).
     //
     // Trước đây tổng lấy từ order_shipments (cộng chi phí của MỌI chuyến trong đơn) trong
@@ -1060,7 +1060,7 @@ export function ReceiptDetailScreen() {
 
                                             {/* Điều phối đang xem xét thì khoá sửa/xoá — nói lý do
                                                 thay vì để nút biến mất không giải thích. */}
-                                            {dangChoXuLy && receipt.expenses.length > 0 ? (
+                                            {isUnderReview && receipt.expenses.length > 0 ? (
                                                 <Text fontSize={11} color={appTheme.colors.warningText} paddingBottom={6}>
                                                     Đang chờ điều phối xử lý — không sửa/xoá chi phí lúc này. Nếu cần đổi, liên hệ điều phối để họ trả lại yêu cầu.
                                                 </Text>

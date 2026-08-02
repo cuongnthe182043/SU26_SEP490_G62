@@ -9,6 +9,7 @@ router.get('/customer-by-phone', accountantOrderController.findCustomerByPhone);
 router.get('/export', accountantOrderController.exportOrdersReport);
 router.get('/', accountantOrderController.getOrders);
 router.post('/', accountantOrderController.createOrder);
+router.post('/import/preview', accountantOrderController.previewImport);
 router.post('/import', accountantOrderController.importOrders);
 router.get('/:id/shipments', accountantOrderController.getShipments);
 router.put('/:id', accountantOrderController.updateOrder);
