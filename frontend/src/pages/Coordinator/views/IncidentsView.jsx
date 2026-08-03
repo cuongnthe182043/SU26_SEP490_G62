@@ -47,6 +47,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [resolvingFailed, setResolvingFailed] = useState(false);
+  const [cancellingDamaged, setCancellingDamaged] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [detailIncident, setDetailIncident] = useState(null);
   const [form, setForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
@@ -167,6 +168,29 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
       notify.error(error.message || "Không thể xử lý chuyến giao thất bại.");
     } finally {
       setResolvingFailed(false);
+    }
+  };
+
+  // Hàng hóa hư hại: outcome duy nhất là hủy dứt điểm chuyến — cho phép hủy dù đã lấy
+  // hàng. Backend tự đóng sự cố và tính lại trạng thái đơn (completed/partial/cancelled)
+  // trong cùng transaction, nên đơn không còn bị "treo" sau khi xử lý sự cố xong.
+  const handleCancelDamagedShipment = async (reason) => {
+    if (!selectedIncident?.id) return;
+    if (!reason?.trim()) {
+      notify.error("Nhập lý do hủy chuyến vào ô Phản hồi / ghi chú.");
+      return;
+    }
+    setCancellingDamaged(true);
+    try {
+      const res = await coordinatorService.cancelDamagedShipment(selectedIncident.id, reason.trim());
+      closeModal();
+      loadIncidents();
+      onIncidentResolved?.();
+      notify.success(res?.message || "Đã hủy chuyến do hàng hóa hư hại.");
+    } catch (error) {
+      notify.error(error.message || "Không thể hủy chuyến.");
+    } finally {
+      setCancellingDamaged(false);
     }
   };
 
@@ -351,6 +375,8 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
         setCompensation={setCompensation}
         onResolveFailed={handleResolveFailed}
         resolvingFailed={resolvingFailed}
+        onCancelDamagedShipment={handleCancelDamagedShipment}
+        cancellingDamaged={cancellingDamaged}
       />
 
       <IncidentDetailModal

@@ -550,7 +550,73 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     return incidentRepository.getIncidentById(incidentId);
 };
 
+// Coordinator hủy chuyến vì hàng hóa hư hại (outcome duy nhất được hỗ trợ cho sự cố
+// cargo_damage — không có nhánh "vẫn giao tiếp"/"hoàn hàng"/"giao lại"). Cho phép hủy
+// bất kể đã lấy hàng hay chưa. Khác cancelShipment thường (coordinatorService), hàm này
+// còn tính lại trạng thái đơn ngay trong transaction để đơn không bị "treo" — đây chính
+// là mắt xích còn thiếu trước đây: resolve incident cargo_damage không hề đụng tới
+// shipment/order, nên chuyến vẫn kẹt ở trạng thái cũ dù sự cố đã "đóng".
+const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
+    if (!reason || !reason.trim()) {
+        throw new Error('Lý do hủy chuyến là bắt buộc');
+    }
+
+    const incident = await incidentRepository.getIncidentById(incidentId);
+    if (!incident) throw new Error('Sự cố không tồn tại');
+    if (incident.incident_type !== 'cargo_damage') {
+        throw new Error('Chỉ áp dụng cho sự cố loại "Hàng hóa bị hỏng"');
+    }
+    if (!incident.shipment_id) {
+        throw new Error('Sự cố này không gắn với chuyến nào để hủy');
+    }
+
+    let updatedShipment;
+    try {
+        updatedShipment = await tripRepository.cancelShipmentForCargoDamage({
+            shipmentId: incident.shipment_id,
+            reason: reason.trim(),
+            coordinatorId,
+        });
+    } catch (err) {
+        if (err.message === 'SHIPMENT_NOT_FOUND') throw new Error('Chuyến không tồn tại');
+        if (err.message === 'ALREADY_TERMINAL') throw new Error('Chuyến đã hoàn thành hoặc đã hủy, không thể hủy thêm');
+        throw err;
+    }
+
+    // Đóng luôn sự cố cùng lúc — best-effort, không chặn kết quả hủy chuyến nếu lỗi.
+    await incidentRepository.resolveCargoDamageIncident(incidentId, {
+        resolvedBy: coordinatorId,
+        resolution: `Đã hủy chuyến #${incident.shipment_id} do hàng hóa hư hại: ${reason.trim()}`,
+    }).catch(() => {});
+
+    if (incident.reported_by) {
+        notificationService.createForUser(incident.reported_by, {
+            title: 'Chuyến đã bị hủy do hàng hóa hư hại',
+            message: `Chuyến #${incident.shipment_id} đã bị hủy. Lý do: ${reason.trim()}`,
+            type: 'TRIP_CANCELLED',
+            entityType: 'shipments',
+            entityId: incident.shipment_id,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        try {
+            notificationGateway.broadcastToUser(incident.reported_by, {
+                type: 'trip.cancelled',
+                shipmentId: Number(incident.shipment_id),
+                orderId: incident.order_id ?? null,
+                reason: reason.trim(),
+            });
+        } catch { /* realtime failure must not abort the cancellation */ }
+    }
+
+    broadcastCoordinatorIncidentChange('status_updated', incidentId);
+
+    return {
+        incident: await incidentRepository.getIncidentById(incidentId),
+        shipment: updatedShipment,
+    };
+};
+
 module.exports = {
     createIncident, createIncidentByStaff, getMyCounts, getMyIncidents, getIncidentDetail,
-    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus, cancelDamagedShipment,
 };
