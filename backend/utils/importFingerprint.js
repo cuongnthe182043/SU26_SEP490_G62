@@ -42,6 +42,7 @@ const normalizeShipment = (s = {}) => [
     normalizeStops(s.pickup_addresses),
     normalizeStops(s.delivery_addresses ?? s.delivery_address),
     normalizeAmount(s.cargo_fee),
+    s.settled_fee != null ? normalizeAmount(s.settled_fee) : '',
     normalizeText(s.cargo_name),
     s.distance_km != null ? normalizeAmount(s.distance_km) : '',
     normalizeText(s.payment_type),
