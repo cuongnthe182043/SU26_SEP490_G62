@@ -12,8 +12,8 @@ import { parseWorkbook, parseRuns, parseHoldingCell } from "./parseImportRows";
 const HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)",
-  "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
 /** Dựng workbook từ các dòng dữ liệu thô rồi chạy qua đúng parser thật */
@@ -28,12 +28,12 @@ const readSheet = (...rows) => {
 /** Dòng chuẩn; truyền object để ghi đè từng ô theo chỉ số cột */
 const makeRow = (o = {}) => {
   const r = ["22/07/2026", "29H-961.45", "Toàn", "", "", "Kho A", "Kho B", "", "", "",
-    250000, "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
+    250000, "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
   for (const [i, v] of Object.entries(o)) r[Number(i)] = v;
   return r;
 };
 
-const FEE_COL = 10, SO_LUOT = 8, GIU = 16, TOLL = 11;
+const FEE_COL = 10, SETTLED = 11, SO_LUOT = 8, GIU = 17, TOLL = 12, PAY = 16;
 
 describe("parseRuns — số lượt", () => {
   it("ô trống là 1 lượt", () => expect(parseRuns("")).toBe(1));
@@ -141,12 +141,12 @@ describe("Các kiểm tra sẵn có không bị hỏng", () => {
   });
 
   it("thanh toán sai giá trị thì liệt kê giá trị hợp lệ", () => {
-    const { errors } = readSheet(makeRow({ 15: "Chưa chốt phiếu thu" }));
+    const { errors } = readSheet(makeRow({ [PAY]: "Chưa chốt phiếu thu" }));
     expect(errors[0]).toMatch(/chỉ nhận: CK công ty/);
   });
 
   it("dòng TỔNG CỘNG của file báo cáo xuất ra bị bỏ qua", () => {
-    const totalRow = new Array(18).fill("");
+    const totalRow = new Array(19).fill("");
     totalRow[0] = "TỔNG CỘNG";
     const { rows, errors } = readSheet(makeRow(), totalRow);
     expect(errors).toEqual([]);
@@ -156,5 +156,49 @@ describe("Các kiểm tra sẵn có không bị hỏng", () => {
   it("số lượt sai định dạng thì báo lỗi thay vì tách nhầm 100 chuyến", () => {
     const { errors } = readSheet(makeRow({ [SO_LUOT]: "2.5" }));
     expect(errors[0]).toMatch(/Số lượt/);
+  });
+});
+
+describe("Giá chốt — sửa giá sau khi thống nhất lại", () => {
+  it("để trống thì giá chốt = giá báo, hành vi y như cũ", () => {
+    const { rows } = readSheet(makeRow());
+    expect(rows[0].order.shipments[0].cargo_fee).toBe(250000);
+    expect(rows[0].order.shipments[0].settled_fee).toBeNull();
+  });
+
+  it("chốt CAO hơn giá báo: doanh thu và công nợ theo giá chốt", () => {
+    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1200000 }));
+    expect(errors).toEqual([]);
+    const s = rows[0].order.shipments[0];
+    expect(s.cargo_fee).toBe(1000000);      // giá báo giữ nguyên để đối chiếu
+    expect(s.settled_fee).toBe(1200000);    // giá chốt → actual_price
+    expect(s.driver_holding_amount).toBe(1200000);
+  });
+
+  it("chốt THẤP hơn giá báo cũng được (giảm giá khách quen)", () => {
+    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 800000, [GIU]: 800000 }));
+    expect(errors).toEqual([]);
+    expect(rows[0].order.shipments[0].settled_fee).toBe(800000);
+  });
+
+  it("kiểm tra tiền tài giữ so với GIÁ CHỐT chứ không phải giá báo", () => {
+    // Đúng tình huống thật: báo 1tr, chốt 1tr2, tài cầm 1tr2 → phải cho qua
+    expect(readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1200000 })).errors).toEqual([]);
+    // Cầm quá cả giá chốt thì vẫn chặn
+    const { errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1500000 }));
+    expect(errors[0]).toMatch(/giá chốt 1.200.000/);
+  });
+
+  it("giá chốt âm bị từ chối", () => {
+    const { errors } = readSheet(makeRow({ [SETTLED]: "-500000" }));
+    expect(errors[0]).toMatch(/Giá chốt không được âm/);
+  });
+
+  it("tăng bo: giá chốt cũng là giá MỘT lượt", () => {
+    const { rows } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [SO_LUOT]: 2 }));
+    const ships = rows[0].order.shipments;
+    expect(ships).toHaveLength(2);
+    expect(ships.every((x) => x.settled_fee === 1200000)).toBe(true);
+    expect(rows[0].display.totalFee).toBe(2400000);
   });
 });
