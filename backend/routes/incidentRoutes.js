@@ -25,6 +25,7 @@ router.get('/shipment/:shipmentId',      driverOnly,      incidentController.get
 router.get('/:id',                       driverOnly,      incidentController.getIncidentDetail);
 router.patch('/:id',                     driverOnly,      incidentController.updateMyIncident);
 router.patch('/:id/status',              staffOnly,       incidentController.updateIncidentStatus);
+router.post('/:id/cancel-shipment',      staffOnly,       incidentController.cancelDamagedShipment);
 
 // Coordinator/Manager tự tạo sự cố (VD: khách gọi điện báo, phát hiện qua giám sát)
 router.post('/staff',                    staffOnly,       handleUpload(uploadIncident.array('images', 3)), incidentController.createIncidentByStaff);

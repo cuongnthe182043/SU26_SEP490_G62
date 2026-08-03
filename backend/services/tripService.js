@@ -368,12 +368,17 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
 
     const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
 
+    // isFinal (dùng để chọn câu chữ thông báo) và derived_status của đơn (dùng để đóng
+    // đơn/báo coordinator) là 2 việc KHÁC nhau, tính riêng: isFinalShipment còn đòi hỏi
+    // các chuyến khác đã nhập actual_distance_km (sẵn sàng đối soát giá), trong khi đơn
+    // vẫn nên đóng (completed/partial/cancelled) ngay khi mọi chuyến kết thúc, bất kể km
+    // đã nhập hay chưa — km chỉ ảnh hưởng độ chính xác giá, không phải điều kiện đóng đơn.
     const isFinal = await tripRepository.isFinalShipment(tripId);
-    if (isFinal) {
-        await tripRepository.markOrderCompleted(trip.order_id);
+    const newOrderStatus = await tripRepository.recomputeOrderDerivedStatus(trip.order_id);
+    if (newOrderStatus) {
         notificationGateway.broadcastToRole('coordinator', {
             type: 'coordinator.order.completed',
-            action: 'completed',
+            action: newOrderStatus,
             orderId: trip.order_id,
         });
     }
