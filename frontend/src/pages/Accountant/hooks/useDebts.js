@@ -57,12 +57,14 @@ export function useDebts() {
 
   const customerDebts = grouped.filter((d) => d.debt_type === "customer");
   const driverDebts   = grouped.filter((d) => d.debt_type === "driver");
+  const partnerDebts  = grouped.filter((d) => d.debt_type === "partner");
 
   return {
     stats, statsLoading,
     debtType, setDebtType,
     customerDebts,
     driverDebts,
+    partnerDebts,
     groupedLoading,
     refetch,
   };

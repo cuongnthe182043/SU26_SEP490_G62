@@ -5,7 +5,7 @@ import {
   Input, Select, SelectItem,
 } from "@heroui/react";
 import {
-  RiUserLine, RiTruckLine, RiAlertLine,
+  RiUserLine, RiTruckLine, RiAlertLine, RiBuilding2Line, RiAddLine, RiPencilLine, RiDeleteBinLine,
   RiArrowRightSLine, RiArrowDownSLine,
   RiBankCard2Line, RiGroupLine,
   RiCheckboxCircleLine, RiTimeLine,
@@ -21,6 +21,8 @@ import { PaginationBar } from "../components/shared/PaginationBar";
 import { useDebts } from "../hooks/useDebts";
 import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
+import { confirmDialog } from "../../../components/shared-ui/confirm";
+import { ManualDebtModal } from "../modals/ManualDebtModal";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -49,6 +51,13 @@ function getPersonInfo(person) {
       name:      person.driver_name   ?? "—",
       phone:     person.driver_phone  ?? null,
       person_id: person.driver_id,
+    };
+  }
+  if (person.debt_type === "partner") {
+    return {
+      name:      person.partner_name  ?? "—",
+      phone:     person.partner_phone ?? null,
+      person_id: person.partner_id,
     };
   }
   return {
@@ -689,7 +698,7 @@ function TransferDebtModal({ debt, onClose, onDone }) {
   );
 }
 
-function DebtDetailRow({ d, onTransfer }) {
+function DebtDetailRow({ d, onTransfer, onEditManual, onDeleteManual }) {
   const overdue = isOverdue(d.due_date);
   const status  = d.computed_status;
 
@@ -704,7 +713,7 @@ function DebtDetailRow({ d, onTransfer }) {
           <span className="text-[10px] text-orange-400 font-bold shrink-0 mt-0.5">#{d.id}</span>
           <div className="flex flex-col gap-0.5 overflow-hidden">
             <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
-              {d.order_id ? `Đơn #${d.order_id}` : "—"}
+              {d.order_id ? `Đơn #${d.order_id}` : d.source === "manual" ? "Nợ khai tay" : "—"}
               {d.order_cargo_name ? ` · ${d.order_cargo_name}` : ""}
             </span>
             {d.notes && (
@@ -718,7 +727,10 @@ function DebtDetailRow({ d, onTransfer }) {
       <td className="py-2.5 pr-4 text-center">
         <div className="flex flex-col gap-0.5 items-center">
           <span className="text-[10px] text-gray-400 dark:text-gray-400">
-            {d.created_at ? new Date(d.created_at).toLocaleDateString("vi-VN") : "—"}
+            {/* Nợ khai tay lấy ngày PHÁT SINH thật; created_at chỉ là ngày gõ vào hệ thống */}
+            {d.incurred_on
+              ? new Date(d.incurred_on).toLocaleDateString("vi-VN")
+              : d.created_at ? new Date(d.created_at).toLocaleDateString("vi-VN") : "—"}
           </span>
           {d.due_date && (
             <span className={`text-[10px] font-medium ${overdue ? "text-red-500" : "text-gray-400 dark:text-gray-400"}`}>
@@ -748,22 +760,44 @@ function DebtDetailRow({ d, onTransfer }) {
 
       {}
       <td className="py-2.5 pr-4" onClick={(e) => e.stopPropagation()}>
-        {status !== "paid" && onTransfer && (
-          <Button
-            size="sm" color="warning" variant="flat" isIconOnly
-            title="Chuyển sang công nợ tài xế"
-            className="h-7 w-7 min-w-7"
-            onPress={() => onTransfer(d)}
-          >
-            <RiArrowLeftRightLine size={13} />
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {status !== "paid" && onTransfer && (
+            <Button
+              size="sm" color="warning" variant="flat" isIconOnly
+              title="Chuyển sang công nợ tài xế"
+              className="h-7 w-7 min-w-7"
+              onPress={() => onTransfer(d)}
+            >
+              <RiArrowLeftRightLine size={13} />
+            </Button>
+          )}
+          {/* Chỉ nợ khai tay và CHƯA thu đồng nào mới sửa/xoá được — backend cũng chặn
+              y hệt, đây chỉ là ẩn nút cho đỡ bấm nhầm rồi nhận lỗi. */}
+          {d.source === "manual" && status === "unpaid" && (
+            <>
+              <Button
+                size="sm" variant="flat" isIconOnly title="Sửa khoản khai tay"
+                className="h-7 w-7 min-w-7"
+                onPress={() => onEditManual?.(d)}
+              >
+                <RiPencilLine size={13} />
+              </Button>
+              <Button
+                size="sm" color="danger" variant="flat" isIconOnly title="Xoá khoản khai tay"
+                className="h-7 w-7 min-w-7"
+                onPress={() => onDeleteManual?.(d)}
+              >
+                <RiDeleteBinLine size={13} />
+              </Button>
+            </>
+          )}
+        </div>
       </td>
     </tr>
   );
 }
 
-function PersonRow({ person, onPay, onTransfer, refreshKey }) {
+function PersonRow({ person, onPay, onTransfer, onEditManual, onDeleteManual, refreshKey }) {
   const [expanded, setExpanded] = useState(false);
   const [debts, setDebts]       = useState(null);
   const [loading, setLoading]   = useState(false);
@@ -883,6 +917,8 @@ function PersonRow({ person, onPay, onTransfer, refreshKey }) {
             key={d.id}
             d={d}
             onTransfer={person.debt_type === "customer" ? onTransfer : undefined}
+            onEditManual={onEditManual}
+            onDeleteManual={onDeleteManual}
           />
         ))
       )}
@@ -894,7 +930,7 @@ export function DebtView({ search = "" }) {
   const {
     stats, statsLoading,
     debtType, setDebtType,
-    customerDebts, driverDebts,
+    customerDebts, driverDebts, partnerDebts,
     groupedLoading,
     refetch,
   } = useDebts();
@@ -905,12 +941,16 @@ export function DebtView({ search = "" }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy]             = useState("remaining_desc");
   const [tab, setTab] = useState("debts");
+  // Khai công nợ cũ: null = đóng, {} = tạo mới, {id...} = sửa
+  const [manualDebtTarget, setManualDebtTarget] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
 
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const list = debtType === "customer" ? customerDebts : driverDebts;
+  const list = debtType === "customer" ? customerDebts
+             : debtType === "partner"  ? partnerDebts
+             : driverDebts;
 
   const filteredList = useMemo(() => {
     const rows = list.filter((person) => {
@@ -945,6 +985,23 @@ export function DebtView({ search = "" }) {
   const pagedList  = filteredList.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const handlePageSizeChange = (size) => { setPageSize(size); setPage(1); };
+
+  const handleDeleteManualDebt = async (debt) => {
+    if (!(await confirmDialog({
+      title: "Xoá công nợ khai tay",
+      description: `Xoá khoản ${VND(debt.total_amount)}? Bút toán số dư đầu kỳ tương ứng sẽ được đảo lại trong sổ.`,
+      confirmLabel: "Xoá",
+      danger: true,
+    }))) return;
+    try {
+      await accountantService.deleteManualDebt(debt.id);
+      notify.success("Đã xoá công nợ.");
+      refetch();
+      setDebtsRefreshKey((k) => k + 1);
+    } catch (err) {
+      notify.error(err.message ?? "Không xoá được công nợ.");
+    }
+  };
 
   const unpaidCount  = list.filter((d) => d.computed_status === "unpaid").length;
   const partialCount = list.filter((d) => d.computed_status === "partial").length;
@@ -1029,6 +1086,7 @@ export function DebtView({ search = "" }) {
           {[
             { key: "customer", label: "Khách hàng", icon: RiUserLine,  count: customerDebts.length },
             { key: "driver",   label: "Tài xế",     icon: RiTruckLine, count: driverDebts.length },
+            { key: "partner",  label: "Đối tác",    icon: RiBuilding2Line, count: partnerDebts.length },
           ].map(({ key, label, icon: Icon, count }) => {
             const active = debtType === key;
             return (
@@ -1049,6 +1107,15 @@ export function DebtView({ search = "" }) {
             );
           })}
         </div>
+
+        {/* Khai công nợ có sẵn — dành cho khoản phát sinh trước khi dùng phần mềm */}
+        <Button
+          size="sm" color="primary" variant="flat"
+          startContent={<RiAddLine size={15} />}
+          onPress={() => setManualDebtTarget({})}
+        >
+          Khai công nợ có sẵn
+        </Button>
 
         {}
         <div className="flex gap-1 bg-gray-100/60 dark:bg-white/5 p-1 rounded-xl">
@@ -1138,6 +1205,8 @@ export function DebtView({ search = "" }) {
                   person={p}
                   onPay={setPayPerson}
                   onTransfer={setTransferTarget}
+                  onEditManual={setManualDebtTarget}
+                  onDeleteManual={handleDeleteManualDebt}
                   refreshKey={debtsRefreshKey}
                 />
               ))}
@@ -1176,6 +1245,13 @@ export function DebtView({ search = "" }) {
           onDone={() => { refetch(); setDebtsRefreshKey((k) => k + 1); }}
         />
       )}
+
+      <ManualDebtModal
+        open={Boolean(manualDebtTarget)}
+        debt={manualDebtTarget?.id ? manualDebtTarget : null}
+        onClose={() => setManualDebtTarget(null)}
+        onSaved={() => { refetch(); setDebtsRefreshKey((k) => k + 1); }}
+      />
     </div>
   );
 }
