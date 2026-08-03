@@ -354,6 +354,70 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
         assert.strictEqual(results[0].already_imported, true);
     });
 
+    // ─── Giá báo vs giá chốt ─────────────────────────────────────────────────
+    // Giống luồng trong app: đơn tạo với giá báo, coordinator duyệt phiếu thu thì chốt
+    // lại giá thật (estimated_price → actual_price). Import phải giữ được CẢ HAI.
+
+    it('E1 — không điền giá chốt thì hai giá bằng nhau (giữ nguyên hành vi cũ)', async () => {
+        const order = await repo.createOrderWithShipments(
+            baseOrder({ customer_phone: '0909000801', completed_at: '2026-12-01' }),
+        );
+        const { rows: [ship] } = await pool.query(
+            'SELECT estimated_price, actual_price FROM order_shipments WHERE order_id = $1', [order.id],
+        );
+        assert.strictEqual(Number(ship.estimated_price), 1000000);
+        assert.strictEqual(Number(ship.actual_price), 1000000);
+    });
+
+    it('E2 — chốt CAO hơn: giá báo giữ nguyên, doanh thu và sổ ghi theo giá chốt', async () => {
+        const order = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: 1000000, settled_fee: 1200000,
+        }));
+        const { rows: [ship] } = await pool.query(
+            'SELECT id, estimated_price, actual_price FROM order_shipments WHERE order_id = $1', [order.id],
+        );
+        assert.strictEqual(Number(ship.estimated_price), 1000000, 'giá báo phải giữ lại để đối chiếu');
+        assert.strictEqual(Number(ship.actual_price), 1200000, 'giá chốt vào actual_price');
+
+        const { rows: [ft] } = await pool.query(
+            `SELECT amount FROM financial_transactions
+             WHERE event_type = 'shipment_revenue' AND ref_type = 'shipment' AND ref_id = $1`,
+            [ship.id],
+        );
+        assert.strictEqual(Number(ft.amount), 1200000, 'sổ tài chính ghi theo giá chốt');
+    });
+
+    it('E3 — chốt THẤP hơn cũng được (giảm giá khách quen)', async () => {
+        const order = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: 1000000, settled_fee: 800000,
+        }));
+        const { rows: [ship] } = await pool.query(
+            'SELECT estimated_price, actual_price FROM order_shipments WHERE order_id = $1', [order.id],
+        );
+        assert.strictEqual(Number(ship.estimated_price), 1000000);
+        assert.strictEqual(Number(ship.actual_price), 800000);
+    });
+
+    it('E4 — công nợ tài xế tính theo giá chốt, không phải giá báo', async () => {
+        const order = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: 1000000, settled_fee: 1200000,
+            payment_type: 'cash', driver_payment_state: 'driver_holding',
+        }));
+        const { rows: [debt] } = await pool.query(
+            `SELECT total_amount FROM debts WHERE order_id = $1 AND debt_type = 'driver'`, [order.id],
+        );
+        assert.strictEqual(Number(debt.total_amount), 1200000);
+    });
+
+    it('E5 — đổi giá chốt là dòng khác, không bị coi là trùng', async () => {
+        const a = baseOrder({ customer_phone: '0909000805', completed_at: '2026-12-05' });
+        const b = baseOrder({
+            customer_phone: '0909000805', completed_at: '2026-12-05',
+            shipments: [{ ...a.shipments[0], settled_fee: 1200000 }],
+        });
+        assert.notStrictEqual(buildImportFingerprint(a), buildImportFingerprint(b));
+    });
+
     it('B6 — hai tài xế trùng tên thì báo lỗi thay vì gán bừa cho người đầu tiên', async () => {
         await pool.query(`INSERT INTO accounts (id, email, password_hash, role_id) VALUES (6,'taiTrung@test.com','hash',4)`);
         await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (6,'Pham Van Tien',4)`);

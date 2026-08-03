@@ -221,7 +221,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
            ), 0) > 0.01`,
         [driverId],
     );
-    const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
+    const driverDebtOutstanding = Number(debtRes.rows[0].remaining ?? 0);
 
     // 5b. Đi làm ngày lễ hưởng hệ số theo bonus_rules(bonus_type='holiday') — mặc định
     // 200%, cộng thêm (hệ số - 1) lương ngày cho mỗi ngày lễ tài có đi làm: có chuyến
@@ -284,7 +284,25 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const expenseReimbursement = Number(reimbRes.rows[0].total ?? 0);
 
     const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
-    const estimatedNet   = estimatedGross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
+
+    // Trần khấu trừ công nợ: chỉ trừ tối đa N% của số tài xế CÒN ĐƯỢC NHẬN sau khi đã
+    // trừ BHXH / ứng lương / nghỉ không lương. Phần nợ còn lại tự động chuyển sang kỳ sau.
+    //
+    // Vì sao cần: trước đây trừ hết nợ tồn trong một lần, mà net_salary là cột GENERATED
+    // KHÔNG chặn ở 0. Khai một khoản nợ cũ vài chục triệu là bảng lương tháng đó ra số
+    // âm và tài xế không nhận được đồng nào — nợ vẫn phải đòi, nhưng không phải bằng
+    // cách lấy sạch lương của một tháng.
+    const capRes = await pool.query(
+        'SELECT driver_debt_monthly_cap_percent AS pct FROM company_info WHERE id = 1',
+    );
+    const capPercent = Number(capRes.rows[0]?.pct ?? 30);
+
+    const payableBeforeDebt = Math.max(0, estimatedGross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction);
+    const debtCap = Math.round(payableBeforeDebt * capPercent / 100);
+    const driverDebtDeduction = Math.min(driverDebtOutstanding, debtCap);
+    const driverDebtCarriedOver = driverDebtOutstanding - driverDebtDeduction;
+
+    const estimatedNet = payableBeforeDebt - driverDebtDeduction;
 
     return {
         month, year,
@@ -308,6 +326,10 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),
         advance_deduction:      advanceDeduction.toFixed(2),
         driver_debt_deduction:  driverDebtDeduction.toFixed(2),
+        // Cho màn lương giải thích được vì sao chỉ trừ bấy nhiêu, và còn nợ bao nhiêu
+        driver_debt_outstanding:   driverDebtOutstanding.toFixed(2),
+        driver_debt_carried_over:  driverDebtCarriedOver.toFixed(2),
+        driver_debt_cap_percent:   capPercent,
         max_advance_amount:     MAX_ADVANCE_AMOUNT.toFixed(2),
         estimated_gross:        estimatedGross.toFixed(2),
         estimated_net:          estimatedNet.toFixed(2),

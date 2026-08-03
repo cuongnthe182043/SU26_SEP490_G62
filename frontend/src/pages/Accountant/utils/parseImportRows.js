@@ -34,6 +34,7 @@ const HEADER_KEYS = [
   ["so luot",              "runs"],
   ["ten hang",             "cargo_name"],
   ["cuoc xe",              "cargo_fee"],
+  ["gia chot",             "settled_fee"],
   ["phi cau duong",        "toll"],
   ["phi do xe",            "parking"],
   ["xang dau",             "fuel"],
@@ -211,20 +212,32 @@ export function parseWorkbook(wb, XLSX) {
     const fuel = parseMoney(get(r, "fuel"));
     const repair = parseMoney(get(r, "repair"));
 
-    // Khách phải trả = cước từng lượt × số lượt + phần chi hộ (cầu đường, bãi).
+    // Giá chốt: giá thật sau khi hai bên thống nhất lại, giống việc coordinator sửa giá
+    // lúc duyệt phiếu thu trong app (estimated_price → actual_price). Để trống thì giá
+    // chốt = giá báo, tức y hệt cách chạy cũ nên file cũ không phải sửa gì.
+    // Được phép CAO hoặc THẤP hơn giá báo — tăng giá do phát sinh, giảm giá cho khách
+    // quen đều là chuyện thật.
+    const settledCell = parseMoneyCell(get(r, "settled_fee"));
+    if (settledCell.negative) rowErr.push("Giá chốt không được âm");
+    const settledFee = settledCell.value > 0 ? settledCell.value : null;
+
+    // Số tiền dùng cho mọi tính toán tiền bạc: doanh thu, KPI, công nợ.
+    const effectiveFee = settledFee ?? cargoFee;
+
+    // Khách phải trả = giá chốt từng lượt × số lượt + phần chi hộ (cầu đường, bãi).
     // Xăng dầu / sửa xe là công ty chịu nên không nằm trong số khách trả.
     const runCount = runs ?? 1;
-    const totalFee = cargoFee * runCount;
+    const totalFee = effectiveFee * runCount;
     const passThrough = toll + parking;
     const customerTotal = totalFee + passThrough;
 
     // Kiểm tra THẬT SỰ có ý nghĩa: tài không thể đang giữ nhiều hơn số khách đưa.
-    // Đây là chỗ trước đây bị thay bằng luật cấm dùng cột này ở dòng tăng bo — luật đó
-    // chặn oan cả những dòng hoàn toàn hợp lệ (2 lượt × 250k, tài giữ đúng 500k).
-    if (holding != null && cargoFee > 0 && runs != null && holding > customerTotal) {
+    // So với GIÁ CHỐT chứ không phải giá báo — chốt 1tr2 rồi thì tài cầm 1tr2 là đúng.
+    if (holding != null && effectiveFee > 0 && runs != null && holding > customerTotal) {
+      const goc = settledFee != null ? "giá chốt" : "cước";
       rowErr.push(
         `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số khách phải trả `
-        + `(${customerTotal.toLocaleString("vi-VN")}đ = cước ${cargoFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
+        + `(${customerTotal.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
         + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""})`,
       );
     }
@@ -263,6 +276,8 @@ export function parseWorkbook(wb, XLSX) {
         pickup_addresses: pickups,
         delivery_addresses: deliveries,
         cargo_fee: cargoFee,
+        // null = không sửa giá → backend để actual_price = cargo_fee như cũ
+        settled_fee: settledFee,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
         expenses,
@@ -281,7 +296,7 @@ export function parseWorkbook(wb, XLSX) {
         // danh được nên hiện SĐT, gọi là khách lẻ thì kế toán tưởng dòng bị mất khách.
         customer: customerName || phone || "Khách lẻ",
         pickups, deliveries,
-        cargoFee, totalFee, holding, paymentRaw, runs: runCount,
+        cargoFee, settledFee, effectiveFee, totalFee, holding, paymentRaw, runs: runCount,
       },
       order: {
         row_index: rowNo,

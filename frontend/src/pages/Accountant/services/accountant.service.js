@@ -106,6 +106,19 @@ export const accountantService = {
   getDebtsByPerson: (personType, personId) =>
     apiRequest(`${BASE}/debts/person/${personType}/${personId}`),
 
+  // ─── Công nợ khai tay (nợ có từ trước khi dùng phần mềm) ───
+  searchDebtOwners: (type, q = "") =>
+    apiRequest(`${BASE}/debts/owners?type=${type}&q=${encodeURIComponent(q)}`),
+
+  createManualDebt: (data) =>
+    apiRequest(`${BASE}/debts/manual`, { method: "POST", body: data }),
+
+  updateManualDebt: (debtId, data) =>
+    apiRequest(`${BASE}/debts/manual/${debtId}`, { method: "PUT", body: data }),
+
+  deleteManualDebt: (debtId) =>
+    apiRequest(`${BASE}/debts/manual/${debtId}`, { method: "DELETE" }),
+
   previewAllocation: (data) =>
     apiRequest(`${BASE}/debts/payment/preview`, { method: "POST", body: data }),
 
