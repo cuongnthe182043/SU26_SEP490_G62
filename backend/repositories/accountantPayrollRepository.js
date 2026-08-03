@@ -239,7 +239,19 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
     const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
 
-    const driverDebtDeduction = Math.min(totalDebt, Math.max(0, netBeforeDebt));
+    // Trần khấu trừ công nợ mỗi kỳ: chỉ lấy tối đa N% số tài xế còn được nhận, phần nợ
+    // còn lại tự chuyển sang kỳ sau (lần tính lương tháng sau vẫn thấy nó trong tổng nợ).
+    //
+    // Trước đây trừ tới 100% — không âm, nhưng tài xế có khoản nợ cũ lớn sẽ nhận về ĐÚNG
+    // 0đ trong tháng đó. Nợ vẫn phải đòi, nhưng không phải bằng cách lấy sạch một tháng
+    // lương của người ta.
+    const { rows: [capRow] } = await client.query(
+        'SELECT driver_debt_monthly_cap_percent AS pct FROM company_info WHERE id = 1',
+    );
+    const debtCapPercent = Number(capRow?.pct ?? 30);
+    const debtCap = Math.round(Math.max(0, netBeforeDebt) * debtCapPercent / 100);
+
+    const driverDebtDeduction = Math.min(totalDebt, debtCap);
 
     return {
         monthsOfService,
