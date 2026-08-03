@@ -427,9 +427,30 @@ const resolveOpenIncidentForShipment = async (shipmentId, { resolvedBy, resoluti
     return result.rows[0] ?? null;
 };
 
+// Đóng sự cố 'cargo_damage' theo đúng incidentId — dùng khi coordinator quyết định hủy
+// chuyến vì hàng hư hỏng (xem tripRepository.cancelShipmentForCargoDamage). Best-effort:
+// nếu đóng sự cố lỗi thì vẫn giữ nguyên kết quả đã hủy chuyến, không rollback theo.
+const resolveCargoDamageIncident = async (incidentId, { resolvedBy, resolution }) => {
+    const result = await pool.query(
+        `UPDATE incidents
+         SET status = 'resolved',
+             resolved_by = $2,
+             resolution_note = $3,
+             resolved_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1
+           AND incident_type = 'cargo_damage'
+           AND status IN ('open', 'investigating')
+         RETURNING *`,
+        [incidentId, resolvedBy, resolution],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     createIncident,
     resolveOpenIncidentForShipment,
+    resolveCargoDamageIncident,
     getMyIncidentCounts,
     addIncidentEvidence,
     getIncidentById,

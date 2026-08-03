@@ -63,6 +63,13 @@ export const coordinatorService = {
   getIncidents: (params) => apiRequest(`${BASE}/incidents?${new URLSearchParams(params)}`),
   updateIncidentStatus: (id, data) => apiRequest(`/api/incidents/${id}/status`, { method: "PATCH", body: data }),
   createIncidentByStaff: (data) => apiRequest("/api/incidents/staff", { method: "POST", body: data }),
+  // Outcome duy nhất cho sự cố "hàng hóa hư hại": hủy dứt điểm chuyến gắn với sự cố
+  // (cho phép hủy dù đã lấy hàng). Backend tự đóng sự cố + tính lại trạng thái đơn.
+  cancelDamagedShipment: (incidentId, reason) =>
+    apiRequest(`/api/incidents/${incidentId}/cancel-shipment`, {
+      method: "POST",
+      body: { reason },
+    }),
 
   // ─── Receipts ─────────────────────────────────────────────────────────────
   getReceiptRequests: (params) => apiRequest(`${BASE}/receipt-requests?${new URLSearchParams(params)}`),
