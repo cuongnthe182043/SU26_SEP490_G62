@@ -10,7 +10,7 @@ import {
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
-export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation, readOnly = false, onResolveFailed, resolvingFailed = false }) {
+export default function IncidentDetailModal({ open, incident, incidentForm, setIncidentForm, saving, drivers, onClose, onSubmit, compensation, setCompensation, readOnly = false, onResolveFailed, resolvingFailed = false, onCancelDamagedShipment, cancellingDamaged = false }) {
   if (!incident) return null;
 
   // Sự cố "khách từ chối nhận" sinh tự động khi tài báo giao thất bại. Tài xế đang
@@ -19,6 +19,14 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
   const isFailedDelivery = incident.incident_type === "customer_refusal"
     && incident.shipment_status === "failed"
     && Boolean(onResolveFailed) && !readOnly;
+
+  // Sự cố "hàng hóa hư hại": outcome duy nhất hỗ trợ là hủy dứt điểm chuyến (cho phép
+  // hủy dù đã lấy hàng). Chỉ hiện khi chuyến còn sống (chưa completed/cancelled) và
+  // sự cố chưa được đóng.
+  const isCargoDamage = incident.incident_type === "cargo_damage"
+    && incident.shipment_status && !["completed", "cancelled"].includes(incident.shipment_status)
+    && !["resolved", "closed"].includes(incident.status)
+    && Boolean(onCancelDamagedShipment) && !readOnly;
 
   const replacementOptions = drivers.filter((driver) => {
     if (!driver?.vehicle_id) return false;
@@ -88,6 +96,32 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
                   onPress={() => onResolveFailed("return")}
                 >
                   Cho hoàn hàng (×2 cước)
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {isCargoDamage && (
+            <div className="rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50/70 dark:bg-rose-500/[0.07] p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <RiAlertLine size={15} className="text-rose-600 dark:text-rose-300" />
+                <span className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                  Hàng hóa hư hại — cần quyết định
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+                Nhập lý do vào ô "Phản hồi / ghi chú" bên dưới rồi bấm hủy. Chuyến sẽ bị
+                hủy dứt điểm (kể cả khi đã lấy hàng) và sự cố này tự chuyển sang
+                “đã giải quyết” ngay sau khi bấm.
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  color="danger"
+                  isLoading={cancellingDamaged}
+                  onPress={() => onCancelDamagedShipment(incidentForm.resolution)}
+                >
+                  Hủy chuyến (hàng hư hỏng)
                 </Button>
               </div>
             </div>

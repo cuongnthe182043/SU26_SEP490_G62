@@ -341,6 +341,14 @@ const importExcel = async (userId, fileBuffer) => {
 // thật trong computeReceiptAmount, nếu không coordinator sẽ thấy số "gợi ý" sai
 // (VD: giá công ty đã sửa tay nhưng preview lại hiện theo km × đơn giá).
 const resolveShipmentActualRevenue = (shipment = {}) => {
+    // Chuyến đã hủy/thất bại (vd. hủy do sự cố hàng hư hỏng — cancelShipmentForCargoDamage)
+    // không phát sinh doanh thu, bất kể km/giá đã lỡ ghi nhận trước đó — khớp đúng rule ở
+    // computeReceiptAmount, nếu không "gợi ý" hiện ra sẽ vẫn cộng tiền cho chuyến hàng hư hỏng.
+    const status = String(shipment.status || '').toLowerCase();
+    if (status === 'cancelled' || status === 'failed') {
+        return 0;
+    }
+
     const actualPrice = Number(shipment.actual_price);
     if (Number.isFinite(actualPrice) && actualPrice > 0) {
         return actualPrice;
@@ -440,10 +448,6 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
 
     return shipments;
 };
-
-const sumShipmentActualRevenue = (shipments = []) => shipments.reduce((sum, shipment) => (
-    sum + Number(shipment.actual_revenue ?? shipment.actual_price ?? 0)
-), 0);
 
 const sumPassThroughExpenses = (shipments = []) => shipments.reduce((sum, shipment) => (
     sum + Number(shipment.total_pass_through_expenses || 0)
@@ -664,7 +668,10 @@ const getReceiptRequestDetail = async (requestId) => {
 
     const expenses = shipments.flatMap((shipment) => shipment.expenses || []);
     const totalExpenses = shipments.reduce((sum, shipment) => sum + Number(shipment.total_expenses || 0), 0);
-    const totalActualPrice = sumShipmentActualRevenue(shipments);
+    // Lấy từ computeReceiptAmount (đã loại chuyến 'cancelled'/'failed' — vd. hủy do sự cố
+    // hàng hư hỏng) thay vì tự cộng lại actual_revenue của từng chuyến, để số hiện ở màn
+    // xem trước KHỚP với số thực sự chốt lúc duyệt (approveReceiptRequest dùng đúng computed này).
+    const totalActualPrice = computed.actual_income;
     const totalPassThroughExpenses = sumPassThroughExpenses(shipments);
     const finalPrice = totalActualPrice + totalPassThroughExpenses;
     const prepaidAmount = Math.max(Number(row.order_prepaid_amount || 0), 0);
