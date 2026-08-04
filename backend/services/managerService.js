@@ -65,20 +65,18 @@ const getReportsOverview = async ({ months, granularity } = {}) => {
 // Báo cáo kinh doanh theo kỳ (tháng) cho Manager: P&L (doanh thu − chi phí − lương),
 // hiệu suất đội xe, dòng tiền/công nợ, năng suất tài xế, khách hàng — kèm so kỳ trước.
 //
-// Nếu kỳ ĐÃ CHỐT → trả nguyên bản snapshot đã đóng băng (số không đổi). Nếu chưa chốt
-// → tính động thời gian thực. Trường `meta` cho biết trạng thái chốt để UI hiển thị.
+// Nếu kỳ ĐÃ KÝ DUYỆT → trả nguyên bản snapshot đã đóng băng (số không đổi). Nếu chưa
+// ký → tính động thời gian thực. Trường `meta` cho biết trạng thái để UI hiển thị.
 const getBusinessReport = async ({ year, month } = {}) => {
-    const closed = await managerReportRepository.getClosedPeriod(year, month);
-    if (closed) {
+    const signed = await managerReportRepository.getSignedOffPeriod(year, month);
+    if (signed) {
         return {
-            ...closed.snapshot,
+            ...signed.snapshot,
             meta: {
-                status: closed.status, // 'closed' | 'signed_off'
-                closed_by_name: closed.closed_by_name,
-                closed_at: closed.closed_at,
-                signed_off_by_name: closed.signed_off_by_name,
-                signed_off_at: closed.signed_off_at,
-                note: closed.note,
+                status: signed.status, // luôn là 'signed_off'
+                signed_off_by_name: signed.signed_off_by_name,
+                signed_off_at: signed.signed_off_at,
+                note: signed.note,
             },
         };
     }
@@ -86,33 +84,30 @@ const getBusinessReport = async ({ year, month } = {}) => {
     return { ...live, meta: { status: 'open' } };
 };
 
-// Chốt (hoặc chốt lại) kỳ báo cáo: tính báo cáo tại thời điểm này rồi đóng băng vào
-// snapshot. Không cho chốt lại kỳ đã ký duyệt (phải mở lại trước — nhưng kỳ đã ký thì
-// bị khoá cứng, đây là chủ đích: số đã ký không được đổi).
-const closeReportPeriod = async ({ year, month, actorId, note } = {}) => {
-    const existing = await managerReportRepository.getClosedPeriod(year, month);
-    if (existing && existing.status === 'signed_off') {
-        const err = new Error('Kỳ đã được ký duyệt, không thể chốt lại');
-        err.statusCode = 409;
-        throw err;
+// Số liệu để cảnh báo TRƯỚC khi ký duyệt. Ký là một chiều, nên người bấm cần biết
+// mình đang bỏ lại cái gì: những chuyến đã chạy trong kỳ mà chưa chốt giá sẽ không
+// nằm trong snapshot, doanh thu của chúng rơi sang kỳ mở kế tiếp.
+const getReportPeriodPreflight = async ({ year, month } = {}) => {
+    const signed = await managerReportRepository.getSignedOffPeriod(year, month);
+    if (signed) {
+        return { already_signed_off: true, unpriced_trips: 0, unpriced_estimated_total: 0 };
     }
-    const snapshot = await managerReportRepository.getBusinessReport({ year, month });
-    await managerReportRepository.upsertClosedPeriod({ year, month, snapshot, actorId, note });
-    broadcastWorkflowChange('reports', 'period_closed', { year, month });
-    notifyManagerWorkflow('reports', 'period_closed', {
-        title: 'Kỳ báo cáo đã được chốt',
-        message: `Báo cáo tháng ${month}/${year} vừa được chốt.`,
-        entityType: 'reports',
-        entityId: null,
-    }, actorId);
-    return getBusinessReport({ year, month });
+    const unpriced = await managerReportRepository.getUnpricedShipmentsInPeriod(year, month);
+    return {
+        already_signed_off: false,
+        unpriced_trips: Number(unpriced?.trip_count ?? 0),
+        unpriced_estimated_total: Number(unpriced?.estimated_total ?? 0),
+    };
 };
 
-// Manager ký duyệt kỳ đã chốt → khoá cứng.
-const signOffReportPeriod = async ({ year, month, actorId } = {}) => {
-    const done = await managerReportRepository.signOffClosedPeriod({ year, month, actorId });
+// Manager ký duyệt kỳ báo cáo: tính báo cáo tại thời điểm này, đóng băng vào snapshot
+// và khoá cứng. Một bước duy nhất — không còn "chốt kỳ" trung gian, và không mở lại
+// được. Cảnh báo xác nhận nằm ở UI trước khi gọi tới đây.
+const signOffReportPeriod = async ({ year, month, actorId, note } = {}) => {
+    const snapshot = await managerReportRepository.getBusinessReport({ year, month });
+    const done = await managerReportRepository.signOffPeriod({ year, month, snapshot, actorId, note });
     if (!done) {
-        const err = new Error('Kỳ chưa được chốt hoặc đã ký duyệt, không thể ký');
+        const err = new Error('Kỳ đã được ký duyệt trước đó, không thể ký lại');
         err.statusCode = 409;
         throw err;
     }
@@ -127,26 +122,8 @@ const signOffReportPeriod = async ({ year, month, actorId } = {}) => {
     return getBusinessReport({ year, month });
 };
 
-// Mở lại kỳ đã chốt (chưa ký) → số quay về tính động.
-const reopenReportPeriod = async ({ year, month } = {}) => {
-    const done = await managerReportRepository.reopenClosedPeriod({ year, month });
-    if (!done) {
-        const err = new Error('Không có kỳ đã chốt (chưa ký duyệt) để mở lại');
-        err.statusCode = 409;
-        throw err;
-    }
-    broadcastWorkflowChange('reports', 'period_reopened', { year, month });
-    notifyManagerWorkflow('reports', 'period_reopened', {
-        title: 'Kỳ báo cáo đã được mở lại',
-        message: `Báo cáo tháng ${month}/${year} vừa được mở lại.`,
-        entityType: 'reports',
-        entityId: null,
-    });
-    return getBusinessReport({ year, month });
-};
-
 const listReportPeriods = async ({ limit } = {}) => {
-    return managerReportRepository.listClosedPeriods(limit);
+    return managerReportRepository.listSignedOffPeriods(limit);
 };
 
 const listSalaryAdvances = async ({ status, limit } = {}) => {
@@ -382,9 +359,8 @@ module.exports = {
     getDashboard,
     getReportsOverview,
     getBusinessReport,
-    closeReportPeriod,
+    getReportPeriodPreflight,
     signOffReportPeriod,
-    reopenReportPeriod,
     listReportPeriods,
     listSalaryAdvances,
     approveSalaryAdvance,

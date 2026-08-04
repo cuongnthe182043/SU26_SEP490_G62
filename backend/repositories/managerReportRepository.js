@@ -9,18 +9,34 @@ const pool = require('../config/database');
 //
 // Chuẩn hóa toàn bộ theo giờ VN (Asia/Ho_Chi_Minh) để không lệch mốc ngày/tháng
 // khi DB chạy ở UTC. Ranh giới kỳ dùng make_date(year, month, 1).
-// Định nghĩa doanh thu THỐNG NHẤT với báo cáo còn lại: chuyến `completed`, tính
-// theo `completed_at` (đúng ngày chạy).
+//
+// Doanh thu quy về KỲ GHI NHẬN (`revenue_period`), không phải ngày chạy: chuyến chạy
+// tháng 8 mà phiếu thu chỉ được duyệt sau khi tháng 8 đã ký duyệt thì tiền được đẩy
+// sang kỳ mở sớm nhất — nếu vẫn lọc theo completed_at thì khoản đó rơi mất khỏi cả
+// tháng 8 (đã đóng băng) lẫn tháng 9 (không khớp completed_at). Trigger
+// set_revenue_period + hàm fn_revenue_recognition_period trong `DB script/DB script.sql`
+// tự điền cột này.
 // ────────────────────────────────────────────────────────────────────────────
 
 const TZ = 'Asia/Ho_Chi_Minh';
 
-// Điều kiện "chuyến hoàn thành nằm trong kỳ (year, month)" — dùng chung nhiều query.
+// Tháng chạy thực tế của chuyến — mốc để biết một khoản có phải doanh thu chuyển kỳ
+// hay không.
+const runPeriod = `date_trunc('month', os.completed_at AT TIME ZONE '${TZ}')::date`;
+
+// Kỳ ghi nhận. COALESCE để chuyến cũ chưa kịp backfill vẫn về đúng tháng chạy.
+const revenuePeriod = `COALESCE(os.revenue_period, ${runPeriod})`;
+
+// Điều kiện "doanh thu chuyến được ghi nhận vào kỳ (year, month)" — dùng chung nhiều
+// query. revenue_period luôn là ngày 1 của tháng nên so bằng là đủ.
 const inPeriodCompleted = `
     os.status = 'completed'
-    AND (os.completed_at AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
-    AND (os.completed_at AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
+    AND ${revenuePeriod} = make_date($1, $2, 1)
 `;
+
+// Khoản doanh thu chạy ở kỳ khác nhưng được ghi nhận vào kỳ này (chốt giá muộn sau
+// khi kỳ gốc đã ký duyệt).
+const isCarriedIn = `${revenuePeriod} <> ${runPeriod}`;
 
 // Nợ PHẢI THU của công ty gồm cả nợ khách lẻ/doanh nghiệp ('customer') lẫn nợ đối tác
 // giao việc ('partner') — cả hai đều là tiền bên mua dịch vụ còn nợ. Doanh thu ở trên
@@ -54,16 +70,48 @@ const RECEIVABLE_HAS_PARTY = '(d.customer_id IS NOT NULL OR d.partner_id IS NOT 
 // (tiền qua tay tài xế, theo dõi ở "tiền tài xế đang cầm"), không bao giờ nằm trong
 // bảng công nợ khách. Dùng revenue_credit làm mẫu số cho DSO và tỷ lệ thu hồi để hai
 // chỉ số này cùng một cơ sở với tử số, thay vì chia cho tổng doanh thu.
+//
+// revenue_carried_in tách riêng phần doanh thu của chuyến chạy ở KỲ TRƯỚC nhưng chốt
+// giá muộn nên được ghi nhận vào kỳ này. Không tách thì tháng nhận tự dưng đội số mà
+// không ai giải thích được vì sao doanh thu vọt lên trong khi số chuyến không đổi.
+//
+// `trips` CHỈ đếm chuyến đã chốt giá. Chuyến hoàn thành mà actual_price còn NULL được
+// trigger gán revenue_period = tháng chạy, nhưng khi phiếu thu duyệt muộn (sau khi kỳ
+// đó ký duyệt) thì revenue_period dời sang kỳ sau — đếm cả chuyến chưa giá là chuyến
+// đó nằm trong số liệu của HAI kỳ. Lọc theo actual_price cũng làm `trips` cùng phạm vi
+// với `revenue`: mỗi chuyến được đếm đúng ở kỳ mà tiền của nó được ghi nhận.
 const _revenue = async (year, month) => {
     const { rows } = await pool.query(`
         SELECT
             COALESCE(SUM(os.actual_price), 0)::float AS revenue,
             COALESCE(SUM(os.actual_price) FILTER (WHERE o.payment_type = 'client_credit'), 0)::float
                                                      AS revenue_credit,
-            COUNT(*)::int                            AS trips
+            COUNT(*) FILTER (WHERE os.actual_price IS NOT NULL)::int
+                                                     AS trips,
+            COALESCE(SUM(os.actual_price) FILTER (WHERE ${isCarriedIn}), 0)::float
+                                                     AS revenue_carried_in,
+            COUNT(*) FILTER (WHERE ${isCarriedIn} AND os.actual_price IS NOT NULL)::int
+                                                     AS trips_carried_in
         FROM order_shipments os
         JOIN orders o ON o.id = os.order_id
         WHERE ${inPeriodCompleted}
+    `, [year, month]);
+    return rows[0];
+};
+
+// Chuyến đã chạy trong kỳ nhưng CHƯA chốt giá (actual_price NULL) — doanh thu chưa
+// được ghi nhận ở đâu cả. Dùng để cảnh báo trước khi Manager ký duyệt: ký lúc này
+// nghĩa là toàn bộ phần dưới đây sẽ rơi sang kỳ sau. Lọc theo tháng CHẠY chứ không
+// theo kỳ ghi nhận — chuyến chưa có giá thì kỳ ghi nhận còn chưa chốt.
+const getUnpricedShipmentsInPeriod = async (year, month) => {
+    const { rows } = await pool.query(`
+        SELECT
+            COUNT(*)::int                                 AS trip_count,
+            COALESCE(SUM(os.estimated_price), 0)::float   AS estimated_total
+        FROM order_shipments os
+        WHERE os.status = 'completed'
+          AND os.actual_price IS NULL
+          AND ${runPeriod} = make_date($1, $2, 1)
     `, [year, month]);
     return rows[0];
 };
@@ -137,6 +185,8 @@ const _pnlForPeriod = async (year, month) => {
         gross_profit,
         margin_pct,
         completed_trips: rev.trips,
+        revenue_carried_in: rev.revenue_carried_in,
+        trips_carried_in:   rev.trips_carried_in,
         driver_count: pay.driver_count,
     };
 };
@@ -166,6 +216,12 @@ const _fleet = async (year, month) => {
 };
 
 // B. Tỷ lệ chuyến hỏng toàn đội trong kỳ (completed vs failed).
+//
+// CỐ Ý lọc theo completed_at/failed_at chứ không theo revenue_period: đây là chỉ số
+// VẬN HÀNH — tháng này đội xe chạy bao nhiêu chuyến, hỏng bao nhiêu — không liên quan
+// tới việc tiền của chuyến rơi vào kỳ kế toán nào. Vì vậy `completed` ở đây có thể
+// khác `pnl.completed_trips` (đếm theo kỳ ghi nhận, và chỉ chuyến đã chốt giá); chỗ
+// nào hiển thị hai số này phải gọi tên khác nhau, đừng để người đọc tưởng là một.
 const _fleetOps = async (year, month) => {
     const { rows } = await pool.query(`
         SELECT
@@ -349,6 +405,10 @@ const _riskyCustomers = async () => {
 // C. Công nợ CHI TIẾT từng bên nợ — dư nợ hiện tại tách theo tuổi nợ
 // (0-30 / 31-60 / 61-90 / >90 ngày, theo due_date fallback created_at, giờ VN) +
 // số đơn chưa thu. Dùng chung định nghĩa với _debtAging để tổng khớp nhau.
+//
+// LIMIT 50: đây là danh sách 50 bên nợ LỚN NHẤT, không phải toàn bộ. Tổng của bảng này
+// vì vậy có thể nhỏ hơn `cashflow.receivable_total`; nơi nào in ra dòng TỔNG CỘNG phải
+// tự bù phần chênh (xem exportBusinessReport.js) chứ không được ngầm coi hai số là một.
 const _customerDebtDetail = async () => {
     const { rows } = await pool.query(`
         WITH dp_agg AS (
@@ -394,6 +454,21 @@ const _customerDebtDetail = async () => {
     return rows;
 };
 
+// P&L của kỳ dùng để SO SÁNH (cột "kỳ trước"). Nếu kỳ đó đã ký duyệt thì lấy đúng số
+// đã đóng băng trong snapshot, không tính lại: doanh thu thì revenue_period đã chặn
+// không cho thêm vào kỳ đã khoá, nhưng CHI PHÍ thì không — một expense duyệt hôm nay
+// với expense_date thuộc tháng đã ký vẫn lọt vào phép tính động. Tính lại thì cột
+// "kỳ trước" trong báo cáo tháng này không khớp với chính bản đã ký của tháng đó:
+// cùng một con số, hai file, hai giá trị.
+const _pnlForCompare = async (year, month) => {
+    const signed = await getSignedOffPeriod(year, month);
+    const snap = signed?.snapshot?.pnl;
+    if (!snap) return _pnlForPeriod(year, month);
+    // Bỏ P&L lồng của kỳ trước-nữa để không kéo theo cả chuỗi snapshot.
+    const { prev: _ignored, ...pnl } = snap;
+    return pnl;
+};
+
 // ── Orchestrator ────────────────────────────────────────────────────────────
 const getBusinessReport = async ({ year, month }) => {
     const prev = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
@@ -407,7 +482,7 @@ const getBusinessReport = async ({ year, month }) => {
         topCustomers, riskyCustomers, customerDebts,
     ] = await Promise.all([
         _pnlForPeriod(year, month),
-        _pnlForPeriod(prev.year, prev.month),
+        _pnlForCompare(prev.year, prev.month),
         _fleet(year, month),
         _fleetOps(year, month),
         _drivers(year, month),
@@ -459,36 +534,36 @@ const getBusinessReport = async ({ year, month }) => {
     };
 };
 
-// ── Phase 3: chốt kỳ (immutable snapshot) ───────────────────────────────────
+// ── Phase 3: ký duyệt kỳ (immutable snapshot) ───────────────────────────────
+//
+// Chỉ một thao tác duy nhất: KÝ DUYỆT. Ký xong là khoá cứng, không mở lại được —
+// nên cảnh báo xác nhận ở UI là chốt chặn duy nhất, và INSERT bên dưới cố tình
+// KHÔNG có nhánh ghi đè.
 
-// Lấy bản đã chốt của 1 kỳ (kèm tên người chốt / ký duyệt). null nếu kỳ chưa chốt.
-const getClosedPeriod = async (year, month) => {
+// Lấy bản đã ký duyệt của 1 kỳ (kèm tên người ký). null nếu kỳ còn đang mở.
+const getSignedOffPeriod = async (year, month) => {
     const { rows } = await pool.query(`
         SELECT
             brp.id, brp.period_year, brp.period_month, brp.status, brp.snapshot,
-            brp.note, brp.closed_at, brp.signed_off_at,
-            cb.full_name AS closed_by_name,
+            brp.note, brp.signed_off_at,
             sb.full_name AS signed_off_by_name
         FROM business_report_periods brp
-        LEFT JOIN profiles cb ON cb.id = brp.closed_by
         LEFT JOIN profiles sb ON sb.id = brp.signed_off_by
         WHERE brp.period_year = $1 AND brp.period_month = $2
     `, [year, month]);
     return rows[0] || null;
 };
 
-// Danh sách các kỳ đã chốt (chỉ số P&L then chốt, không kèm snapshot đầy đủ).
-const listClosedPeriods = async (limit = 24) => {
+// Danh sách các kỳ đã ký duyệt (chỉ số P&L then chốt, không kèm snapshot đầy đủ).
+const listSignedOffPeriods = async (limit = 24) => {
     const { rows } = await pool.query(`
         SELECT
             brp.id, brp.period_year, brp.period_month, brp.status,
             brp.revenue::float, brp.operating_cost::float, brp.payroll_cost::float,
             brp.gross_profit::float, brp.margin_pct::float,
-            brp.note, brp.closed_at, brp.signed_off_at,
-            cb.full_name AS closed_by_name,
+            brp.note, brp.signed_off_at,
             sb.full_name AS signed_off_by_name
         FROM business_report_periods brp
-        LEFT JOIN profiles cb ON cb.id = brp.closed_by
         LEFT JOIN profiles sb ON sb.id = brp.signed_off_by
         ORDER BY brp.period_year DESC, brp.period_month DESC
         LIMIT $1
@@ -496,33 +571,23 @@ const listClosedPeriods = async (limit = 24) => {
     return rows;
 };
 
-// Chốt/chốt-lại kỳ: lưu nguyên bản báo cáo vào snapshot. Chốt lại (kỳ đang 'closed')
-// sẽ ghi đè và xoá vết ký duyệt cũ. Không cho phép chốt khi đã 'signed_off' — chặn ở
-// tầng service trước khi gọi hàm này.
-const upsertClosedPeriod = async ({ year, month, snapshot, actorId, note }) => {
+// Ký duyệt kỳ: đóng băng nguyên bản báo cáo vào snapshot và khoá cứng luôn.
+//
+// ON CONFLICT DO NOTHING chứ không DO UPDATE: kỳ đã ký là bất biến, ghi đè sẽ xoá
+// mất số đã ký mà không ai hay. Trả null khi kỳ đã có người ký trước đó — service
+// dịch thành 409 để người bấm biết mình vừa đụng vào kỳ đã khoá, thay vì tưởng
+// thao tác thành công.
+const signOffPeriod = async ({ year, month, snapshot, actorId, note }) => {
     const pnl = snapshot.pnl || {};
     const { rows } = await pool.query(`
         INSERT INTO business_report_periods
             (period_year, period_month, status, snapshot,
              revenue, operating_cost, payroll_cost, gross_profit, margin_pct,
-             note, closed_by, closed_at, updated_at)
-        VALUES ($1, $2, 'closed', $3::jsonb,
+             note, signed_off_by, signed_off_at, updated_at)
+        VALUES ($1, $2, 'signed_off', $3::jsonb,
                 $4, $5, $6, $7, $8,
                 $9, $10, NOW(), NOW())
-        ON CONFLICT (period_year, period_month) DO UPDATE SET
-            status         = 'closed',
-            snapshot       = EXCLUDED.snapshot,
-            revenue        = EXCLUDED.revenue,
-            operating_cost = EXCLUDED.operating_cost,
-            payroll_cost   = EXCLUDED.payroll_cost,
-            gross_profit   = EXCLUDED.gross_profit,
-            margin_pct     = EXCLUDED.margin_pct,
-            note           = EXCLUDED.note,
-            closed_by      = EXCLUDED.closed_by,
-            closed_at      = NOW(),
-            signed_off_by  = NULL,
-            signed_off_at  = NULL,
-            updated_at     = NOW()
+        ON CONFLICT (period_year, period_month) DO NOTHING
         RETURNING id, status
     `, [
         year, month, JSON.stringify(snapshot),
@@ -530,35 +595,13 @@ const upsertClosedPeriod = async ({ year, month, snapshot, actorId, note }) => {
         pnl.gross_profit || 0, pnl.margin_pct || 0,
         note || null, actorId,
     ]);
-    return rows[0];
-};
-
-// Ký duyệt kỳ đã chốt (khoá cứng). Trả null nếu kỳ không ở trạng thái 'closed'.
-const signOffClosedPeriod = async ({ year, month, actorId }) => {
-    const { rows } = await pool.query(`
-        UPDATE business_report_periods
-        SET status = 'signed_off', signed_off_by = $3, signed_off_at = NOW(), updated_at = NOW()
-        WHERE period_year = $1 AND period_month = $2 AND status = 'closed'
-        RETURNING id
-    `, [year, month, actorId]);
     return rows[0] || null;
-};
-
-// Mở lại kỳ đã chốt (chưa ký duyệt) → xoá snapshot, kỳ trở về tính động. Trả false
-// nếu không có kỳ 'closed' để mở (đã ký duyệt hoặc chưa từng chốt).
-const reopenClosedPeriod = async ({ year, month }) => {
-    const { rowCount } = await pool.query(`
-        DELETE FROM business_report_periods
-        WHERE period_year = $1 AND period_month = $2 AND status = 'closed'
-    `, [year, month]);
-    return rowCount > 0;
 };
 
 module.exports = {
     getBusinessReport,
-    getClosedPeriod,
-    listClosedPeriods,
-    upsertClosedPeriod,
-    signOffClosedPeriod,
-    reopenClosedPeriod,
+    getUnpricedShipmentsInPeriod,
+    getSignedOffPeriod,
+    listSignedOffPeriods,
+    signOffPeriod,
 };
