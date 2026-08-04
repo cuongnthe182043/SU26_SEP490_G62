@@ -63,7 +63,11 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
   const adjustRows = [
     ["Hoàn chi phí đã ứng", num(row.expense_reimbursement), "plus"],
     ["BHXH (10.5%)", num(row.insurance_employee), "minus"],
-    ["Nghỉ không lương", num(row.absence_penalty), "minus"],
+    // absence_penalty âm = đi làm dư ngày công (>28, tháng 29-31 ngày đi đủ) → được trả
+    // thêm, không phải bị trừ.
+    num(row.absence_penalty) >= 0
+      ? ["Nghỉ không lương", num(row.absence_penalty), "minus"]
+      : ["Đi làm dư ngày công (>28)", -num(row.absence_penalty), "plus"],
     ["Trừ ứng lương", num(row.advance_deduction), "minus"],
     ["Trừ công nợ", num(row.driver_debt_deduction), "minus"],
   ];

@@ -140,8 +140,8 @@ describe('L2-FLOW-09 — Khai công nợ có sẵn từ trước khi dùng phầ
              WHERE ref_type='debt' AND ref_id=$1 ORDER BY id`, [debt.id],
         );
         assert.strictEqual(fts.length, 3);
-        const duNo = fts.reduce((s, f) => s + (f.debit_account === '131' ? Number(f.amount) : -Number(f.amount)), 0);
-        assert.strictEqual(duNo, 1500000, 'số dư tài khoản 131 phải đúng bằng số sau khi sửa');
+        const balance131 = fts.reduce((s, f) => s + (f.debit_account === '131' ? Number(f.amount) : -Number(f.amount)), 0);
+        assert.strictEqual(balance131, 1500000, 'số dư tài khoản 131 phải đúng bằng số sau khi sửa');
     });
 
     it('B2 — xoá được khi chưa thu, và sổ có bút toán đảo lại', async () => {
@@ -154,8 +154,8 @@ describe('L2-FLOW-09 — Khai công nợ có sẵn từ trước khi dùng phầ
         const { rows: fts } = await pool.query(
             `SELECT debit_account, amount FROM financial_transactions WHERE ref_type='debt' AND ref_id=$1`, [debt.id],
         );
-        const duNo = fts.reduce((s, f) => s + (f.debit_account === '131' ? Number(f.amount) : -Number(f.amount)), 0);
-        assert.strictEqual(duNo, 0, 'xoá xong thì số dư phải về 0, không để lại bút toán mồ côi');
+        const balance131 = fts.reduce((s, f) => s + (f.debit_account === '131' ? Number(f.amount) : -Number(f.amount)), 0);
+        assert.strictEqual(balance131, 0, 'xoá xong thì số dư phải về 0, không để lại bút toán mồ côi');
     });
 
     it('B3 — đã phát sinh thanh toán thì KHÔNG cho sửa/xoá nữa', async () => {
@@ -200,15 +200,19 @@ describe('L2-FLOW-09 — Khai công nợ có sẵn từ trước khi dùng phầ
         await payrollRepo.calculateAndUpsertPayrolls(now.getMonth() + 1, now.getFullYear());
 
         const { rows: [p] } = await pool.query(
-            `SELECT gross_salary, insurance_employee, driver_debt_deduction, net_salary
+            `SELECT gross_salary, absence_penalty, insurance_employee, driver_debt_deduction, net_salary
              FROM payrolls WHERE driver_id = $1`, [DRIVER_ID],
         );
-        const conNhan = Number(p.gross_salary) - Number(p.insurance_employee);
-        const truNo = Number(p.driver_debt_deduction);
+        // Trần 30% được tính trên "netBeforeDebt" nội bộ của repository, dùng pro_rated_base
+        // (base_salary đã cộng/trừ theo ngày công thực tế), KHÔNG phải cột gross_salary lưu
+        // trong DB (cột đó luôn dùng base_salary thô, không phản ánh ngày dư/thiếu công).
+        // gross_salary(DB) - absence_penalty = pro_rated_base + các khoản thưởng khác.
+        const netBeforeDebt = Number(p.gross_salary) - Number(p.absence_penalty) - Number(p.insurance_employee);
+        const debtDeducted = Number(p.driver_debt_deduction);
 
         // Trần mặc định 30%: không được lấy sạch, và không được vượt trần
-        assert.ok(truNo > 0, 'vẫn phải trừ một phần nợ');
-        assert.ok(truNo <= Math.round(conNhan * 0.30) + 1, `trừ ${truNo} vượt trần 30% của ${conNhan}`);
+        assert.ok(debtDeducted > 0, 'vẫn phải trừ một phần nợ');
+        assert.ok(debtDeducted <= Math.round(netBeforeDebt * 0.30) + 1, `trừ ${debtDeducted} vượt trần 30% của ${netBeforeDebt}`);
         assert.ok(Number(p.net_salary) > 0, 'tài xế phải còn lương để sống, không được về 0');
     });
 
