@@ -1256,10 +1256,36 @@ const getPendingReceiptOrder = async (driverId) => {
     return result.rows[0] ?? null;
 };
 
-// Ghi km thực tế vào order_shipments — dùng cho tất cả driver (final hay không)
+// Ghi km thực tế vào order_shipments — dùng cho tất cả driver (final hay không).
+//
+// Chuyến HOÀN HÀNG (returning_at có giá trị) chốt actual_price = km × đơn giá × 2 NGAY TẠI ĐÂY,
+// bất kể payment_type của đơn. Lý do: updateShipmentActualPrice (coordinatorRepository) trước giờ
+// CHỈ được gọi trong approveReceiptRequest, mà order_receipt_requests CHỈ được tạo cho đơn
+// payment_type = 'cash' + driver cuối (requestOrderReceipt). Với đơn bank_transfer, không có
+// request nào được tạo → actual_price không bao giờ được chốt → BR-026 fallback về estimated_price
+// (giá MỘT CHIỀU cũ trước khi hoàn hàng) mãi mãi, doanh thu/KPI sai một nửa mà không có gì báo lỗi.
+// Giá cố định do DN chốt tay (is_price_manual) thì giữ nguyên, không suy diễn theo km.
 const saveShipmentActualKm = async (shipmentId, km) => {
     await pool.query(
-        `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
+        `WITH pricing AS (
+            SELECT COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
+            FROM order_shipments os2
+            LEFT JOIN v_shipment_current sc ON sc.shipment_id = os2.id
+            LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+            LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order ON vg_order.id = os2.vehicle_group_id
+            WHERE os2.id = $2
+         )
+         UPDATE order_shipments os
+         SET actual_distance_km = $1,
+             actual_price = CASE
+                 WHEN os.returning_at IS NOT NULL AND os.is_price_manual IS NOT TRUE AND pricing.price_per_km > 0
+                 THEN $1::numeric * pricing.price_per_km * 2
+                 ELSE os.actual_price
+             END,
+             updated_at = NOW()
+         FROM pricing
+         WHERE os.id = $2`,
         [km, shipmentId],
     );
 };
