@@ -33,8 +33,15 @@ const NOW = new Date();
 const MONTH = NOW.getMonth() + 1;
 const YEAR = NOW.getFullYear();
 
-// 9tr + 15%×10tr + 1tr top + 200k ĐT + 500k phúc lợi − 557.550 BHXH − 3tr ứng
-const EXPECTED_NET = 9_000_000 + 1_500_000 + 1_000_000 + 200_000 + 500_000 - 557_550 - 3_000_000;
+// Lương cứng KHÔNG cap ở 28 công nữa — tháng có 29/30/31 ngày mà driver không nghỉ ngày
+// nào thì được trả DƯ đúng phần chênh (base/28 × daysInMonth). Test chạy theo tháng THẬT
+// (MONTH/YEAR lấy từ Date hiện tại) nên phải tính động, không hardcode 9tr cố định —
+// nếu không test sẽ lại gãy vào đúng những tháng có 29-31 ngày.
+const BASE_SALARY_SENIOR = 9_000_000;
+const DAYS_IN_TEST_MONTH = new Date(YEAR, MONTH, 0).getDate();
+const PRO_RATED_BASE = Math.round((BASE_SALARY_SENIOR / 28) * DAYS_IN_TEST_MONTH);
+// proRatedBase + 15%×10tr + 1tr top + 200k ĐT + 500k phúc lợi − 557.550 BHXH − 3tr ứng
+const EXPECTED_NET = PRO_RATED_BASE + 1_500_000 + 1_000_000 + 200_000 + 500_000 - 557_550 - 3_000_000;
 
 const RealDate = Date;
 const stubDay25 = () => {

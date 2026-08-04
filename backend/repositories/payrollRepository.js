@@ -159,10 +159,12 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0)
                      + Number(attRes.rows[0].unexcused_days ?? 0)
                      + Number(halfRes.rows[0].half_days ?? 0) * 0.5;
-    // "28 công" là quota — tháng dài hơn 28 ngày lịch có phần dư được miễn trừ tự
-    // nhiên; chỉ khi số ngày thực đi làm tụt dưới 28 mới bị trừ đúng phần hụt đó.
+    // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
+    // trả — khớp accountantPayrollRepository. Tháng dài hơn 28 ngày lịch mà tài đi làm
+    // hết cả những ngày dư (29, 30, 31) thì được trả thêm đúng phần dư đó (proRatedBase
+    // vượt base_salary). Vắng/nghỉ không lương thì trừ đúng phần hụt so với ngày lịch.
     const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-    const actualWorkingDays = Math.max(0, Math.min(28, daysInMonth - unpaidDays));
+    const actualWorkingDays = Math.max(0, daysInMonth - unpaidDays);
     const proRatedBase = (baseSalary / 28) * actualWorkingDays;
     const absencePenalty = baseSalary - proRatedBase;
 

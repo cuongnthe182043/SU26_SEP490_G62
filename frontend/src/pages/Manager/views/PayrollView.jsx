@@ -39,7 +39,12 @@ const buildDetail = (r) => [
   { label: "Lương gộp",          value: fmt(r.gross_salary), bold: true },
   { label: "Hoàn chi phí đã ứng", value: fmt(r.expense_reimbursement) },
   { label: "BHXH (10.5%)",       value: `-${fmt(r.insurance_employee)}`, neg: true },
-  { label: "Nghỉ không lương",   value: `-${fmt(r.absence_penalty)}`, neg: true },
+  // absence_penalty = base_salary - proRatedBase: dương khi thiếu công (vắng/nghỉ không
+  // lương), ÂM khi đi làm dư ngày so với quota 28 công (tháng 29-31 ngày, đi đủ) — lúc đó
+  // là khoản được TRẢ THÊM, không phải bị trừ, nên phải đổi nhãn + dấu cho đúng bản chất.
+  Number(r.absence_penalty || 0) >= 0
+    ? { label: "Nghỉ không lương", value: `-${fmt(r.absence_penalty)}`, neg: true }
+    : { label: "Đi làm dư ngày công (>28)", value: `+${fmt(-r.absence_penalty)}` },
   { label: "Trừ ứng lương",      value: `-${fmt(r.advance_deduction)}`, neg: true },
   { label: "Trừ công nợ",        value: `-${fmt(r.driver_debt_deduction)}`, neg: true },
   ...(Number(r.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${fmt(r.manual_deduction)}`, neg: true }] : []),

@@ -362,7 +362,13 @@ const resolveShipmentActualRevenue = (shipment = {}) => {
 
     const actualKm = Number(shipment.actual_distance_km ?? shipment.actual_km ?? 0);
     const pricePerKm = Number(shipment.price_per_km || 0);
-    return actualKm > 0 && pricePerKm > 0 ? actualKm * pricePerKm : 0;
+    if (actualKm <= 0 || pricePerKm <= 0) return 0;
+
+    // Chuyến hoàn hàng (returning_at có giá trị) chạy CẢ HAI CHIỀU nên tính GẤP ĐÔI —
+    // phải khớp đúng logic thật trong computeReceiptAmount. Thiếu nhánh này, dòng
+    // "Doanh thu" từng chuyến và "Tổng thu" ở màn xem trước hiện đúng MỘT NỬA số tiền
+    // sẽ thực sự bị chốt khi coordinator bấm Duyệt.
+    return shipment.returning_at ? actualKm * pricePerKm * 2 : actualKm * pricePerKm;
 };
 
 const normalizeAmount = (value, fieldLabel = 'Số tiền') => {
@@ -1192,6 +1198,7 @@ module.exports = {
   getReceiptRequestDetail,
   approveReceiptRequest,
   computeReceiptAmount,
+  resolveShipmentActualRevenue,
     rejectReceiptRequest,
     cancelShipment,
     reassignShipment,

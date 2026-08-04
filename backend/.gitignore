@@ -1,3 +1,6 @@
 node_modules/
 .env
 test-reports/
+
+# Cloud SQL Auth Proxy tải về máy — xem scripts/dev-proxy.ps1
+.tools/

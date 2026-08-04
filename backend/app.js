@@ -1,4 +1,7 @@
-require('dotenv').config();
+// ENV_FILE cho phép chạy backend NGOÀI Docker với một bộ cấu hình khác .env mặc định —
+// dùng để cắm vào DB dev riêng trên Cloud SQL mà không đụng tới .env của docker-compose.
+// Không set thì hành vi y hệt trước giờ (nạp .env).
+require('dotenv').config({ path: process.env.ENV_FILE || '.env' });
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
