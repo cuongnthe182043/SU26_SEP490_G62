@@ -1163,6 +1163,11 @@ const getDriverOrderHistory = async (driverId, { limit = 30, offset = 0 } = {}) 
             COUNT(os.id)::int                                               AS total_legs,
             (COUNT(os.id) FILTER (WHERE os.status = 'completed'))::int      AS completed_legs,
             SUM(os.estimated_price)                                         AS total_estimated_price,
+            -- Từng chuyến ưu tiên actual_price đã chốt (vd hoàn hàng x2 giá), rơi về
+            -- estimated_price nếu chuyến đó CHƯA chốt (BR-026) — cộng dồn SAU khi đã chọn
+            -- đúng giá từng chuyến, không SUM(actual_price) thô vì đơn nhiều chuyến mà chỉ
+            -- vài chuyến đã chốt sẽ bị hụt hẳn phần chưa chốt thay vì dùng tạm giá ước tính.
+            SUM(COALESCE(NULLIF(os.actual_price, 0), os.estimated_price, 0)) AS total_actual_price,
             MIN(os.claimed_at)                                              AS first_claimed_at,
             (MAX(os.completed_at) FILTER (WHERE os.status = 'completed'))   AS last_completed_at,
             COUNT(*) OVER()::int                                            AS total_count

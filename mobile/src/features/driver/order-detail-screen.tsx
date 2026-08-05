@@ -141,9 +141,11 @@ function ShipmentCard({
                             Trọng lượng: <Text fontWeight="700" color={appTheme.colors.text}>{shipment.cargo_weight_kg} kg</Text>
                         </Text>
                     ) : null}
-                    {shipment.estimated_price ? (
+                    {(shipment.actual_price || shipment.estimated_price) ? (
                         <Text fontSize={12} color={appTheme.colors.textMuted}>
-                            Giá trị: <Text fontWeight="700" color={appTheme.colors.text}>{fmtCurrency(shipment.estimated_price)}</Text>
+                            Giá trị: <Text fontWeight="700" color={appTheme.colors.text}>
+                                {fmtCurrency(shipment.actual_price || shipment.estimated_price)}
+                            </Text>
                         </Text>
                     ) : null}
                 </XStack>
@@ -265,7 +267,9 @@ export default function OrderDetailScreen() {
     }
 
     const { order, shipments } = data;
-    const totalPrice = shipments.reduce((sum, s) => sum + (Number(s.estimated_price) || 0), 0);
+    // Từng chuyến ưu tiên actual_price đã chốt (vd hoàn hàng x2 giá), rơi về estimated_price
+    // nếu chuyến đó chưa hoàn thành/chưa chốt — khớp BR-026.
+    const totalPrice = shipments.reduce((sum, s) => sum + (Number(s.actual_price) || Number(s.estimated_price) || 0), 0);
     const completedLegs = shipments.filter(s => s.status === 'completed').length;
 
     return (
