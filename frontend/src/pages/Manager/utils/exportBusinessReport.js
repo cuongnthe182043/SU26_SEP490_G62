@@ -1,4 +1,5 @@
 import { APP_NAME } from "../../../constants/brand";
+import { reconcileDebtRows } from "./debtReconcile";
 // Xuất báo cáo kinh doanh (Manager) ra Excel nhiều sheet — cùng phong cách trình bày
 // với báo cáo doanh thu của Kế toán (exportOrdersReport.js): header xanh thương hiệu,
 // viền mảnh, cột tiền canh phải định dạng #,##0. Dữ liệu lấy thẳng từ payload đang xem
@@ -12,6 +13,9 @@ const TITLE_TEXT = "FF1E293B";
 const thin = { style: "thin", color: { argb: BORDER_COLOR } };
 const allBorders = { top: thin, left: thin, right: thin, bottom: thin };
 const MONEY = "#,##0";
+// Phần trăm giữ 1 chữ số thập phân. Dùng MONEY cho dòng biên lợi nhuận thì 12.3 hiện
+// ra thành "12" — mất đúng con số mà cả báo cáo đang nói tới.
+const PERCENT1 = '#,##0.0"%"';
 
 const num = (v) => Number(v || 0);
 
@@ -28,7 +32,15 @@ const pctDelta = (cur, prev) => {
   return `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
 };
 
-const STATUS_LABEL = { open: "Đang mở (tính động)", closed: "Đã chốt", signed_off: "Đã ký duyệt (khoá)" };
+const STATUS_LABEL = { open: "Đang mở (tính động)", signed_off: "Đã ký duyệt (khoá cứng)" };
+
+// Bỏ dấu tiếng Việt trước khi lọc ký tự cho tên file: cắt thẳng thì "Tháng 8/2026"
+// thành "Th-ng-8-2026".
+const slugify = (s) => s
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/đ/g, "d").replace(/Đ/g, "D")
+  .replace(/[^\dA-Za-z]+/g, "-")
+  .replace(/^-+|-+$/g, "");
 
 // Tiêu đề lớn ở A1 + tô header cho hàng cột.
 function titleAndHeader(ws, title, headers, colWidths) {
@@ -54,7 +66,9 @@ function titleAndHeader(ws, title, headers, colWidths) {
 }
 
 // Ghi các dòng dữ liệu, moneyCols (Set chỉ số cột 0-based) canh phải + định dạng tiền.
-function writeRows(ws, rows, moneyCols, startRow) {
+// rowFmt = { [chỉ số dòng]: numFmt } để một dòng cụ thể dùng định dạng khác định dạng
+// tiền của cột (dòng phần trăm nằm chung cột với các dòng tiền).
+function writeRows(ws, rows, moneyCols, startRow, rowFmt = {}) {
   rows.forEach((values, i) => {
     const row = ws.getRow(startRow + i);
     values.forEach((v, c) => {
@@ -63,7 +77,7 @@ function writeRows(ws, rows, moneyCols, startRow) {
       cell.border = allBorders;
       const money = moneyCols.has(c);
       cell.alignment = { vertical: "middle", horizontal: money ? "right" : "left" };
-      if (money && typeof v === "number") cell.numFmt = MONEY;
+      if (money && typeof v === "number") cell.numFmt = rowFmt[i] ?? MONEY;
       if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
     });
     row.commit?.();
@@ -89,17 +103,24 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     const ws = wb.addWorksheet("KET_QUA_KINH_DOANH");
     const h = titleAndHeader(ws, `Kết quả kinh doanh — ${periodLabel}`,
       ["Chỉ tiêu", "Kỳ này", "Kỳ trước", "Thay đổi"], [30, 20, 20, 14]);
-    writeRows(ws, [
+    const MARGIN = "Biên lợi nhuận (%)";
+    const rows = [
       ["Doanh thu", num(pnl.revenue), num(prev.revenue), pctDelta(pnl.revenue, prev.revenue)],
       ["— trong đó doanh thu bán chịu", num(pnl.revenue_credit), num(prev.revenue_credit), pctDelta(pnl.revenue_credit, prev.revenue_credit)],
+      ["— trong đó kỳ trước chuyển sang", num(pnl.revenue_carried_in), num(prev.revenue_carried_in), pctDelta(pnl.revenue_carried_in, prev.revenue_carried_in)],
       ["Chi phí vận hành", num(pnl.operating_cost), num(prev.operating_cost), pctDelta(pnl.operating_cost, prev.operating_cost)],
       ["Chi phí lương", num(pnl.payroll_cost), num(prev.payroll_cost), pctDelta(pnl.payroll_cost, prev.payroll_cost)],
       ["Tổng chi phí", totalCost, prevCost, pctDelta(totalCost, prevCost)],
       ["Lợi nhuận gộp", num(pnl.gross_profit), num(prev.gross_profit), pctDelta(pnl.gross_profit, prev.gross_profit)],
-      ["Biên lợi nhuận (%)", Number(num(pnl.margin_pct).toFixed(1)), Number(num(prev.margin_pct).toFixed(1)),
+      [MARGIN, Number(num(pnl.margin_pct).toFixed(1)), Number(num(prev.margin_pct).toFixed(1)),
         `${(num(pnl.margin_pct) - num(prev.margin_pct)).toFixed(1)} điểm`],
-      ["Số chuyến hoàn thành", num(pnl.completed_trips), num(prev.completed_trips), pctDelta(pnl.completed_trips, prev.completed_trips)],
-    ], new Set([1, 2]), h + 1);
+      // Chỉ đếm chuyến ĐÃ CHỐT GIÁ — cùng phạm vi với dòng Doanh thu ở trên. Chuyến chạy
+      // xong mà chưa có giá chưa ghi nhận doanh thu ở kỳ nào, xem sheet ĐỘI XE để biết
+      // tổng số chuyến chạy trong tháng.
+      ["Số chuyến đã chốt giá", num(pnl.completed_trips), num(prev.completed_trips), pctDelta(pnl.completed_trips, prev.completed_trips)],
+    ];
+    writeRows(ws, rows, new Set([1, 2]), h + 1,
+      { [rows.findIndex((r) => r[0] === MARGIN)]: PERCENT1 });
   }
 
   // 2) Cơ cấu chi phí
@@ -118,8 +139,11 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
 
   // 3) Hiệu suất đội xe
   {
+    // "chuyến chạy xong" = theo completed_at (chỉ số vận hành của tháng), khác với
+    // "chuyến đã chốt giá" ở sheet P&L (theo kỳ ghi nhận doanh thu). Hai con số này
+    // không bằng nhau và không nên gọi cùng một tên.
     const ws = wb.addWorksheet("DOI_XE");
-    const h = titleAndHeader(ws, `Hiệu suất đội xe — ${ops.completed ?? 0} chuyến hoàn thành, ${num(ops.failed_rate).toFixed(1)}% hỏng`,
+    const h = titleAndHeader(ws, `Hiệu suất đội xe — ${ops.completed ?? 0} chuyến chạy xong trong tháng, ${num(ops.failed_rate).toFixed(1)}% hỏng`,
       ["Biển số", "Nhóm xe", "Doanh thu (đ)", "Số chuyến", "Quãng đường (km)", "Doanh thu/km (đ)"], [14, 18, 20, 12, 16, 18]);
     const rows = (data?.fleet ?? []).map((v) => [
       v.plate_number, v.vehicle_group_name ?? "", num(v.revenue), num(v.trip_count),
@@ -172,7 +196,8 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     }
 
     // Bảng con: công nợ phải thu chi tiết (khách + đối tác, theo tuổi nợ) — gộp chung
-    // sheet dòng tiền. Cùng phạm vi với KPI "Nợ phải thu" ở trên nên TỔNG CỘNG khớp.
+    // sheet dòng tiền. Backend chỉ trả 50 bên nợ lớn nhất, nên reconcileDebtRows chèn
+    // thêm dòng gộp phần còn lại; nhờ đó TỔNG CỘNG khớp đúng KPI "Nợ phải thu" ở trên.
     const debts = data?.customer_debts ?? [];
     if (debts.length) {
       [14, 16, 15, 15, 15, 15, 13].forEach((w, i) => {
@@ -189,12 +214,18 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
         c.font = { bold: true, color: { argb: HEADER_TEXT } }; c.border = allBorders;
         c.alignment = { horizontal: "center", wrapText: true };
       });
-      const partyLabel = (c) => (c.party_type === "partner" ? "Đối tác" : "Khách hàng");
-      const rows = debts.map((c) => [
-        c.name, partyLabel(c), num(c.outstanding), num(c.d0_30), num(c.d30_60), num(c.d60_90), num(c.d90_plus), num(c.unpaid_orders),
+      const { rows: debtRows, total } = reconcileDebtRows(debts, cash);
+      // party_type null = dòng gộp "các bên nợ khác", không phải một bên nợ cụ thể.
+      const partyLabel = (c) => {
+        if (!c.party_type) return "";
+        return c.party_type === "partner" ? "Đối tác" : "Khách hàng";
+      };
+      const rows = debtRows.map((c) => [
+        c.name, partyLabel(c), c.outstanding, c.d0_30, c.d30_60, c.d60_90, c.d90_plus,
+        c.unpaid_orders ?? "—",
       ]);
-      const sum = (k) => debts.reduce((s, c) => s + num(c[k]), 0);
-      rows.push(["TỔNG CỘNG", "", sum("outstanding"), sum("d0_30"), sum("d30_60"), sum("d60_90"), sum("d90_plus"), sum("unpaid_orders")]);
+      rows.push(["TỔNG CỘNG", "", total.outstanding, total.d0_30, total.d30_60,
+        total.d60_90, total.d90_plus, total.unpaid_orders]);
       writeRows(ws, rows, new Set([2, 3, 4, 5, 6]), start + 2);
       ws.getRow(start + 1 + rows.length).font = { bold: true };
     }
@@ -232,12 +263,18 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     const info = [
       ["Báo cáo", "Kết quả kinh doanh"],
       ["Kỳ báo cáo", periodLabel],
-      ["Trạng thái chốt", STATUS_LABEL[meta.status] ?? meta.status],
-      ["Người chốt", meta.closed_by_name ?? "—"],
-      ["Thời điểm chốt", fmtDateTime(meta.closed_at) || "—"],
+      ["Trạng thái kỳ", STATUS_LABEL[meta.status] ?? meta.status],
       ["Người ký duyệt", meta.signed_off_by_name ?? "—"],
       ["Thời điểm ký duyệt", fmtDateTime(meta.signed_off_at) || "—"],
-      ["Ghi chú", meta.note ?? "—"],
+      ["Ghi chú", meta.note || "—"],
+      // Hai chỗ dễ hiểu nhầm nhất khi đối chiếu các sheet với nhau — nói thẳng ra đây
+      // thay vì để người đọc tự đoán.
+      ["Cơ sở ghi nhận doanh thu",
+        "Theo kỳ ghi nhận, không theo ngày chạy. Chuyến chốt giá sau khi kỳ gốc đã ký "
+        + "duyệt được tính vào kỳ mở kế tiếp (xem dòng \"kỳ trước chuyển sang\")."],
+      ["Số chuyến",
+        "Sheet KET_QUA_KINH_DOANH đếm chuyến ĐÃ CHỐT GIÁ theo kỳ ghi nhận; sheet DOI_XE "
+        + "đếm chuyến CHẠY XONG trong tháng. Hai số này không bằng nhau."],
       ["Thời điểm xuất file", new Date().toLocaleString("vi-VN")],
     ];
     info.forEach((r) => { const row = ws.addRow(r); row.getCell(1).font = { bold: true }; });
@@ -248,7 +285,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Bao Cao Kinh Doanh_${periodLabel.replace(/[^\dA-Za-z]+/g, "-")}.xlsx`;
+  a.download = `Bao Cao Kinh Doanh_${slugify(periodLabel)}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }

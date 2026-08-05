@@ -8,9 +8,8 @@ export const managerService = {
   getReportOverview: (months, granularity) => apiRequest(`${BASE}/reports/overview?months=${months}&granularity=${granularity}`),
   getBusinessReport: (year, month) => apiRequest(`${BASE}/reports/business?year=${year}&month=${month}`),
   listReportPeriods: () => apiRequest(`${BASE}/reports/periods`),
-  closeReportPeriod: (year, month, note) => apiRequest(`${BASE}/reports/periods/close`, { method: "POST", body: { year, month, note } }),
-  signOffReportPeriod: (year, month) => apiRequest(`${BASE}/reports/periods/sign-off`, { method: "POST", body: { year, month } }),
-  reopenReportPeriod: (year, month) => apiRequest(`${BASE}/reports/periods/reopen`, { method: "POST", body: { year, month } }),
+  getReportPeriodPreflight: (year, month) => apiRequest(`${BASE}/reports/periods/preflight?year=${year}&month=${month}`),
+  signOffReportPeriod: (year, month, note) => apiRequest(`${BASE}/reports/periods/sign-off`, { method: "POST", body: { year, month, note } }),
 
   // ─── Salary advances ──────────────────────────────────────────────────────
   getSalaryAdvances: (params = {}) => apiRequest(`${BASE}/salary-advances?${new URLSearchParams(params)}`),

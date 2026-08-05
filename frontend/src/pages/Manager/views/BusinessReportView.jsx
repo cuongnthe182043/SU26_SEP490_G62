@@ -5,12 +5,13 @@ import {
   RiLineChartLine, RiWallet3Line, RiFundsLine, RiPercentLine,
   RiAlertLine, RiTruckLine, RiTimeLine, RiCoinLine,
   RiGroupLine, RiUserStarLine, RiArrowUpLine, RiArrowDownLine,
-  RiErrorWarningLine, RiLockLine, RiShieldCheckLine, RiLockUnlockLine,
-  RiSave3Line, RiFileExcel2Line, RiFileList3Line,
+  RiErrorWarningLine, RiLockLine, RiShieldCheckLine,
+  RiFileExcel2Line, RiFileList3Line,
 } from "react-icons/ri";
 import { managerService } from "../services/manager.service";
 import { notify } from "../../../components/shared-ui/Toast";
 import { exportBusinessReportToExcel } from "../utils/exportBusinessReport";
+import { reconcileDebtRows } from "../utils/debtReconcile";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { Section } from "../../../components/shared-ui/Section";
 import {
@@ -76,16 +77,57 @@ export default function BusinessReportView() {
 
   useEffect(() => { load(periodKey); }, [periodKey, load]);
 
-  // Chốt / ký duyệt / mở lại kỳ. serviceFn(year, month) → trả report mới, cập nhật thẳng.
-  const runAction = useCallback(async (serviceFn, successMessage) => {
+  // Ký duyệt kỳ — thao tác một chiều, không mở lại được, nên phải xác nhận trước.
+  // Cảnh báo nêu SỐ THẬT (bao nhiêu chuyến còn chưa chốt giá, ước tính bao nhiêu tiền)
+  // thay vì nhắc chung chung — đó mới là thứ quyết định nên ký bây giờ hay đợi.
+  const handleSignOff = useCallback(async () => {
     const opt = periodOptions.find((p) => p.key === periodKey) ?? periodOptions[0];
-    setActing(true);
+
     setActionErr(null);
+    let preflight = null;
     try {
-      const res = await serviceFn(opt.year, opt.month);
+      preflight = await managerService.getReportPeriodPreflight(opt.year, opt.month);
+    } catch {
+      // Không chặn thao tác chỉ vì không lấy được số cảnh báo — vẫn cảnh báo phần chung.
+      preflight = null;
+    }
+
+    // Kỳ đã có người ký (tab khác, người khác) — dừng ngay ở đây thay vì để người dùng
+    // bấm qua hộp xác nhận rồi mới ăn 409 từ server.
+    if (preflight?.already_signed_off) {
+      const message = "Kỳ này đã được ký duyệt trước đó.";
+      setActionErr(message);
+      notify.error(message);
+      await load(periodKey);
+      return;
+    }
+
+    const unpricedWarning = preflight?.unpriced_trips > 0
+      ? `\n\n⚠️ Kỳ này còn ${preflight.unpriced_trips} chuyến đã chạy nhưng CHƯA chốt giá `
+        + `(ước tính ${VND_FULL(preflight.unpriced_estimated_total)}). Ký duyệt bây giờ thì `
+        + "doanh thu của những chuyến đó sẽ được ghi nhận sang kỳ mở kế tiếp, không nằm "
+        + `trong báo cáo ${opt.label}. Muốn tính đủ vào kỳ này thì duyệt hết phiếu thu TRƯỚC, `
+        + "rồi mới ký — ký rồi là không sửa được nữa."
+      : "";
+
+    const { ok, value: note } = await confirmDialog({
+      title: `Ký duyệt báo cáo ${opt.label}?`,
+      description:
+        `Ký duyệt sẽ đóng băng toàn bộ số liệu ${opt.label} và KHOÁ CỨNG kỳ này — `
+        + "không sửa lại, không mở lại được."
+        + unpricedWarning,
+      input: { label: "Ghi chú (không bắt buộc)", placeholder: "Lý do ký duyệt, điểm cần lưu ý của kỳ này..." },
+      confirmLabel: "Ký duyệt",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setActing(true);
+    try {
+      const res = await managerService.signOffReportPeriod(opt.year, opt.month, note || null);
       if (res?.report) setData(res.report);
       else await load(periodKey);
-      notify.success(successMessage);
+      notify.success("Đã ký duyệt kỳ báo cáo.");
     } catch (err) {
       const message = err.message ?? "Thao tác không thành công.";
       setActionErr(message);
@@ -168,38 +210,33 @@ export default function BusinessReportView() {
         </div>
       </div>
 
-      {/* Phase 3: trạng thái chốt kỳ + thao tác */}
+      {/* Phase 3: trạng thái ký duyệt kỳ + thao tác */}
       <PeriodStatusBar
         meta={meta}
         acting={acting}
         actionErr={actionErr}
-        onClose={async () => {
-          if (await confirmDialog({
-            title: "Chốt kỳ báo cáo",
-            description: "Chốt kỳ sẽ ghi nhận snapshot số liệu hiện tại. Bạn có chắc muốn chốt kỳ này?",
-            confirmLabel: "Chốt kỳ",
-          }))
-            runAction(managerService.closeReportPeriod, "Đã chốt kỳ báo cáo.");
-        }}
-        onSignOff={async () => {
-          if (await confirmDialog({
-            title: "Ký duyệt kỳ báo cáo",
-            description: "Ký duyệt sẽ KHOÁ CỨNG số liệu kỳ này (không mở lại được). Tiếp tục?",
-            confirmLabel: "Ký duyệt",
-            danger: true,
-          }))
-            runAction(managerService.signOffReportPeriod, "Đã ký duyệt kỳ báo cáo.");
-        }}
-        onReopen={async () => {
-          if (await confirmDialog({
-            title: "Mở lại kỳ báo cáo",
-            description: "Mở lại sẽ xoá bản chốt, số liệu quay về tính động. Tiếp tục?",
-            confirmLabel: "Mở lại",
-            danger: true,
-          }))
-            runAction(managerService.reopenReportPeriod, "Đã mở lại kỳ báo cáo.");
-        }}
+        onSignOff={handleSignOff}
       />
+
+      {/* Doanh thu chạy ở kỳ trước nhưng chốt giá muộn nên ghi nhận vào kỳ này. Nêu
+          riêng để người đọc không phải đoán vì sao doanh thu vọt lên mà số chuyến
+          trong kỳ không tăng tương ứng. */}
+      {Number(pnl.revenue_carried_in) > 0 && (
+        <div className="rounded-2xl border border-sky-200 dark:border-sky-500/25 bg-sky-50 dark:bg-sky-500/10 px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white/70 dark:bg-white/10 flex items-center justify-center shrink-0">
+            <RiArrowUpLine size={18} className="text-sky-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
+              Bao gồm {VND_FULL(pnl.revenue_carried_in)} doanh thu kỳ trước chuyển sang
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              {pnl.trips_carried_in ?? 0} chuyến chạy ở kỳ trước, chốt giá sau khi kỳ đó đã ký duyệt
+              nên được ghi nhận vào kỳ này.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* A. P&L */}
       <div className="grid grid-cols-4 gap-4">
@@ -208,7 +245,7 @@ export default function BusinessReportView() {
             label="Doanh thu"
             value={VND(pnl.revenue)}
             icon={RiLineChartLine}
-            sub={`${pnl.completed_trips ?? 0} chuyến hoàn thành`}
+            sub={`${pnl.completed_trips ?? 0} chuyến đã chốt giá`}
             gradient="from-blue-500 to-blue-600"
             lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
           />
@@ -268,7 +305,9 @@ export default function BusinessReportView() {
             icon={RiTruckLine}
             action={
               <div className="flex items-center gap-3 text-[11px]">
-                <span className="text-gray-400 dark:text-gray-400">{ops.completed ?? 0} hoàn thành</span>
+                {/* Số chuyến CHẠY XONG trong tháng (theo completed_at) — khác với
+                    "chuyến đã chốt giá" ở ô Doanh thu (theo kỳ ghi nhận doanh thu). */}
+                <span className="text-gray-400 dark:text-gray-400">{ops.completed ?? 0} chạy xong</span>
                 <span className={`font-semibold ${Number(ops.failed_rate) > 10 ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
                   {Number(ops.failed_rate || 0).toFixed(1)}% hỏng
                 </span>
@@ -322,9 +361,10 @@ export default function BusinessReportView() {
         <RiskyCustomers data={data?.risky_customers} />
       </Section>
 
-      {/* Công nợ chi tiết — tách theo tuổi nợ, tổng khớp với ô "Nợ phải thu" ở trên */}
+      {/* Công nợ chi tiết — tách theo tuổi nợ. Chỉ liệt kê 50 bên nợ lớn nhất, phần còn
+          lại gộp thành một dòng để TỔNG CỘNG khớp ô "Nợ phải thu" ở trên. */}
       <Section title="Công nợ phải thu chi tiết" icon={RiFileList3Line}>
-        <CustomerDebtTable data={data?.customer_debts} />
+        <CustomerDebtTable data={data?.customer_debts} cashflow={cash} />
       </Section>
 
     </div>
@@ -341,8 +381,9 @@ function fmtDateTime(iso) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// Thanh trạng thái chốt kỳ (open → closed → signed_off) + nút thao tác tương ứng.
-function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen }) {
+// Thanh trạng thái kỳ (open → signed_off) + nút ký duyệt. Chỉ một bước, một chiều:
+// ký xong là khoá cứng, không có "chốt lại" hay "mở lại".
+function PeriodStatusBar({ meta, acting, actionErr, onSignOff }) {
   const status = meta?.status ?? "open";
 
   const config = {
@@ -351,12 +392,6 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
       icon: RiTimeLine, iconTone: "text-gray-400 dark:text-gray-400",
       title: "Kỳ đang mở",
       desc: "Số liệu tính động theo thời gian thực, sẽ đổi khi có giao dịch phát sinh.",
-    },
-    closed: {
-      wrap: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25",
-      icon: RiLockLine, iconTone: "text-amber-500",
-      title: "Đã chốt — số liệu đóng băng",
-      desc: `Chốt bởi ${meta?.closed_by_name ?? "—"} · ${fmtDateTime(meta?.closed_at)}`,
     },
     signed_off: {
       wrap: "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25",
@@ -382,26 +417,10 @@ function PeriodStatusBar({ meta, acting, actionErr, onClose, onSignOff, onReopen
 
       <div className="flex items-center gap-2">
         {status === "open" && (
-          <Button size="sm" color="primary" isLoading={acting}
-            startContent={!acting && <RiSave3Line size={15} />} onPress={onClose}>
-            Chốt kỳ
+          <Button size="sm" color="success" className="text-white" isLoading={acting}
+            startContent={!acting && <RiShieldCheckLine size={15} />} onPress={onSignOff}>
+            Ký duyệt
           </Button>
-        )}
-        {status === "closed" && (
-          <>
-            <Button size="sm" variant="flat" isLoading={acting}
-              startContent={!acting && <RiSave3Line size={15} />} onPress={onClose}>
-              Chốt lại
-            </Button>
-            <Button size="sm" variant="flat" color="danger" isDisabled={acting}
-              startContent={<RiLockUnlockLine size={15} />} onPress={onReopen}>
-              Mở lại
-            </Button>
-            <Button size="sm" color="success" className="text-white" isLoading={acting}
-              startContent={!acting && <RiShieldCheckLine size={15} />} onPress={onSignOff}>
-              Ký duyệt
-            </Button>
-          </>
         )}
         {status === "signed_off" && (
           <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
@@ -497,11 +516,13 @@ function PartyTag() {
   );
 }
 
-function CustomerDebtTable({ data }) {
+function CustomerDebtTable({ data, cashflow }) {
   if (!data?.length) {
     return <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-8">Không có khách hàng còn dư nợ.</p>;
   }
-  const sum = (k) => data.reduce((s, c) => s + Number(c[k] || 0), 0);
+  // rows đã kèm dòng bù "các bên nợ khác" nếu có hơn 50 bên nợ, nên TỔNG CỘNG bên dưới
+  // luôn khớp ô "Nợ phải thu" ở phần trên.
+  const { rows, total } = reconcileDebtRows(data, cashflow);
   const cell = "py-2.5 px-2 text-right tabular-nums";
 
   return (
@@ -519,9 +540,9 @@ function CustomerDebtTable({ data }) {
           </tr>
         </thead>
         <tbody>
-          {data.map((c, i) => (
+          {rows.map((c, i) => (
             <tr key={i} className="border-b border-gray-50 last:border-0">
-              <td className="py-2.5 px-2 font-medium text-gray-700 dark:text-gray-200 truncate max-w-[200px]">
+              <td className={`py-2.5 px-2 font-medium truncate max-w-[200px] ${c.unpaid_orders === null ? "text-gray-400 dark:text-gray-400 italic" : "text-gray-700 dark:text-gray-200"}`}>
                 {c.name}
                 {c.party_type === "partner" && <PartyTag />}
               </td>
@@ -532,17 +553,17 @@ function CustomerDebtTable({ data }) {
               <td className={`${cell} font-semibold ${Number(c.d90_plus) > 0 ? "text-red-500" : "text-gray-300"}`}>
                 {Number(c.d90_plus) > 0 ? VND(c.d90_plus) : "—"}
               </td>
-              <td className={`${cell} text-gray-500 dark:text-gray-400`}>{c.unpaid_orders}</td>
+              <td className={`${cell} text-gray-500 dark:text-gray-400`}>{c.unpaid_orders ?? "—"}</td>
             </tr>
           ))}
           <tr className="border-t-2 border-gray-100 dark:border-white/10 font-bold text-gray-700 dark:text-gray-200">
             <td className="py-2.5 px-2">TỔNG CỘNG</td>
-            <td className={cell}>{VND_FULL(sum("outstanding"))}</td>
-            <td className={cell}>{VND(sum("d0_30"))}</td>
-            <td className={cell}>{VND(sum("d30_60"))}</td>
-            <td className={cell}>{VND(sum("d60_90"))}</td>
-            <td className={`${cell} text-red-500`}>{VND(sum("d90_plus"))}</td>
-            <td className={cell}>{sum("unpaid_orders")}</td>
+            <td className={cell}>{VND_FULL(total.outstanding)}</td>
+            <td className={cell}>{VND(total.d0_30)}</td>
+            <td className={cell}>{VND(total.d30_60)}</td>
+            <td className={cell}>{VND(total.d60_90)}</td>
+            <td className={`${cell} text-red-500`}>{VND(total.d90_plus)}</td>
+            <td className={cell}>{total.unpaid_orders}</td>
           </tr>
         </tbody>
       </table>
