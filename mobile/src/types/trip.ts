@@ -127,6 +127,7 @@ export type OrderHistoryItem = {
     completed_legs: number;
     total_estimated_price: string | null;
     total_actual_price: string | null;
+    has_return_shipment: boolean;
     first_claimed_at: string | null;
     last_completed_at: string | null;
 };
@@ -140,6 +141,7 @@ export type ShipmentWithPhotos = {
     cargo_weight_kg: string | null;
     estimated_price: string | null;
     actual_price: string | null;
+    returning_at: string | null;
     status: TripStatus;
     notes: string | null;
     cancel_reason: string | null;

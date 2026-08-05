@@ -60,7 +60,14 @@ function ShipmentCard({ shipment }) {
         <InfoTile icon={infoIcon(RiTruckLine)} label="BKS" value={shipment.plate} />
         <InfoTile icon={infoIcon(RiUserLine)} label="Tài xế" value={shipment.driverName} />
         <InfoTile icon={infoIcon(RiScales3Line)} label="Quãng đường" value={shipment.distance ? `${shipment.distance} km` : "-"} />
-        <InfoTile icon={infoIcon(RiMoneyDollarCircleLine)} label="Cước" value={formatCurrency(shipment.fare)} />
+        <InfoTile
+          icon={infoIcon(RiMoneyDollarCircleLine)}
+          label="Cước"
+          value={formatCurrency(shipment.fare)}
+          extra={shipment.returning_at ? (
+            <div className="mt-1 text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</div>
+          ) : null}
+        />
       </div>
     </div>
   );
@@ -223,7 +230,14 @@ export default function OrderDetailModal({ open, order, onClose, drivers, onAssi
             <InfoTile icon={infoIcon(RiUserLine)} label="Khách hàng" value={order.customerName} />
             <InfoTile icon={infoIcon(RiPhoneLine)} label="SĐT" value={order.customerPhone} />
             <InfoTile icon={infoIcon(RiCalendarLine)} label="Ngày" value={order.date || order.dateInput} />
-            <InfoTile icon={infoIcon(RiMoneyDollarCircleLine)} label="Tổng cước" value={formatCurrency(order.fare)} />
+            <InfoTile
+              icon={infoIcon(RiMoneyDollarCircleLine)}
+              label="Tổng cước"
+              value={formatCurrency(order.fare)}
+              extra={(order.trips || []).some((t) => t.returning_at) ? (
+                <div className="mt-1 text-[10px] font-semibold text-orange-600 dark:text-orange-300">Có chuyến hoàn hàng · ×2 cước</div>
+              ) : null}
+            />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

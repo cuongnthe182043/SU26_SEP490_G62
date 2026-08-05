@@ -107,7 +107,12 @@ export default function ReceiptDetailModal({
                 {shipments.map((shipment) => (
                   <div key={shipment.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-4 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <strong className="text-sm">Chuyến #{shipment.id} · {shipment.shipment_index || "-"}</strong>
+                      <div className="flex items-center gap-2">
+                        <strong className="text-sm">Chuyến #{shipment.id} · {shipment.shipment_index || "-"}</strong>
+                        {shipment.returning_at ? (
+                          <Chip size="sm" variant="flat" color="warning">Hoàn hàng · ×2 cước</Chip>
+                        ) : null}
+                      </div>
                       <StatusBadge status={shipment.status} />
                     </div>
                     <div className="grid grid-cols-4 gap-3 text-sm">
