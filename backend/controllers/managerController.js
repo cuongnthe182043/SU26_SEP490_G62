@@ -74,7 +74,7 @@ const getBusinessReport = async (req, res) => {
     }
 };
 
-// Đọc + validate (year, month) từ body cho các thao tác chốt kỳ.
+// Đọc + validate (year, month) từ body cho thao tác ký duyệt kỳ.
 const parsePeriodBody = (body = {}) => {
     const year = parseInt(body.year, 10);
     const month = parseInt(body.month, 10);
@@ -87,13 +87,12 @@ const parsePeriodBody = (body = {}) => {
     return { year, month };
 };
 
-const closeReportPeriod = async (req, res) => {
+// (year, month) đọc từ query — endpoint chỉ đọc, không đổi gì.
+const getReportPeriodPreflight = async (req, res) => {
     try {
-        const { year, month } = parsePeriodBody(req.body);
-        const data = await managerService.closeReportPeriod({
-            year, month, actorId: req.user.userId, note: req.body?.note?.trim() || null,
-        });
-        res.json({ message: 'Đã chốt kỳ báo cáo', report: data });
+        const { year, month } = parsePeriodBody(req.query);
+        const data = await managerService.getReportPeriodPreflight({ year, month });
+        res.json(data);
     } catch (err) {
         sendError(res, err);
     }
@@ -102,18 +101,10 @@ const closeReportPeriod = async (req, res) => {
 const signOffReportPeriod = async (req, res) => {
     try {
         const { year, month } = parsePeriodBody(req.body);
-        const data = await managerService.signOffReportPeriod({ year, month, actorId: req.user.userId });
+        const data = await managerService.signOffReportPeriod({
+            year, month, actorId: req.user.userId, note: req.body?.note?.trim() || null,
+        });
         res.json({ message: 'Đã ký duyệt kỳ báo cáo', report: data });
-    } catch (err) {
-        sendError(res, err);
-    }
-};
-
-const reopenReportPeriod = async (req, res) => {
-    try {
-        const { year, month } = parsePeriodBody(req.body);
-        const data = await managerService.reopenReportPeriod({ year, month });
-        res.json({ message: 'Đã mở lại kỳ báo cáo', report: data });
     } catch (err) {
         sendError(res, err);
     }
@@ -363,9 +354,8 @@ module.exports = {
     getDashboard,
     getReportsOverview,
     getBusinessReport,
-    closeReportPeriod,
+    getReportPeriodPreflight,
     signOffReportPeriod,
-    reopenReportPeriod,
     listReportPeriods,
     getSalaryAdvances,
     approveSalaryAdvance,

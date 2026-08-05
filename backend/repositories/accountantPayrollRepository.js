@@ -109,12 +109,12 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id, month, year]);
     const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0)
                           + Number(halfRow.half_days ?? 0) * 0.5;
-    // "28 công" là quota — tháng có nhiều hơn 28 ngày lịch thì phần dư (29,30,31 - 28)
-    // là ngày nghỉ được miễn trừ tự nhiên. Chỉ khi số ngày thực đi làm (ngày lịch - vắng)
-    // TỤT XUỐNG DƯỚI 28 mới bị trừ lương, và chỉ trừ đúng phần hụt đó — không trừ thẳng
-    // theo số ngày vắng. Tháng đúng 28 ngày (tháng 2) thì không có phần dư nào để miễn.
+    // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
+    // trả. Tháng dài hơn 28 ngày lịch mà tài đi làm hết cả những ngày dư (29, 30, 31) thì
+    // được trả thêm đúng phần dư đó — proRatedBase khi ấy VƯỢT base_salary. Ngược lại,
+    // vắng/nghỉ không lương thì trừ đúng phần hụt so với số ngày lịch của tháng.
     const daysInMonth    = getDaysInMonth(month, year);
-    const actualWorkDays = Math.max(0, Math.min(WORKING_DAYS_PER_MONTH, daysInMonth - unpaidDays));
+    const actualWorkDays = Math.max(0, daysInMonth - unpaidDays);
     const proRatedBase   = Math.round((baseSalary / WORKING_DAYS_PER_MONTH) * actualWorkDays);
     const absencePenalty = baseSalary - proRatedBase;
 
@@ -239,7 +239,19 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
     const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
 
-    const driverDebtDeduction = Math.min(totalDebt, Math.max(0, netBeforeDebt));
+    // Trần khấu trừ công nợ mỗi kỳ: chỉ lấy tối đa N% số tài xế còn được nhận, phần nợ
+    // còn lại tự chuyển sang kỳ sau (lần tính lương tháng sau vẫn thấy nó trong tổng nợ).
+    //
+    // Trước đây trừ tới 100% — không âm, nhưng tài xế có khoản nợ cũ lớn sẽ nhận về ĐÚNG
+    // 0đ trong tháng đó. Nợ vẫn phải đòi, nhưng không phải bằng cách lấy sạch một tháng
+    // lương của người ta.
+    const { rows: [capRow] } = await client.query(
+        'SELECT driver_debt_monthly_cap_percent AS pct FROM company_info WHERE id = 1',
+    );
+    const debtCapPercent = Number(capRow?.pct ?? 30);
+    const debtCap = Math.round(Math.max(0, netBeforeDebt) * debtCapPercent / 100);
+
+    const driverDebtDeduction = Math.min(totalDebt, debtCap);
 
     return {
         monthsOfService,

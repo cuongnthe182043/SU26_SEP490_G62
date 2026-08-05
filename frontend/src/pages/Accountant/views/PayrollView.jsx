@@ -93,7 +93,11 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
     // Tiền hoàn khoản tài đã ứng (chi hộ khách + chi phí công ty) — không phải thu nhập
     { label: "Hoàn chi phí đã ứng", value: row.expense_reimbursement },
     { label: "BHXH (10.5%)",    value: `-${VND(row.insurance_employee)}`, raw: true, neg: true },
-    { label: "Nghỉ không lương",value: `-${VND(row.absence_penalty)}`,    raw: true, neg: true },
+    // absence_penalty âm = đi làm dư ngày công (>28, tháng 29-31 ngày đi đủ) → được trả
+    // thêm, không phải bị trừ — đổi nhãn/dấu cho đúng, không hiện "-(-x)" gây hiểu nhầm.
+    (Number(row.absence_penalty ?? 0) >= 0
+      ? { label: "Nghỉ không lương", value: `-${VND(row.absence_penalty)}`, raw: true, neg: true }
+      : { label: "Đi làm dư ngày công (>28)", value: `+${VND(-row.absence_penalty)}`, raw: true }),
     { label: "Trừ ứng lương",   value: `-${VND(row.advance_deduction)}`,  raw: true, neg: true },
     { label: "Trừ công nợ",     value: `-${VND(row.driver_debt_deduction)}`, raw: true, neg: true },
     ...(Number(row.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${VND(row.manual_deduction)}`, raw: true, neg: true }] : []),

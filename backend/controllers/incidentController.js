@@ -140,6 +140,28 @@ const updateIncidentStatus = async (req, res) => {
     }
 };
 
+// ─── POST /api/incidents/:id/cancel-shipment  (coordinator/manager) ──────────
+// Outcome duy nhất hỗ trợ cho sự cố cargo_damage: hủy dứt điểm chuyến gắn với sự cố
+// (cho phép hủy dù đã lấy hàng), đồng thời tự đóng sự cố và tính lại trạng thái đơn.
+
+const cancelDamagedShipment = async (req, res) => {
+    try {
+        const incidentId = Number(req.params.id);
+        const coordinatorId = req.user.userId;
+        if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
+
+        const { reason } = req.body;
+        const result = await incidentService.cancelDamagedShipment(incidentId, coordinatorId, { reason });
+        res.json({ message: 'Đã hủy chuyến do hàng hóa hư hại', ...result });
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('hoàn thành hoặc đã hủy') ? 409
+            : err.message.includes('bắt buộc') || err.message.includes('Chỉ áp dụng') ? 400
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 // GET /api/incidents/shipment/:shipmentId  (driver — incidents của 1 chuyến)
 const getShipmentIncidents = async (req, res) => {
     try {
@@ -174,5 +196,5 @@ const updateMyIncident = async (req, res) => {
 
 module.exports = {
     createIncident, createIncidentByStaff, getMyCounts, getMyIncidents, getIncidentDetail,
-    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus, cancelDamagedShipment,
 };

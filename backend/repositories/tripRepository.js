@@ -203,6 +203,14 @@ const getTripByIdForUpdate = async (client, tripId) => {
 
 // Trả về trip với đầy đủ thông tin như getActiveTrip (có order_payment_type, is_final_shipment)
 // Dùng sau khi update status để trả về response đúng cho mobile
+//
+// is_final_shipment TRƯỚC ĐÂY tự tính SQL riêng ở đây (chỉ so status, không kiểm tra km
+// đã nhập hay chưa) — LỆCH với công thức thật sự dùng để tạo yêu cầu phiếu thu ở
+// getShipmentFinalStatus/requestOrderReceipt (có thêm điều kiện actual_distance_km). Mobile
+// dựa vào field này để quyết định có hiện màn "gửi yêu cầu phiếu thu" hay không
+// (needsReceiptRequest = trip.is_final_shipment && payment_type === 'cash'), nên lệch công
+// thức nghĩa là UI có thể mời gửi yêu cầu ngay cả khi server sẽ từ chối vì chuyến khác chưa
+// nhập km. Nay dùng LẠI đúng getShipmentFinalStatus để 2 nơi không bao giờ lệch nhau nữa.
 const getFullTripById = async (tripId) => {
     const result = await pool.query(
         `SELECT
@@ -229,23 +237,17 @@ const getFullTripById = async (tripId) => {
                 SELECT MAX(s2.shipment_index)
                 FROM order_shipments s2
                 WHERE s2.order_id = os.order_id
-            ) AS max_shipment_index,
-            (
-                os.shipment_index = (SELECT MAX(s2.shipment_index) FROM order_shipments s2 WHERE s2.order_id = os.order_id)
-                AND NOT EXISTS (
-                    SELECT 1 FROM order_shipments s3
-                    WHERE s3.order_id = os.order_id
-                      AND s3.id != os.id
-                      AND s3.status NOT IN ('completed', 'cancelled', 'failed')
-                )
-            ) AS is_final_shipment
+            ) AS max_shipment_index
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
          WHERE os.id = $1`,
         [tripId],
     );
     if (!result.rows[0]) return null;
-    return result.rows[0];
+    const row = result.rows[0];
+
+    const { isMaxIndex, allOthersReady } = await getShipmentFinalStatus(tripId);
+    return { ...row, is_final_shipment: isMaxIndex && allOthersReady };
 };
 
 const claimShipment = async (shipmentId, driverId, vehicleId) => {
@@ -494,6 +496,98 @@ const resolveFailedShipment = async ({ shipmentId, action, coordinatorId }) => {
     }
 };
 
+// Tính lại orders.derived_status dựa trên TOÀN BỘ chuyến của đơn — nguồn sự thật DUY
+// NHẤT cho việc đơn đã đóng hay chưa. Trước đây có 2 nơi tự quyết định việc này theo
+// 2 kiểu khác nhau và đều thiếu sót khi đơn có nhiều chuyến / nhiều tài xế:
+//  - activateNextShipment chỉ nhìn "tài này còn chuyến kế tiếp không", coi đơn xong ngay
+//    khi 1 tài hết việc — dù chuyến khác của đơn (do tài khác giữ) vẫn đang chạy.
+//  - returnComplete chỉ đóng đơn khi CHÍNH chuyến vừa xong có shipment_index lớn nhất
+//    (isFinalShipment) — nếu chuyến index lớn nhất lại là chuyến vừa bị hủy (vd. do sự
+//    cố hàng hư hỏng), không chuyến nào còn lại thoả điều kiện này nữa → đơn treo mãi.
+// Gọi hàm này sau MỌI lần 1 chuyến chuyển sang trạng thái kết thúc (completed/cancelled)
+// để đơn luôn phản ánh đúng thực tế, không phụ thuộc thứ tự index hay driver nào vừa xong.
+//
+// Chỉ đóng đơn khi TẤT CẢ chuyến đã kết thúc (completed/cancelled) — còn chuyến đang
+// chạy (kể cả của tài khác) thì giữ nguyên, chưa đóng:
+//  - tất cả 'cancelled'                          → đơn 'cancelled'
+//  - tất cả 'completed'                          → đơn 'completed'
+//  - trộn completed + cancelled                  → đơn 'partial' (giao được một phần —
+//    dùng đúng giá trị đã có sẵn trong CHECK constraint của orders.derived_status)
+// Trả về trạng thái mới nếu có thay đổi, null nếu đơn vẫn còn chuyến đang chạy.
+const recomputeOrderDerivedStatus = async (orderId, client = pool) => {
+    const { rows: siblings } = await client.query(
+        `SELECT status FROM order_shipments WHERE order_id = $1`,
+        [orderId],
+    );
+    if (siblings.length === 0) return null;
+
+    const isTerminal = (s) => [SHIPMENT_STATUS.COMPLETED, SHIPMENT_STATUS.CANCELLED].includes(s);
+    if (!siblings.every((s) => isTerminal(s.status))) return null;
+
+    const allCancelled = siblings.every((s) => s.status === SHIPMENT_STATUS.CANCELLED);
+    const allCompleted = siblings.every((s) => s.status === SHIPMENT_STATUS.COMPLETED);
+    const newStatus = allCancelled ? 'cancelled' : allCompleted ? 'completed' : 'partial';
+
+    await client.query(
+        `UPDATE orders SET derived_status = $2, updated_at = NOW() WHERE id = $1`,
+        [orderId, newStatus],
+    );
+    return newStatus;
+};
+
+// Hủy 1 chuyến do sự cố "hàng hóa hư hại" (luồng Incident) — cho phép hủy ở BẤT KỲ
+// trạng thái chưa kết thúc, kể cả đã lấy hàng/đang vận chuyển/đang hoàn hàng (khác
+// coordinatorService.cancelShipment thông thường, hàm này còn tính lại trạng thái đơn
+// ngay trong cùng transaction để đơn không bị "treo" sau khi chuyến bị hủy).
+const cancelShipmentForCargoDamage = async ({ shipmentId, reason, coordinatorId }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const { rows: [shipment] } = await client.query(
+            `SELECT id, status, order_id FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            [shipmentId],
+        );
+        if (!shipment) {
+            await client.query('ROLLBACK');
+            throw new Error('SHIPMENT_NOT_FOUND');
+        }
+        if ([SHIPMENT_STATUS.COMPLETED, SHIPMENT_STATUS.CANCELLED].includes(shipment.status)) {
+            await client.query('ROLLBACK');
+            throw new Error('ALREADY_TERMINAL');
+        }
+
+        const { rows: [updated] } = await client.query(
+            `UPDATE order_shipments
+             SET status = $2, cancel_reason = $3, cancelled_at = NOW(),
+                 version = version + 1, updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [shipmentId, SHIPMENT_STATUS.CANCELLED, reason],
+        );
+
+        await recomputeOrderDerivedStatus(shipment.order_id, client);
+
+        await client.query('COMMIT');
+
+        activityLogRepository.logSafe({
+            userId: coordinatorId,
+            action: 'trip_cancelled_cargo_damage',
+            entityType: 'shipment',
+            entityId: shipmentId,
+            oldData: { status: shipment.status },
+            newData: { status: updated.status, reason },
+        });
+
+        return updated;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 // Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
 //
 // Cách hoạt động: ghi shipment_assignment_history (⇒ v_shipment_current.owner_driver_id
@@ -687,11 +781,9 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
             return next;
         }
 
-        // Leg cuối hoàn thành → cập nhật derived_status của order
-        await client.query(
-            `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
-            [order_id],
-        );
+        // Tài này hết chuyến kế tiếp — nhưng đơn có thể còn chuyến khác đang chạy bởi
+        // tài khác, nên KHÔNG tự đóng đơn ở đây mà tính lại từ TOÀN BỘ chuyến của đơn.
+        await recomputeOrderDerivedStatus(order_id, client);
         await client.query('COMMIT');
         return null;
     } catch (err) {
@@ -825,13 +917,22 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
 // Trả chi tiết (không chỉ true/false) để service phân biệt "không phải chuyến
 // cuối" với "là chuyến cuối nhưng đang chờ chuyến khác nhập km" — cho phép báo
 // đúng lý do thay vì im lặng.
+//
+// is_max_index KHÔNG so bằng shipment_index = MAX(...) tuyệt đối nữa: nếu đúng chuyến
+// index lớn nhất bị HỦY (vd. sự cố hàng hư hỏng — cancelShipmentForCargoDamage), so tuyệt
+// đối sẽ không bao giờ có chuyến nào khác thoả "= MAX" được nữa → không tài nào tạo được
+// yêu cầu phiếu thu cho đơn cash (BR-018B), tiền các chuyến đã giao không bao giờ được đối
+// soát. Nay so "không còn chuyến CHƯA BỊ HỦY nào có index lớn hơn" — chuyến index lớn nhất
+// còn "sống" (chưa hủy) mới là chuyến khép lại đơn, đúng ý định ban đầu của isMaxIndex.
 const getShipmentFinalStatus = async (tripId) => {
     const result = await pool.query(
         `SELECT
-            (os.shipment_index = (
-                SELECT MAX(s2.shipment_index) FROM order_shipments s2
-                WHERE s2.order_id = os.order_id
-            )) AS is_max_index,
+            NOT EXISTS (
+                SELECT 1 FROM order_shipments s4
+                WHERE s4.order_id = os.order_id
+                  AND s4.status <> 'cancelled'
+                  AND s4.shipment_index > os.shipment_index
+            ) AS is_max_index,
             NOT EXISTS (
                 SELECT 1 FROM order_shipments s3
                 WHERE s3.order_id = os.order_id
@@ -1211,16 +1312,24 @@ const getAllVehicleGroups = async () => {
 };
 
 // Tìm chuyến COMPLETED của driver cần nhập km hoặc tạo yêu cầu phiếu thu
-// Hai trường hợp:
+// Hai trường hợp, xét theo thứ tự chuyến hoàn thành gần nhất trước (giữ đúng ưu tiên cũ):
 //   1. Chưa nhập km (actual_distance_km IS NULL) — mọi driver của cash order
-//   2. Driver cuối đã nhập km nhưng chưa gửi yêu cầu phiếu thu
+//   2. Driver của chuyến "khép lại đơn" đã nhập km nhưng chưa gửi yêu cầu phiếu thu
+// Điều kiện (2) DÙNG LẠI getShipmentFinalStatus thay vì tự viết SQL riêng — trước đây có
+// bản SQL riêng ở đây so shipment_index = MAX(...) tuyệt đối, hỏng khi đúng chuyến index
+// lớn nhất bị HỦY (vd. sự cố hàng hư hỏng — cancelShipmentForCargoDamage): không chuyến nào
+// còn khớp "= MAX" nữa nên không driver nào từng được nhắc gửi yêu cầu, tiền các chuyến đã
+// giao không bao giờ được đối soát. Gọi chung 1 hàm cũng tránh 2 nơi tính "chuyến cuối"
+// theo 2 công thức lệch nhau (nơi này trước đây thiếu điều kiện actual_distance_km của
+// getShipmentFinalStatus).
 const getPendingReceiptOrder = async (driverId) => {
-    const result = await pool.query(
+    const { rows } = await pool.query(
         `SELECT
             os.id              AS shipment_id,
             os.order_id,
             os.shipment_index,
             os.estimated_price,
+            os.actual_distance_km,
             o.cargo_name,
             ${PICKUP_SUBQ}     AS pickup_address,
             ${DELIVERY_SUBQ}   AS delivery_address,
@@ -1235,31 +1344,58 @@ const getPendingReceiptOrder = async (driverId) => {
          WHERE sc.owner_driver_id = $1
            AND os.status = 'completed'
            AND o.payment_type = 'cash'
-           AND (
-               os.actual_distance_km IS NULL
-               OR (
-                   os.shipment_index = (
-                       SELECT MAX(s2.shipment_index)
-                       FROM order_shipments s2
-                       WHERE s2.order_id = os.order_id
-                   )
-                   AND NOT EXISTS (
-                       SELECT 1 FROM order_receipt_requests orr
-                       WHERE orr.order_id = os.order_id
-                   )
-               )
-           )
-         ORDER BY os.completed_at DESC
-         LIMIT 1`,
+         ORDER BY os.completed_at DESC`,
         [driverId],
     );
-    return result.rows[0] ?? null;
+
+    for (const row of rows) {
+        const { actual_distance_km, ...shipment } = row;
+        if (actual_distance_km === null) {
+            return shipment;
+        }
+
+        const { isMaxIndex, allOthersReady } = await getShipmentFinalStatus(row.shipment_id);
+        if (!isMaxIndex || !allOthersReady) continue;
+
+        const { rows: existingRequests } = await pool.query(
+            `SELECT 1 FROM order_receipt_requests WHERE order_id = $1`,
+            [row.order_id],
+        );
+        if (existingRequests.length === 0) return shipment;
+    }
+    return null;
 };
 
-// Ghi km thực tế vào order_shipments — dùng cho tất cả driver (final hay không)
+// Ghi km thực tế vào order_shipments — dùng cho tất cả driver (final hay không).
+//
+// Chuyến HOÀN HÀNG (returning_at có giá trị) chốt actual_price = km × đơn giá × 2 NGAY TẠI ĐÂY,
+// bất kể payment_type của đơn. Lý do: updateShipmentActualPrice (coordinatorRepository) trước giờ
+// CHỈ được gọi trong approveReceiptRequest, mà order_receipt_requests CHỈ được tạo cho đơn
+// payment_type = 'cash' + driver cuối (requestOrderReceipt). Với đơn bank_transfer, không có
+// request nào được tạo → actual_price không bao giờ được chốt → BR-026 fallback về estimated_price
+// (giá MỘT CHIỀU cũ trước khi hoàn hàng) mãi mãi, doanh thu/KPI sai một nửa mà không có gì báo lỗi.
+// Giá cố định do DN chốt tay (is_price_manual) thì giữ nguyên, không suy diễn theo km.
 const saveShipmentActualKm = async (shipmentId, km) => {
     await pool.query(
-        `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
+        `WITH pricing AS (
+            SELECT COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
+            FROM order_shipments os2
+            LEFT JOIN v_shipment_current sc ON sc.shipment_id = os2.id
+            LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+            LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order ON vg_order.id = os2.vehicle_group_id
+            WHERE os2.id = $2
+         )
+         UPDATE order_shipments os
+         SET actual_distance_km = $1,
+             actual_price = CASE
+                 WHEN os.returning_at IS NOT NULL AND os.is_price_manual IS NOT TRUE AND pricing.price_per_km > 0
+                 THEN $1::numeric * pricing.price_per_km * 2
+                 ELSE os.actual_price
+             END,
+             updated_at = NOW()
+         FROM pricing
+         WHERE os.id = $2`,
         [km, shipmentId],
     );
 };
@@ -1298,11 +1434,15 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             ${RECEIPT_PAYMENT_TYPE_SQL}                                       AS payment_type,
             -- sr.amount (đã gồm cước + chi hộ − trả trước, chốt khi duyệt);
             -- fallback cho phiếu chưa duyệt / dữ liệu cũ: cước (thực tế/ước tính) − trả trước + chi hộ
+            -- Loại chuyến 'cancelled'/'failed' (vd. hủy do sự cố hàng hư hỏng) khỏi tổng —
+            -- khớp đúng rule ở computeReceiptAmount, nếu không estimated_price của chuyến hư
+            -- hỏng vẫn bị cộng vào số tài xế thấy trong lúc phiếu còn chờ duyệt.
             COALESCE(sr.amount,
                 GREATEST(
                     (SELECT COALESCE(SUM(COALESCE(os2.actual_price, os2.estimated_price)), 0)
                      FROM order_shipments os2
-                     WHERE os2.order_id = orr.order_id)
+                     WHERE os2.order_id = orr.order_id
+                       AND os2.status NOT IN ('cancelled', 'failed'))
                     - COALESCE(o.prepaid_amount, 0),
                     0
                 )
@@ -1366,7 +1506,8 @@ const getDriverReceiptDetail = async (orrId, driverId) => {
                     COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
                     0
                 ) FROM order_shipments os2
-                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL
+                   AND os2.status NOT IN ('cancelled', 'failed'))
             )                            AS amount,
             COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
@@ -1526,7 +1667,8 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                        COALESCE(SUM(os2.actual_price),0) - COALESCE(MAX(o2.prepaid_amount),0), 0
                    ) FROM order_shipments os2
                     JOIN orders o2 ON o2.id = os2.order_id
-                    WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+                    WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL
+                      AND os2.status NOT IN ('cancelled', 'failed'))
                ) AS amount
         FROM shipment_receipts sr
         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
@@ -1790,13 +1932,6 @@ const getOrderPaymentType = async (orderId) => {
     return rows[0]?.payment_type ?? null;
 };
 
-const markOrderCompleted = async (orderId) => {
-    await pool.query(
-        `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
-        [orderId],
-    );
-};
-
 // Chưa thanh toán khi driver báo nợ (không qua flow phiếu thu — ghi nợ trực tiếp trên trip).
 // Đơn đối tác → công nợ ĐỐI TÁC; đơn thường → công nợ khách.
 const createCustomerDebtForTrip = async ({ customerId, driverId, shipmentId, orderId, amount, notes }) => {
@@ -1834,6 +1969,8 @@ module.exports = {
     claimShipment,
     assignOrderShipmentsToDriver,
     resolveFailedShipment,
+    cancelShipmentForCargoDamage,
+    recomputeOrderDerivedStatus,
     updateTripStatus,
     releaseShipmentToPool,
     isFinalShipment,
@@ -1854,6 +1991,5 @@ module.exports = {
     recordReceiptCollection,
     getOrderCustomerId,
     getOrderPaymentType,
-    markOrderCompleted,
     createCustomerDebtForTrip,
 };

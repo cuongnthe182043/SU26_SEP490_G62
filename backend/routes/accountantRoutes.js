@@ -27,6 +27,11 @@ router.get('/debts', accountantDebtController.getDebts);
 router.get('/debts/stats', accountantDebtController.getDebtStats);
 router.get('/debts/grouped', accountantDebtController.getDebtsGrouped);
 router.get('/debts/person/:personType/:personId', accountantDebtController.getDebtsByPerson);
+// Cong no khai tay — dat TRUOC '/debts/:id/...' de '/manual' khong bi hieu la mot id
+router.get   ('/debts/owners',     accountantDebtController.searchDebtOwners);
+router.post  ('/debts/manual',     accountantDebtController.createManualDebt);
+router.put   ('/debts/manual/:id', accountantDebtController.updateManualDebt);
+router.delete('/debts/manual/:id', accountantDebtController.deleteManualDebt);
 router.post('/debts/:id/transfer-to-driver', accountantDebtController.transferToDriver);
 
 router.get ('/debts/payment/history', accountantPaymentController.getAllPaymentHistory);

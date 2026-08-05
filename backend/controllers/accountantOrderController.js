@@ -124,6 +124,7 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
             if (s.driver_id != null)        posInt(s.driver_id,        `${idx}: Tài xế`);
 
             nonNegAmount(s.cargo_fee   ?? 0, `${idx}: Cước xe`);
+            if (s.settled_fee != null) nonNegAmount(s.settled_fee, `${idx}: Giá chốt`);
             nonNegAmount(s.ticket_fee  ?? 0, `${idx}: Vé/phí`);
             nonNegAmount(s.cargo_weight ?? 0, `${idx}: Khối lượng hàng`);
 

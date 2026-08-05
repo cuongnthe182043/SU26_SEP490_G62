@@ -456,7 +456,17 @@ const createOrderWithShipments = async (orderData) => {
           });
 
     // Cước xe (doanh thu, KPI) tách khỏi chi hộ khách (BR-027: pass-through không vào revenue)
-    const computeActualPrice = (shipment) => Number(shipment.cargo_fee || 0);
+    // Giá BÁO (estimated_price) và giá CHỐT (actual_price) là hai số khác nhau — đúng như
+    // luồng trong app: đơn tạo ra với giá báo, coordinator duyệt phiếu thu thì chốt lại
+    // giá thật. Import cũng phải giữ được cả hai, nếu không thì mỗi lần giá đổi là mất
+    // vết giá gốc.
+    // Mọi tính toán tiền (doanh thu, KPI, công nợ, ghi sổ) đều dùng giá CHỐT.
+    const computeEstimatedPrice = (shipment) => Number(shipment.cargo_fee || 0);
+    const computeActualPrice = (shipment) => (
+        shipment.settled_fee != null && Number(shipment.settled_fee) > 0
+            ? Number(shipment.settled_fee)
+            : computeEstimatedPrice(shipment)
+    );
     const computePassThrough = (shipment) => (shipment.expenses || []).reduce(
         (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
         0
@@ -590,7 +600,7 @@ const createOrderWithShipments = async (orderData) => {
                 shipmentIndex: i + 1,
                 vehicleId,
                 driverId,
-                estimatedPrice: actualPrice,
+                estimatedPrice: computeEstimatedPrice(s),
                 actualPrice,
                 cargoName: trimToNull(s.cargo_name),
                 cargoWeight: s.cargo_weight,

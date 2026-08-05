@@ -21,26 +21,26 @@ import {
 const TEMPLATE_HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)",
-  "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
 const TEMPLATE_EXAMPLES = [
   ["02/05/2026", "29E-080.32", "Tân", "Cty Hưng Dũng", "0912345678",
-    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, 30000, "", "", "",
+    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", 30000, "", "", "",
     "CK công ty", "", ""],
   ["03/05/2026", "29E-080.32", "Tân", "", "",
-    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "",
+    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "", "",
     "Tiền mặt - tài đang giữ", "", "Khách lẻ"],
   ["05/05/2026", "29E-080.32", "Tân", "An Trần", "0987654321",
-    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, 30000, "", 1450075, "",
+    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, "", 30000, "", 1450075, "",
     "Khách nợ", "", ""],
   ["08/05/2026", "29E-080.32", "Tân", "", "",
-    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", 900133, "",
+    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", "", 900133, "",
     "CK công ty", "", "Cước 300.000 MỘT LƯỢT × 5 lượt → doanh thu 1.500.000"],
   ["09/05/2026", "29E-080.32", "Tân", "Ngọc Hà", "0905111222",
-    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, "", "", "", "",
-    "Tiền mặt - tài đang giữ", 900000, "Tài đã nộp trước 100k"],
+    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, 1200000, "", "", "", "",
+    "Tiền mặt - tài đang giữ", 1200000, "Báo 1tr, chốt lại 1tr2 — tài cầm đủ 1tr2"],
 ];
 
 const REQUIRED_COLS = new Set([
@@ -48,7 +48,7 @@ const REQUIRED_COLS = new Set([
   "Điểm giao hàng (*)", "Cước xe 1 lượt (đ) (*)", "Thanh toán (*)",
 ]);
 const MONEY_COLS = new Set([
-  "Cước xe 1 lượt (đ) (*)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
 ]);
 
 const BRAND_BLUE = "FF2563EB";
@@ -204,6 +204,7 @@ const downloadTemplate = async () => {
   addNote("Trùng tên: nếu tên khách trùng với khách khác đang có, hệ thống sẽ báo và yêu cầu điền SĐT vào ĐÚNG CỘT \"SĐT khách hàng\" — đừng viết số vào sau tên, viết vào tên thì không tra cứu hay nhắc nợ được.");
   addNote("Gõ sai tên (thừa/thiếu dấu, viết tắt khác đi) sẽ tạo ra khách MỚI và tách đôi công nợ. Màn xem trước lúc import có báo dòng nào tạo khách mới — kiểm lại trước khi bấm.");
   addNote("Bỏ trống cả tên lẫn SĐT chỉ dùng cho khách vãng lai trả tiền ngay; dòng \"Khách nợ\" bắt buộc có ít nhất một trong hai.");
+  addNote("Giá chốt: giá thật sau khi hai bên chốt lại — giống việc điều phối sửa giá lúc duyệt phiếu thu. Để TRỐNG nếu không đổi giá. Được phép cao hoặc thấp hơn giá báo. Doanh thu, KPI và công nợ đều tính theo GIÁ CHỐT; cột Cước xe giữ lại giá báo ban đầu để đối chiếu.");
   addNote("Cước xe: giá của MỘT lượt. Chạy nhiều lượt thì hệ thống tự nhân lên — vd cước 250.000, Số lượt 2 → doanh thu 500.000.");
   addNote("Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách thành N chuyến, mỗi chuyến mang trọn cước 1 lượt. Điền số nguyên (1, 2, 3...), đừng để ô ở định dạng thập phân.");
   addNote("Tiền tài đang giữ: TỔNG số tiền tài đang cầm của cả dòng (không phải của 1 lượt). Chỉ điền khi khác số khách phải trả — vd khách trả thiếu, tài nộp trước một phần. Không có thì để TRỐNG, đừng gõ số 0.");
@@ -518,9 +519,19 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                             thấy ngay hệ thống hiểu cước là giá 1 lượt chứ không phải tổng */}
                           <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
                             <MoneyText amount={display.totalFee} />
+                            {display.settledFee != null && (
+                              // Chốt lại giá thì phải thấy rõ báo bao nhiêu → chốt bao nhiêu,
+                              // vì đây là con số quyết định doanh thu và KPI của tài xế.
+                              <div className={`text-[10px] font-normal ${
+                                display.settledFee >= display.cargoFee
+                                  ? "text-emerald-600 dark:text-emerald-300"
+                                  : "text-amber-600 dark:text-amber-300"}`}>
+                                báo {display.cargoFee.toLocaleString("vi-VN")} → chốt {display.settledFee.toLocaleString("vi-VN")}
+                              </div>
+                            )}
                             {display.runs > 1 && (
                               <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
-                                {display.cargoFee.toLocaleString("vi-VN")} × {display.runs} lượt
+                                {display.effectiveFee.toLocaleString("vi-VN")} × {display.runs} lượt
                               </div>
                             )}
                           </td>
