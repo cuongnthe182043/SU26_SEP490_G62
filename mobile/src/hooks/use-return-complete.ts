@@ -15,7 +15,8 @@ async function compress(uri: string): Promise<string> {
     return r.uri;
 }
 
-// RETURNING → COMPLETED: ảnh hoàn hàng tuỳ chọn
+// RETURNING → COMPLETED: ảnh hoàn hàng BẮT BUỘC — nút gọi hàm này bị disable ở UI khi
+// chưa có ảnh (xem active-trip-screen.tsx), backend cũng từ chối nếu thiếu (400).
 export function useReturnComplete(onSuccess?: (trip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null, daXepHang: false });
 
