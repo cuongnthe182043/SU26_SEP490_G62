@@ -54,7 +54,14 @@ function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder,
             <RouteStops pickups={trip.pickupAddresses} deliveries={trip.deliveryAddresses} className="text-xs text-gray-500 dark:text-gray-400 min-w-0 max-w-full" />
           )}
         </td>
-        <td className="py-3.5 pr-4"><span className="text-sm font-bold text-gray-800 dark:text-gray-100">{formatCurrency(trip.fare)}</span></td>
+        <td className="py-3.5 pr-4">
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{formatCurrency(trip.fare)}</span>
+            {trip.trips?.some((s) => s.returning_at) ? (
+              <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Có chuyến hoàn hàng · ×2 cước</span>
+            ) : null}
+          </div>
+        </td>
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <StatusBadge status={trip.statusClass} />
         </td>

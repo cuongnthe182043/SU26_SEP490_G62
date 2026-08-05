@@ -142,11 +142,18 @@ function ShipmentCard({
                         </Text>
                     ) : null}
                     {(shipment.actual_price || shipment.estimated_price) ? (
-                        <Text fontSize={12} color={appTheme.colors.textMuted}>
-                            Giá trị: <Text fontWeight="700" color={appTheme.colors.text}>
-                                {fmtCurrency(shipment.actual_price || shipment.estimated_price)}
+                        <YStack alignItems="flex-end">
+                            <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                Giá trị: <Text fontWeight="700" color={appTheme.colors.text}>
+                                    {fmtCurrency(shipment.actual_price || shipment.estimated_price)}
+                                </Text>
                             </Text>
-                        </Text>
+                            {shipment.returning_at ? (
+                                <Text fontSize={9} fontWeight="700" color={appTheme.colors.warningText}>
+                                    Hoàn hàng · ×2 cước
+                                </Text>
+                            ) : null}
+                        </YStack>
                     ) : null}
                 </XStack>
 

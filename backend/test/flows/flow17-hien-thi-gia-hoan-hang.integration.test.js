@@ -96,6 +96,9 @@ describe('L2-FLOW-17 — Màn hiển thị giá phải khớp logic x2 hoàn hà
             'danh sách yêu cầu phiếu thu phải hiện đúng số x2 khi mở duyệt, không phải MỘT NỬA',
         );
         assert.strictEqual(Number(req.gross_amount), expected);
+        // FE cần cờ này để chú thích "Hoàn hàng · ×2 cước" cạnh số tiền, tránh coordinator
+        // thắc mắc sao tiền không khớp giá báo ban đầu.
+        assert.notStrictEqual(req.returning_at, null, 'phải trả returning_at để FE gắn nhãn hoàn hàng');
     });
 
     it('tripRepository.getDriverOrderHistory — phải hiện actual_price đã chốt, không kẹt ở giá ước tính', async () => {
@@ -107,5 +110,6 @@ describe('L2-FLOW-17 — Màn hiển thị giá phải khớp logic x2 hoàn hà
             Number(order.total_actual_price), 600000,
             'lịch sử đơn hàng phải hiện actual_price đã chốt (đã x2 vì hoàn hàng), không phải estimated_price gốc (300.000)',
         );
+        assert.strictEqual(order.has_return_shipment, true, 'FE cần cờ này để chú thích hoàn hàng cạnh số tiền');
     });
 });

@@ -252,7 +252,14 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                   <TableCell>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyến`}</TableCell>
                   <TableCell>{request.customer_name || "-"}</TableCell>
                   <TableCell>{request.driver_name || "-"}</TableCell>
-                  <TableCell>{formatCurrency(request.record_kind === "receipt" ? request.receipt_amount : resolveFareValue(request.actual_price, request.estimated_price))}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{formatCurrency(request.record_kind === "receipt" ? request.receipt_amount : resolveFareValue(request.actual_price, request.estimated_price))}</span>
+                      {request.returning_at ? (
+                        <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</span>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell><StatusBadge status={request.status} /></TableCell>
                   <TableCell>
                     {status === "approved" ? (

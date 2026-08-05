@@ -109,6 +109,7 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
             primary_shipment.shipment_index,
             primary_shipment.status AS shipment_status,
             primary_shipment.actual_distance_km,
+            primary_shipment.returning_at,
             COALESCE(distance_summary.total_actual_distance_km, 0) AS total_actual_distance_km,
             COALESCE(revenue_summary.total_actual_price, 0) AS actual_price,
             COALESCE(revenue_summary.total_estimated_price, primary_shipment.estimated_price, 0) AS estimated_price,
