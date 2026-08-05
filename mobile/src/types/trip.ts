@@ -126,6 +126,7 @@ export type OrderHistoryItem = {
     total_legs: number;
     completed_legs: number;
     total_estimated_price: string | null;
+    total_actual_price: string | null;
     first_claimed_at: string | null;
     last_completed_at: string | null;
 };

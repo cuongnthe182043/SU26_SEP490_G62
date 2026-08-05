@@ -99,6 +99,7 @@ const selectOrderProjection = `
                 'pickup_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'pickup'),
                 'delivery_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'delivery'),
                 'fare', s_all.estimated_price,
+                'actual_price', s_all.actual_price,
                 'status', s_all.status,
                 'driverName', d_all.full_name
             ) ORDER BY s_all.shipment_index ASC

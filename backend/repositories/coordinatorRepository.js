@@ -133,11 +133,24 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
          ) distance_summary ON TRUE
          LEFT JOIN LATERAL (
             SELECT
+                -- Preview trước khi actual_price được chốt — phải khớp đúng thứ tự ưu tiên
+                -- thật trong computeReceiptAmount (coordinatorService.js), nếu không danh
+                -- sách yêu cầu phiếu thu hiện sai số so với lúc mở chi tiết/duyệt:
+                --   1) actual_price đã chốt → dùng thẳng
+                --   2) is_price_manual → luôn = estimated_price, không suy theo km
+                --   3) cancelled/failed → 0
+                --   4) chuyến HOÀN HÀNG (returning_at) → km × đơn giá × 2 (chạy cả hai chiều)
+                --   5) bình thường → km × đơn giá
                 SUM(
                     COALESCE(
                         NULLIF(os_revenue.actual_price, 0),
-                        COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
-                        * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                        CASE
+                            WHEN os_revenue.is_price_manual = TRUE THEN COALESCE(os_revenue.estimated_price, 0)
+                            WHEN os_revenue.status IN ('cancelled', 'failed') THEN 0
+                            ELSE COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
+                                * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                                * CASE WHEN os_revenue.returning_at IS NOT NULL THEN 2 ELSE 1 END
+                        END
                     )
                 ) AS total_actual_price,
                 SUM(COALESCE(os_revenue.estimated_price, 0)) AS total_estimated_price
