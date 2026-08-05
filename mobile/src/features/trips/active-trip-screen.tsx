@@ -26,7 +26,7 @@ import { useReturnComplete }    from '@/hooks/use-return-complete';
 import { useReleaseTrip }       from '@/hooks/use-release-trip';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
-import { useToast, useAppAlert } from '@/providers/ui-provider';
+import { useToast } from '@/providers/ui-provider';
 import { useNetwork }           from '@/providers/network-provider';
 import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
@@ -506,7 +506,6 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
     trip: ActiveTrip; refresh: () => void; ngoaiTuyen?: boolean; savedAt?: number | null;
 }) {
     const { showToast }   = useToast();
-    const { showAlert }   = useAppAlert();
 
     const { isLoading: lifecycleLoading, advance } = useTripLifecycle((updatedTrip) => {
         const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
@@ -562,9 +561,14 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
         showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });
         refresh();
     });
-    const { isUploading: completingReturn, completeReturn } = useReturnComplete(async () => {
-        await showAlert({ type: 'success', title: 'Hoàn hàng thành công!', message: 'Hàng đã được trả về điểm lấy.', okLabel: 'OK' });
-        router.back();
+    // Sau khi hoàn hàng vẫn phải nhập km thực tế như mọi driver khác (BR-008A) — chuyến
+    // hoàn hàng tính GẤP ĐÔI cước dựa trên đúng số km này, nên phải đi qua màn
+    // /receipt-request giống hệt luồng hoàn thành bình thường (completedTripData +
+    // useEffect bên dưới), KHÔNG được chỉ alert rồi back — trước đây làm vậy khiến driver
+    // không bao giờ được hỏi km, actual_price của chuyến hoàn hàng không bao giờ được chốt.
+    const { isUploading: completingReturn, completeReturn } = useReturnComplete((completedTrip) => {
+        setReturnUri(null); // disable button immediately before navigation fires
+        setCompletedTripData(completedTrip);
     });
 
     const { isLoading: releaseLoading, releaseTrip }  = useReleaseTrip(() => router.back());
