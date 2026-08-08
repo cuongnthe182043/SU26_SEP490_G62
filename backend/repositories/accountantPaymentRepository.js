@@ -1,5 +1,6 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 
 const _debtStatus = (paid, total) => {
     if (paid >= total - 0.01) return 'paid';
@@ -565,7 +566,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
                             SELECT SUM(e.amount) FROM expenses e
                             WHERE e.shipment_id = os.id
                               AND e.status != 'rejected'
-                              AND e.expense_type IN ('toll', 'parking', 'etc')
+                              AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}
                         ), 0) AS pass_through_total
                  FROM order_shipments os
                  JOIN orders o ON o.id = os.order_id

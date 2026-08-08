@@ -704,6 +704,107 @@ Expense gắn với Vehicle.
 | Tính vào KPI     | KHÔNG            | KHÔNG                         |
 | Tính vào Revenue | KHÔNG            | KHÔNG                         |
 
+## BR-022B — Chi phí chuyến HÀNG HÓA HƯ HẠI do doanh nghiệp chịu
+
+Chuyến bị **hủy vì hàng hóa hư hại** (`cargo_damage` → `cancelDamagedShipment`) hoặc
+**giao thất bại** (`failed`): **TẤT CẢ** chi phí phát sinh trong chuyến đó chuyển về phía
+**DOANH NGHIỆP**, kể cả các loại vốn là chi hộ khách (toll / parking / etc).
+
+Lý do: chi hộ chỉ đòi được khách khi có dịch vụ để đòi. Chuyến hư hại không phát sinh doanh
+thu (`actual_price = 0`) — cộng thêm tiền cầu đường vào phiếu thu là bắt khách trả cho một
+chuyến vừa làm hỏng hàng của họ.
+
+Hệ quả:
+
+| | Chuyến giao được | Chuyến hàng hư hại / thất bại |
+|---|---|---|
+| Doanh thu chuyến | km × đơn giá | 0 |
+| Chi hộ (toll/parking/etc) | Cộng vào phiếu thu | **KHÔNG** cộng vào phiếu thu |
+| Bút toán khi hoàn tài xế | Nợ **3388** (chi hộ) | Nợ **642** (chi phí DN) |
+| Tài xế được hoàn tiền đã ứng | CÓ | **CÓ** (chỉ đổi bên chịu, không xóa khoản) |
+
+Ghi 3388 cho khoản không bao giờ đòi được sẽ để lại số dư phải thu treo vĩnh viễn trên sổ —
+đó là lý do bắt buộc phải đổi tài khoản, không chỉ đổi số tiền trên phiếu thu.
+
+Quy tắc dùng chung ở `backend/constants/expenseConstants.js`
+(`isCustomerBillableExpense` cho JS, `CUSTOMER_BILLABLE_EXPENSE_SQL` cho các báo cáo SQL).
+
+## BR-022C — Phiếu thu 0đ
+
+Tổng phải thu có thể bằng **0** một cách hợp lệ: mọi chuyến của đơn bị hủy vì hàng hư hại,
+hoặc khách đã trả trước đủ và phần còn lại chỉ là chi phí đã chuyển sang DN chịu.
+
+Khi đó phiếu thu vẫn được phát hành và tài xế vẫn đóng được phiếu, nhưng:
+
+* **KHÔNG** sinh công nợ nào (khách, đối tác hay tài xế) — `debts.total_amount` có
+  `CHECK > 0`, INSERT 0đ sẽ ném lỗi Postgres thô ra tận app tài xế.
+* **KHÔNG** bắt buộc ảnh xác minh — không có giao dịch nào để chụp.
+* App tài xế hiện một nút **"Đóng phiếu thu"** thay cho 3 nút thanh toán.
+
+## BR-022D — Tiền ứng trước trừ vào TOÀN BỘ số phải trả
+
+```text
+Khách phải trả = MAX(cước + chi hộ khách − tiền ứng trước, 0)
+```
+
+Tiền ứng trước trừ vào **cả cước lẫn chi hộ**, không phải chỉ trừ vào cước rồi cộng chi hộ
+lên trên. Hai công thức chỉ khác nhau khi khách ứng **nhiều hơn cước** — mà chuyến hủy vì
+hàng hư hại kéo cước về 0 nên đó thành trường hợp thường gặp, không còn là ca hiếm.
+
+## BR-022E — Hoàn tiền ứng trước: thừa bao nhiêu hoàn hết bấy nhiêu
+
+Khi khách đã ứng trước (`prepaid_status = 'confirmed'`) mà số phải trả nhỏ hơn số đã ứng,
+**toàn bộ** phần thừa được trả lại cho khách bằng tiền: sinh `payment_vouchers` loại
+`prepaid_refund`, trạng thái `approved` sẵn để kế toán chi thật và đính chứng từ. Bút toán
+`prepaid_refunded` ghi khi kế toán bấm "Đã chi".
+
+```text
+Tiền hoàn = MIN(số cần hoàn, tiền khách đã ứng đã xác nhận) − phần đã hoàn trước đó
+```
+
+**KHÔNG cấn trừ vào nợ cũ.** Khách còn công nợ ở đơn khác thì khoản nợ đó vẫn giữ nguyên và
+thu theo đường của nó — không được lấy tiền thừa của đơn này bù sang. Hai khoản khác đơn,
+khác chứng từ: trộn lại thì khách không thấy tiền về, kế toán mất một phiếu chi để đối chiếu,
+và số dư công nợ đổi mà không có giao dịch nào giải thích.
+
+Ba đường cùng chạm tới tiền ứng của khách:
+
+| Tình huống | Nơi tạo phiếu hoàn | Số tiền hoàn |
+|---|---|---|
+| Hủy cả đơn (chưa lấy hàng) | `orderRepository.cancelOrder` | Toàn bộ tiền ứng |
+| Hủy chuyến vì hàng hư hại, đơn **không còn chuyến nào giao được** | `incidentService.cancelDamagedShipment` | Toàn bộ tiền ứng |
+| Chốt phiếu thu mà khách ứng **dư** | `coordinatorService.approveReceiptRequest` | Toàn bộ phần dư |
+
+Trường hợp giữa **bắt buộc** phải xử lý ngay tại bước hủy: phiếu thu chỉ sinh ra từ chuyến
+`completed`, nên hủy hết chuyến vì hàng hư hại thì sẽ **không bao giờ** có phiếu thu — đợi
+tới lúc chốt phiếu là đợi một sự kiện không xảy ra, tiền khách nằm im trong két công ty còn
+đơn thì nhìn như đã xong.
+
+"Đơn không còn chuyến nào giao được" = **mọi** chuyến đều `cancelled`
+(`orderRepository.hasBillableShipments`). Chuyến `failed` **KHÔNG** tính là hết đòi được:
+đó là trạng thái chờ điều phối xử lý, `resolveFailedShipment` đưa chuyến về `transit` (giao
+lại) hoặc cho chạy hoàn hàng tính gấp đôi cước. Hoàn tiền ứng khi đơn còn chuyến `failed`
+treo thì điều phối bấm "giao lại", chuyến chạy xong, phiếu thu lại trừ tiền ứng lần nữa —
+công ty mất đúng số vừa trả cho khách.
+
+> Lưu ý phân biệt với BR-022B: `failed` **có** làm chi phí chuyển sang doanh nghiệp chịu
+> (chuyến đó không sinh doanh thu), nhưng **không** làm cả ĐƠN hết khả năng đòi tiền. Hai
+> câu hỏi khác nhau: "chuyến này còn đòi được không" vs "đơn này còn chuyến nào đòi được không".
+
+Ba đường có thể nối tiếp nhau trên cùng một đơn nên
+`orderRepository.createPrepaidRefundVoucher` chống hoàn trùng bằng cách **trừ đi phần đã
+hoàn**, chứ không phải bỏ qua khi đơn đã có phiếu hoàn: đường sau cần hoàn nhiều hơn đường
+trước thì khách vẫn nhận đủ phần còn thiếu. Phiếu `cancelled`/`rejected` chưa chi đồng nào
+nên **không** tính là đã hoàn — tính vào thì một phiếu bị từ chối khóa vĩnh viễn quyền được
+hoàn lại của khách.
+
+Trần hoàn là số khách **đã ứng thật**; hoàn quá số đó là công ty tự trả thêm tiền túi.
+
+`prepaid_status = 'pending'` (kế toán mới nhập, tiền chưa về, chưa ghi sổ) thì **không hoàn**
+— không có dòng tiền thật nào để trả lại. Cùng lý do, `approveReceiptRequest` **chặn** chốt
+phiếu thu khi đơn còn tiền ứng `pending`: số phải thu trừ prepaid nên prepaid chưa chắc đã về
+thì cả số thu lẫn số hoàn đều tính trên tiền không có thật.
+
 ---
 
 # 18. INCIDENT MANAGEMENT

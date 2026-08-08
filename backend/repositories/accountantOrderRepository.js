@@ -1,6 +1,6 @@
 ﻿const pool = require('../config/database');
 const { insertAssignmentHistory } = require('./tripRepository');
-const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
+const { PASS_THROUGH_EXPENSE_TYPES, CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql } = require('../utils/phone');
 
@@ -775,7 +775,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         LEFT JOIN LATERAL (
             SELECT
                 COALESCE(SUM(e.amount), 0) AS total_expenses,
-                COALESCE(SUM(e.amount) FILTER (WHERE e.expense_type IN ('toll','parking','etc')), 0) AS pass_through_total
+                COALESCE(SUM(e.amount) FILTER (WHERE ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}), 0) AS pass_through_total
             FROM expenses e
             JOIN order_shipments os ON os.id = e.shipment_id
             WHERE os.order_id = o.id
@@ -888,9 +888,10 @@ const getOrderShipments = async (orderId) => {
                 COALESCE(SUM(CASE WHEN e.expense_type = 'etc'         THEN e.amount END), 0)          AS etc,
                 COALESCE(SUM(CASE WHEN e.expense_type = 'repair'      THEN e.amount END), 0)          AS repair,
                 COALESCE(SUM(CASE WHEN e.expense_type NOT IN ('fuel','toll','parking','etc','repair') THEN e.amount END), 0) AS other,
-                COALESCE(SUM(CASE WHEN e.expense_type IN ('toll','parking','etc') THEN e.amount END), 0) AS pass_through_total
+                COALESCE(SUM(CASE WHEN ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')} THEN e.amount END), 0) AS pass_through_total
             FROM expenses e
-            WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            JOIN order_shipments os ON os.id = e.shipment_id
+            WHERE os.order_id = $1
               AND e.status != 'rejected'
             GROUP BY e.shipment_id
         ),

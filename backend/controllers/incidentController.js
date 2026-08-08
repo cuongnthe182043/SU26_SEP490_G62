@@ -152,7 +152,12 @@ const cancelDamagedShipment = async (req, res) => {
 
         const { reason } = req.body;
         const result = await incidentService.cancelDamagedShipment(incidentId, coordinatorId, { reason });
-        res.json({ message: 'Đã hủy chuyến do hàng hóa hư hại', ...result });
+        // Nói rõ ra khi việc hủy này sinh phiếu hoàn tiền ứng trước — coordinator cần biết
+        // đơn vừa phát sinh một khoản phải chi, không chỉ là "đã hủy xong".
+        const message = result.refund
+            ? `Đã hủy chuyến do hàng hóa hư hại. Đơn còn ${Number(result.refund.amount).toLocaleString('vi-VN')}đ tiền khách ứng trước — đã tạo phiếu hoàn #${result.refund.voucherId} cho kế toán chi.`
+            : 'Đã hủy chuyến do hàng hóa hư hại';
+        res.json({ message, ...result });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('hoàn thành hoặc đã hủy') ? 409

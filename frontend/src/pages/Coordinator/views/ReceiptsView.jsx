@@ -16,7 +16,7 @@ import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
 import {
   emptyReceiptForm, formatCurrency, formatNotificationTime,
-  newReceiptExpense, normalizeStatus, resolveFareValue,
+  newReceiptExpense, normalizeStatus,
 } from "../utils";
 
 export default function ReceiptsView({ search, refreshKey, onReceiptPublished }) {
@@ -126,11 +126,13 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
           })),
         ...(priceOverride ? { priceOverride: Number(priceOverride) } : {}),
       };
-      await coordinatorService.approveReceiptRequest(detail.request.id, payload);
+      const res = await coordinatorService.approveReceiptRequest(detail.request.id, payload);
       closeModal();
       await loadReceiptRequests();
       onReceiptPublished?.();
-      notify.success("Đã tạo phiếu thu.");
+      // Khách ứng dư thì backend vừa lập phiếu hoàn — dùng đúng câu của server để coordinator
+      // biết đơn này còn một khoản phải chi, thay vì chỉ thấy "đã tạo phiếu thu".
+      notify.success(res?.message || "Đã tạo phiếu thu.");
     } catch (error) {
       notify.error(error.message || "Không thể tạo phiếu thu.");
     } finally {
@@ -252,7 +254,12 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                   <TableCell>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyến`}</TableCell>
                   <TableCell>{request.customer_name || "-"}</TableCell>
                   <TableCell>{request.driver_name || "-"}</TableCell>
-                  <TableCell>{formatCurrency(request.record_kind === "receipt" ? request.receipt_amount : resolveFareValue(request.actual_price, request.estimated_price))}</TableCell>
+                  {/* Cột "SỐ TIỀN" = tiền khách phải trả, dùng receipt_amount cho CẢ hai loại dòng:
+                      phiếu đã chốt lấy số chốt, yêu cầu chưa duyệt lấy đúng số màn xem trước sẽ hiện
+                      (cước + chi hộ − ứng đã xác nhận). Trước đây dòng chưa duyệt hiện cước trần —
+                      một cột mang hai nghĩa, lại còn khác với khoá sắp xếp "Số tiền cao/thấp nhất"
+                      (ORDER BY receipt_amount) nên sắp xếp xong nhìn như sai thứ tự. */}
+                  <TableCell>{formatCurrency(request.receipt_amount)}</TableCell>
                   <TableCell><StatusBadge status={request.status} /></TableCell>
                   <TableCell>
                     {status === "approved" ? (

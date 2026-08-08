@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 
 // Sổ nhật ký tài chính — append-only (BUSINESS_SPECIFICATION §33)
 // Mỗi sự kiện tiền tệ INSERT 1 bản ghi. Không UPDATE, không DELETE
@@ -177,7 +178,7 @@ const exportPeriod = async ({ from, to, accountantId }) => {
                     FROM expenses e
                     JOIN order_shipments os ON os.id = e.shipment_id
                     WHERE e.status != 'rejected'
-                      AND e.expense_type IN ('toll','parking','etc')
+                      AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}
                       AND os.order_id = CASE
                           WHEN f.ref_type = 'order'    THEN f.ref_id
                           WHEN f.ref_type = 'shipment' THEN (SELECT order_id FROM order_shipments WHERE id = f.ref_id)
