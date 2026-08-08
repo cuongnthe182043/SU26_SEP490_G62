@@ -19,6 +19,16 @@ const EXPENSE_STATUS_CHIP = {
   rejected: { label: "Đã từ chối", color: "danger" },
 };
 
+const PASS_THROUGH_TYPES = ["parking", "toll", "etc"];
+
+// Chuyến hủy vì hàng hóa hư hại (hoặc giao thất bại): mọi chi phí của chuyến do DOANH
+// NGHIỆP chịu, kể cả loại vốn là chi hộ khách. Phải khớp đúng
+// backend/constants/expenseConstants.js — lệch một bên là "Tổng thu" xem trước ra số khác
+// số thực sự chốt lúc bấm Phát hành.
+const COMPANY_BORNE_SHIPMENT_STATUSES = ["cancelled", "failed"];
+const isCompanyBorneShipment = (shipment) =>
+  COMPANY_BORNE_SHIPMENT_STATUSES.includes(String(shipment?.status || "").trim().toLowerCase());
+
 const formatRouteLabel = (shipment) => {
   if (!shipment) return "-";
   const pickup = shipment.pickup_address || shipment.stops?.find((stop) => stop.stop_type === "pickup")?.address || "-";
@@ -62,10 +72,34 @@ export default function ReceiptDetailModal({
     if (hasPriceOverride && primaryShipment && s.id === primaryShipment.id) return sum + priceOverrideNum;
     return sum + base;
   }, 0);
-  const passThroughExpenses = [...(detail?.expenses || []), ...(form?.expenses || [])]
-    .filter((expense) => expense.status !== "rejected" && ["parking", "toll", "etc"].includes(String(expense.expense_type || "").trim()))
+  const companyBorneShipmentIds = new Set(shipments.filter(isCompanyBorneShipment).map((s) => Number(s.id)));
+  const billableCandidates = [...(detail?.expenses || []), ...(form?.expenses || [])]
+    .filter((expense) => expense.status !== "rejected" && PASS_THROUGH_TYPES.includes(String(expense.expense_type || "").trim()));
+  // Khoản coordinator vừa thêm có thể chưa chọn chuyến (shipment_id rỗng) — backend
+  // normalizeExpenses gán về chuyến chốt phiếu, ở đây phải suy ra y hệt.
+  const isCompanyBorneExpense = (expense) => {
+    const raw = expense.shipment_id;
+    const shipmentId = raw === null || raw === undefined || raw === "" ? primaryShipment?.id : raw;
+    return companyBorneShipmentIds.has(Number(shipmentId));
+  };
+  const passThroughExpenses = billableCandidates
+    .filter((expense) => !isCompanyBorneExpense(expense))
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  // Chi hộ của chuyến hàng hư hại — đã chuyển sang DN chịu, KHÔNG cộng vào tiền khách.
+  const companyBorneExpenses = billableCandidates
+    .filter(isCompanyBorneExpense)
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const finalPrice = actualRevenue + passThroughExpenses;
+  // Tiền ứng trước trừ vào TOÀN BỘ số phải trả (cước + chi hộ) — khớp đúng công thức
+  // approveReceiptRequest dùng để chốt. Ứng dư thì phần dư sinh phiếu hoàn cho kế toán.
+  //
+  // prepaid_amount backend trả về đã loại khoản 'pending' (tiền chưa về, chưa ghi sổ) nên
+  // không cần lọc lại ở đây; prepaid_pending chỉ dùng để cảnh báo + khoá nút Phát hành.
+  const prepaidPending = detail?.order?.prepaid_pending === true;
+  const prepaidDeclared = Math.max(Number(detail?.order?.prepaid_amount_declared || 0), 0);
+  const prepaidAmount = Math.max(Number(detail?.order?.prepaid_amount || 0), 0);
+  const amountDue = Math.max(finalPrice - prepaidAmount, 0);
+  const prepaidRefundDue = Math.max(prepaidAmount - finalPrice, 0);
 
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="5xl" scrollBehavior="inside">
@@ -140,7 +174,13 @@ export default function ReceiptDetailModal({
                         <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
                       )}
                       <div className="col-span-2"><span className="text-xs text-gray-400 dark:text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
-                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí chuyến</span><strong>{formatCurrency(shipment.total_expenses)}</strong></div>
+                      <div>
+                        <span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí chuyến</span>
+                        <strong>{formatCurrency(shipment.total_expenses)}</strong>
+                        {isCompanyBorneShipment(shipment) && Number(shipment.total_expenses) > 0 && (
+                          <span className="text-[11px] text-amber-600 dark:text-amber-400 block">Doanh nghiệp chịu</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -285,14 +325,64 @@ export default function ReceiptDetailModal({
                   />
                 </div>
 
+                {prepaidPending && (
+                  <div className="mt-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30 p-4">
+                    <span className="text-xs text-orange-600 dark:text-orange-400 block">Chưa phát hành được phiếu thu</span>
+                    <strong className="text-sm text-orange-900 dark:text-orange-200 block">
+                      Đơn khai đã ứng trước {formatCurrency(prepaidDeclared)} nhưng kế toán chưa xác nhận.
+                      Số này chưa được trừ vào tiền khách phải trả — cần xác nhận tiền ứng trước khi chốt phiếu thu.
+                    </strong>
+                  </div>
+                )}
+
+                {companyBorneExpenses > 0 && (
+                  <div className="mt-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 block">Chi phí doanh nghiệp chịu</span>
+                      <strong className="text-sm text-amber-900 dark:text-amber-200">
+                        Chuyến hủy do hàng hóa hư hại — không tính vào tiền khách
+                      </strong>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs text-amber-600 dark:text-amber-400 block">Đã gạt khỏi tổng thu</span>
+                      <strong className="text-lg text-amber-900 dark:text-amber-200">{formatCurrency(companyBorneExpenses)}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {prepaidRefundDue > 0 && (
+                  <div className="mt-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-rose-600 dark:text-rose-400 block">Phải hoàn lại khách</span>
+                      <strong className="text-sm text-rose-900 dark:text-rose-200">
+                        Khách ứng trước nhiều hơn số phải trả — phát hành phiếu thu sẽ tạo phiếu hoàn
+                        để kế toán trả lại toàn bộ phần thừa (không cấn vào nợ cũ của khách)
+                      </strong>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs text-rose-600 dark:text-rose-400 block">Tiền hoàn</span>
+                      <strong className="text-lg text-rose-900 dark:text-rose-200">{formatCurrency(prepaidRefundDue)}</strong>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-4 flex items-center justify-between">
                   <div>
                     <span className="text-xs text-blue-500 block">Chuyến dùng để chốt phiếu thu</span>
                     <strong className="text-sm text-blue-900 dark:text-blue-200">{primaryShipment ? `#${primaryShipment.id} · ${primaryShipment.plate_number || primaryShipment.driver_name || "-"}` : "-"}</strong>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs text-blue-500 block">Tổng thu</span>
-                    <strong className="text-lg text-blue-900 dark:text-blue-200">{formatCurrency(finalPrice)}</strong>
+                    {prepaidAmount > 0 && (
+                      <>
+                        <span className="text-[11px] text-blue-500 block">Tổng thu {formatCurrency(finalPrice)}</span>
+                        <span className="text-[11px] text-blue-500 block">Đã trả trước −{formatCurrency(prepaidAmount)}</span>
+                      </>
+                    )}
+                    <span className="text-xs text-blue-500 block">Khách phải trả</span>
+                    <strong className="text-lg text-blue-900 dark:text-blue-200">{formatCurrency(amountDue)}</strong>
+                    {amountDue <= 0 && (
+                      <span className="text-[11px] text-blue-500 block">Không phải thu của khách</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -302,7 +392,9 @@ export default function ReceiptDetailModal({
         <ModalFooter>
           <Button variant="flat" onPress={onClose}>Đóng</Button>
           {!readonly && (
-            <Button color="primary" isLoading={publishing} onPress={onPublish}>
+            // Backend từ chối phát hành khi đơn còn tiền ứng chưa xác nhận — khoá nút ngay
+            // ở đây để coordinator không bấm rồi mới nhận lỗi.
+            <Button color="primary" isLoading={publishing} isDisabled={prepaidPending} onPress={onPublish}>
               {publishing ? "Đang phát hành..." : "Phát hành phiếu thu"}
             </Button>
           )}

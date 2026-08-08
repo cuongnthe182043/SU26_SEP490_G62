@@ -2,6 +2,7 @@
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
+const { isCustomerBillableExpense } = require('../constants/expenseConstants');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -578,8 +579,9 @@ const markPayrollPaid = async (payrollId, accountantId) => {
         // generate) rồi ghi bút toán chi phí/chi hộ với TK đối ứng 334 (trả qua lương).
         {
             const { rows: pendingExpenses } = await client.query(`
-                SELECT e.id, e.expense_type, e.amount
+                SELECT e.id, e.expense_type, e.amount, os.status AS shipment_status
                 FROM expenses e
+                LEFT JOIN order_shipments os ON os.id = e.shipment_id
                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
                 LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
                 WHERE e.status = 'approved'
@@ -607,8 +609,11 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                      WHERE id = ANY($1::int[])`,
                     [pendingExpenses.map((e) => e.id)],
                 );
-                const passTypes = new Set(['toll', 'parking', 'etc']);
-                const passSum = pendingExpenses.filter((e) => passTypes.has(e.expense_type))
+                // Chi hộ của chuyến hủy vì hàng hư hại KHÔNG còn là chi hộ: phiếu thu đã
+                // thôi đòi khách khoản đó nên ghi Nợ 3388 sẽ để lại số dư phải thu không
+                // bao giờ tất toán. Chuyển sang 642 — doanh nghiệp chịu.
+                const passSum = pendingExpenses
+                    .filter((e) => isCustomerBillableExpense(e.expense_type, e.shipment_status))
                     .reduce((s, e) => s + Number(e.amount), 0);
                 const companySum = actualReimb - passSum;
                 if (passSum > 0) {

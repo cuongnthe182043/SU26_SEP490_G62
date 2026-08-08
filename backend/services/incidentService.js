@@ -1,5 +1,6 @@
 const incidentRepository = require('../repositories/incidentRepository');
 const tripRepository = require('../repositories/tripRepository');
+const orderRepository = require('../repositories/orderRepository');
 const driverRepository = require('../repositories/driverRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const pool = require('../config/database');
@@ -589,6 +590,61 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
         resolution: `Đã hủy chuyến #${incident.shipment_id} do hàng hóa hư hại: ${reason.trim()}`,
     }).catch(() => {});
 
+    // Hoàn tiền ứng trước khi đơn KHÔNG còn chuyến nào đòi được khách nữa.
+    //
+    // Vì sao phải làm ngay tại đây chứ không đợi lúc chốt phiếu thu: phiếu thu chỉ sinh ra
+    // từ chuyến 'completed' (requestOrderReceipt). Hủy hết chuyến vì hàng hư hại thì sẽ
+    // KHÔNG bao giờ có phiếu thu nào — đợi tới đó là đợi một sự kiện không xảy ra, tiền của
+    // khách nằm im trong két công ty và đơn thì nhìn như đã xong.
+    //
+    // Đơn còn chuyến chạy được thì để đường chốt phiếu thu xử lý phần dư
+    // (approveReceiptRequest) — hàm tạo phiếu hoàn là idempotent nên hai đường không đụng nhau.
+    //
+    // order_id lấy từ CHUYẾN vừa hủy, KHÔNG lấy từ incident: bảng incidents không có cột
+    // order_id (getIncidentById trả i.* nên incident.order_id luôn undefined).
+    const orderId = updatedShipment?.order_id ?? null;
+    const refund = orderId === null ? null : await (async () => {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            if (await orderRepository.hasBillableShipments(client, orderId)) {
+                await client.query('ROLLBACK');
+                return null;
+            }
+            const { rows: [ord] } = await client.query(
+                `SELECT prepaid_amount FROM orders WHERE id = $1 FOR UPDATE`,
+                [orderId],
+            );
+            const created = await orderRepository.createPrepaidRefundVoucher(client, {
+                orderId,
+                amount: Number(ord?.prepaid_amount || 0),
+                actorId: coordinatorId,
+                reason: `Hoàn tiền khách ứng trước — đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại`,
+            });
+            await client.query('COMMIT');
+            return created;
+        } catch (err) {
+            await client.query('ROLLBACK');
+            // Best-effort: hủy chuyến đã commit rồi, không được nuốt kết quả đó vì phiếu hoàn lỗi.
+            console.error(`[Incident] Không tạo được phiếu hoàn tiền ứng trước cho đơn #${orderId}:`, err.message);
+            return null;
+        } finally {
+            client.release();
+        }
+    })();
+
+    if (refund) {
+        notificationService.getUserIdsByRole('accountant').then((ids) =>
+            notificationService.createForUsers(ids, {
+                title: 'Cần hoàn tiền ứng trước cho khách',
+                message: `Đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại. Phiếu hoàn ${refund.amount.toLocaleString('vi-VN')}đ (#${refund.voucherId}) đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
+                type: 'PREPAID_REFUND_REQUIRED',
+                entityType: 'payment_voucher',
+                entityId: refund.voucherId,
+            }, { displayMode: 'alert' })
+        ).catch(() => {});
+    }
+
     if (incident.reported_by) {
         notificationService.createForUser(incident.reported_by, {
             title: 'Chuyến đã bị hủy do hàng hóa hư hại',
@@ -602,7 +658,9 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
             notificationGateway.broadcastToUser(incident.reported_by, {
                 type: 'trip.cancelled',
                 shipmentId: Number(incident.shipment_id),
-                orderId: incident.order_id ?? null,
+                // Lấy từ chuyến, không từ incident — bảng incidents không có cột order_id
+                // nên incident.order_id luôn undefined, app tài xế nhận về null vô nghĩa.
+                orderId,
                 reason: reason.trim(),
             });
         } catch { /* realtime failure must not abort the cancellation */ }
@@ -613,6 +671,8 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
     return {
         incident: await incidentRepository.getIncidentById(incidentId),
         shipment: updatedShipment,
+        // != null khi việc hủy chuyến này làm đơn không còn gì giao được và khách đã ứng tiền
+        refund,
     };
 };
 
