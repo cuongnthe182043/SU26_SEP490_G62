@@ -366,7 +366,14 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     }
     await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
-    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
+    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
+
+    // Lấy full trip (order_payment_type, is_final_shipment, max_shipment_index, địa chỉ...)
+    // — KHÔNG dùng row thô từ updateTripStatus (chỉ có cột order_shipments). Mobile cần
+    // đủ các trường này để điều hướng sang màn nhập km/gửi phiếu thu sau khi hoàn hàng
+    // (BR-008A) — thiếu field nào thì màn đó nhận params rỗng/undefined và tài không bao
+    // giờ được hỏi km, nên actual_price của chuyến hoàn hàng không bao giờ được chốt.
+    const completedTrip = await tripRepository.getFullTripById(tripId);
 
     // isFinal (dùng để chọn câu chữ thông báo) và derived_status của đơn (dùng để đóng
     // đơn/báo coordinator) là 2 việc KHÁC nhau, tính riêng: isFinalShipment còn đòi hỏi

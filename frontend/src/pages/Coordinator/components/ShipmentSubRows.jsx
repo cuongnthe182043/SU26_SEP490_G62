@@ -34,7 +34,12 @@ function ShipmentSubRow({ shipment, onReassign, onCancel }) {
         <span className="text-xs text-gray-500 dark:text-gray-400">{shipment.distance ? `${shipment.distance} km` : "—"}</span>
       </td>
       <td className="py-3 pr-4">
-        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(shipment.fare)}</span>
+        <div className="flex flex-col">
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(shipment.fare)}</span>
+          {shipment.returning_at ? (
+            <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</span>
+          ) : null}
+        </div>
       </td>
       <td className="py-3 pr-4">
         <StatusBadge status={shipment.status} />

@@ -258,8 +258,17 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                       phiếu đã chốt lấy số chốt, yêu cầu chưa duyệt lấy đúng số màn xem trước sẽ hiện
                       (cước + chi hộ − ứng đã xác nhận). Trước đây dòng chưa duyệt hiện cước trần —
                       một cột mang hai nghĩa, lại còn khác với khoá sắp xếp "Số tiền cao/thấp nhất"
-                      (ORDER BY receipt_amount) nên sắp xếp xong nhìn như sai thứ tự. */}
-                  <TableCell>{formatCurrency(request.receipt_amount)}</TableCell>
+                      (ORDER BY receipt_amount) nên sắp xếp xong nhìn như sai thứ tự.
+                      Nhãn hoàn hàng vẫn giữ: ×2 cước đã nằm sẵn trong receipt_amount, nói ra để
+                      coordinator không tưởng số bị nhân nhầm. */}
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{formatCurrency(request.receipt_amount)}</span>
+                      {request.returning_at ? (
+                        <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</span>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell><StatusBadge status={request.status} /></TableCell>
                   <TableCell>
                     {status === "approved" ? (

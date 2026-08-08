@@ -118,6 +118,7 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
             primary_shipment.shipment_index,
             primary_shipment.status AS shipment_status,
             primary_shipment.actual_distance_km,
+            primary_shipment.returning_at,
             COALESCE(distance_summary.total_actual_distance_km, 0) AS total_actual_distance_km,
             COALESCE(revenue_summary.total_actual_price, 0) AS actual_price,
             COALESCE(revenue_summary.total_estimated_price, primary_shipment.estimated_price, 0) AS estimated_price,
@@ -142,17 +143,26 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
          ) distance_summary ON TRUE
          LEFT JOIN LATERAL (
             SELECT
+                -- Preview trước khi actual_price được chốt — phải khớp đúng thứ tự ưu tiên
+                -- thật trong computeReceiptAmount (coordinatorService.js), nếu không danh
+                -- sách yêu cầu phiếu thu hiện sai số so với lúc mở chi tiết/duyệt:
+                --   1) cancelled/failed → 0 (lọc ở WHERE bên dưới, xem ghi chú ở đó)
+                --   2) is_price_manual → luôn = estimated_price, không suy theo km
+                --   3) actual_price đã chốt → dùng thẳng
+                --   4) chuyến HOÀN HÀNG (returning_at) → km × đơn giá × 2 (chạy cả hai chiều)
+                --   5) bình thường → km × đơn giá
+                --
+                -- is_price_manual đứng TRƯỚC actual_price vì computeReceiptAmount xét nó đầu
+                -- tiên: giá công ty chốt tay thắng tuyệt đối, bất kể km hay giá đã ghi trước đó.
                 SUM(
                     CASE
-                        -- Giá CỐ ĐỊNH do DN chốt tay: luôn là estimated_price, KHÔNG suy theo km
-                        -- (khớp nhánh is_price_manual của computeReceiptAmount). Thiếu nhánh này
-                        -- thì chuyến giá cố định chưa duyệt bị tính lại thành km × đơn giá nhóm xe.
                         WHEN os_revenue.is_price_manual IS TRUE
                             THEN COALESCE(os_revenue.estimated_price, 0)
                         ELSE COALESCE(
                             NULLIF(os_revenue.actual_price, 0),
                             COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
                             * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                            * CASE WHEN os_revenue.returning_at IS NOT NULL THEN 2 ELSE 1 END
                         )
                     END
                 ) AS total_actual_price,
@@ -168,6 +178,12 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
               -- được tính tiền ở đây — và tính CẢ SAU KHI duyệt: lúc chốt phiếu, chuyến hủy bị
               -- set actual_price = 0, NULLIF(...,0) biến 0 thành NULL rồi rơi xuống nhánh
               -- km × đơn giá, hồi sinh đúng khoản doanh thu vừa bị gạt đi.
+              --
+              -- Lọc ở WHERE chứ KHÔNG phải thêm nhánh "WHEN status IN (...) THEN 0" vào CASE:
+              -- nhánh CASE nằm sau NULLIF(actual_price, 0) nên chuyến hủy còn sót actual_price
+              -- cũ (vd. chuyến đang hoàn hàng đã chốt giá rồi mới phát hiện hàng hư hại) vẫn
+              -- lọt qua. Lọc cả dòng thì không có đường nào lách được, và total_estimated_price
+              -- bên dưới cũng thôi cộng giá báo của chuyến sẽ không bao giờ thu được.
               AND os_revenue.status NOT IN ('cancelled', 'failed')
          ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (
