@@ -95,6 +95,19 @@ const getPayrollStatus = async (driverId, month, year) => {
     return result.rows[0]?.status ?? null;
 };
 
+// Chấm công đang trừ lương của đúng ngày đó (nếu có) — dùng để chặn tạo đơn nghỉ chồng lên.
+// Đối xứng với attendanceService: bên kia chặn chấm vắng/nửa công cho ngày đã có đơn nghỉ.
+// 'present'/'holiday_worked' KHÔNG chặn: hai thứ đó không trừ công nên không mâu thuẫn.
+const findBlockingAttendance = async (driverId, workDate) => {
+    const result = await pool.query(
+        `SELECT status FROM attendance_overrides
+         WHERE driver_id = $1 AND work_date = $2
+           AND status IN ('absent_unexcused', 'half_day')`,
+        [driverId, workDate],
+    );
+    return result.rows[0] ?? null;
+};
+
 // Driver tự đăng ký nghỉ — auto-approved
 const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
     const result = await pool.query(
@@ -130,4 +143,4 @@ const rejectExpiredLeaveRequests = async () => {
     return result.rowCount;
 };
 
-module.exports = { getDriverLeaves, getAttendanceSummary, getPayrollStatus, createLeave, deleteLeave, rejectExpiredLeaveRequests };
+module.exports = { getDriverLeaves, getAttendanceSummary, getPayrollStatus, findBlockingAttendance, createLeave, deleteLeave, rejectExpiredLeaveRequests };
