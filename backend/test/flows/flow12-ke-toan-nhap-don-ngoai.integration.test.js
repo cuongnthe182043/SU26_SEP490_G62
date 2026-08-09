@@ -436,3 +436,109 @@ describe('L2-FLOW-08 — Kế toán nhập đơn ngoài: khớp xe/tài xế và
         await pool.query('DELETE FROM accounts WHERE id = 6');
     });
 });
+
+/**
+ * Thu hộ (COD) — tiền HÀNG công ty thu hộ khách khi giao chuyến.
+ *
+ * Là tiền CỦA KHÁCH mà công ty đang giữ, ngược chiều với công nợ cước. Nên: không vào
+ * doanh thu, không vào actual_price, không cộng vào số khách nợ. Lưu theo CHUYẾN vì đa số
+ * chuyến import đã thu đủ cước nên không phát sinh dòng debts nào để đựng.
+ */
+describe('L2-FLOW-08B — Thu hộ (COD) khi import đơn ngoài', () => {
+    const CUOC = 2_000_000;
+    const THU_HO = 15_000_000;
+
+    it('B1 — thu hộ được lưu theo chuyến, KHÔNG lẫn vào doanh thu', async () => {
+        const created = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: CUOC,
+            collect_on_behalf: THU_HO,
+            payment_type: 'bank_transfer',
+            driver_payment_state: 'company_received',
+        }));
+
+        const { rows: [s] } = await pool.query(
+            `SELECT actual_price, collect_on_behalf_amount FROM order_shipments WHERE order_id = $1`,
+            [created.id],
+        );
+        assert.strictEqual(Number(s.collect_on_behalf_amount), THU_HO);
+        assert.strictEqual(Number(s.actual_price), CUOC, 'thu hộ không được cộng vào giá chuyến');
+
+        // Doanh thu ghi sổ chỉ là cước — thu hộ không phải doanh thu của công ty
+        const { rows: fts } = await pool.query(
+            `SELECT amount FROM financial_transactions
+             WHERE event_type = 'shipment_revenue' AND ref_id IN (
+                 SELECT id FROM order_shipments WHERE order_id = $1
+             )`,
+            [created.id],
+        );
+        assert.strictEqual(fts.length, 1);
+        assert.strictEqual(Number(fts[0].amount), CUOC);
+    });
+
+    it('B2 — chuyến ĐÃ thu đủ cước (không phát sinh nợ) vẫn ghi được thu hộ', async () => {
+        // Đây là ca mà mọi phương án lưu trên bảng debts đều mất dữ liệu: không có dòng nợ
+        // nào được tạo, mà debts.total_amount lại có CHECK (> 0) nên không thể tạo dòng rỗng.
+        const created = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: CUOC,
+            collect_on_behalf: THU_HO,
+            payment_type: 'bank_transfer',
+            driver_payment_state: 'company_received',
+        }));
+
+        const { rows: [debt] } = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM debts WHERE order_id = $1`, [created.id],
+        );
+        assert.strictEqual(debt.c, 0, 'chuyến đã thu đủ thì không có dòng nợ nào');
+
+        const { rows: [s] } = await pool.query(
+            `SELECT collect_on_behalf_amount FROM order_shipments WHERE order_id = $1`, [created.id],
+        );
+        assert.strictEqual(Number(s.collect_on_behalf_amount), THU_HO, 'nhưng thu hộ vẫn phải được ghi');
+    });
+
+    it('B3 — khách ghi nợ: nợ cước giữ nguyên, KHÔNG bị cộng/trừ bởi thu hộ', async () => {
+        const created = await repo.createOrderWithShipments(orderWithShipment({
+            cargo_fee: CUOC,
+            collect_on_behalf: THU_HO,
+            payment_type: 'client_credit',
+            driver_payment_state: 'company_received',
+        }));
+
+        const { rows: [debt] } = await pool.query(
+            `SELECT debt_type, total_amount FROM debts WHERE order_id = $1`, [created.id],
+        );
+        assert.strictEqual(debt.debt_type, 'customer');
+        assert.strictEqual(Number(debt.total_amount), CUOC,
+            'thu hộ theo dõi song song — không cấn trừ, không cộng dồn vào nợ cước');
+    });
+
+    it('B4 — không nhập thu hộ thì mặc định 0', async () => {
+        const created = await repo.createOrderWithShipments(orderWithShipment({ cargo_fee: CUOC }));
+        const { rows: [s] } = await pool.query(
+            `SELECT collect_on_behalf_amount FROM order_shipments WHERE order_id = $1`, [created.id],
+        );
+        assert.strictEqual(Number(s.collect_on_behalf_amount), 0);
+    });
+
+    it('B5 — vân tay chống trùng: dòng KHÔNG có thu hộ giữ nguyên vân tay cũ', async () => {
+        // Quan trọng: thêm cột mới không được đổi vân tay của các dòng cũ, nếu không file đã
+        // import trước đây gửi lại sẽ không còn bị nhận ra là trùng và nhân đôi doanh thu.
+        const khongThuHo = orderWithShipment({ cargo_fee: CUOC });
+        const thuHoBang0 = orderWithShipment({ cargo_fee: CUOC, collect_on_behalf: 0 });
+
+        assert.strictEqual(
+            buildImportFingerprint(khongThuHo), buildImportFingerprint(thuHoBang0),
+            'thu hộ = 0 phải cho cùng vân tay với dòng không có cột thu hộ',
+        );
+    });
+
+    it('B6 — vân tay chống trùng: hai chuyến chỉ khác số thu hộ là HAI chuyến khác nhau', async () => {
+        const a = orderWithShipment({ cargo_fee: CUOC, collect_on_behalf: 5_000_000 });
+        const b = orderWithShipment({ cargo_fee: CUOC, collect_on_behalf: 7_000_000 });
+
+        assert.notStrictEqual(
+            buildImportFingerprint(a), buildImportFingerprint(b),
+            'khác số COD mà cùng vân tay thì chuyến thứ hai bị từ chối oan',
+        );
+    });
+});

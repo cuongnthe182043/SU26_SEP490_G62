@@ -226,6 +226,12 @@ CREATE TABLE order_shipments (
     estimated_distance_km NUMERIC(10,2),
     actual_distance_km    NUMERIC(10,2),
     actual_price          NUMERIC(12,2),
+    -- Thu hộ (COD): tiền hàng công ty thu hộ khách khi giao chuyến này.
+    -- KHÔNG phải doanh thu, KHÔNG cấn vào công nợ cước — là tiền của khách mà công ty
+    -- đang giữ (chiều ngược với công nợ), theo dõi song song với debts.total_amount.
+    -- Đặt ở đây chứ không ở debts vì chuyến đã thu đủ cước thì không có dòng nợ nào để đựng.
+    collect_on_behalf_amount NUMERIC(12,2) NOT NULL DEFAULT 0
+                              CHECK (collect_on_behalf_amount >= 0),
     cargo_name            TEXT,
     cargo_weight_kg       NUMERIC(10,2),
     status                TEXT NOT NULL DEFAULT 'available'

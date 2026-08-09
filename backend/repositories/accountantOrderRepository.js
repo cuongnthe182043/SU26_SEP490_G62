@@ -9,6 +9,14 @@ const trimToNull = (value) => {
     return text || null;
 };
 
+// Tiền không được âm và không được là NaN. Excel do người gõ nên ô rỗng / chữ / số âm đều
+// có thể lọt tới đây; quy về 0 thay vì để NaN đi thẳng vào câu INSERT rồi vỡ ở tầng DB.
+// Frontend đã chặn số âm và báo đúng dòng Excel — đây là lớp chặn cuối, không phải lớp duy nhất.
+const normalizeNonNegativeMoney = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
 const buildOrderNotes = (orderData) => {
     const segments = [];
     if (orderData.order_date) segments.push(`Ngày đơn: ${orderData.order_date}`);
@@ -288,6 +296,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     pickupAddresses, deliveryAddresses, contactName, contactPhone,
     expenses, createdByUserId,
     distanceKm = null, completedAt = null,
+    collectOnBehalfAmount = 0,
 }) => {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
@@ -295,9 +304,10 @@ const insertShipmentWithStopsAndExpenses = async (client, {
             estimated_price, actual_price,
             estimated_distance_km, actual_distance_km,
             cargo_name, cargo_weight_kg,
+            collect_on_behalf_amount,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 'completed', $8, COALESCE($9::timestamptz, NOW()), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $10, 'completed', $8, COALESCE($9::timestamptz, NOW()), NOW(), NOW())
          RETURNING id`,
         [
             orderId, shipmentIndex,
@@ -306,6 +316,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
             cargoName || null, cargoWeight || 0,
             shipmentNotes,
             completedAt,
+            collectOnBehalfAmount,
         ]
     );
     const shipmentId = shipmentResult.rows[0].id;
@@ -613,6 +624,10 @@ const createOrderWithShipments = async (orderData) => {
                 createdByUserId: orderData.created_by,
                 distanceKm: s.distance_km != null && Number(s.distance_km) > 0 ? Number(s.distance_km) : null,
                 completedAt: s.completed_at || orderData.completed_at || null,
+                // Thu hộ (COD) — tiền của khách công ty đang giữ. KHÔNG cộng vào actualPrice
+                // (không phải doanh thu) và KHÔNG cộng vào debtAmount bên dưới (không phải
+                // khoản khách nợ) — chỉ lưu theo chuyến để đối chiếu và chi trả lại.
+                collectOnBehalfAmount: normalizeNonNegativeMoney(s.collect_on_behalf),
             });
 
             // Nợ mặc định = số khách phải trả (cước + chi hộ); import cho phép ghi đè
@@ -953,6 +968,9 @@ const getOrderShipments = async (orderId) => {
         SELECT
             os.id, os.shipment_index, sc.vehicle_id, sc.owner_driver_id,
             os.estimated_price, os.actual_price, os.cargo_name, os.cargo_weight_kg,
+            -- Thu hộ (COD) — tiền của khách công ty đang giữ. Tách hẳn khỏi actual_price
+            -- (doanh thu) và khỏi mọi con số công nợ cước.
+            COALESCE(os.collect_on_behalf_amount, 0) AS collect_on_behalf_amount,
             os.status, os.notes, os.completed_at, os.created_at,
             v.plate_number                         AS vehicle_plate,
             p.full_name                            AS driver_name,
