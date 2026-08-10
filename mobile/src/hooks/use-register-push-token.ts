@@ -1,21 +1,33 @@
 import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 
+import { isRealtimeConnected } from '@/lib/realtime-status';
 import { profileService } from '@/services/profile-service';
 import { useAuthSession } from '@/providers/auth-provider';
 
 // Không set handler này thì notification đến lúc app đang mở sẽ không hiện gì cả
 // (mặc định expo-notifications im lặng khi app foreground).
+//
+// Mỗi thông báo được gửi theo CẢ HAI đường: WebSocket (app đang mở) và push (mọi lúc).
+// Nếu app đang mở mà kênh realtime còn sống thì toast trong app đã hiện rồi — hiện
+// thêm banner hệ thống nữa là một thông báo báo hai lần. Chỉ tắt banner đúng trường
+// hợp đó; realtime chết (đang trong lúc nối lại, mất sóng...) thì vẫn phải hiện,
+// nếu không tài xế mất thông báo mà không hay biết.
+//
+// shouldShowList luôn bật: thông báo vẫn nằm trong khay hệ thống để xem lại được.
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList:   true,
-        shouldPlaySound:  true,
-        shouldSetBadge:   false,
-    }),
+    handleNotification: async () => {
+        const daHienToastTrongApp = AppState.currentState === 'active' && isRealtimeConnected();
+        return {
+            shouldShowBanner: !daHienToastTrongApp,
+            shouldShowList:   true,
+            shouldPlaySound:  !daHienToastTrongApp,
+            shouldSetBadge:   false,
+        };
+    },
 });
 
 // Đăng ký Expo push token lên backend sau khi đăng nhập, để nhận thông báo cả khi
