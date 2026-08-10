@@ -17,6 +17,9 @@ describe('Leave Service Unit Tests (L1)', () => {
         // Service tra bảng lương kỳ đó đã chốt chưa — mặc định coi như chưa có,
         // test nào cần kiểm tra guard này thì tự mock đè lại.
         mock.method(leaveRepository, 'getPayrollStatus', async () => null);
+        // Service còn chặn đăng ký nghỉ chồng lên ngày đã chấm vắng/nửa công —
+        // mặc định coi như ngày đó chưa bị chấm gì.
+        mock.method(leaveRepository, 'findBlockingAttendance', async () => null);
     });
 
     it('L1-LEAVE-01: getMyLeaves - should call repository without filters', async () => {
@@ -70,6 +73,27 @@ describe('Leave Service Unit Tests (L1)', () => {
         mock.method(leaveRepository, 'createLeave', async () => ({ id: 5 }));
         const result = await leaveService.createLeave(2, { leaveDate: vnDate(7), leaveType: 'paid', reason: 'sick' });
         assert.strictEqual(result.id, 5);
+    });
+
+    // Chấm vắng/nửa công rồi mới xin nghỉ bù là đường đã từng làm bảng lương trừ HAI công
+    // cho MỘT ngày. Chặn đối xứng với attendanceService (bên đó chặn chiều ngược lại).
+    it('L1-LEAVE-08: createLeave - chặn khi ngày đó đã bị chấm vắng không phép', async () => {
+        mock.method(leaveRepository, 'findBlockingAttendance', async () => ({ status: 'absent_unexcused' }));
+        mock.method(leaveRepository, 'createLeave', async () => ({ id: 6 }));
+
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: vnDate(-1), leaveType: 'unpaid', reason: 'xin nghi bu' }),
+            /đã được chấm công "vắng không phép"/,
+        );
+        assert.strictEqual(leaveRepository.createLeave.mock.calls.length, 0, 'không được ghi đơn nghỉ');
+    });
+
+    it('L1-LEAVE-08b: createLeave - chặn khi ngày đó đã bị chấm nửa công', async () => {
+        mock.method(leaveRepository, 'findBlockingAttendance', async () => ({ status: 'half_day' }));
+        await assert.rejects(
+            leaveService.createLeave(2, { leaveDate: vnDate(-1), leaveType: 'unpaid' }),
+            /đã được chấm công "nửa công"/,
+        );
     });
 
     // Ngày do client gửi lên nên không tin được: đồng hồ máy sai hoặc gõ nhầm năm

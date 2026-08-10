@@ -36,20 +36,36 @@ const normalizeExpenses = (expenses = []) => (Array.isArray(expenses) ? expenses
     .sort()
     .join(',');
 
-const normalizeShipment = (s = {}) => [
-    normalizePlate(s.vehicle_plate),
-    normalizeText(s.driver_name),
-    normalizeStops(s.pickup_addresses),
-    normalizeStops(s.delivery_addresses ?? s.delivery_address),
-    normalizeAmount(s.cargo_fee),
-    s.settled_fee != null ? normalizeAmount(s.settled_fee) : '',
-    normalizeText(s.cargo_name),
-    s.distance_km != null ? normalizeAmount(s.distance_km) : '',
-    normalizeText(s.payment_type),
-    normalizeText(s.driver_payment_state),
-    s.driver_holding_amount != null ? normalizeAmount(s.driver_holding_amount) : '',
-    normalizeExpenses(s.expenses),
-].join('|');
+const normalizeShipment = (s = {}) => {
+    const parts = [
+        normalizePlate(s.vehicle_plate),
+        normalizeText(s.driver_name),
+        normalizeStops(s.pickup_addresses),
+        normalizeStops(s.delivery_addresses ?? s.delivery_address),
+        normalizeAmount(s.cargo_fee),
+        s.settled_fee != null ? normalizeAmount(s.settled_fee) : '',
+        normalizeText(s.cargo_name),
+        s.distance_km != null ? normalizeAmount(s.distance_km) : '',
+        normalizeText(s.payment_type),
+        normalizeText(s.driver_payment_state),
+        s.driver_holding_amount != null ? normalizeAmount(s.driver_holding_amount) : '',
+        normalizeExpenses(s.expenses),
+    ];
+
+    // Thu hộ CHỈ được nối thêm khi khác 0 — cố ý không thêm ô trống vào chuỗi.
+    //
+    // Nếu nối vô điều kiện thì mọi dòng cũ (không có cột thu hộ) cũng đổi vân tay, và file
+    // đã import trước đây gửi lại sẽ KHÔNG còn bị nhận ra là trùng — đúng cái tai nạn nhân
+    // đôi doanh thu/công nợ mà cơ chế này sinh ra để chặn.
+    //
+    // Ngược lại, bỏ hẳn thu hộ khỏi vân tay thì hai chuyến giống nhau mọi mặt trừ số COD sẽ
+    // ra cùng vân tay và chuyến thứ hai bị từ chối oan — chuyến chạy tuyến quen, cùng ngày,
+    // cùng cước, chỉ khác tiền hàng thu hộ là chuyện thường.
+    const coh = Number(s.collect_on_behalf ?? 0);
+    if (Number.isFinite(coh) && coh > 0) parts.push(`coh:${normalizeAmount(coh)}`);
+
+    return parts.join('|');
+};
 
 /**
  * @param {object} order payload một dòng Excel (như gửi lên /accountant/orders/import)

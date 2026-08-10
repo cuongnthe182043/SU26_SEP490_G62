@@ -3,6 +3,7 @@ const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { isCustomerBillableExpense } = require('../constants/expenseConstants');
+const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -77,39 +78,10 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     // Ngày lễ luôn được loại khỏi mọi phép trừ công: Điều V.1 quy định nghỉ lễ vẫn
     // hưởng nguyên lương, nên dù tài có đơn nghỉ hay bị chấm vắng đúng ngày lễ thì
     // cũng không được trừ.
-    const { rows: [dayRow] } = await client.query(`
-        SELECT COUNT(*)::int AS unpaid_days
-        FROM leave_requests lr
-        LEFT JOIN attendance_overrides ao
-               ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
-        WHERE lr.driver_id = $1
-          AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
-          AND EXTRACT(MONTH FROM lr.leave_date) = $2
-          AND EXTRACT(YEAR  FROM lr.leave_date) = $3
-          AND COALESCE(ao.status, 'leave_unpaid') != 'present'
-          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date)
-    `, [driver.driver_id, month, year]);
-    const { rows: [attRow] } = await client.query(`
-        SELECT COUNT(*)::int AS unexcused_days
-        FROM attendance_overrides ao
-        WHERE ao.driver_id = $1
-          AND ao.status = 'absent_unexcused'
-          AND EXTRACT(MONTH FROM ao.work_date) = $2
-          AND EXTRACT(YEAR  FROM ao.work_date) = $3
-          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
-    `, [driver.driver_id, month, year]);
-    // Nửa công (sáng đi làm, chiều nghỉ) — chỉ trừ 0.5 công thay vì trừ nguyên ngày
-    const { rows: [halfRow] } = await client.query(`
-        SELECT COUNT(*)::int AS half_days
-        FROM attendance_overrides ao
-        WHERE ao.driver_id = $1
-          AND ao.status = 'half_day'
-          AND EXTRACT(MONTH FROM ao.work_date) = $2
-          AND EXTRACT(YEAR  FROM ao.work_date) = $3
-          AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
-    `, [driver.driver_id, month, year]);
-    const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0)
-                          + Number(halfRow.half_days ?? 0) * 0.5;
+    // Một truy vấn DUY NHẤT, khử trùng theo ngày — xem UNPAID_DAYS_SQL để biết thứ tự ưu
+    // tiên giữa chấm công và đơn nghỉ, và vì sao KHÔNG được cộng ba truy vấn rời.
+    const { rows: [dayRow] } = await client.query(UNPAID_DAYS_SQL, [driver.driver_id, month, year]);
+    const unpaidDays     = Number(dayRow.unpaid_days ?? 0);
     // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
     // trả. Tháng dài hơn 28 ngày lịch mà tài đi làm hết cả những ngày dư (29, 30, 31) thì
     // được trả thêm đúng phần dư đó — proRatedBase khi ấy VƯỢT base_salary. Ngược lại,

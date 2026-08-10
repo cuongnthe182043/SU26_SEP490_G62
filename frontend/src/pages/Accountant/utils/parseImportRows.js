@@ -35,6 +35,9 @@ const HEADER_KEYS = [
   ["ten hang",             "cargo_name"],
   ["cuoc xe",              "cargo_fee"],
   ["gia chot",             "settled_fee"],
+  // Thu hộ (COD) — tiền hàng công ty thu hộ khách khi giao. KHÔNG phải doanh thu, không
+  // cộng vào số khách phải trả; chỉ ghi nhận để đối chiếu và trả lại khách.
+  ["thu ho",               "collect_on_behalf"],
   ["phi cau duong",        "toll"],
   ["phi do xe",            "parking"],
   ["xang dau",             "fuel"],
@@ -62,6 +65,7 @@ const MONEY_FIELD_LABELS = [
   ["fuel", "Xăng dầu"],
   ["repair", "Sửa xe"],
   ["holding", "Tiền tài đang giữ"],
+  ["collect_on_behalf", "Thu hộ"],
 ];
 
 /**
@@ -211,6 +215,9 @@ export function parseWorkbook(wb, XLSX) {
     const parking = parseMoney(get(r, "parking"));
     const fuel = parseMoney(get(r, "fuel"));
     const repair = parseMoney(get(r, "repair"));
+    // Thu hộ (COD): tiền của KHÁCH mà công ty thu giúp rồi trả lại — ngược chiều với công
+    // nợ cước nên KHÔNG cộng vào customerTotal và không đụng gì tới doanh thu.
+    const collectOnBehalf = parseMoney(get(r, "collect_on_behalf"));
 
     // Giá chốt: giá thật sau khi hai bên thống nhất lại, giống việc coordinator sửa giá
     // lúc duyệt phiếu thu trong app (estimated_price → actual_price). Để trống thì giá
@@ -233,12 +240,17 @@ export function parseWorkbook(wb, XLSX) {
 
     // Kiểm tra THẬT SỰ có ý nghĩa: tài không thể đang giữ nhiều hơn số khách đưa.
     // So với GIÁ CHỐT chứ không phải giá báo — chốt 1tr2 rồi thì tài cầm 1tr2 là đúng.
-    if (holding != null && effectiveFee > 0 && runs != null && holding > customerTotal) {
+    // Trần gồm CẢ thu hộ: tài xế thu COD của người nhận thì cũng đang cầm số tiền đó, nên
+    // giữ nhiều hơn cước là hợp lệ. Bỏ thu hộ ra khỏi trần sẽ chặn oan đúng những dòng có
+    // COD — dòng mà cột thu hộ sinh ra để phục vụ.
+    const holdingCeiling = customerTotal + collectOnBehalf;
+    if (holding != null && effectiveFee > 0 && runs != null && holding > holdingCeiling) {
       const goc = settledFee != null ? "giá chốt" : "cước";
       rowErr.push(
-        `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số khách phải trả `
-        + `(${customerTotal.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
-        + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""})`,
+        `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số tiền tài có thể cầm `
+        + `(${holdingCeiling.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
+        + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""}`
+        + `${collectOnBehalf > 0 ? ` + thu hộ ${collectOnBehalf.toLocaleString("vi-VN")}đ` : ""})`,
       );
     }
 
@@ -280,6 +292,9 @@ export function parseWorkbook(wb, XLSX) {
         settled_fee: settledFee,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
+        // Thu hộ là số của CẢ DÒNG (giống chi phí, khác cước xe vốn tính theo lượt) — dồn
+        // vào chuyến đầu để tăng bo N lượt không nhân số COD lên N lần.
+        collect_on_behalf: isFirst ? collectOnBehalf : 0,
         expenses,
         payment_type: payment.payment_type,
         driver_payment_state: payment.driver_payment_state,

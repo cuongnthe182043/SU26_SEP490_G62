@@ -12,28 +12,33 @@ import { parseWorkbook, parseRuns, parseHoldingCell } from "./parseImportRows";
 const HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
   "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
+// Header của file CŨ — không có cột "Thu hộ". Dùng để chốt rằng file kế toán đang lưu
+// trên máy vẫn import được sau khi thêm cột mới.
+const HEADERS_CU = HEADERS.filter((h) => h !== "Thu hộ (đ)");
+
 /** Dựng workbook từ các dòng dữ liệu thô rồi chạy qua đúng parser thật */
-const readSheet = (...rows) => {
-  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows]);
+const readSheetWith = (headers, rows) => {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "DON_HANG");
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
   return parseWorkbook(XLSX.read(buf, { type: "buffer" }), XLSX);
 };
+const readSheet = (...rows) => readSheetWith(HEADERS, rows);
 
 /** Dòng chuẩn; truyền object để ghi đè từng ô theo chỉ số cột */
 const makeRow = (o = {}) => {
   const r = ["22/07/2026", "29H-961.45", "Toàn", "", "", "Kho A", "Kho B", "", "", "",
-    250000, "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
+    250000, "", "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
   for (const [i, v] of Object.entries(o)) r[Number(i)] = v;
   return r;
 };
 
-const FEE_COL = 10, SETTLED = 11, SO_LUOT = 8, GIU = 17, TOLL = 12, PAY = 16;
+const FEE_COL = 10, SETTLED = 11, COH = 12, SO_LUOT = 8, GIU = 18, TOLL = 13, PAY = 17;
 
 describe("parseRuns — số lượt", () => {
   it("ô trống là 1 lượt", () => expect(parseRuns("")).toBe(1));
@@ -200,5 +205,68 @@ describe("Giá chốt — sửa giá sau khi thống nhất lại", () => {
     expect(ships).toHaveLength(2);
     expect(ships.every((x) => x.settled_fee === 1200000)).toBe(true);
     expect(rows[0].display.totalFee).toBe(2400000);
+  });
+});
+
+/**
+ * Thu hộ (COD) — tiền HÀNG công ty thu hộ khách khi giao. Là tiền CỦA KHÁCH công ty đang
+ * giữ, ngược chiều với công nợ cước: không phải doanh thu, không cộng vào số khách phải trả.
+ */
+describe("Thu hộ (COD)", () => {
+  it("đọc được số thu hộ và KHÔNG cộng vào tiền khách phải trả", () => {
+    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 2000000, [COH]: 15000000, [PAY]: "CK công ty" }));
+    expect(errors).toEqual([]);
+
+    const ship = rows[0].order.shipments[0];
+    expect(ship.collect_on_behalf).toBe(15000000);
+    // Cước vẫn là cước — thu hộ không được lẫn vào doanh thu
+    expect(ship.cargo_fee).toBe(2000000);
+    expect(rows[0].display.totalFee).toBe(2000000);
+  });
+
+  it("thu hộ âm bị từ chối, không lặng lẽ đổi dấu", () => {
+    const { errors } = readSheet(makeRow({ [COH]: "-500000" }));
+    expect(errors[0]).toMatch(/Thu hộ không được âm/);
+  });
+
+  it("tài xế cầm cả cước lẫn thu hộ vẫn hợp lệ", () => {
+    // Trần "tiền tài đang giữ" phải gồm cả COD, nếu không sẽ chặn oan đúng dòng có thu hộ
+    const { errors } = readSheet(makeRow({
+      [FEE_COL]: 2000000, [COH]: 15000000, [GIU]: 17000000, [PAY]: "Tiền mặt - tài đang giữ",
+    }));
+    expect(errors).toEqual([]);
+  });
+
+  it("cầm quá cả cước lẫn thu hộ thì vẫn chặn", () => {
+    const { errors } = readSheet(makeRow({
+      [FEE_COL]: 2000000, [COH]: 15000000, [GIU]: 20000000, [PAY]: "Tiền mặt - tài đang giữ",
+    }));
+    expect(errors[0]).toMatch(/thu hộ 15.000.000/);
+  });
+
+  it("tăng bo: thu hộ là số của CẢ DÒNG, chỉ ghi vào chuyến đầu", () => {
+    const { rows } = readSheet(makeRow({ [FEE_COL]: 300000, [COH]: 5000000, [SO_LUOT]: 3, [PAY]: "CK công ty" }));
+    const ships = rows[0].order.shipments;
+    expect(ships).toHaveLength(3);
+    expect(ships.map((s) => s.collect_on_behalf)).toEqual([5000000, 0, 0]);
+    // Tổng thu hộ của đơn đúng bằng số đã nhập, không nhân lên 3 lần
+    expect(ships.reduce((t, s) => t + s.collect_on_behalf, 0)).toBe(5000000);
+  });
+
+  it("ô trống thì thu hộ = 0", () => {
+    const { rows } = readSheet(makeRow());
+    expect(rows[0].order.shipments[0].collect_on_behalf).toBe(0);
+  });
+
+  // File kế toán đang lưu trên máy không có cột này — thêm cột mới không được làm hỏng
+  it("file CŨ không có cột Thu hộ vẫn import bình thường", () => {
+    const rowCu = ["22/07/2026", "29H-961.45", "Toàn", "", "", "Kho A", "Kho B", "", "", "",
+      250000, "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
+    const { rows, errors } = readSheetWith(HEADERS_CU, [rowCu]);
+
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].order.shipments[0].cargo_fee).toBe(250000);
+    expect(rows[0].order.shipments[0].collect_on_behalf).toBe(0);
   });
 });
