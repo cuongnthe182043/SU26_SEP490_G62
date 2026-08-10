@@ -138,6 +138,9 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
 
             if (s.driver_holding_amount != null) nonNegAmount(s.driver_holding_amount, `${idx}: Tiền tài đang giữ`);
             if (s.distance_km != null)           nonNegAmount(s.distance_km,           `${idx}: Quãng đường`);
+            // Thu hộ (COD): tiền của khách công ty đang giữ — không phải doanh thu, không
+            // cấn vào công nợ cước; ở đây chỉ chặn số âm như mọi cột tiền khác.
+            if (s.collect_on_behalf != null)     nonNegAmount(s.collect_on_behalf,     `${idx}: Thu hộ`);
 
             const expenses = Array.isArray(s.expenses) ? s.expenses : [];
             if (expenses.length > 20)

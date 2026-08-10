@@ -62,6 +62,14 @@ function ShipmentRow({ shipment }) {
               gồm chi hộ <MoneyText amount={shipment.pass_through_total} />
             </span>
           )}
+          {/* Thu hộ (COD) đứng RIÊNG, không cộng vào số bên trên: đây là tiền của khách
+              công ty đang giữ hộ, ngược chiều với công nợ cước. Gộp vào là kế toán tưởng
+              khách nợ thêm chừng đó. */}
+          {Number(shipment.collect_on_behalf_amount) > 0 && (
+            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+              thu hộ <MoneyText amount={shipment.collect_on_behalf_amount} /> (giữ hộ khách)
+            </span>
+          )}
         </div>
       </td>
 
