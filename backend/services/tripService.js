@@ -366,7 +366,14 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     }
     await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
-    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
+    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED, null, driverId);
+
+    // Lấy full trip (order_payment_type, is_final_shipment, max_shipment_index, địa chỉ...)
+    // — KHÔNG dùng row thô từ updateTripStatus (chỉ có cột order_shipments). Mobile cần
+    // đủ các trường này để điều hướng sang màn nhập km/gửi phiếu thu sau khi hoàn hàng
+    // (BR-008A) — thiếu field nào thì màn đó nhận params rỗng/undefined và tài không bao
+    // giờ được hỏi km, nên actual_price của chuyến hoàn hàng không bao giờ được chốt.
+    const completedTrip = await tripRepository.getFullTripById(tripId);
 
     // isFinal (dùng để chọn câu chữ thông báo) và derived_status của đơn (dùng để đóng
     // đơn/báo coordinator) là 2 việc KHÁC nhau, tính riêng: isFinalShipment còn đòi hỏi
@@ -547,7 +554,14 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
     const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
-        throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
+        // Phiếu thu 0đ (mọi chuyến của đơn bị hủy vì hàng hư hại — toàn bộ chi phí chuyển
+        // sang DN chịu; hoặc khách đã trả trước đủ) thì không có giao dịch nào để chụp:
+        // giữ nguyên yêu cầu ảnh sẽ khóa cứng tài xế, không cách nào đóng được phiếu.
+        // Chỉ tra DB ở nhánh THIẾU ảnh nên luồng bình thường không tốn thêm truy vấn.
+        const receiptAmount = await tripRepository.getReceiptAmountForDriver(orrId, driverId);
+        if (receiptAmount === null || receiptAmount > 0.01) {
+            throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
+        }
     }
     const result = await tripRepository.recordReceiptCollection(orrId, driverId, { paymentType, proofUrl, notes, collectedAmount });
 

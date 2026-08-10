@@ -143,7 +143,7 @@ const startTransit = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/return-complete — RETURNING → COMPLETED (ảnh không bắt buộc)
+// POST /api/trips/:id/return-complete — RETURNING → COMPLETED (ảnh BẮT BUỘC — xem tripService.returnComplete)
 // Field name linh hoạt: 'proof' | 'image'
 const returnComplete = async (req, res) => {
     try {

@@ -115,10 +115,17 @@ function OrderCard({ item }: { item: OrderHistoryItem }) {
                             <Clock size={12} color={appTheme.colors.textMuted} />
                             <Text fontSize={11} color={appTheme.colors.textMuted}>{dateLabel}</Text>
                         </XStack>
-                        {item.total_estimated_price ? (
-                            <Text fontSize={12} fontWeight="800" color={appTheme.colors.text}>
-                                {fmtCurrency(item.total_estimated_price)}
-                            </Text>
+                        {(item.total_actual_price || item.total_estimated_price) ? (
+                            <YStack alignItems="flex-end">
+                                <Text fontSize={12} fontWeight="800" color={appTheme.colors.text}>
+                                    {fmtCurrency(item.total_actual_price || item.total_estimated_price)}
+                                </Text>
+                                {item.has_return_shipment ? (
+                                    <Text fontSize={9} fontWeight="700" color={appTheme.colors.warningText}>
+                                        Hoàn hàng · ×2 cước
+                                    </Text>
+                                ) : null}
+                            </YStack>
                         ) : null}
                     </XStack>
                 </YStack>

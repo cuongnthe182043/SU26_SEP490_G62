@@ -162,6 +162,7 @@ export function buildTripFromOrder(order) {
     pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : (trip.pickup_address ? [trip.pickup_address] : []),
     delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : (trip.delivery_address ? [trip.delivery_address] : []),
     fare: resolveFareValue(trip.actual_price, trip.fare),
+    returning_at: trip.returning_at || null,
     status: trip.status || "",
     driverName: trip.driverName || "",
   })) : [{

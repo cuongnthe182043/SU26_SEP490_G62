@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 
 const getFinanceStats = async () => {
 
@@ -20,7 +21,7 @@ const getFinanceStats = async () => {
             ) ship_sum ON ship_sum.order_id = o.id
             LEFT JOIN (
                 SELECT os.order_id,
-                       COALESCE(SUM(e.amount) FILTER (WHERE e.expense_type IN ('toll','parking','etc')), 0) AS pass_through_total
+                       COALESCE(SUM(e.amount) FILTER (WHERE ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}), 0) AS pass_through_total
                 FROM expenses e
                 JOIN order_shipments os ON os.id = e.shipment_id
                 WHERE e.status != 'rejected'

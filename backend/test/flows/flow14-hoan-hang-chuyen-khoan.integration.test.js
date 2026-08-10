@@ -92,10 +92,21 @@ describe('L2-FLOW-14 — Hoàn hàng trên đơn chuyển khoản: actual_price 
         assert.strictEqual(returning.status, 'returning');
         assert.notStrictEqual(returning.returning_at, null);
 
-        await tripService.returnComplete(1, DRIVER_ID, 'https://proof-return.test/1.jpg');
+        const completedTrip = await tripService.returnComplete(1, DRIVER_ID, 'https://proof-return.test/1.jpg');
 
         const { rows: [completed] } = await pool.query('SELECT status FROM order_shipments WHERE id = 1');
         assert.strictEqual(completed.status, 'completed');
+
+        // returnComplete phải trả về FULL trip (như completeTrip), không phải row thô của
+        // updateTripStatus — mobile dùng đúng các trường này để điều hướng driver sang màn
+        // /receipt-request nhập km sau khi hoàn hàng (BR-008A). Thiếu field nào thì driver
+        // không bao giờ được hỏi km, và actual_price của chuyến hoàn hàng không bao giờ
+        // được chốt (đúng bug đã xảy ra trên app thật).
+        assert.strictEqual(completedTrip.order_payment_type, 'bank_transfer');
+        assert.strictEqual(completedTrip.is_final_shipment, true);
+        assert.strictEqual(completedTrip.max_shipment_index, 1);
+        assert.ok(completedTrip.pickup_address, 'phải có pickup_address để mobile hiển thị/điều hướng');
+        assert.ok(completedTrip.cargo_name, 'phải có cargo_name để mobile hiển thị');
     });
 
     it('B3 — Driver nhập km thực tế (BR-008A): actual_price phải x2 NGAY, không cần phiếu thu', async () => {

@@ -458,6 +458,8 @@ describe('Trip Service', () => {
         });
 
         it('requires proof for cash_collected', async () => {
+            mock.method(tripRepository, 'getReceiptAmountForDriver', async () => 500_000);
+
             await assert.rejects(
                 () => tripService.recordReceiptCollection(77, 1, { paymentType: 'cash_collected', proofUrl: null }),
                 { message: 'Ảnh xác minh là bắt buộc cho hình thức này' },
@@ -465,8 +467,33 @@ describe('Trip Service', () => {
         });
 
         it('requires proof for bank_transfer', async () => {
+            mock.method(tripRepository, 'getReceiptAmountForDriver', async () => 500_000);
+
             await assert.rejects(
                 () => tripService.recordReceiptCollection(77, 1, { paymentType: 'bank_transfer', proofUrl: null }),
+                { message: 'Ảnh xác minh là bắt buộc cho hình thức này' },
+            );
+        });
+
+        // Phiếu thu 0đ (mọi chuyến bị hủy vì hàng hóa hư hại — toàn bộ chi phí chuyển
+        // sang DN chịu): không có giao dịch nào để chụp. Giữ nguyên yêu cầu ảnh sẽ khóa
+        // cứng tài xế, phiếu không bao giờ đóng được.
+        it('skips the proof requirement when the receipt is 0đ', async () => {
+            mock.method(tripRepository, 'getReceiptAmountForDriver', async () => 0);
+            mock.method(tripRepository, 'recordReceiptCollection', async () => ({ nothingToCollect: true }));
+
+            const result = await tripService.recordReceiptCollection(77, 1, { paymentType: 'cash_collected', proofUrl: null });
+
+            assert.strictEqual(result.nothingToCollect, true);
+        });
+
+        // Không tra được phiếu (sai id / không phải phiếu của mình) thì KHÔNG được coi là
+        // phiếu 0đ mà bỏ qua ảnh — vẫn bắt buộc ảnh như cũ.
+        it('still requires proof when the receipt cannot be found', async () => {
+            mock.method(tripRepository, 'getReceiptAmountForDriver', async () => null);
+
+            await assert.rejects(
+                () => tripService.recordReceiptCollection(77, 1, { paymentType: 'cash_collected', proofUrl: null }),
                 { message: 'Ảnh xác minh là bắt buộc cho hình thức này' },
             );
         });

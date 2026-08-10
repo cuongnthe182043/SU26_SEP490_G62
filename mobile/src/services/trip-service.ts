@@ -47,7 +47,7 @@ export const tripService = {
             ? apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, formData)
             : apiClient.post<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, {}),
 
-    // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn — xem ghi chú ở completeWithProof.
+    // RETURNING → COMPLETED: ảnh hoàn hàng bắt buộc (BE từ chối nếu thiếu).
     returnComplete: (tripId: number, formData: FormData | null) =>
         formData
             ? apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData)
