@@ -1223,17 +1223,6 @@ AS $$
     );
 $$;
 
--- Chỉ tính lại kỳ ghi nhận ở đúng ba thời điểm doanh thu THỰC SỰ sinh ra hoặc được
--- chốt: chuyến vừa hoàn thành, completed_at bị sửa, actual_price từ NULL thành có giá
--- (phiếu thu được duyệt). CỐ Ý không tính lại khi giá đổi từ số này sang số khác —
--- khoản đó đã ghi nhận ở một kỳ rồi, dời tiếp là một chuyến ăn tiền hai lần.
---
--- Dùng trigger chứ không sửa từng câu UPDATE vì doanh thu chuyến bị đụng từ nhiều lối
--- (tài xế hoàn thành, điều phối duyệt phiếu thu, kế toán import đơn ngoài đã completed);
--- sửa rải rác thì thêm một lối mới là thủng.
--- Nhánh INSERT tách hẳn khỏi nhánh UPDATE: trong trigger INSERT, OLD chưa được gán
--- nên chỉ cần chạm tới OLD.<cột> là Postgres báo lỗi, kể cả khi vế trái của OR đã đủ
--- quyết định — plpgsql không đảm bảo short-circuit.
 CREATE OR REPLACE FUNCTION trg_set_revenue_period() RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
