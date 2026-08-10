@@ -95,9 +95,8 @@ export const coordinatorService = {
   getAllDriversKPI: (params) => apiRequest(`/api/kpi/all?${new URLSearchParams(params)}`),
   getLeaderboardByGroup: (vehicleGroupId, params) =>
     apiRequest(`/api/kpi/leaderboard/group/${vehicleGroupId}?${new URLSearchParams(params)}`),
-  updateDriverVehicleGroup: (driverId, vehicleGroupId, reason) =>
-    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId, reason } }),
-  // Lịch sử đổi nhóm cố định — ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo
+  // Đổi nhóm xe cố định là độc quyền Manager — coordinator chỉ đọc lịch sử
+  // (ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo).
   getDriverGroupHistory: (driverId) =>
     apiRequest(`/api/kpi/driver/${driverId}/vehicle-group/history`),
 };

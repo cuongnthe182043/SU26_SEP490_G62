@@ -8,10 +8,12 @@ const kpiController = require('../controllers/kpiController');
 // Driver     → chỉ xem KPI & leaderboard của bản thân
 // Coordinator/Manager → xem tất cả driver, filter theo nhóm xe
 // Accountant → xem KPI của 1 driver cụ thể (phục vụ tính lương)
+// Manager    → riêng quyền đổi nhóm xe cố định của tài xế
 
 const driverOnly     = [verifyToken, requireRole('driver')];
 const staffOnly      = [verifyToken, requireRole('coordinator', 'manager')];
 const financeStaff   = [verifyToken, requireRole('coordinator', 'manager', 'accountant')];
+const managerOnly    = [verifyToken, requireRole('manager')];
 
 // ─── Driver routes ────────────────────────────────────────────────────────────
 
@@ -28,7 +30,8 @@ router.get('/leaderboard/group/:vehicleGroupId', staffOnly, kpiController.getLea
 router.get('/driver/:driverId', financeStaff, kpiController.getDriverKPIById);
 
 // Sửa tay nhóm xe KPI cố định của tài xế — Body: { vehicleGroupId }
-router.patch('/driver/:driverId/vehicle-group',         financeStaff, kpiController.setDriverDefaultVehicleGroup);
+// Chỉ Manager được đổi; Coordinator/Accountant vẫn xem được nhóm hiện tại + lịch sử.
+router.patch('/driver/:driverId/vehicle-group',         managerOnly, kpiController.setDriverDefaultVehicleGroup);
 router.get  ('/driver/:driverId/vehicle-group/history', financeStaff, kpiController.getDriverGroupHistory);
 
 module.exports = router;

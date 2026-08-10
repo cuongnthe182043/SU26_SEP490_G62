@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Select, SelectItem, Spinner, Tabs, Tab, Button, Chip } from "@heroui/react";
 import {
   RiTrophyLine, RiPencilLine, RiCarLine, RiRouteLine, RiMoneyDollarCircleLine,
-  RiAlertLine, RiShieldCheckLine, RiMedalLine, RiUserStarLine,
+  RiAlertLine, RiShieldCheckLine, RiMedalLine, RiUserStarLine, RiHistoryLine,
 } from "react-icons/ri";
 import { Section } from "./Section";
 import { PaginationBar } from "./PaginationBar";
@@ -170,7 +170,7 @@ function PodiumCard({ row, rank, maxRevenue }) {
   );
 }
 
-function DriverKpiRow({ row, rank, maxRevenue, avgRevenue, onEdit }) {
+function DriverKpiRow({ row, rank, maxRevenue, avgRevenue, onEdit, editIcon: EditIcon = RiPencilLine }) {
   const state = getDriverState(row, avgRevenue);
   const incidents = Number(row.incident_count || 0);
   return (
@@ -189,7 +189,7 @@ function DriverKpiRow({ row, rank, maxRevenue, avgRevenue, onEdit }) {
               <span className="truncate text-xs text-gray-400 dark:text-gray-400">{row.vehicle_group_name || "Chưa gán nhóm xe"}</span>
               {onEdit && (
                 <Button isIconOnly size="sm" variant="light" className="h-5 min-w-5 text-gray-400" onPress={onEdit}>
-                  <RiPencilLine size={12} />
+                  <EditIcon size={12} />
                 </Button>
               )}
             </div>
@@ -248,6 +248,8 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [vehicleGroupId, setVehicleGroupId] = useState(null);
   const [editingDriver, setEditingDriver] = useState(null);
+  // Manager truyền onUpdateDriverGroup (sửa được); vai trò khác chỉ có lịch sử để tra cứu
+  const canOpenGroupModal = Boolean(onUpdateDriverGroup || getDriverGroupHistory);
 
   const [kpiRows, setKpiRows] = useState([]);
   const [kpiLoading, setKpiLoading] = useState(false);
@@ -405,7 +407,8 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                         rank={rank}
                         maxRevenue={kpiMaxRevenue}
                         avgRevenue={kpiSummary.avgRevenue}
-                        onEdit={onUpdateDriverGroup ? () => setEditingDriver(row) : null}
+                        onEdit={canOpenGroupModal ? () => setEditingDriver(row) : null}
+                        editIcon={onUpdateDriverGroup ? RiPencilLine : RiHistoryLine}
                       />
                     );
                   })}
@@ -451,17 +454,19 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
         </Tabs>
       </Section>
 
-      {onUpdateDriverGroup && (
+      {canOpenGroupModal && (
         <DriverVehicleGroupModal
           open={!!editingDriver}
           driver={editingDriver}
           vehicleGroups={vehicleGroups}
           getHistory={getDriverGroupHistory}
-          onSave={async (driverId, nextVehicleGroupId, reason) => {
+          // Không truyền onUpdateDriverGroup = vai trò chỉ được xem (chỉ Manager đổi được)
+          readOnly={!onUpdateDriverGroup}
+          onSave={onUpdateDriverGroup ? async (driverId, nextVehicleGroupId, reason) => {
             const res = await onUpdateDriverGroup(driverId, nextVehicleGroupId, reason);
             setReloadToken((t) => t + 1);
             return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
-          }}
+          } : undefined}
           onClose={() => setEditingDriver(null)}
         />
       )}

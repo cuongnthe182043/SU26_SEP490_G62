@@ -10,7 +10,7 @@
  * /api/bonus-rules:
  *   get:
  *     tags: [BonusRule]
- *     summary: Danh sách quy tắc thưởng (Manager)
+ *     summary: Danh sách quy tắc thưởng (Manager cấu hình, Accountant chỉ đọc)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -38,6 +38,16 @@
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/BonusRule'
+ *                 bonusTypes:
+ *                   type: object
+ *                   description: |
+ *                     Nguồn sự thật cho dropdown loại thưởng của UI.
+ *                     `implemented` là các loại bộ tính lương thật sự đọc — chỉ những loại này
+ *                     mới tạo/bật được. `all` là toàn bộ loại có trong CHECK của DB, chỉ dùng để
+ *                     hiển thị đúng tên cho rule cũ.
+ *                   properties:
+ *                     all:         { type: array, items: { type: string } }
+ *                     implemented: { type: array, items: { type: string }, example: [kpi, top_revenue, holiday] }
  *   post:
  *     tags: [BonusRule]
  *     summary: Tạo quy tắc thưởng mới (Manager)
@@ -61,7 +71,12 @@
  *                 rule:
  *                   $ref: '#/components/schemas/BonusRule'
  *       400:
- *         description: Thiếu title/bonus_type, loại thưởng không hợp lệ, thiếu reward_amount/reward_multiplier, hoặc thiếu min_revenue khi bonus_type = kpi
+ *         description: |
+ *           Lỗi cấu hình quy tắc (luôn là 4xx, kèm thông điệp nói rõ sai ở đâu):
+ *           thiếu title/bonus_type; loại thưởng không hợp lệ; loại thưởng chưa được bộ tính
+ *           lương hỗ trợ (ngoài kpi/top_revenue/holiday); thiếu cả reward_amount lẫn
+ *           reward_multiplier khi rule đang bật; thiếu min_revenue khi bonus_type = kpi;
+ *           thiếu reward_multiplier hoặc hệ số < 1 khi bonus_type = holiday.
  */
 
 /**
@@ -160,6 +175,10 @@
  *         bonus_type:
  *           type: string
  *           enum: [kpi, top_revenue, top_trips, zero_incident, overtime, holiday, custom]
+ *           description: |
+ *             Tạo mới / bật lại chỉ chấp nhận kpi, top_revenue, holiday — các loại còn lại
+ *             không công thức lương nào đọc nên sẽ bị từ chối 400. Chúng chỉ hợp lệ khi sửa
+ *             một rule cũ đang giữ nguyên loại đó (vd sửa tiêu đề, hoặc tắt rule).
  *         vehicle_group_id:
  *           type: integer
  *           nullable: true

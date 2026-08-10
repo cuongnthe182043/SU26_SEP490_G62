@@ -14,7 +14,11 @@ const loadBanks = () => {
         banksCache = json.data || [];
         return banksCache;
       })
-      .catch(() => {
+      .catch((err) => {
+        // Hỏng danh sách ngân hàng không chặn được người dùng (ô này cho gõ tự do), nên
+        // im lặng với họ — nhưng phải để lại vết, không thì lúc gợi ý biến mất sẽ không
+        // ai biết là do API VietQR chết hay do code.
+        console.warn('[BankSelect] Không tải được danh sách ngân hàng từ VietQR:', err?.message || err);
         banksPromise = null;
         return [];
       });

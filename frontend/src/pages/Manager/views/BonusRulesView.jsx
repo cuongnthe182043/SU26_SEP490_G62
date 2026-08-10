@@ -20,6 +20,13 @@ const BONUS_TYPES = [
   { value: "custom", label: "Tùy chỉnh" },
 ];
 
+// Backend chỉ cho tạo/bật các loại mà bộ tính lương thật sự đọc. Trước đây dropdown mời
+// chọn cả 7 loại nên chọn 4 loại còn lại là ăn lỗi ngay lúc Lưu. Danh sách thật lấy từ
+// API (bonusTypes.implemented); hằng số này chỉ là phương án dự phòng khi API cũ.
+const FALLBACK_IMPLEMENTED = ["kpi", "top_revenue", "holiday"];
+
+const typeLabel = (value) => BONUS_TYPES.find((t) => t.value === value)?.label || value;
+
 const EMPTY_FORM = {
   title: "", bonus_type: "kpi", vehicle_group_id: null,
   reward_amount: null, reward_multiplier: null, min_revenue: null, is_active: true,
@@ -27,8 +34,11 @@ const EMPTY_FORM = {
 
 const formatCurrency = (value) => (value != null ? Number(value).toLocaleString("vi-VN") + " đ" : "-");
 
-export default function BonusRulesView() {
+// readOnly: dùng khi Kế toán mở màn này để đối chiếu khi tính lương — chỉ Manager
+// mới được cấu hình quy tắc (backend cũng chặn POST/PUT/DELETE với role khác).
+export default function BonusRulesView({ readOnly = false }) {
   const [rules, setRules] = useState([]);
+  const [implementedTypes, setImplementedTypes] = useState(FALLBACK_IMPLEMENTED);
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -49,6 +59,7 @@ export default function BonusRulesView() {
     try {
       const data = await managerService.getBonusRules();
       setRules(data.rules || []);
+      if (data.bonusTypes?.implemented?.length) setImplementedTypes(data.bonusTypes.implemented);
     } catch (err) {
       notify.error(err.message || "Không thể tải quy tắc thưởng.");
     } finally {
@@ -138,6 +149,22 @@ export default function BonusRulesView() {
     return list;
   }, [rules, filterType, filterActive, sortBy]);
 
+  // Dropdown chỉ mời chọn loại backend chấp nhận. Riêng khi sửa một rule cũ đang dùng
+  // loại đã ngừng hỗ trợ thì vẫn giữ loại đó trong danh sách — bỏ đi sẽ khiến Select
+  // rỗng và ép người dùng đổi loại chỉ để sửa được cái tên.
+  const editingLegacyType = Boolean(editing?.bonus_type && !implementedTypes.includes(editing.bonus_type));
+  const selectableTypes = useMemo(() => {
+    const list = BONUS_TYPES
+      .filter((t) => implementedTypes.includes(t.value))
+      .map((t) => ({ ...t, supported: true }));
+    if (editingLegacyType) {
+      list.push({ value: editing.bonus_type, label: typeLabel(editing.bonus_type), supported: false });
+    }
+    return list;
+  }, [implementedTypes, editingLegacyType, editing]);
+
+  const isHolidayRule = form.bonus_type === "holiday";
+
   const totalPages = Math.max(1, Math.ceil(filteredRules.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pagedRules = useMemo(() => {
@@ -185,9 +212,13 @@ export default function BonusRulesView() {
             <SelectItem key="amount-asc" textValue="Số tiền thưởng thấp nhất">Số tiền thưởng thấp nhất</SelectItem>
           </Select>
         </div>
-        <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate} className="h-9 font-medium px-4">
-          Thêm quy tắc thưởng
-        </Button>
+        {readOnly ? (
+          <span className="text-xs text-gray-400 dark:text-gray-400">Chỉ xem — quy tắc thưởng do Manager cấu hình.</span>
+        ) : (
+          <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate} className="h-9 font-medium px-4">
+            Thêm quy tắc thưởng
+          </Button>
+        )}
       </div>
 
       <div className="bg-white dark:bg-[#161922] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
@@ -207,8 +238,14 @@ export default function BonusRulesView() {
                     </Chip>
                   </div>
                   <span className="text-xs text-gray-400 dark:text-gray-400">
-                    {BONUS_TYPES.find((t) => t.value === rule.bonus_type)?.label || rule.bonus_type} · {rule.vehicle_group_name || "Tất cả nhóm xe"}
+                    {typeLabel(rule.bonus_type)} · {rule.vehicle_group_name || "Tất cả nhóm xe"}
                   </span>
+                  {/* Rule cũ dùng loại thưởng không công thức nào đọc → thưởng luôn bằng 0 */}
+                  {rule.is_active && !implementedTypes.includes(rule.bonus_type) && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-300">
+                      Loại thưởng này không được bộ tính lương đọc — quy tắc đang không có hiệu lực.
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-6 shrink-0">
                   <div className="text-right">
@@ -221,10 +258,12 @@ export default function BonusRulesView() {
                       <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(rule.conditions_json.min_revenue)}</div>
                     </div>
                   )}
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => openEdit(rule)}>Sửa</Button>
-                    <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setDeleteTarget(rule)}>Xóa</Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} onPress={() => openEdit(rule)}>Sửa</Button>
+                      <Button size="sm" variant="flat" color="danger" startContent={<RiDeleteBinLine size={13} />} onPress={() => setDeleteTarget(rule)}>Xóa</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -255,8 +294,13 @@ export default function BonusRulesView() {
                 selectedKeys={[form.bonus_type]}
                 onSelectionChange={(keys) => setForm((p) => ({ ...p, bonus_type: [...keys][0] }))}
                 variant="bordered"
+                description={editingLegacyType ? "Loại thưởng cũ này không còn được tính lương đọc — đổi sang loại khác để quy tắc có hiệu lực." : undefined}
               >
-                {BONUS_TYPES.map((t) => <SelectItem key={t.value}>{t.label}</SelectItem>)}
+                {selectableTypes.map((t) => (
+                  <SelectItem key={t.value} textValue={t.label}>
+                    {t.supported ? t.label : `${t.label} (không còn hỗ trợ)`}
+                  </SelectItem>
+                ))}
               </Select>
               <Select
                 label="Nhóm xe (để trống = áp dụng chung)"
@@ -269,8 +313,22 @@ export default function BonusRulesView() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <NumberInput label="Số tiền thưởng (VNĐ)" minValue={0} value={form.reward_amount} onValueChange={(v) => setForm((p) => ({ ...p, reward_amount: v }))} variant="bordered" />
-              <NumberInput label="Hệ số thưởng (tùy chọn)" minValue={0} step={0.1} value={form.reward_multiplier} onValueChange={(v) => setForm((p) => ({ ...p, reward_multiplier: v }))} variant="bordered" />
+              <NumberInput
+                label={isHolidayRule ? "Số tiền thưởng (không dùng cho ngày lễ)" : "Số tiền thưởng (VNĐ)"}
+                minValue={0}
+                value={form.reward_amount}
+                onValueChange={(v) => setForm((p) => ({ ...p, reward_amount: v }))}
+                variant="bordered"
+              />
+              <NumberInput
+                label={isHolidayRule ? "Hệ số thưởng *" : "Hệ số thưởng (tùy chọn)"}
+                minValue={isHolidayRule ? 1 : 0}
+                step={0.1}
+                value={form.reward_multiplier}
+                onValueChange={(v) => setForm((p) => ({ ...p, reward_multiplier: v }))}
+                variant="bordered"
+                description={isHolidayRule ? "Vd 2 = đi làm ngày lễ hưởng 200% lương ngày. Phải từ 1 trở lên." : undefined}
+              />
             </div>
 
             {form.bonus_type === "kpi" && (
