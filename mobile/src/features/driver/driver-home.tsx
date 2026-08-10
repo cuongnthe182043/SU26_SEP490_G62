@@ -115,7 +115,7 @@ function ActiveTripBanner({
         <Pressable onPress={onPress} style={{ borderRadius: appTheme.radius.xl }}>
             <YStack
                 gap="$4" padding="$5" borderRadius={appTheme.radius.xl}
-                backgroundColor={appTheme.colors.primary} overflow="hidden"
+                backgroundColor={appTheme.colors.primary}
             >
                 <XStack
                     position="absolute" right={-36} top={-40}
