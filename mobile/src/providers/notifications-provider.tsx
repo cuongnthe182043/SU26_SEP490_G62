@@ -6,9 +6,12 @@ import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { appEvents } from '@/lib/app-events';
 import { ApiError } from '@/lib/api-error';
 import { getValidAccessToken } from '@/lib/api-client';
+import { createNotificationSocket } from '@/lib/notification-socket';
+import { setRealtimeConnected } from '@/lib/realtime-status';
 import { notificationService } from '@/services/notification-service';
 import type { AppNotification, NotificationEvent } from '@/types/notification';
 import { useAuthSession } from '@/providers/auth-provider';
+import { useNetwork } from '@/providers/network-provider';
 import { useAppAlert, useToast } from '@/providers/ui-provider';
 
 const PAGE_LIMIT = 20;
@@ -35,7 +38,7 @@ const toWsUrl = () => {
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/notifications';
     url.search   = '';
-    return url;
+    return url.toString();
 };
 
 const normalize = (n: AppNotification): AppNotification => ({
@@ -55,9 +58,10 @@ const mergeOne = (items: AppNotification[], incoming: AppNotification) => {
 type FetchMode = 'initial' | 'refresh' | 'background' | 'append';
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
-    const { status }    = useAuthSession();
-    const { showToast } = useToast();
-    const { showAlert } = useAppAlert();
+    const { status }        = useAuthSession();
+    const { showToast }     = useToast();
+    const { showAlert }     = useAppAlert();
+    const { reconnectedAt } = useNetwork();
 
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
     const [unreadCount,   setUnreadCount]   = useState(0);
@@ -68,20 +72,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     const [isLoadingMore, setIsLoadingMore] = useState(false);   // infinite scroll
     const [error,         setError]         = useState<string | null>(null);
 
-    const currentPageRef      = useRef(1);
-    const isFetchingRef       = useRef(false);
-    const socketRef           = useRef<WebSocket | null>(null);
-    const reconnectTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const reconnectAttemptRef = useRef(0);
-    const shouldConnectRef    = useRef(false);
-
-    const closeSocket = useCallback(() => {
-        shouldConnectRef.current = false;
-        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-        socketRef.current?.close();
-        socketRef.current = null;
-    }, []);
+    const currentPageRef = useRef(1);
+    const isFetchingRef  = useRef(false);
 
     // ── Core fetch ──────────────────────────────────────────────────────────────
     const fetchPage = useCallback(async (page: number, mode: FetchMode) => {
@@ -170,47 +162,47 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }, [showAlert, showToast]);
 
     // ── WebSocket ───────────────────────────────────────────────────────────────
-    const connect = useCallback(async () => {
-        if (status !== 'authenticated') return;
-        if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return;
+    // Handler giữ trong ref để instance socket KHÔNG phải dựng lại mỗi lần re-render.
+    // Trước đây `connect` là useCallback phụ thuộc handleIncomingNotification, mà hàm
+    // đó lại phụ thuộc showToast/showAlert — chỉ cần một trong hai đổi identity là
+    // effect chạy lại, đóng rồi mở socket liên tục. Cộng với việc `socketRef` mãi tới
+    // sau `await getToken()` mới được gán, hai lời gọi connect() chồng nhau đều lọt
+    // cửa kiểm tra và mở 2 socket song song (log production cho thấy đúng 2 kết nối
+    // cùng IP mỗi chu kỳ → mỗi thông báo hiện 2 lần).
+    const onMessageRef = useRef<(payload: unknown) => void>(() => {});
+    const onOpenRef    = useRef<(info: { isReconnect: boolean }) => void>(() => {});
 
-        // Refresh trước nếu access token đã/sắp hết hạn — WS handshake bị từ chối thẳng
-        // 401 không có cơ hội "thử lại sau khi refresh" như request() của apiClient.
-        const token = await getValidAccessToken();
-        if (!token) return;
+    useEffect(() => {
+        onMessageRef.current = (payload) => {
+            const event = payload as NotificationEvent;
+            // Phát toàn bộ WS event ra app-events để các hook khác subscribe
+            appEvents.emit(event.type, event);
+            if (event.type === 'notification.created') {
+                handleIncomingNotification(event.notification);
+            }
+        };
+        onOpenRef.current = ({ isReconnect }) => {
+            // Cloud Run cắt WS ở ~301s. Không kéo lại dữ liệu ở đây thì mọi thông báo
+            // sinh ra trong lúc đứt sẽ biến mất khỏi app cho tới khi tài xế tự refresh.
+            if (isReconnect) void refresh(false);
+        };
+    });
 
-        shouldConnectRef.current = true;
-        let wsUrl: URL;
-        try {
-            wsUrl = toWsUrl();
-        } catch {
-            return;
+    const socketRef = useRef<ReturnType<typeof createNotificationSocket> | null>(null);
+    const getSocket = useCallback(() => {
+        if (!socketRef.current) {
+            socketRef.current = createNotificationSocket({
+                getUrl:   toWsUrl,
+                // Làm mới token trước nếu đã/sắp hết hạn — WS handshake bị từ chối
+                // thẳng 401, không có cơ hội "thử lại sau refresh" như apiClient.
+                getToken: getValidAccessToken,
+                onMessage: (payload) => onMessageRef.current(payload),
+                onOpen:    (info)    => onOpenRef.current(info),
+                onStatusChange: setRealtimeConnected,
+            });
         }
-        wsUrl.searchParams.set('token', token);
-
-        const socket = new WebSocket(wsUrl.toString());
-        socketRef.current = socket;
-
-        socket.onopen  = () => { reconnectAttemptRef.current = 0; };
-        socket.onmessage = (event) => {
-            try {
-                const payload = JSON.parse(String(event.data)) as NotificationEvent;
-                // Phát toàn bộ WS event ra app-events để các hook khác subscribe
-                appEvents.emit(payload.type, payload);
-                if (payload.type === 'notification.created') {
-                    handleIncomingNotification(payload.notification);
-                }
-            } catch { /* ignore malformed */ }
-        };
-        socket.onclose = () => {
-            socketRef.current = null;
-            if (!shouldConnectRef.current) return;
-            reconnectAttemptRef.current += 1;
-            const delay = Math.min(30_000, 1000 * reconnectAttemptRef.current);
-            reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
-        };
-        socket.onerror = () => { socket.close(); };
-    }, [handleIncomingNotification, status]);
+        return socketRef.current;
+    }, []);
 
     // ── Mark as read ────────────────────────────────────────────────────────────
     const markAsRead = useCallback(async (id: number | string) => {
@@ -239,7 +231,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     // ── Auth lifecycle ──────────────────────────────────────────────────────────
     useEffect(() => {
         if (status !== 'authenticated') {
-            closeSocket();
+            socketRef.current?.close();
             setNotifications([]);
             setUnreadCount(0);
             setTotal(0);
@@ -251,19 +243,27 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             return;
         }
         void fetchPage(1, 'initial');
-        void connect();
-        return () => closeSocket();
-    }, [closeSocket, connect, fetchPage, status]);
+        void getSocket().connect();
+        return () => { socketRef.current?.close(); };
+    }, [fetchPage, getSocket, status]);
 
     // AppState: chỉ background refresh — không hiện spinner
     useEffect(() => {
         const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
             if (status !== 'authenticated') return;
-            if (next === 'active') { void refresh(false); void connect(); }
-            else closeSocket();
+            if (next === 'active') { void refresh(false); void getSocket().connect(); }
+            else socketRef.current?.close();
         });
         return () => sub.remove();
-    }, [closeSocket, connect, refresh, status]);
+    }, [getSocket, refresh, status]);
+
+    // Vừa ra khỏi vùng lõm sóng → nối lại ngay thay vì ngồi hết backoff. Đây là tình
+    // huống thường trực của tài xế chạy đường dài, và socket kiểu "chết giả" không tự
+    // báo onclose nên nếu không có nhánh này thì app điếc cho tới lần đổi AppState.
+    useEffect(() => {
+        if (!reconnectedAt || status !== 'authenticated') return;
+        socketRef.current?.handleNetworkOnline();
+    }, [reconnectedAt, status]);
 
     const value = useMemo<NotificationsContextValue>(() => ({
         notifications, unreadCount, total, hasMore,
