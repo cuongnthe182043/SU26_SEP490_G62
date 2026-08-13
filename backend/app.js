@@ -17,6 +17,7 @@ const logger = require('./config/logger');
 const authService = require('./services/authService');
 const { initNotificationGateway } = require('./services/notificationGateway');
 const { initCronJobs }           = require('./cron/debtCron');
+const { initPushCron }           = require('./cron/pushCron');
 const { API_TITLE }              = require('./constants/brandConstants');
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -26,6 +27,7 @@ const port = process.env.PORT || 9999;
 const server = http.createServer(app);
 initNotificationGateway(server);
 initCronJobs();
+initPushCron();
 
 const DEFAULT_ALLOWED_ORIGINS = [
     'http://localhost:5173',

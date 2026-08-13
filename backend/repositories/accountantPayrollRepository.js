@@ -2,7 +2,7 @@
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
-const { isCustomerBillableExpense } = require('../constants/expenseConstants');
+const { isCustomerBillableExpense, NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
@@ -203,6 +203,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
         WHERE e.status = 'approved'
           AND e.reimbursement_status = 'pending'
+          AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
           AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1
     `, [driver.driver_id]);
     const expenseReimbursement = Number(reimbRow.total ?? 0);
@@ -558,6 +559,7 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                 LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
                 WHERE e.status = 'approved'
                   AND e.reimbursement_status = 'pending'
+                  AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
                   AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1
                 ORDER BY e.id
                 FOR UPDATE OF e

@@ -27,6 +27,7 @@ import { saveSession } from "../../services/storage";
 import { APP_NAME } from "../../constants/brand";
 
 const SpendingView = lazy(() => import("./views/SpendingView"));
+const ReimbursementView = lazy(() => import("./views/ReimbursementView"));
 
 const NAV_GROUPS = [
   {
@@ -42,6 +43,7 @@ const NAV_GROUPS = [
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
       { key: "bank-transfer", label: "Chuyển khoản", icon: RiBankCardLine },
       { key: "spending", label: "Quản lý chi", icon: RiWalletLine },
+      { key: "reimbursement", label: "Hoàn ứng tài xế", icon: RiHandCoinLine },
       { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
     ],
   },
@@ -120,6 +122,11 @@ const VIEW_META = {
     subtitle: "Tạo phiếu chi, xác nhận chi tiền và đối chiếu chi phí tài xế, tổng hợp mọi khoản chi",
     searchPlaceholder: "",
   },
+  reimbursement: {
+    title: "Hoàn ứng tài xế",
+    subtitle: "Trả lại ngay tiền tài xế đã ứng túi (chi hộ khách, xăng, sửa xe, bảo dưỡng) — không phải đợi kỳ lương",
+    searchPlaceholder: "",
+  },
   attendance: {
     title: "Chấm công tài xế",
     subtitle: "Theo dõi và điều chỉnh chấm công theo tháng — ảnh hưởng trực tiếp tới ngày công tính lương.",
@@ -155,7 +162,7 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   orders: "revenue",
   reports: "report",
 };
-const VALID_VIEWS = ["report", "revenue", "debt", "bank-transfer", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "attendance", "holidays", "vehicles"];
+const VALID_VIEWS = ["report", "revenue", "debt", "bank-transfer", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "reimbursement", "attendance", "holidays", "vehicles"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -211,7 +218,7 @@ export default function AccountantPage({ user, onLogout }) {
     : null;
 
   const showSearch = activeView !== "report" && activeView !== "ledger" && activeView !== "spending"
-    && activeView !== "attendance" && activeView !== "vehicles";
+    && activeView !== "reimbursement" && activeView !== "attendance" && activeView !== "vehicles";
 
   return (
     <HeroUIProvider>
@@ -273,6 +280,11 @@ export default function AccountantPage({ user, onLogout }) {
             {activeView === "spending" && (
               <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải quản lý chi...</div>}>
                 <SpendingView />
+              </Suspense>
+            )}
+            {activeView === "reimbursement" && (
+              <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải hoàn ứng tài xế...</div>}>
+                <ReimbursementView />
               </Suspense>
             )}
             {/* Quy tắc thưởng & ngày lễ do Manager cấu hình — kế toán chỉ tra cứu khi tính lương */}
