@@ -97,7 +97,7 @@ const VIEW_META = {
   },
   holidays: {
     title: "Ngày lễ",
-    subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương. Manager quản lý danh mục.",
+    subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ hưởng thêm theo hệ số ở Quy tắc thưởng (mặc định 200%). Manager quản lý danh mục.",
     searchPlaceholder: "",
   },
   report: {
