@@ -110,10 +110,21 @@ const getFinanceStats = async () => {
         FROM order_stats
     `;
     // Tiền tài xế đã ứng túi (chi hộ khách/chi phí công ty) chờ công ty hoàn lại —
-    // đã duyệt nhưng chưa cấn trừ nợ (TH2) và chưa hoàn qua lương (TH1)
+    // đã duyệt nhưng chưa cấn trừ nợ (TH2) và chưa hoàn qua lương (TH1).
+    //
+    // Vẫn tính cả khoản đã lập phiếu chi hoàn ứng nhưng CHƯA chi xong: phiếu mới nằm chờ
+    // duyệt thì tiền chưa ra khỏi quỹ, công ty vẫn đang nợ tài. Nhưng tách riêng con số đó
+    // ra (in_progress) để màn hình nói rõ "trong đó bao nhiêu đang chạy phiếu" — không thì
+    // card và màn Hoàn ứng tài xế hiện hai số khác nhau mà không ai hiểu vì sao (màn kia cố
+    // ý ẩn khoản đã có phiếu để khỏi lập trùng).
     const reimbursableQuery = `
-        SELECT COALESCE(SUM(amount), 0)::numeric AS total_reimbursable
-        FROM expenses
+        SELECT
+            COALESCE(SUM(amount), 0)::numeric AS total_reimbursable,
+            COALESCE(SUM(amount) FILTER (WHERE EXISTS (
+                SELECT 1 FROM payment_vouchers pv
+                WHERE pv.expense_id = e.id AND pv.status IN ('pending', 'approved')
+            )), 0)::numeric AS total_reimbursable_in_progress
+        FROM expenses e
         WHERE status = 'approved' AND reimbursement_status = 'pending'
     `;
 
@@ -129,6 +140,8 @@ const getFinanceStats = async () => {
         total_receivables:      Number(row.total_receivables)      || 0,
         pending_payments_count: Number(row.pending_payments_count) || 0,
         total_reimbursable:     Number(reimbResult.rows[0].total_reimbursable) || 0,
+        total_reimbursable_in_progress:
+                                Number(reimbResult.rows[0].total_reimbursable_in_progress) || 0,
     };
 };
 

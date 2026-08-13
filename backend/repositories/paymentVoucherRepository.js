@@ -109,9 +109,27 @@ const create = async ({ voucher_type, amount, payee, reason, payment_method, pro
 // Quy chủ khoản chi giống hệt bảng lương: ưu tiên tài đang giữ chuyến, rồi người thực hiện
 // bảo dưỡng, cuối cùng mới là người tạo — bảo dưỡng có shipment_id NULL và created_by là
 // manager duyệt nên nếu chỉ nhìn created_by sẽ quy nhầm cho manager.
-const listPendingReimbursements = async () => {
-    const { rows } = await pool.query(`
-        SELECT
+//
+// JOIN drivers là CHỐT AN TOÀN, không phải cho vui: nhánh cuối COALESCE rơi về created_by,
+// mà đơn nhập tay/import (accountantOrderRepository) ghi created_by = KẾ TOÁN và không gán
+// tài xế. Không chặn thì chính kế toán hiện lên màn này dưới danh nghĩa người thụ hưởng, tự
+// lập phiếu chi cho mình rồi khoản bị đánh 'settled' — tài xế thật không bao giờ nhận được.
+// Bảng lương không dính vì nó luôn lọc theo đúng một driver_id.
+const REIMBURSEMENT_BENEFICIARY = `COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by)`;
+
+const REIMBURSEMENT_FROM = `
+        FROM expenses e
+        LEFT JOIN order_shipments os     ON os.id = e.shipment_id
+        LEFT JOIN v_shipment_current sc  ON sc.shipment_id = e.shipment_id
+        LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+        LEFT JOIN vehicles v             ON v.id = e.vehicle_id
+        JOIN drivers drv_chk             ON drv_chk.profile_id = ${REIMBURSEMENT_BENEFICIARY}
+        JOIN profiles drv                ON drv.id = ${REIMBURSEMENT_BENEFICIARY}
+        WHERE e.status = 'approved'
+          AND e.reimbursement_status = 'pending'
+          AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}`;
+
+const REIMBURSEMENT_COLS = `
             e.id                AS expense_id,
             e.expense_type,
             e.amount::text      AS amount,
@@ -121,20 +139,26 @@ const listPendingReimbursements = async () => {
             os.order_id,
             os.status           AS shipment_status,
             v.plate_number,
-            COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) AS driver_id,
+            ${REIMBURSEMENT_BENEFICIARY} AS driver_id,
             drv.full_name       AS driver_name,
             drv.phone           AS driver_phone,
             (SELECT COALESCE(json_agg(ea.file_url ORDER BY ea.id), '[]'::json)
-             FROM expense_attachments ea WHERE ea.expense_id = e.id) AS receipt_urls
-        FROM expenses e
-        LEFT JOIN order_shipments os     ON os.id = e.shipment_id
-        LEFT JOIN v_shipment_current sc  ON sc.shipment_id = e.shipment_id
-        LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
-        LEFT JOIN vehicles v             ON v.id = e.vehicle_id
-        LEFT JOIN profiles drv           ON drv.id = COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by)
-        WHERE e.status = 'approved'
-          AND e.reimbursement_status = 'pending'
-          AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
+             FROM expense_attachments ea WHERE ea.expense_id = e.id) AS receipt_urls`;
+
+// Tra đúng MỘT khoản, dùng chung điều kiện với danh sách. Trước đây lúc lập phiếu phải chạy
+// lại toàn bộ query danh sách rồi Array.find — vừa phí, vừa dễ lệch nếu hai bên sửa rời nhau.
+const getPendingReimbursement = async (expenseId, client = null) => {
+    const { rows } = await (client ?? pool).query(
+        `SELECT ${REIMBURSEMENT_COLS} ${REIMBURSEMENT_FROM} AND e.id = $1`,
+        [expenseId],
+    );
+    return rows[0] ?? null;
+};
+
+const listPendingReimbursements = async () => {
+    const { rows } = await pool.query(`
+        SELECT ${REIMBURSEMENT_COLS}
+        ${REIMBURSEMENT_FROM}
         ORDER BY e.expense_date ASC, e.id ASC
     `);
     return rows;
@@ -345,6 +369,7 @@ module.exports = {
     getById,
     create,
     listPendingReimbursements,
+    getPendingReimbursement,
     approve,
     reject,
     cancel,

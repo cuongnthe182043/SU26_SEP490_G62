@@ -57,21 +57,31 @@ const EXPENSE_LABEL = {
     fuel: 'xăng dầu', repair: 'sửa xe', maintenance: 'bảo dưỡng xe',
 };
 
+// Ném lỗi kèm mã HTTP: sendError của controller chỉ đoán mã theo từ khoá trong câu chữ,
+// câu nào không khớp từ khoá nào sẽ rơi về 500 — lỗi nghiệp vụ bình thường mà báo "lỗi máy chủ".
+const businessError = (message, statusCode) => {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+};
+
 // Số tiền hoàn LẤY TỪ DB, không nhận từ client: cho client gửi lên là mở đường chi khác
 // số đã duyệt trên chứng từ.
 const createReimbursementVoucher = async ({ expense_id, payment_method, notes }, createdBy) => {
     const expenseId = Number(expense_id);
-    if (!expenseId) throw new Error('Thiếu khoản chi phí cần hoàn');
+    if (!expenseId) throw businessError('Thiếu khoản chi phí cần hoàn', 400);
     if (payment_method && !paymentVoucherRepository.PAYMENT_METHODS.includes(payment_method)) {
-        throw new Error('Hình thức thanh toán không hợp lệ');
+        throw businessError('Hình thức thanh toán không hợp lệ', 400);
     }
 
-    const pending = await paymentVoucherRepository.listPendingReimbursements();
-    const target = pending.find((row) => Number(row.expense_id) === expenseId);
+    const target = await paymentVoucherRepository.getPendingReimbursement(expenseId);
     if (!target) {
-        throw new Error('Khoản này không còn chờ hoàn (đã có phiếu hoàn ứng, đã cấn trừ nợ, hoặc đã hoàn qua lương)');
+        throw businessError(
+            'Khoản này không còn chờ hoàn (đã có phiếu hoàn ứng, đã cấn trừ nợ, đã hoàn qua lương, '
+            + 'hoặc người ứng không phải tài xế)',
+            409,
+        );
     }
-    if (!target.driver_id) throw new Error('Không xác định được tài xế thụ hưởng của khoản chi phí này');
 
     const label = EXPENSE_LABEL[target.expense_type] ?? target.expense_type;
     const reason = `Hoàn tiền tài xế đã ứng — ${label}`
@@ -79,14 +89,26 @@ const createReimbursementVoucher = async ({ expense_id, payment_method, notes },
         + (target.order_id ? `, đơn #${target.order_id}` : '')
         + (notes ? `. ${String(notes).trim()}` : '');
 
-    const voucher = await paymentVoucherRepository.create({
-        voucher_type: 'driver_reimbursement',
-        amount: Number(target.amount),
-        payee: target.driver_name || `Tài xế #${target.driver_id}`,
-        reason,
-        payment_method: payment_method || 'cash',
-        expense_id: expenseId,
-    }, createdBy);
+    // Kiểm tra ở trên chạy ngoài transaction nên vẫn là check-then-act: hai kế toán bấm cùng
+    // lúc (hoặc double-click) thì cả hai đều đọc thấy "còn chờ hoàn". Unique index của DB là
+    // chốt chặn thật — bắt lấy 23505 và trả về đúng lỗi nghiệp vụ, đừng để lộ lỗi pg thô
+    // thành 500 làm kế toán tưởng hệ thống hỏng.
+    let voucher;
+    try {
+        voucher = await paymentVoucherRepository.create({
+            voucher_type: 'driver_reimbursement',
+            amount: Number(target.amount),
+            payee: target.driver_name || `Tài xế #${target.driver_id}`,
+            reason,
+            payment_method: payment_method || 'cash',
+            expense_id: expenseId,
+        }, createdBy);
+    } catch (err) {
+        if (err.code === '23505') {
+            throw businessError('Khoản này vừa được người khác lập phiếu hoàn ứng rồi', 409);
+        }
+        throw err;
+    }
 
     notifyRolesSafe(['manager'], {
         title: 'Có phiếu hoàn ứng tài xế cần duyệt',

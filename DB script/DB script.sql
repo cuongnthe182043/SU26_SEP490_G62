@@ -50,7 +50,8 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260802_holiday_bonus_rule.sql'),
     ('20260802_optional_staff_email.sql'),
     ('20260802_customer_name_lookup.sql'),
-    ('20260802_manual_debt.sql')
+    ('20260802_manual_debt.sql'),
+    ('20260809_driver_expense_reimbursement.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (

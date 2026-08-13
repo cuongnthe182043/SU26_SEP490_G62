@@ -1,3 +1,5 @@
+-- =====================================================================
+-- 20260809_driver_expense_reimbursement
 -- Chi hoàn ứng cho tài xế NGAY, không phải đợi kỳ lương.
 --
 -- Trước đây khoản tài ứng tiền túi (chi hộ khách, xăng, sửa xe, bảo dưỡng) chỉ có hai
@@ -7,6 +9,9 @@
 --
 -- Đường thứ ba đi qua ĐÚNG luồng phiếu chi sẵn có (kế toán tạo → manager duyệt → kế toán
 -- chi) để giữ nguyên chốt kiểm soát 2 người cho mọi khoản tiền ra khỏi quỹ.
+-- =====================================================================
+
+BEGIN;
 
 ALTER TABLE payment_vouchers DROP CONSTRAINT IF EXISTS payment_vouchers_voucher_type_check;
 ALTER TABLE payment_vouchers ADD CONSTRAINT payment_vouchers_voucher_type_check
@@ -28,3 +33,9 @@ COMMENT ON COLUMN payment_vouchers.expense_id IS
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_live_reimbursement_voucher_per_expense
     ON payment_vouchers(expense_id)
     WHERE expense_id IS NOT NULL AND status IN ('pending', 'approved', 'paid');
+
+INSERT INTO schema_migrations (filename)
+VALUES ('20260809_driver_expense_reimbursement.sql')
+ON CONFLICT (filename) DO NOTHING;
+
+COMMIT;
