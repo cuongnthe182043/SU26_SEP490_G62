@@ -253,6 +253,15 @@ export const accountantService = {
   getSpendingSummary: (params = {}) =>
     apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
 
+  // ─── Hoàn ứng tài xế ────────────────────────────────────────────────────────
+  // Chi trả ngay khoản tài đã ứng tiền túi, không đợi kỳ lương. Phiếu tạo ra vẫn phải
+  // qua Manager duyệt rồi kế toán mới chi (dùng lại payVoucher).
+  getPendingReimbursements: () =>
+    apiRequest(`${BASE}/reimbursements`),
+
+  createReimbursementVoucher: (body) =>
+    apiRequest(`${BASE}/reimbursements`, { method: "POST", body }),
+
   // ─── Chấm công (attendance) ───────────────────────────────────────────────
   getAttendanceGrid: (params = {}) =>
     apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),

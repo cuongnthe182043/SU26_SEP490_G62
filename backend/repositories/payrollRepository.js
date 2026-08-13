@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const revenueAllocationRepository = require('./revenueAllocationRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
+const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -249,6 +250,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
          LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
          WHERE e.status = 'approved'
            AND e.reimbursement_status = 'pending'
+           AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
            AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1`,
         [driverId],
     );
