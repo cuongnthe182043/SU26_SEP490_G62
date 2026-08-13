@@ -1377,11 +1377,20 @@ const confirmPrepaid = async (orderId, actorId, { paymentMethod, proofUrl } = {}
             [orderId, method, proofUrl ?? null, actorId],
         );
 
-        await financialLedgerRepository.insertTransaction(client, {
+        // Tiền ứng trước cũng là TIỀN KHÁCH VỀ nên phải đi qua insertCustomerCashIn để tách
+        // vế chi hộ (Có 3388) khỏi vế cước (Có 131), giống mọi đường thu tiền khác.
+        //
+        // Vì sao không ghi thẳng Có 131: kế toán thường xác nhận tiền ứng SAU khi chuyến đã
+        // chạy và chi phí tài ứng đã được duyệt (tiền về tài khoản muộn). Lúc đó 3388 đã ghi
+        // Nợ phần chi hộ; ghi Có 131 toàn bộ thì 3388 treo vĩnh viễn còn 131 bị ghi Có nhiều
+        // hơn phần cước thật. Khách ứng trước đủ cả đơn thì về sau không còn lần thu nào để
+        // tất toán nữa. Khi chưa có chi hộ nào (ứng trước lúc mới đặt) hàm tự trả về 0 nên
+        // hành vi y hệt như cũ.
+        await financialLedgerRepository.insertCustomerCashIn(client, {
             eventType: 'prepaid_received',
             debitAccount: method === 'cash' ? '1111' : '1121',
-            creditAccount: '131',
             amount,
+            orderId,
             description: `Khách ứng trước — đơn #${orderId} (đã xác nhận)`,
             refType: 'order', refId: orderId, actorId,
         });
