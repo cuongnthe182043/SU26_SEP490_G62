@@ -56,7 +56,8 @@ router.get('/spending-summary', spendingController.getSpendingSummary);
 router.get('/partners', managerController.getPartners);
 router.post('/partners', managerController.createPartner);
 router.put('/partners/:id', managerController.updatePartner);
+// Manager chỉ theo dõi công nợ đối tác — việc thu tiền do Kế toán ghi nhận qua
+// POST /accountant/debts/payment/allocate (personType='partner').
 router.get('/partners/:id/debts', managerController.getPartnerDebtDetails);
-router.post('/partners/:id/payments', managerController.recordPartnerPayment);
 
 module.exports = router;

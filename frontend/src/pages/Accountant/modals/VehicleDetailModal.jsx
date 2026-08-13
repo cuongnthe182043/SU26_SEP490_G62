@@ -136,7 +136,7 @@ export default function VehicleDetailModal({ open, vehicle, assignmentHistory, v
         } : null}
         vehicleGroups={vehicleGroups}
         getHistory={accountantService.getDriverGroupHistory}
-        onSave={(driverId, vehicleGroupId, reason) => accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId, reason)}
+        readOnly   // đổi nhóm xe cố định là độc quyền Manager
         onClose={() => setEditingDriverGroup(false)}
       />
     </Modal>

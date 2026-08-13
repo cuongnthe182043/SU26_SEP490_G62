@@ -92,12 +92,12 @@ const VIEW_META = {
   },
   "bonus-rules": {
     title: "Quy tắc thưởng",
-    subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe.",
+    subtitle: "Tra cứu ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo nhóm xe. Cấu hình do Manager thực hiện.",
     searchPlaceholder: "",
   },
   holidays: {
-    title: "Quản lý ngày lễ",
-    subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương.",
+    title: "Ngày lễ",
+    subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương. Manager quản lý danh mục.",
     searchPlaceholder: "",
   },
   report: {
@@ -126,8 +126,8 @@ const VIEW_META = {
     searchPlaceholder: "",
   },
   vehicles: {
-    title: "Quản lý xe",
-    subtitle: "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
+    title: "Tra cứu xe",
+    subtitle: "Xem phương tiện, tài xế được gán và trạng thái bảo trì. Việc quản lý xe do Manager thực hiện.",
     searchPlaceholder: "",
   },
 };
@@ -275,14 +275,15 @@ export default function AccountantPage({ user, onLogout }) {
                 <SpendingView />
               </Suspense>
             )}
+            {/* Quy tắc thưởng & ngày lễ do Manager cấu hình — kế toán chỉ tra cứu khi tính lương */}
             {activeView === "bonus-rules" && (
-              <BonusRulesView />
+              <BonusRulesView readOnly />
             )}
             {activeView === "attendance" && (
               <AttendanceView />
             )}
             {activeView === "holidays" && (
-              <HolidaysView />
+              <HolidaysView readOnly />
             )}
             {activeView === "vehicles" && (
               <VehiclesView user={currentUser} />

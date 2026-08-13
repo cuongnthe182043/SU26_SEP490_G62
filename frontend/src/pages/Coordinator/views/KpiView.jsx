@@ -7,7 +7,8 @@ export default function KpiView() {
       getVehicleGroups={coordinatorService.getVehicleGroups}
       getAllDriversKPI={coordinatorService.getAllDriversKPI}
       getLeaderboardByGroup={coordinatorService.getLeaderboardByGroup}
-      onUpdateDriverGroup={coordinatorService.updateDriverVehicleGroup}
+      // Không truyền onUpdateDriverGroup: đổi nhóm xe cố định là độc quyền Manager.
+      // Coordinator vẫn xem được nhóm hiện tại và lịch sử đổi nhóm.
       getDriverGroupHistory={coordinatorService.getDriverGroupHistory}
     />
   );

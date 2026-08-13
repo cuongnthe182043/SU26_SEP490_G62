@@ -1,7 +1,7 @@
 ﻿const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const { posInt, posAmount, enumVal, sendError, err400 } = require('../utils/accountantValidate');
 
-const PERSON_TYPES    = ['customer', 'driver'];
+const PERSON_TYPES    = ['customer', 'driver', 'partner'];
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'offset'];
 
 const previewAllocation = async (req, res) => {
@@ -39,6 +39,13 @@ const allocatePayment = async (req, res) => {
             notes:         notes?.trim() || '',
             createdBy:     req.user.userId,
         });
+
+        // Manager theo dõi công nợ đối tác nhưng không tự thu tiền → báo cho họ biết.
+        if (personType === 'partner') {
+            require('../services/managerService')
+                .notifyPartnerPaymentRecorded(id, result.totalAllocated ?? amt, req.user.userId)
+                .catch(() => {});
+        }
 
         res.json(result);
     } catch (err) {

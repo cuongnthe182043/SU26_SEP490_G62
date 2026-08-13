@@ -173,8 +173,8 @@ export function BonusView({ search }) {
 
       <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary">
       <Tab key="list" title="Danh sách">
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-end mt-3">
+      {/* Filters — mb-4 vì hàng lọc nằm trong <Tab>, không hưởng gap-5 của khung ngoài */}
+      <div className="flex flex-wrap gap-3 items-end mt-3 mb-4">
         <Select
           size="sm"
           label="Năm"

@@ -14,7 +14,9 @@ const fmtDate = (iso) => {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
-export default function HolidaysView() {
+// readOnly: Kế toán chỉ tra cứu ngày lễ khi đối chiếu lương 200% — danh mục ngày lễ
+// do Manager quản lý (backend chặn POST/DELETE với role khác).
+export default function HolidaysView({ readOnly = false }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [holidays, setHolidays] = useState([]);
@@ -101,9 +103,13 @@ export default function HolidaysView() {
             {yearOptions.map((y) => <SelectItem key={String(y)}>{`Năm ${y}`}</SelectItem>)}
           </Select>
         </div>
-        <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => setModalOpen(true)}>
-          Thêm ngày lễ
-        </Button>
+        {readOnly ? (
+          <span className="text-xs text-gray-400 dark:text-gray-400">Chỉ xem — danh mục ngày lễ do Manager quản lý.</span>
+        ) : (
+          <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => setModalOpen(true)}>
+            Thêm ngày lễ
+          </Button>
+        )}
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-400 mb-4">
@@ -126,9 +132,11 @@ export default function HolidaysView() {
                   <Chip size="sm" variant="flat">{WEEKDAYS[new Date(h.holiday_date).getDay()]}</Chip>
                   <span className="text-sm text-gray-600 dark:text-gray-300">{h.name}</span>
                 </div>
-                <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => setDeleteTarget(h)}>
-                  <RiDeleteBinLine size={15} />
-                </Button>
+                {!readOnly && (
+                  <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => setDeleteTarget(h)}>
+                    <RiDeleteBinLine size={15} />
+                  </Button>
+                )}
               </div>
             ))}
           </div>

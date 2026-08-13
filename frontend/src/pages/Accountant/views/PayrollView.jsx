@@ -976,11 +976,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
         driver={editingDriver}
         vehicleGroups={vehicleGroups}
         getHistory={accountantService.getDriverGroupHistory}
-        onSave={async (driverId, vehicleGroupId, reason) => {
-          const res = await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId, reason);
-          refetch();
-          return res;   // modal cần thông điệp của backend để báo đúng việc đã xảy ra
-        }}
+        readOnly   // đổi nhóm xe cố định là độc quyền Manager, kế toán chỉ tra cứu
         onClose={() => setEditingDriver(null)}
       />
     </div>
