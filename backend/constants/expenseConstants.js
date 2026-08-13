@@ -38,6 +38,20 @@ const CUSTOMER_BILLABLE_EXPENSE_SQL = (expenseAlias = 'e', shipmentAlias = 'os')
     `${expenseAlias}.expense_type IN ('toll','parking','etc')`
     + ` AND ${shipmentAlias}.status NOT IN ('cancelled','failed')`;
 
+// Khoản đã có phiếu chi hoàn ứng CÒN HIỆU LỰC (chờ duyệt / đã duyệt / đã chi) thì KHÔNG
+// được hoàn thêm lần nữa qua lương hay cấn trừ nợ thu hộ.
+//
+// Vì sao cần: phiếu chi phải qua manager duyệt nên luôn có độ trễ. Trong lúc chờ duyệt,
+// khoản đó vẫn mang reimbursement_status = 'pending' — kế toán chốt lương đúng lúc ấy là
+// tài xế được hoàn LẦN HAI cho cùng một hoá đơn. Phiếu bị từ chối/huỷ không tính, khoản
+// quay lại hàng chờ hoàn bình thường.
+const NO_LIVE_REIMBURSEMENT_VOUCHER_SQL = (expenseAlias = 'e') =>
+    `NOT EXISTS (
+        SELECT 1 FROM payment_vouchers pv
+        WHERE pv.expense_id = ${expenseAlias}.id
+          AND pv.status IN ('pending', 'approved', 'paid')
+    )`;
+
 const EXPENSE_TYPE_LABEL = Object.freeze({
     toll:    'Phí cầu đường (khách chịu)',
     parking: 'Phí đỗ xe (khách chịu)',
@@ -58,4 +72,5 @@ module.exports = {
     isCompanyBorneShipment,
     isCustomerBillableExpense,
     CUSTOMER_BILLABLE_EXPENSE_SQL,
+    NO_LIVE_REIMBURSEMENT_VOUCHER_SQL,
 };

@@ -10,6 +10,7 @@ const {
     isCompanyBorneShipment,
     isCustomerBillableExpense,
     CUSTOMER_BILLABLE_EXPENSE_SQL,
+    NO_LIVE_REIMBURSEMENT_VOUCHER_SQL,
 } = require('../constants/expenseConstants');
 
 // Địa chỉ pickup/delivery lưu trong trip_stops — dùng subquery để kéo ra
@@ -1794,6 +1795,7 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                  WHERE os.order_id = $1
                    AND e.status = 'approved'
                    AND e.reimbursement_status = 'pending'
+                   AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
                    AND COALESCE(sc.owner_driver_id, e.created_by) = $2
                  ORDER BY e.id
                  FOR UPDATE OF e`,

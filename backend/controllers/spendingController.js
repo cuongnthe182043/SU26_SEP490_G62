@@ -81,6 +81,27 @@ const createVoucher = async (req, res) => {
     }
 };
 
+// GET /accountant/reimbursements — khoản tài xế đã ứng, còn chờ hoàn
+const listPendingReimbursements = async (_req, res) => {
+    try {
+        const items = await spendingService.listPendingReimbursements();
+        const total = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        res.json({ items, total });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// POST /accountant/reimbursements — lập phiếu chi hoàn ứng cho một khoản, chờ Manager duyệt
+const createReimbursementVoucher = async (req, res) => {
+    try {
+        const voucher = await spendingService.createReimbursementVoucher(req.body, req.user.userId);
+        res.status(201).json({ message: 'Đã tạo phiếu hoàn ứng, chờ Manager duyệt', voucher });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const approveVoucher = async (req, res) => {
     try {
         const id = parseId(req.params.id, 'Voucher ID');
@@ -147,6 +168,8 @@ module.exports = {
     listExpenses,
     listVouchers,
     createVoucher,
+    listPendingReimbursements,
+    createReimbursementVoucher,
     approveVoucher,
     rejectVoucher,
     cancelVoucher,
