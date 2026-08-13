@@ -1175,6 +1175,32 @@ CREATE TABLE device_tokens (
 );
 
 CREATE INDEX idx_device_tokens_user ON device_tokens(user_id);
+
+-- Đối chiếu kết quả giao push của Expo.
+--
+-- Expo giao hàng theo HAI bước: POST /push/send trả "ticket" (Expo đã NHẬN message,
+-- CHƯA gửi đi), POST /push/getReceipts mới trả "receipt" (FCM/APNs đã nhận chưa,
+-- hỏng thì vì sao). Ticket "ok" KHÔNG có nghĩa là máy đã nhận.
+--
+-- Bảng này giữ ticket lại để cron/pushCron.js đối chiếu receipt sau vài phút: ghi log
+-- mã lỗi thật và dọn token chết. Không có nó thì thiết bị bị Doze, credential FCM sai,
+-- MessageRateExceeded... đều im lặng, không có bằng chứng nào để lần.
+--
+-- Lưu ở DB chứ không giữ trong RAM vì Cloud Run scale về 0 và restart bất kỳ lúc nào.
+CREATE TABLE push_tickets (
+    id          BIGSERIAL PRIMARY KEY,
+    ticket_id   TEXT        NOT NULL,
+    token       TEXT        NOT NULL,   -- giữ lại để dọn khi receipt báo DeviceNotRegistered
+    user_id     INT         REFERENCES profiles(id) ON DELETE SET NULL,
+    sent_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    checked_at  TIMESTAMPTZ,            -- NULL = chưa đối chiếu receipt
+    status      VARCHAR(20),            -- 'ok' | 'error'
+    error_code  TEXT,
+    UNIQUE (ticket_id)
+);
+
+-- Index một phần: cron chỉ quét đúng các ticket chưa đối chiếu, không đụng lịch sử.
+CREATE INDEX idx_push_tickets_pending ON push_tickets(sent_at) WHERE checked_at IS NULL;
 CREATE INDEX idx_debt_payments_paid_at    ON debt_payments(paid_at);
 
 -- Kỳ báo cáo kinh doanh đã KÝ DUYỆT (khoá cứng, snapshot đóng băng).
