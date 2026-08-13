@@ -45,20 +45,36 @@ function ProofImages({ urls }) {
 
 // ── Confirm modal ─────────────────────────────────────────────────────────────
 function ConfirmModal({ receipt, onClose, onConfirmed }) {
+  const receiptAmt = Number(receipt.amount) || 0;
+  // Mặc định bằng số trên phiếu, nhưng PHẢI cho sửa: kế toán đối chiếu sao kê, khách có thể
+  // chuyển thiếu/thừa và backend dựa vào số này để ghi công nợ hoặc phân bổ phần dư.
+  const [actualAmount, setActualAmount] = useState(String(receiptAmt));
   const [notes,       setNotes]       = useState("");
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState(null);
 
+  const actualNum   = Number(String(actualAmount).replace(/[^\d.]/g, ""));
+  const amountValid = String(actualAmount).trim() !== "" && Number.isFinite(actualNum) && actualNum >= 0;
+  const diff        = actualNum - receiptAmt;
+
   const handleConfirm = async () => {
+    // Backend BẮT BUỘC actual_amount (accountantBankTransferService), thiếu là ném lỗi —
+    // trước đây màn này không có ô nhập nên gửi rỗng và bấm bao nhiêu lần cũng hỏng.
+    if (!amountValid) {
+      const message = "Vui lòng nhập số tiền thực nhận";
+      setError(message);
+      notify.error(message);
+      return;
+    }
     if (!(await confirmDialog({
       title: "Xác nhận chuyển khoản",
-      description: `Xác nhận đã nhận ${fmt(receipt.amount)} từ khách hàng?`,
+      description: `Xác nhận đã nhận ${fmt(actualNum)} từ khách hàng?`,
       confirmLabel: "Xác nhận",
     }))) return;
     setLoading(true);
     setError(null);
     try {
-      await accountantService.confirmBankTransfer(receipt.receipt_id, notes || undefined);
+      await accountantService.confirmBankTransfer(receipt.receipt_id, notes || undefined, actualNum);
       notify.success("Đã xác nhận chuyển khoản.");
       onConfirmed();
     } catch (err) {
@@ -115,6 +131,30 @@ function ConfirmModal({ receipt, onClose, onConfirmed }) {
             <ProofImages urls={receipt.proof_urls} />
           </div>
 
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">
+              Số tiền thực nhận được <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={actualAmount}
+              onChange={(e) => { setActualAmount(e.target.value); setError(null); }}
+              placeholder="Nhập số tiền đối chiếu trên sao kê"
+              className="w-full rounded-lg border border-gray-200 dark:border-white/15 bg-white dark:bg-white/5
+                         px-3 py-2 text-sm text-gray-800 dark:text-gray-100 outline-none
+                         focus:border-blue-400 dark:focus:border-blue-400"
+            />
+            {amountValid && Math.abs(diff) > 0.01 && (
+              <p className={`text-xs mt-1.5 font-medium ${diff < 0 ? "text-rose-600 dark:text-rose-300" : "text-blue-600 dark:text-blue-300"}`}>
+                {diff < 0
+                  ? `Khách chuyển thiếu ${fmt(Math.abs(diff))} — hệ thống sẽ ghi công nợ khách phần thiếu`
+                  : `Khách chuyển thừa ${fmt(diff)} — hệ thống sẽ phân bổ phần thừa vào nợ cũ`}
+              </p>
+            )}
+          </div>
+
           <Textarea
             label="Ghi chú (tuỳ chọn)"
             placeholder="Ví dụ: Đã kiểm tra sao kê ngân hàng ngày..."
@@ -134,6 +174,7 @@ function ConfirmModal({ receipt, onClose, onConfirmed }) {
             color="success"
             onPress={handleConfirm}
             isLoading={loading}
+            isDisabled={!amountValid}
             startContent={!loading && <RiCheckLine size={16} />}
           >
             Xác nhận đã nhận tiền

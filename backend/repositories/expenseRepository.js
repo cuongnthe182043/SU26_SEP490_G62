@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
 
 const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description, clientRequestId }) => {
@@ -254,6 +255,17 @@ const unapproveExpense = async (expenseId, reviewerId) => {
                    WHERE os.id = e.shipment_id
                      AND orr.status = 'approved'
                )
+               -- Đang có phiếu chi hoàn ứng cho khoản này thì KHÔNG được gỡ duyệt: gỡ ra là
+               -- reimbursement_status về NULL, phiếu kẹt cứng (lúc chi tìm 'pending' không thấy
+               -- nên báo lỗi mãi, chỉ còn nước huỷ phiếu). Tệ hơn: nếu chi phí được sửa số tiền
+               -- rồi duyệt lại, phiếu cũ vẫn giữ số cũ và sẽ chi sai số. Kế toán phải huỷ phiếu
+               -- trước rồi mới gỡ duyệt được.
+               --
+               -- Điều kiện này KHÔNG thừa so với reimbursement_status = 'pending' ở trên:
+               -- trong lúc phiếu chi chờ manager duyệt, khoản vẫn mang 'pending' nên vế kia
+               -- cho qua. Ngược lại, khoản hoàn thẳng qua lương thì không sinh phiếu nào nên
+               -- vế kia mới là cái chặn. Hai vế bịt hai lối khác nhau, phải giữ cả hai.
+               AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
              RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.created_by`,
             [expenseId, reviewerId],
         );

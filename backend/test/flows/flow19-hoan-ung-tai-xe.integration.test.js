@@ -116,6 +116,23 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
         );
     });
 
+    it('D2 — Card "Cần hoàn trả tài xế" vẫn tính khoản đang chờ duyệt, nhưng tách riêng để nói rõ', async () => {
+        // Tiền chưa ra khỏi quỹ nên công ty VẪN đang nợ tài ⇒ phải nằm trong tổng.
+        // Nhưng màn "Hoàn ứng tài xế" cố ý ẩn khoản này (tránh lập phiếu trùng), nên nếu
+        // không tách con số ra thì hai màn hiện hai số khác nhau mà không ai hiểu vì sao.
+        const financeRepo = require('../../repositories/accountantFinanceRepository');
+        const stats = await financeRepo.getFinanceStats();
+
+        assert.strictEqual(stats.total_reimbursable, MAINTENANCE_COST, 'vẫn đang nợ tài đủ số');
+        assert.strictEqual(
+            stats.total_reimbursable_in_progress, MAINTENANCE_COST,
+            'toàn bộ số này đang nằm trong phiếu chờ duyệt — card phải nói rõ được điều đó',
+        );
+
+        const conThaoTacDuoc = await spendingService.listPendingReimbursements();
+        assert.strictEqual(conThaoTacDuoc.length, 0, 'màn Hoàn ứng không còn gì để lập phiếu');
+    });
+
     it('E — Manager duyệt → Kế toán chi: khoản chuyển "settled", chi phí đã ghi Nợ 642 từ lúc duyệt và giờ tất toán Nợ 334 / Có 1111', async () => {
         await spendingService.approveVoucher(voucherId, MGR_ID);
         const paid = await spendingService.payVoucher(voucherId, ACCT_ID, { paymentMethod: 'cash' });
@@ -167,6 +184,67 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
             month: now.getMonth() + 1, year: now.getFullYear(),
         });
         assert.strictEqual(Number(estimate.expense_reimbursement), 0, 'bảng lương không hoàn lại lần nữa');
+    });
+
+    it('G1 — Khoản do KẾ TOÁN tự tạo (đơn import, không gán tài) KHÔNG được hiện ở màn hoàn ứng', async () => {
+        // accountantOrderRepository ghi created_by = kế toán và không gán tài xế cho chuyến.
+        // Nhánh cuối COALESCE rơi về created_by, không chặn thì chính kế toán hiện lên như
+        // người thụ hưởng — tự lập phiếu chi cho mình, khoản bị đánh 'settled' và tài xế thật
+        // mất tiền.
+        await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone) VALUES (9,'individual','Khach Import','0912222222')`);
+        await pool.query(`
+            INSERT INTO orders (id, customer_id, created_by, cargo_name, payment_type, total_estimated_price, derived_status)
+            VALUES (9, 9, 3, 'Don import', 'cash', 400000, 'completed')
+        `);
+        await pool.query(`
+            INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, estimated_price, actual_price, status)
+            VALUES (9, 9, 1, 1, 400000, 400000, 'completed')
+        `);
+        await pool.query(`
+            INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, updated_by, expense_type,
+                                  amount, description, expense_date, status, reimbursement_status)
+            VALUES (9, 9, 1, 3, 3, 'toll', 70000, 'Phi cau duong don import', CURRENT_DATE, 'approved', 'pending')
+        `);
+
+        const items = await spendingService.listPendingReimbursements();
+        assert.ok(
+            !items.some((row) => Number(row.expense_id) === 9),
+            'khoản có người ứng không phải tài xế phải bị loại khỏi danh sách hoàn ứng',
+        );
+
+        await assert.rejects(
+            () => spendingService.createReimbursementVoucher({ expense_id: 9 }, ACCT_ID),
+            (err) => err.statusCode === 409 && /không phải tài xế/.test(err.message),
+        );
+    });
+
+    it('G2 — Đang có phiếu hoàn ứng thì KHÔNG cho gỡ duyệt chi phí (tránh phiếu kẹt cứng)', async () => {
+        const expenseRepository = require('../../repositories/expenseRepository');
+        await pool.query(`
+            INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, updated_by, expense_type,
+                                  amount, description, expense_date, status, reimbursement_status)
+            VALUES (10, NULL, 1, 1, 1, 'repair', 250000, 'Sua phanh', CURRENT_DATE, 'approved', 'pending')
+        `);
+        await pool.query(`
+            INSERT INTO maintenance_records (id, vehicle_id, maintenance_type, maintenance_date, status,
+                                             cost, performed_by, expense_id, created_by)
+            VALUES (10, 1, 'repair', CURRENT_DATE, 'completed', 250000, 4, 10, 4)
+        `);
+
+        // Gỡ duyệt được khi CHƯA có phiếu
+        const before = await expenseRepository.unapproveExpense(10, MGR_ID);
+        assert.ok(before, 'chưa có phiếu thì vẫn gỡ duyệt bình thường');
+
+        // Duyệt lại rồi lập phiếu hoàn ứng
+        await pool.query(`UPDATE expenses SET status='approved', reimbursement_status='pending' WHERE id=10`);
+        await spendingService.createReimbursementVoucher({ expense_id: 10 }, ACCT_ID);
+
+        const after = await expenseRepository.unapproveExpense(10, MGR_ID);
+        assert.strictEqual(after, null, 'đang có phiếu hoàn ứng thì phải chặn gỡ duyệt');
+
+        const { rows: [exp] } = await pool.query(`SELECT status, reimbursement_status FROM expenses WHERE id = 10`);
+        assert.strictEqual(exp.status, 'approved', 'chi phí giữ nguyên trạng thái');
+        assert.strictEqual(exp.reimbursement_status, 'pending', 'không được xoá về NULL làm phiếu kẹt');
     });
 
     it('G — Chi hộ khách thì ghi Nợ 3388 (còn đòi lại khách), không phải 642', async () => {
