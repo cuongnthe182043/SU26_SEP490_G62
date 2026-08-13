@@ -100,7 +100,7 @@ describe('L2-FLOW-04 — Chi phí tài xế → Duyệt → Sổ kế toán + Ph
         assert.strictEqual(ft.c, 0, 'chưa duyệt thì chưa được ghi sổ');
     });
 
-    it('B2 — Coordinator duyệt cả 2 → CHƯA ghi sổ (tiền tài ứng túi), chuyển trạng thái "chờ hoàn" cho tài', async () => {
+    it('B2 — Coordinator duyệt cả 2 → GHI SỔ NGAY theo bên chịu chi phí, đối ứng Có 334 (công ty nợ tài)', async () => {
         const { rows: expenses } = await pool.query('SELECT id, expense_type FROM expenses ORDER BY id');
         for (const e of expenses) {
             await expenseService.approveExpense(e.id, COORD_ID);
@@ -110,8 +110,30 @@ describe('L2-FLOW-04 — Chi phí tài xế → Duyệt → Sổ kế toán + Ph
         assert.ok(rows.every((r) => r.reimbursement_status === 'pending'),
             'duyệt = xác nhận công ty NỢ TÀI, chưa phải đã chi tiền');
 
-        const { rows: [c] } = await pool.query(`SELECT COUNT(*)::int AS c FROM financial_transactions WHERE ref_type = 'expense'`);
-        assert.strictEqual(c.c, 0, 'chưa hoàn cho tài thì sổ chưa được ghi chi');
+        // Duyệt = nghĩa vụ đã phát sinh ⇒ chi phí lên sổ ngay, không đợi lúc hoàn tiền.
+        // Đợi lúc hoàn thì khoản không đi qua đường hoàn nào sẽ vĩnh viễn vắng mặt trên sổ,
+        // còn khoản có hoàn thì rơi vào tháng chốt lương chứ không phải tháng phát sinh.
+        const { rows: fts } = await pool.query(
+            `SELECT ft.event_type, ft.debit_account, ft.credit_account, ft.amount::numeric AS amount,
+                    e.expense_type
+             FROM financial_transactions ft
+             JOIN expenses e ON e.id = ft.ref_id
+             WHERE ft.ref_type = 'expense'
+             ORDER BY e.id`,
+        );
+        assert.strictEqual(fts.length, 2, 'mỗi khoản duyệt ghi đúng một bút toán');
+
+        const fuel = fts.find((f) => f.expense_type === 'fuel');
+        assert.strictEqual(fuel.event_type, 'expense_recorded');
+        assert.strictEqual(fuel.debit_account, '642', 'xăng dầu là chi phí DN chịu');
+        assert.strictEqual(fuel.credit_account, '334', 'đối ứng: công ty nợ tài xế khoản đã ứng');
+        assert.strictEqual(Number(fuel.amount), 500000);
+
+        const toll = fts.find((f) => f.expense_type === 'toll');
+        assert.strictEqual(toll.event_type, 'pass_through_cost');
+        assert.strictEqual(toll.debit_account, '3388', 'chi hộ khách — còn đòi lại được');
+        assert.strictEqual(toll.credit_account, '334');
+        assert.strictEqual(Number(toll.amount), 120000);
     });
 
     it('B3 — Kế toán lập phiếu chi tiền điện 2,5tr (pending) — kế toán KHÔNG tự duyệt được', async () => {
@@ -147,16 +169,16 @@ describe('L2-FLOW-04 — Chi phí tài xế → Duyệt → Sổ kế toán + Ph
         assert.strictEqual(Number(ft.amount), 2_500_000);
     });
 
-    it('B5 — Tổng hợp chi lúc này CHỈ có phiếu chi 2,5tr — khoản tài ứng chưa hoàn thì chưa phải tiền công ty đã chi', async () => {
+    it('B5 — Tổng hợp chi = phiếu chi 2,5tr + chi phí đã duyệt của tài (ghi theo phát sinh, không theo lúc trả tiền)', async () => {
         const now = new Date();
         const summary = await spendingService.getSpendingSummary({ month: now.getMonth() + 1, year: now.getFullYear() });
 
         const byType = Object.fromEntries(summary.by_type.map((r) => [r.event_type, Number(r.total_amount)]));
-        assert.strictEqual(byType.expense_recorded, 2_500_000, 'chỉ phiếu chi; 500k dầu chưa hoàn cho tài');
-        assert.strictEqual(byType.pass_through_cost ?? 0, 0, '120k chi hộ chưa hoàn — chưa vào sổ');
+        assert.strictEqual(byType.expense_recorded, 3_000_000, 'phiếu chi 2,5tr + 500k dầu tài đã ứng');
+        assert.strictEqual(byType.pass_through_cost, 120_000, '120k chi hộ đã duyệt — đã vào sổ');
     });
 
-    it('B6 — TH1: generate lương thấy ô "Hoàn chi phí" = 620k; chi lương → expense tất toán + bút toán 3388/334 và 642/334', async () => {
+    it('B6 — TH1: generate lương thấy ô "Hoàn chi phí" = 620k; chi lương tất toán khoản ứng mà KHÔNG ghi nhận chi phí lần hai', async () => {
         const accountantPayrollRepository = require('../../repositories/accountantPayrollRepository');
         const now = new Date();
         await accountantPayrollRepository.calculateAndUpsertPayrolls(now.getMonth() + 1, now.getFullYear());
@@ -180,12 +202,37 @@ describe('L2-FLOW-04 — Chi phí tài xế → Duyệt → Sổ kế toán + Ph
             `SELECT event_type, debit_account, credit_account, amount::numeric AS amount
              FROM financial_transactions WHERE credit_account = '334' AND event_type IN ('pass_through_cost','expense_recorded')`,
         );
-        const pass = fts.find((f) => f.event_type === 'pass_through_cost');
-        const comp = fts.find((f) => f.event_type === 'expense_recorded');
-        assert.strictEqual(Number(pass.amount), 120000, 'chi hộ hoàn qua lương: 3388/334');
-        assert.strictEqual(pass.debit_account, '3388');
-        assert.strictEqual(Number(comp.amount), 500000, 'chi phí công ty hoàn qua lương: 642/334');
-        assert.strictEqual(comp.debit_account, '642');
+        const pass = fts.filter((f) => f.event_type === 'pass_through_cost');
+        const comp = fts.filter((f) => f.event_type === 'expense_recorded');
+        assert.strictEqual(pass.length, 1, 'chi hộ chỉ được ghi nhận MỘT lần — lúc duyệt, không ghi lại lúc trả lương');
+        assert.strictEqual(comp.length, 1, 'chi phí DN chịu cũng chỉ được ghi nhận một lần');
+        assert.strictEqual(Number(pass[0].amount), 120000, 'chi hộ: 3388/334');
+        assert.strictEqual(pass[0].debit_account, '3388');
+        assert.strictEqual(Number(comp[0].amount), 500000, 'chi phí công ty: 642/334');
+        assert.strictEqual(comp[0].debit_account, '642');
+
+        // Tiền hoàn ứng trả kèm lương phải tách khỏi 'payroll_paid': gộp chung thì màn
+        // Tổng hợp chi cộng 620k lần thứ hai (đã tính lúc duyệt chi phí ở B2).
+        const { rows: [reimb] } = await pool.query(
+            `SELECT amount::numeric AS amount, debit_account, credit_account
+             FROM financial_transactions
+             WHERE event_type = 'expense_reimbursed' AND ref_type = 'payroll' AND ref_id = $1`,
+            [p.id],
+        );
+        assert.ok(reimb, 'phải có bút toán tất toán khoản phải trả tài xế');
+        assert.strictEqual(Number(reimb.amount), 620000);
+        assert.strictEqual(reimb.debit_account, '334');
+        assert.strictEqual(reimb.credit_account, '1111');
+
+        const { rows: [salary] } = await pool.query(
+            `SELECT amount::numeric AS amount FROM financial_transactions
+             WHERE event_type = 'payroll_paid' AND ref_type = 'payroll' AND ref_id = $1`,
+            [p.id],
+        );
+        assert.strictEqual(
+            Number(salary.amount) + Number(reimb.amount), Number(p.net_salary),
+            'lương + hoàn ứng phải bằng đúng số tiền thực trả',
+        );
     });
 });
 

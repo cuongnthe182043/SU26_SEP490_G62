@@ -102,7 +102,7 @@ const approveExpense = async (expenseId, reviewerId) => {
 const unapproveExpense = async (expenseId, reviewerId) => {
     const expense = await expenseRepository.unapproveExpense(expenseId, reviewerId);
     if (!expense) {
-        throw new Error('Không gỡ duyệt được: chi phí chưa được duyệt hoặc phiếu thu của đơn đã chốt');
+        throw new Error('Không gỡ duyệt được: chi phí chưa được duyệt, đã được hoàn tiền cho tài xế, hoặc phiếu thu của đơn đã chốt');
     }
 
     notificationService.createForUser(expense.created_by, {

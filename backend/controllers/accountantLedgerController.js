@@ -12,6 +12,7 @@ const EVENT_TYPE_LABEL = {
     customer_payment:      'Khách hàng thanh toán',
     pass_through_cost:     'Chi hộ khách',
     expense_recorded:      'Chi phí vận hành',
+    expense_reimbursed:    'Hoàn tiền tài xế đã ứng',
     payroll_paid:          'Chi lương',
     bonus_paid:            'Chi thưởng ngoài kỳ',
     advance_disbursed:     'Giải ngân ứng lương',
@@ -87,31 +88,25 @@ const exportPeriod = async (req, res) => {
             return res.status(404).json({ error: 'Không có bút toán nào chưa xuất trong kỳ này' });
         }
 
-        // tien_cuoc / tien_chi_ho: chỉ có ở sự kiện tiền về — kế toán MISA dùng để
-        // tách bút toán (Có 131 phần cước / Có 3388 phần chi hộ). Quy ước: chi hộ thu trước.
+        // Không còn cột tách cước/chi hộ: sổ đã ghi sẵn hai dòng riêng (Có 3388 phần chi hộ,
+        // Có 131 phần cước) ngay tại thời điểm tiền về, MISA đọc thẳng tk_co là đủ.
         // but_toan_dao: id bút toán gốc khi dòng này là bút toán điều chỉnh của kỳ đã xuất.
         const header = [
             'id', 'ngay_phat_sinh', 'loai_su_kien', 'dien_giai', 'tk_no', 'tk_co',
-            'so_tien', 'tien_cuoc', 'tien_chi_ho', 'but_toan_dao', 'ref_type', 'ref_id',
+            'so_tien', 'but_toan_dao', 'ref_type', 'ref_id',
         ];
-        const lines = rows.map((r) => {
-            const passThrough = r.chi_ho_amount != null ? Number(r.chi_ho_amount) : null;
-            const freight  = passThrough != null ? Number(r.amount) - passThrough : null;
-            return [
-                r.id,
-                new Date(r.occurred_at).toISOString(),
-                EVENT_TYPE_LABEL[r.event_type] ?? r.event_type,
-                _csvEscape(r.description),
-                r.debit_account,
-                r.credit_account,
-                r.amount,
-                freight != null ? freight.toFixed(2) : '',
-                passThrough != null ? passThrough.toFixed(2) : '',
-                r.reversal_of_id ?? '',
-                r.ref_type ?? '',
-                r.ref_id ?? '',
-            ].join(',');
-        });
+        const lines = rows.map((r) => [
+            r.id,
+            new Date(r.occurred_at).toISOString(),
+            EVENT_TYPE_LABEL[r.event_type] ?? r.event_type,
+            _csvEscape(r.description),
+            r.debit_account,
+            r.credit_account,
+            r.amount,
+            r.reversal_of_id ?? '',
+            r.ref_type ?? '',
+            r.ref_id ?? '',
+        ].join(','));
 
         // BOM để Excel/MISA đọc đúng UTF-8 tiếng Việt
         const csv = `﻿${header.join(',')}\n${lines.join('\n')}`;

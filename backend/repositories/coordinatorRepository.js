@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const getOrderShipments = async (db, orderId) => {
     const shipmentResult = await db.query(
@@ -294,15 +295,28 @@ const updateShipmentActualDistance = async (client, shipmentId, actualKm) => {
     );
 };
 
-const insertApprovedExpense = async (client, { shipmentId, vehicleId, coordinatorId, expenseType, amount, description }) => {
+// Coordinator nhập tay chi phí ngay tại màn duyệt phiếu thu — khoản này vào thẳng
+// 'approved' nên phải ghi sổ ngay như mọi đường duyệt khác (xem recordExpenseAccrual).
+const insertApprovedExpense = async (client, { shipmentId, shipmentStatus, vehicleId, coordinatorId, expenseType, amount, description }) => {
     const { rows: [expense] } = await client.query(
         `INSERT INTO expenses
             (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date,
              status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
          VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW())
-         RETURNING id`,
+         RETURNING id, expense_date`,
         [shipmentId, vehicleId, coordinatorId, expenseType, amount, description],
     );
+
+    await financialLedgerRepository.recordExpenseAccrual(client, {
+        expenseId: expense.id,
+        expenseType,
+        shipmentStatus,
+        amount,
+        actorId: coordinatorId,
+        occurredAt: expense.expense_date,
+        note: 'Coordinator nhập tại màn duyệt phiếu thu',
+    });
+
     return expense;
 };
 
@@ -316,6 +330,9 @@ const updateShipmentActualPrice = async (client, shipmentId, actualIncome) => {
     );
 };
 
+// Phát hành phiếu thu CHÍNH LÀ hành động duyệt chi phí của đơn — nên đây cũng là lúc
+// ghi sổ từng khoản (Nợ 3388 chi hộ / Nợ 642 DN chịu, Có 334). os.status quyết định bên
+// chịu: chuyến đã huỷ/thất bại thì chi hộ chuyển sang DN chịu.
 const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
     const { rows } = await client.query(
         `UPDATE expenses e
@@ -325,9 +342,23 @@ const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
          WHERE os.id = e.shipment_id
            AND os.order_id = $2
            AND e.status = 'pending'
-         RETURNING e.id, e.shipment_id, e.expense_type, e.amount`,
+         RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.expense_date,
+                   os.status AS shipment_status`,
         [coordinatorId, orderId],
     );
+
+    for (const expense of rows) {
+        await financialLedgerRepository.recordExpenseAccrual(client, {
+            expenseId: expense.id,
+            expenseType: expense.expense_type,
+            shipmentStatus: expense.shipment_status,
+            amount: expense.amount,
+            actorId: coordinatorId,
+            occurredAt: expense.expense_date,
+            note: `Duyệt cùng phiếu thu đơn #${orderId}`,
+        });
+    }
+
     return rows;
 };
 

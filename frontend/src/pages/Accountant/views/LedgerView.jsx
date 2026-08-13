@@ -32,6 +32,8 @@ const EVENT_COLOR = {
   customer_debt_created: "warning",
   pass_through_cost:     "default",
   expense_recorded:      "danger",
+  // Tất toán khoản phải trả tài xế — không phải chi phí phát sinh mới (đã ghi lúc duyệt)
+  expense_reimbursed:    "primary",
   payroll_paid:          "danger",
   bonus_paid:            "danger",
   advance_disbursed:     "danger",
