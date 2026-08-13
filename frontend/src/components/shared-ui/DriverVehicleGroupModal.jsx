@@ -8,9 +8,10 @@ import { RiHistoryLine } from "react-icons/ri";
 
 /**
  * Sửa nhóm xe KPI cố định của tài xế (BR: gắn chết 1 nhóm, không tự đổi theo xe hiện tại).
- * Dùng chung cho Manager/Coordinator (màn KPI, chi tiết xe) và Accountant (màn Bảng lương).
+ * Chỉ Manager được đổi; Coordinator/Accountant mở cùng modal ở chế độ `readOnly` để tra
+ * cứu nhóm hiện tại và lịch sử đổi nhóm khi đối chiếu KPI/lương.
  */
-export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, onClose, getHistory }) {
+export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, onClose, getHistory, readOnly = false }) {
   const [vehicleGroupId, setVehicleGroupId] = useState(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -56,7 +57,7 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="sm">
       <ModalContent>
         <ModalHeader className="flex flex-col gap-0.5">
-          <span>Sửa nhóm xe KPI</span>
+          <span>{readOnly ? "Nhóm xe KPI" : "Sửa nhóm xe KPI"}</span>
           <span className="text-xs font-normal text-gray-400 dark:text-gray-400">{driver.driver_name}</span>
         </ModalHeader>
         <ModalBody className="gap-3">
@@ -67,9 +68,14 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
           </p>
           <div className="rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/10 p-2.5">
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-              Khi đổi: <b>toàn bộ doanh thu tháng này</b> chuyển sang nhóm mới (không tách được
-              nửa tháng). <b>Các tháng trước giữ nguyên</b> nhóm cũ. Nếu lương tháng này đã duyệt
-              hoặc đã chi thì KPI giữ nguyên, nhóm mới chỉ áp dụng từ kỳ sau.
+              {readOnly ? (
+                <>Chỉ <b>Manager</b> được đổi nhóm xe KPI của tài xế. Cần điều chỉnh thì báo Manager
+                  — đổi nhóm kéo theo toàn bộ doanh thu tháng này chuyển sang nhóm mới.</>
+              ) : (
+                <>Khi đổi: <b>toàn bộ doanh thu tháng này</b> chuyển sang nhóm mới (không tách được
+                  nửa tháng). <b>Các tháng trước giữ nguyên</b> nhóm cũ. Nếu lương tháng này đã duyệt
+                  hoặc đã chi thì KPI giữ nguyên, nhóm mới chỉ áp dụng từ kỳ sau.</>
+              )}
             </p>
           </div>
           <Select
@@ -77,21 +83,24 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
             selectedKeys={vehicleGroupId ? [vehicleGroupId] : []}
             onSelectionChange={(keys) => setVehicleGroupId([...keys][0] ?? null)}
             variant="bordered"
+            isDisabled={readOnly}
           >
             {(vehicleGroups || []).map((g) => (
               <SelectItem key={String(g.id)}>{g.name}</SelectItem>
             ))}
           </Select>
 
-          <Input
-            label="Lý do đổi nhóm"
-            placeholder="VD: gán nhầm lúc tạo tài khoản, điều chuyển biên chế..."
-            value={reason}
-            onValueChange={setReason}
-            variant="bordered"
-            maxLength={300}
-            description="Được lưu vào lịch sử để đối chiếu về sau"
-          />
+          {!readOnly && (
+            <Input
+              label="Lý do đổi nhóm"
+              placeholder="VD: gán nhầm lúc tạo tài khoản, điều chuyển biên chế..."
+              value={reason}
+              onValueChange={setReason}
+              variant="bordered"
+              maxLength={300}
+              description="Được lưu vào lịch sử để đối chiếu về sau"
+            />
+          )}
 
           {/* Lịch sử đổi nhóm: thao tác này đụng tới ngưỡng thưởng và bảng tranh giải,
               cho người bấm thấy ai đã đổi trước đó thay vì sửa qua sửa lại. */}
@@ -138,8 +147,10 @@ export function DriverVehicleGroupModal({ open, driver, vehicleGroups, onSave, o
           )}
         </ModalBody>
         <ModalFooter>
-          <Button variant="flat" onPress={onClose} isDisabled={saving}>Hủy</Button>
-          <Button color="primary" onPress={handleSave} isLoading={saving} isDisabled={!vehicleGroupId}>Lưu</Button>
+          <Button variant="flat" onPress={onClose} isDisabled={saving}>{readOnly ? "Đóng" : "Hủy"}</Button>
+          {!readOnly && (
+            <Button color="primary" onPress={handleSave} isLoading={saving} isDisabled={!vehicleGroupId}>Lưu</Button>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>

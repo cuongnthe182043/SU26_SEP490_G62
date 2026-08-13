@@ -33,6 +33,10 @@ const formatDateTime = (value) => {
 const canAssignDriver = (v) => v.status === "active";
 const canUnassignDriver = (v) => Boolean(v.assigned_driver_id) && ["active", "maintenance", "broken"].includes(v.status);
 
+// Quản lý xe / nhóm xe / bảo trì / vòng đời xe là độc quyền Manager. Màn này của Kế
+// toán chỉ để tra cứu phương tiện khi đối chiếu chi phí & lương, nên khoá mọi nút ghi.
+const READ_ONLY = true;
+
 export default function VehiclesView({ user }) {
   // Vehicle groups
   const [vehicleGroups, setVehicleGroups] = useState([]);
@@ -263,11 +267,14 @@ export default function VehiclesView({ user }) {
     } catch (err) { notify.error(err.message); } finally { setProcessingRequestId(null); }
   };
 
+  // Kế toán chỉ tra cứu phương tiện — mọi thao tác thêm/sửa/vòng đời xe thuộc về
+  // Manager (backend chặn ở vehicleManagementRoutes), nên chỉ để lại "Chi tiết".
   const getActionItems = (vehicle) => {
     const items = [
       { key: "details", label: "Chi tiết", icon: RiEyeLine, onPress: () => openDetail(vehicle) },
-      { key: "edit", label: "Sửa", icon: RiPencilLine, color: "primary", onPress: () => { setEditingVehicle(vehicle); setVehicleModalOpen(true); } },
     ];
+    if (READ_ONLY) return items;
+    items.push({ key: "edit", label: "Sửa", icon: RiPencilLine, color: "primary", onPress: () => { setEditingVehicle(vehicle); setVehicleModalOpen(true); } });
     items.push({
       key: "driver",
       label: vehicle.assigned_driver_id ? "Bỏ gán tài xế" : "Gán tài xế",
@@ -321,9 +328,11 @@ export default function VehiclesView({ user }) {
             <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Nhóm xe</div>
             <div className="text-xs text-gray-400 dark:text-gray-400">{vehicleGroups.length} nhóm xe</div>
           </div>
-          <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingGroup(null); setGroupModalOpen(true); }}>
-            Thêm nhóm xe
-          </Button>
+          {!READ_ONLY && (
+            <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingGroup(null); setGroupModalOpen(true); }}>
+              Thêm nhóm xe
+            </Button>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-3">
           {vehicleGroups.map((g) => {
@@ -355,7 +364,7 @@ export default function VehiclesView({ user }) {
                   <Chip size="sm" variant="flat" color="warning">{g.maintenance_vehicle_count} bảo trì</Chip>
                   <Chip size="sm" variant="flat" color="danger">{g.broken_vehicle_count} hỏng</Chip>
                 </div>
-                <div className="flex gap-1 justify-end mt-1">
+                <div className={`flex gap-1 justify-end mt-1 ${READ_ONLY ? "hidden" : ""}`}>
                   {isHidden ? (
                     <Button size="sm" variant="flat" color="success" startContent={<RiCheckboxCircleLine size={13} />} onPress={() => handleGroupRestore(g)}>Bỏ ẩn</Button>
                   ) : (
@@ -410,10 +419,14 @@ export default function VehiclesView({ user }) {
                   <TableCell>{r.request_reason}</TableCell>
                   <TableCell>{formatDateTime(r.created_at)}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1 justify-end">
-                      <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={processingRequestId === r.id} onPress={() => handleApproveRequest(r)}>Duyệt</Button>
-                      <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} isDisabled={processingRequestId === r.id} onPress={() => { setRejectRequestTarget(r); setRejectRequestReason(""); }}>Từ chối</Button>
-                    </div>
+                    {READ_ONLY ? (
+                      <span className="text-xs text-gray-400 dark:text-gray-400">Chờ Manager duyệt</span>
+                    ) : (
+                      <div className="flex gap-1 justify-end">
+                        <Button size="sm" variant="flat" color="success" startContent={<RiCheckLine size={13} />} isLoading={processingRequestId === r.id} onPress={() => handleApproveRequest(r)}>Duyệt</Button>
+                        <Button size="sm" variant="flat" color="danger" startContent={<RiCloseLine size={13} />} isDisabled={processingRequestId === r.id} onPress={() => { setRejectRequestTarget(r); setRejectRequestReason(""); }}>Từ chối</Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               )}
@@ -430,9 +443,11 @@ export default function VehiclesView({ user }) {
             <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Danh sách xe</div>
             <div className="text-xs text-gray-400 dark:text-gray-400">{pagination.total} xe</div>
           </div>
-          <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingVehicle(null); setVehicleModalOpen(true); }}>
-            Thêm xe
-          </Button>
+          {!READ_ONLY && (
+            <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={() => { setEditingVehicle(null); setVehicleModalOpen(true); }}>
+              Thêm xe
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-4 gap-3 mb-4">

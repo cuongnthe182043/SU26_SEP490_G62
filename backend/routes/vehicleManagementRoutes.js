@@ -6,37 +6,42 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.use(verifyToken);
-router.use(requireRole('manager', 'accountant'));
 
-router.get('/vehicle-groups', vehicleManagementController.listVehicleGroups);
-router.post('/vehicle-groups', vehicleManagementController.createVehicleGroup);
-router.get('/vehicle-groups/:id', vehicleManagementController.getVehicleGroupDetail);
-router.put('/vehicle-groups/:id', vehicleManagementController.updateVehicleGroup);
-router.delete('/vehicle-groups/:id', vehicleManagementController.deleteVehicleGroup);
-router.post('/vehicle-groups/:id/restore', vehicleManagementController.restoreVehicleGroup);
+// Quản lý xe / nhóm xe / bảo trì / vòng đời xe và danh mục ngày lễ là độc quyền
+// Manager. Accountant chỉ được đọc để đối chiếu khi tính lương và tra cứu phương
+// tiện — mọi thao tác ghi đều chặn tại đây (UI kế toán cũng ẩn nút tương ứng).
+const canRead     = requireRole('manager', 'accountant');
+const managerOnly = requireRole('manager');
 
-router.get('/vehicles/driver-options', vehicleManagementController.listAssignableDrivers);
-router.get('/vehicles', vehicleManagementController.listVehicles);
-router.post('/vehicles', vehicleManagementController.createVehicle);
-router.get('/vehicles/:id', vehicleManagementController.getVehicleDetail);
-router.put('/vehicles/:id', vehicleManagementController.updateVehicle);
-router.get('/holidays', holidayController.listHolidays);
-router.post('/holidays', holidayController.createHoliday);
-router.delete('/holidays/:date', holidayController.deleteHoliday);
+router.get('/vehicle-groups', canRead, vehicleManagementController.listVehicleGroups);
+router.post('/vehicle-groups', managerOnly, vehicleManagementController.createVehicleGroup);
+router.get('/vehicle-groups/:id', canRead, vehicleManagementController.getVehicleGroupDetail);
+router.put('/vehicle-groups/:id', managerOnly, vehicleManagementController.updateVehicleGroup);
+router.delete('/vehicle-groups/:id', managerOnly, vehicleManagementController.deleteVehicleGroup);
+router.post('/vehicle-groups/:id/restore', managerOnly, vehicleManagementController.restoreVehicleGroup);
 
-router.get('/maintenance-requests', vehicleManagementController.listMaintenanceRequests);
-router.post('/maintenance-requests/:id/approve', vehicleManagementController.approveMaintenanceRequest);
-router.post('/maintenance-requests/:id/reject', vehicleManagementController.rejectMaintenanceRequest);
-router.post('/vehicles/:id/send-to-maintenance', vehicleManagementController.sendVehicleToMaintenance);
-router.post('/vehicles/:id/complete-maintenance', vehicleManagementController.completeMaintenance);
-router.post('/vehicles/:id/verify-maintenance', vehicleManagementController.verifyMaintenance);
-router.post('/vehicles/:id/reject-maintenance', vehicleManagementController.rejectMaintenance);
-router.post('/vehicles/:id/mark-broken', vehicleManagementController.markVehicleAsBroken);
-router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle);
-router.post('/vehicles/:id/retire', vehicleManagementController.retireVehicle);
-router.patch('/vehicles/:id/status', vehicleManagementController.changeVehicleStatus);
-router.patch('/vehicles/:id/driver-assignment', vehicleManagementController.setVehicleDriverAssignment);
-router.get('/vehicles/:id/assignment-history', vehicleManagementController.getVehicleAssignmentHistory);
-router.delete('/vehicles/:id', vehicleManagementController.softDeleteVehicle);
+router.get('/vehicles/driver-options', canRead, vehicleManagementController.listAssignableDrivers);
+router.get('/vehicles', canRead, vehicleManagementController.listVehicles);
+router.post('/vehicles', managerOnly, vehicleManagementController.createVehicle);
+router.get('/vehicles/:id', canRead, vehicleManagementController.getVehicleDetail);
+router.put('/vehicles/:id', managerOnly, vehicleManagementController.updateVehicle);
+router.get('/holidays', canRead, holidayController.listHolidays);
+router.post('/holidays', managerOnly, holidayController.createHoliday);
+router.delete('/holidays/:date', managerOnly, holidayController.deleteHoliday);
+
+router.get('/maintenance-requests', canRead, vehicleManagementController.listMaintenanceRequests);
+router.post('/maintenance-requests/:id/approve', managerOnly, vehicleManagementController.approveMaintenanceRequest);
+router.post('/maintenance-requests/:id/reject', managerOnly, vehicleManagementController.rejectMaintenanceRequest);
+router.post('/vehicles/:id/send-to-maintenance', managerOnly, vehicleManagementController.sendVehicleToMaintenance);
+router.post('/vehicles/:id/complete-maintenance', managerOnly, vehicleManagementController.completeMaintenance);
+router.post('/vehicles/:id/verify-maintenance', managerOnly, vehicleManagementController.verifyMaintenance);
+router.post('/vehicles/:id/reject-maintenance', managerOnly, vehicleManagementController.rejectMaintenance);
+router.post('/vehicles/:id/mark-broken', managerOnly, vehicleManagementController.markVehicleAsBroken);
+router.post('/vehicles/:id/restore', managerOnly, vehicleManagementController.restoreVehicle);
+router.post('/vehicles/:id/retire', managerOnly, vehicleManagementController.retireVehicle);
+router.patch('/vehicles/:id/status', managerOnly, vehicleManagementController.changeVehicleStatus);
+router.patch('/vehicles/:id/driver-assignment', managerOnly, vehicleManagementController.setVehicleDriverAssignment);
+router.get('/vehicles/:id/assignment-history', canRead, vehicleManagementController.getVehicleAssignmentHistory);
+router.delete('/vehicles/:id', managerOnly, vehicleManagementController.softDeleteVehicle);
 
 module.exports = router;

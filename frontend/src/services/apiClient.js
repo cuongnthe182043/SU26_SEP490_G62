@@ -1,3 +1,5 @@
+import { toNetworkError, toBadResponseError, summarizeBody, pickServerMessage, logApiFailure } from "./apiError";
+
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 if (import.meta.env.PROD && !configuredApiBaseUrl) {
@@ -16,6 +18,28 @@ function buildUrl(path) {
   }
 
   return `${apiBaseUrl}${path}`;
+}
+
+/**
+ * fetch() ném `TypeError: Failed to fetch` cho mọi sự cố trước khi có HTTP response —
+ * câu đó vô nghĩa với người dùng và không nói được request nào hỏng. Bọc lại một lần ở
+ * đây để mọi lời gọi API trong app đều nhận lỗi đã phân loại, kèm log debug.
+ */
+async function fetchOrThrowFriendly(url, init, { method, path }) {
+  const startedAt = Date.now();
+  try {
+    return await fetch(url, init);
+  } catch (cause) {
+    const error = toNetworkError(cause, {
+      method,
+      path,
+      url,
+      baseUrl: apiBaseUrl,
+      elapsedMs: Date.now() - startedAt,
+    });
+    logApiFailure(error);
+    throw error;
+  }
 }
 
 function getCookieValue(name) {
@@ -84,10 +108,38 @@ function canBootstrapCsrf(path) {
   ].includes(path);
 }
 
-async function parseResponse(response) {
+// HTTP status không có thân phản hồi dùng được thì tự diễn giải cho người dùng, thay vì
+// đổ nguyên trang HTML của proxy hay câu "Request failed with status 502" ra toast.
+const STATUS_FALLBACK = {
+  401: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+  403: "Bạn không có quyền thực hiện thao tác này.",
+  404: "Không tìm thấy dữ liệu yêu cầu.",
+  409: "Dữ liệu vừa bị thay đổi bởi người khác. Tải lại rồi thử lại.",
+  413: "Tệp tải lên quá lớn.",
+  429: "Bạn thao tác quá nhanh. Vui lòng chờ một lát rồi thử lại.",
+  502: "Máy chủ đang không phản hồi (502). Có thể dịch vụ đang khởi động lại.",
+  503: "Máy chủ đang quá tải hoặc bảo trì (503). Thử lại sau ít phút.",
+  504: "Máy chủ xử lý quá lâu (504). Thử lại sau ít phút.",
+};
+
+const fallbackMessageFor = (status) =>
+  STATUS_FALLBACK[status]
+  || (status >= 500 ? `Máy chủ gặp lỗi (HTTP ${status}). Vui lòng thử lại sau.` : `Yêu cầu không thành công (HTTP ${status}).`);
+
+async function parseResponse(response, { method = "GET", path = "" } = {}) {
   const contentType = response.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
-  const payload = isJson ? await response.json() : await response.text();
+
+  let payload;
+  try {
+    payload = isJson ? await response.json() : await response.text();
+  } catch (cause) {
+    // Body hỏng giữa chừng, hoặc content-type nói JSON nhưng nội dung không phải JSON
+    // (proxy chèn trang lỗi). Trước đây lỗi này nổi lên dạng "Unexpected token < in JSON".
+    const error = toBadResponseError(cause, { method, path, url: response.url, status: response.status });
+    logApiFailure(error);
+    throw error;
+  }
 
   if (payload && typeof payload === "object" && payload.csrfToken) {
     setStoredCsrfToken(payload.csrfToken);
@@ -96,18 +148,27 @@ async function parseResponse(response) {
   if (!response.ok) {
     const retryAfterHeader = response.headers.get("retry-after") || response.headers.get("ratelimit-reset");
     const retryAfterSeconds = Number.parseInt(retryAfterHeader || "", 10);
-    const message =
-      (payload && typeof payload === "object" && (payload.error || payload.message)) ||
-      (typeof payload === "string" && payload.trim()) ||
-      `Request failed with status ${response.status}`;
+    // Chỉ dùng thân phản hồi khi nó thật sự là lời nhắn; trang HTML của proxy thì bỏ qua
+    // để rơi về câu mặc định theo status thay vì đổ mã HTML vào toast.
+    const serverMessage = pickServerMessage(payload);
+    const message = serverMessage || fallbackMessageFor(response.status);
+
     const error = new Error(message);
-    error.status = response.status;
-    error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-      ? retryAfterSeconds
-      : 0;
+    // Trải payload trước, rồi mới ghi các trường của client — nếu làm ngược lại, một
+    // payload có khoá trùng (status/path/message...) sẽ ghi đè mất thông tin thật.
     if (payload && typeof payload === "object") {
       Object.assign(error, payload);
     }
+    error.message = message;
+    error.status = response.status;
+    error.method = String(method).toUpperCase();
+    error.path = path;
+    error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? retryAfterSeconds
+      : 0;
+    error.debug = `[http_${response.status}] ${error.method} ${path} | ${serverMessage || summarizeBody(payload) || "(không có thân phản hồi)"}`;
+
+    if (response.status >= 500) logApiFailure(error);
     throw error;
   }
 
@@ -140,26 +201,29 @@ export async function refreshAuthSession() {
     const csrfToken = getCsrfToken();
     if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
 
-    refreshPromise = fetch(buildUrl("/auth/refresh"), {
-      method: "POST",
-      headers,
-      credentials: "include",
-    })
+    refreshPromise = fetchOrThrowFriendly(
+      buildUrl("/auth/refresh"),
+      { method: "POST", headers, credentials: "include" },
+      { method: "POST", path: "/auth/refresh" },
+    )
       .then(async (response) => {
         if (!response.ok) {
           const contentType = response.headers.get("content-type") || "";
           const payload = contentType.includes("application/json")
-            ? await response.json()
-            : await response.text();
-          const message =
-            (payload && typeof payload === "object" && (payload.error || payload.message)) ||
-            (typeof payload === "string" && payload.trim()) ||
-            "Unable to refresh session";
-          throw new Error(message);
+            ? await response.json().catch(() => null)
+            : await response.text().catch(() => "");
+          const message = pickServerMessage(payload)
+            || "Không làm mới được phiên đăng nhập. Vui lòng đăng nhập lại.";
+          const error = new Error(message);
+          error.status = response.status;
+          error.path = "/auth/refresh";
+          error.debug = `[http_${response.status}] POST /auth/refresh | ${summarizeBody(payload) || "(không có thân phản hồi)"}`;
+          throw error;
         }
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("application/json")) {
-          const payload = await response.json();
+          // Body hỏng ở đây không đáng làm hỏng cả phiên — chỉ là chỗ lấy CSRF token mới
+          const payload = await response.json().catch(() => null);
           if (payload?.csrfToken) setStoredCsrfToken(payload.csrfToken);
         }
         return response;
@@ -200,13 +264,11 @@ export async function apiRequest(path, options = {}) {
     requestBody = JSON.stringify(body);
   }
 
-  const response = await fetch(buildUrl(path), {
-    method,
-    headers: requestHeaders,
-    body: requestBody,
-    signal,
-    credentials: "include",
-  });
+  const response = await fetchOrThrowFriendly(
+    buildUrl(path),
+    { method, headers: requestHeaders, body: requestBody, signal, credentials: "include" },
+    { method, path },
+  );
 
   const canAttemptRefresh =
     retryOnAuthFailure && !skipAuthRefresh && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/google";
@@ -219,7 +281,7 @@ export async function apiRequest(path, options = {}) {
     });
   }
 
-  const payload = await parseResponse(response);
+  const payload = await parseResponse(response, { method, path });
   if (path === "/auth/logout") clearStoredCsrfToken();
   return payload;
 }

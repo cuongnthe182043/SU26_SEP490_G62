@@ -1,17 +1,21 @@
 const bonusRuleRepository = require('../repositories/bonusRuleRepository');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
+const { err400 } = require('../utils/accountantValidate');
+
+// Lỗi "không tìm thấy" tách riêng để controller không phải đoán ý qua nội dung câu chữ.
+const err404 = (msg) => Object.assign(new Error(msg), { status: 404 });
 
 // unchangedBonusType / wasActive: trạng thái RULE ĐANG CÓ (chỉ truyền khi sửa). Dùng để
 // phân biệt "đưa một loại thưởng vào dùng" với "giữ nguyên hiện trạng" — xem chú thích ở
 // chỗ kiểm tra IMPLEMENTED_BONUS_TYPES.
 const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive = false } = {}) => {
     const title = String(payload.title || '').trim();
-    if (!title) throw new Error('Tên quy tắc thưởng là bắt buộc');
+    if (!title) throw err400('Tên quy tắc thưởng là bắt buộc');
 
     const bonusType = payload.bonus_type;
     if (!bonusType || !bonusRuleRepository.BONUS_RULE_TYPES.includes(bonusType)) {
-        throw new Error(`Loại thưởng không hợp lệ (${bonusRuleRepository.BONUS_RULE_TYPES.join(', ')})`);
+        throw err400(`Loại thưởng không hợp lệ (${bonusRuleRepository.BONUS_RULE_TYPES.join(', ')})`);
     }
 
     const vehicleGroupId = payload.vehicle_group_id ? Number(payload.vehicle_group_id) : null;
@@ -19,13 +23,13 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
     const rewardAmount = payload.reward_amount != null && payload.reward_amount !== ''
         ? Number(payload.reward_amount) : null;
     if (rewardAmount != null && (!Number.isFinite(rewardAmount) || rewardAmount < 0)) {
-        throw new Error('Số tiền thưởng không hợp lệ');
+        throw err400('Số tiền thưởng không hợp lệ');
     }
 
     const rewardMultiplier = payload.reward_multiplier != null && payload.reward_multiplier !== ''
         ? Number(payload.reward_multiplier) : null;
     if (rewardMultiplier != null && (!Number.isFinite(rewardMultiplier) || rewardMultiplier < 0)) {
-        throw new Error('Hệ số thưởng không hợp lệ');
+        throw err400('Hệ số thưởng không hợp lệ');
     }
 
     const isActive = payload.is_active !== undefined ? Boolean(payload.is_active) : true;
@@ -44,7 +48,7 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
     }
 
     if (rewardAmount == null && rewardMultiplier == null) {
-        throw new Error('Cần nhập ít nhất Số tiền thưởng hoặc Hệ số thưởng');
+        throw err400('Cần nhập ít nhất Số tiền thưởng hoặc Hệ số thưởng');
     }
 
     // Chỉ những loại dưới đây được bộ tính lương đọc. Các loại còn lại (top_trips,
@@ -58,7 +62,7 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
     // khiến người quản lý không sửa nổi cả tiêu đề.
     const dangDuaVaoDung = bonusType !== unchangedBonusType || !wasActive;
     if (dangDuaVaoDung && !bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.includes(bonusType)) {
-        throw new Error(
+        throw err400(
             `Loại thưởng "${bonusType}" chưa được bộ tính lương hỗ trợ nên sẽ không có hiệu lực. `
             + `Hiện hỗ trợ: ${bonusRuleRepository.IMPLEMENTED_BONUS_TYPES.join(', ')}.`,
         );
@@ -68,7 +72,7 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
     if (bonusType === 'kpi') {
         const minRevenue = conditionsJson?.min_revenue != null ? Number(conditionsJson.min_revenue) : null;
         if (!minRevenue || minRevenue <= 0) {
-            throw new Error('Thưởng vượt KPI cần cấu hình ngưỡng doanh thu tối thiểu (min_revenue)');
+            throw err400('Thưởng vượt KPI cần cấu hình ngưỡng doanh thu tối thiểu (min_revenue)');
         }
         conditionsJson = { min_revenue: minRevenue };
     }
@@ -78,10 +82,10 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
     // (hệ số - 1) sẽ âm, tức trừ tiền tài xế, nên chặn tại đây.
     if (bonusType === 'holiday') {
         if (rewardMultiplier == null) {
-            throw new Error('Thưởng ngày lễ cần cấu hình Hệ số thưởng (vd 2 = hưởng 200% lương ngày)');
+            throw err400('Thưởng ngày lễ cần cấu hình Hệ số thưởng (vd 2 = hưởng 200% lương ngày)');
         }
         if (rewardMultiplier < 1) {
-            throw new Error('Hệ số thưởng ngày lễ phải từ 1 trở lên');
+            throw err400('Hệ số thưởng ngày lễ phải từ 1 trở lên');
         }
     }
 
@@ -129,7 +133,7 @@ const listRules = async (query) => bonusRuleRepository.listRules({
 
 const getRuleById = async (id) => {
     const rule = await bonusRuleRepository.getRuleById(id);
-    if (!rule) throw new Error('Quy tắc thưởng không tồn tại');
+    if (!rule) throw err404('Quy tắc thưởng không tồn tại');
     return rule;
 };
 
@@ -143,7 +147,7 @@ const createRule = async (payload) => {
 
 const updateRule = async (id, payload) => {
     const existing = await bonusRuleRepository.getRuleById(id);
-    if (!existing) throw new Error('Quy tắc thưởng không tồn tại');
+    if (!existing) throw err404('Quy tắc thưởng không tồn tại');
 
     const normalized = normalizePayload({
         title: payload.title ?? existing.title,
@@ -164,7 +168,7 @@ const updateRule = async (id, payload) => {
 
 const deleteRule = async (id, actorId = null) => {
     const existing = await bonusRuleRepository.getRuleById(id);
-    if (!existing) throw new Error('Quy tắc thưởng không tồn tại');
+    if (!existing) throw err404('Quy tắc thưởng không tồn tại');
     await bonusRuleRepository.deleteRule(id);
     broadcastRuleChange('deleted', id);
     notifyRuleChange('deleted', existing, actorId);

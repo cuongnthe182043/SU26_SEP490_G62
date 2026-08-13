@@ -43,9 +43,8 @@ export const managerService = {
   },
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),
   updatePartner: (id, payload) => apiRequest(`${BASE}/partners/${id}`, { method: "PUT", body: payload }),
+  // Chỉ theo dõi — thu tiền đối tác do Kế toán ghi nhận ở màn Công nợ
   getPartnerDebts: (id) => apiRequest(`${BASE}/partners/${id}/debts`),
-  recordPartnerPayment: (id, { amount, payment_method, notes }) =>
-    apiRequest(`${BASE}/partners/${id}/payments`, { method: "POST", body: { amount, payment_method, notes } }),
 
   // ─── Payroll ──────────────────────────────────────────────────────────────
   getPayrolls: (params = {}) => apiRequest(`${BASE}/payrolls?${new URLSearchParams(params)}`),

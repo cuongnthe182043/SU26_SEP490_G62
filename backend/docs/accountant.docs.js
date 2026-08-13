@@ -253,7 +253,7 @@
  *         required: true
  *         schema:
  *           type: string
- *           enum: [driver, customer]
+ *           enum: [driver, customer, partner]
  *       - in: path
  *         name: personId
  *         required: true
@@ -275,7 +275,7 @@
  *       - in: path
  *         name: personType
  *         required: true
- *         schema: { type: string, enum: [driver, customer] }
+ *         schema: { type: string, enum: [driver, customer, partner] }
  *       - in: path
  *         name: personId
  *         required: true
@@ -302,7 +302,7 @@
  *             required: [amount, personType, personId]
  *             properties:
  *               amount:     { type: number }
- *               personType: { type: string, enum: [driver, customer] }
+ *               personType: { type: string, enum: [driver, customer, partner] }
  *               personId:   { type: integer }
  *     responses:
  *       200:

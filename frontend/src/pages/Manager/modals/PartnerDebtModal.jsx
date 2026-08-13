@@ -1,56 +1,17 @@
-import { useState } from "react";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip, Input, Select, SelectItem } from "@heroui/react";
-import { RiMoneyDollarCircleLine, RiBankCardLine } from "react-icons/ri";
-import { notify } from "../../../components/shared-ui/Toast";
-
-const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
-import { managerService } from "../services/manager.service";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinner, Chip } from "@heroui/react";
+import { RiInformationLine } from "react-icons/ri";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN") + " đ";
 
 const DEBT_STATUS_LABEL = { paid: "Đã thu đủ", partial: "Thu một phần", unpaid: "Chưa thu", overdue: "Quá hạn" };
 const DEBT_STATUS_COLOR = { paid: "success", partial: "warning", unpaid: "danger", overdue: "danger" };
 
-export default function PartnerDebtModal({ open, partner, debts, loading, onClose, onPaid }) {
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("bank_transfer");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
+// Chỉ theo dõi — Manager không ghi nhận thanh toán, việc đó thuộc về Kế toán.
+export default function PartnerDebtModal({ open, partner, debts, loading, onClose }) {
   if (!partner) return null;
 
   const totalAmount = debts.reduce((sum, d) => sum + Number(d.total_amount || 0), 0);
   const totalRemaining = debts.reduce((sum, d) => sum + Number(d.remaining || 0), 0);
-
-  const handlePay = async () => {
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      const message = "Số tiền phải lớn hơn 0.";
-      setError(message);
-      notify.error(message);
-      return;
-    }
-    if (amt > totalRemaining + 0.01) {
-      const message = "Số tiền vượt quá công nợ còn lại.";
-      setError(message);
-      notify.error(message);
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await managerService.recordPartnerPayment(partner.id, { amount: amt, payment_method: method });
-      setAmount("");
-      notify.success("Đã ghi nhận thanh toán đối tác.");
-      onPaid?.(partner.id);
-    } catch (err) {
-      const message = err.message ?? "Lỗi khi ghi nhận thanh toán.";
-      setError(message);
-      notify.error(message);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="4xl" scrollBehavior="inside">
@@ -107,34 +68,12 @@ export default function PartnerDebtModal({ open, partner, debts, loading, onClos
               )}
 
               {totalRemaining > 0.01 && (
-                <div className="rounded-xl border border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/10 p-4 flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                    <RiMoneyDollarCircleLine size={16} /> Ghi nhận đối tác thanh toán
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Số tiền được phân bổ tự động vào các khoản nợ cũ nhất trước (FIFO). Tối đa {fmt(totalRemaining)}.
+                <div className="rounded-xl border border-amber-100 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/10 p-4 flex items-start gap-2">
+                  <RiInformationLine size={16} className="text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    Đối tác còn nợ {fmt(totalRemaining)}. Việc thu tiền do Kế toán ghi nhận ở màn Công nợ —
+                    tab Đối tác. Số liệu ở đây sẽ tự cập nhật ngay khi kế toán ghi nhận xong.
                   </p>
-                  {error && <div className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 rounded-lg p-2">{error}</div>}
-                  <div className="flex items-end gap-3 flex-wrap">
-                    <Input
-                      type="number" min={0} label="Số tiền" size="sm" className="w-48"
-                      value={amount} onValueChange={setAmount}
-                      startContent={ic(RiMoneyDollarCircleLine)}
-                      endContent={<span className="text-xs text-gray-400 dark:text-gray-400">đ</span>}
-                    />
-                    <Select
-                      label="Hình thức" size="sm" className="w-44"
-                      selectedKeys={new Set([method])}
-                      onChange={(e) => setMethod(e.target.value)}
-                      startContent={ic(RiBankCardLine)}
-                    >
-                      <SelectItem key="bank_transfer" textValue="Chuyển khoản">Chuyển khoản</SelectItem>
-                      <SelectItem key="cash" textValue="Tiền mặt">Tiền mặt</SelectItem>
-                    </Select>
-                    <Button color="success" size="sm" isLoading={saving} onPress={handlePay}>
-                      Ghi nhận thanh toán
-                    </Button>
-                  </div>
                 </div>
               )}
             </div>
