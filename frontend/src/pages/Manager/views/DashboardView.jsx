@@ -308,7 +308,7 @@ export default function DashboardView({ user }) {
             label="Đã thu về"
             value={fmt(finance?.total_collected)}
             icon={RiCoinLine}
-            sub="Doanh thu thực nhận sau khi trừ công nợ"
+            sub="Tiền thực đã về công ty (không gồm chi hộ tài giữ lại)"
             border="border-emerald-100 dark:border-emerald-500/20" lightBg="bg-emerald-50 dark:bg-emerald-500/10" text="text-emerald-600 dark:text-emerald-300" gradient="from-emerald-500 to-emerald-600"
           />
         </div>
