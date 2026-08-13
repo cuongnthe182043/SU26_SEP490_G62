@@ -1,10 +1,7 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const incidentRepository = require('./incidentRepository');
-const {
-    isCustomerBillableExpense,
-    NO_LIVE_REIMBURSEMENT_VOUCHER_SQL,
-} = require('../constants/expenseConstants');
+const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 
 // Danh sách loại phiếu kế toán được tự chọn khi lập phiếu chi tay. KHÔNG có
 // 'prepaid_refund' và 'driver_reimbursement': hai loại này luôn phải gắn với một bản ghi
@@ -232,38 +229,35 @@ const approve = (id, approvedBy) => decide(id, approvedBy, { status: 'approved' 
 
 const reject = (id, rejectedBy, reason) => decide(id, rejectedBy, { status: 'rejected', rejectionReason: reason });
 
-// Chi hoàn ứng cho tài xế: ghi sổ theo ĐÚNG bên chịu chi phí rồi khoá khoản chi phí lại.
+// Chi hoàn ứng cho tài xế: TẤT TOÁN khoản phải trả rồi khoá khoản chi phí lại.
 //
-//   Chi hộ khách (toll/parking/etc trên chuyến còn đòi được khách) → Nợ 3388 (phải thu lại
-//     của khách), event 'pass_through_cost' — giống hệt lúc hoàn bằng cấn trừ nợ thu hộ.
-//   Còn lại (xăng, sửa xe, bảo dưỡng, hoặc chuyến đã huỷ/thất bại) → Nợ 642, doanh nghiệp chịu.
-//
-// Ghi 3388 cho khoản DN chịu thì số dư treo vĩnh viễn vì không bao giờ đòi được ai.
+// Chi phí đã được ghi nhận từ lúc DUYỆT (Nợ 3388 chi hộ / Nợ 642 DN chịu, Có 334 —
+// recordExpenseAccrual), nên bước chi tiền chỉ còn một vế: Nợ 334 | Có 1111/1121.
+// Ghi lại Nợ 3388/642 ở đây là ghi nhận chi phí lần hai cho cùng một hoá đơn — đó là lý
+// do event riêng 'expense_reimbursed' thay vì dùng lại 'expense_recorded'.
 const settleDriverReimbursement = async (client, { voucher, creditAccount, paidBy }) => {
     if (!voucher.expense_id) {
         throw new Error('Phiếu hoàn ứng không gắn với khoản chi phí nào — không thể chi');
     }
 
     const { rows: [exp] } = await client.query(
-        `SELECT e.id, e.expense_type, e.reimbursement_status, os.status AS shipment_status
+        `SELECT e.id, e.expense_type, e.reimbursement_status
          FROM expenses e
-         LEFT JOIN order_shipments os ON os.id = e.shipment_id
          WHERE e.id = $1
          FOR UPDATE OF e`,
         [voucher.expense_id],
     );
     if (!exp) throw new Error('Khoản chi phí của phiếu hoàn ứng không còn tồn tại');
 
-    const isPassThrough = isCustomerBillableExpense(exp.expense_type, exp.shipment_status);
     await financialLedgerRepository.insertTransaction(client, {
-        eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
-        debitAccount: isPassThrough ? '3388' : '642',
+        eventType: 'expense_reimbursed',
+        debitAccount: '334',
         creditAccount,
         amount: Number(voucher.amount),
-        description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí DN chịu'} (${exp.expense_type}) — `
-            + `hoàn tiền tài xế đã ứng, phiếu chi #${voucher.id}, chi cho: ${voucher.payee}`,
-        refType: 'expense',
-        refId: exp.id,
+        description: `Hoàn tiền tài xế đã ứng (${exp.expense_type}) — chi phí #${exp.id}, `
+            + `phiếu chi #${voucher.id}, chi cho: ${voucher.payee}`,
+        refType: 'voucher',
+        refId: voucher.id,
         actorId: paidBy,
     });
 

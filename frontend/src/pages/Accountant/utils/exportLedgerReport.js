@@ -11,9 +11,11 @@ const MONEY_FORMAT = '#,##0';
 const thin = { style: "thin", color: { argb: BORDER_COLOR } };
 const allBorders = { top: thin, left: thin, right: thin, bottom: thin };
 
+// Không còn cột tách cước/chi hộ: sổ ghi sẵn hai dòng riêng (Có 3388 phần chi hộ,
+// Có 131 phần cước) ngay tại bút toán tiền về, nên TK Có đã nói đủ.
 const RAW_HEADERS = [
   "id", "ngay_phat_sinh", "loai_su_kien", "dien_giai", "tk_no", "tk_co",
-  "so_tien", "tien_cuoc", "tien_chi_ho", "but_toan_dao", "ref_type", "ref_id",
+  "so_tien", "but_toan_dao", "ref_type", "ref_id",
 ];
 
 const DISPLAY_COLUMNS = [
@@ -24,8 +26,6 @@ const DISPLAY_COLUMNS = [
   { header: "TK Nợ", key: "debitAccount", width: 12 },
   { header: "TK Có", key: "creditAccount", width: 12 },
   { header: "Số tiền", key: "amount", width: 18, money: true },
-  { header: "Tiền cước", key: "cargoFee", width: 18, money: true },
-  { header: "Tiền chi hộ", key: "passThrough", width: 18, money: true },
   { header: "Bút toán đảo", key: "reversalOf", width: 15 },
   { header: "Loại tham chiếu", key: "refType", width: 18 },
   { header: "Mã tham chiếu", key: "refId", width: 15 },
@@ -90,8 +90,6 @@ function normalizeRows(csv) {
     debitAccount: row.tk_no,
     creditAccount: row.tk_co,
     amount: toNumber(row.so_tien),
-    cargoFee: toNumber(row.tien_cuoc),
-    passThrough: toNumber(row.tien_chi_ho),
     reversalOf: row.but_toan_dao,
     refType: row.ref_type,
     refId: row.ref_id,
@@ -202,19 +200,15 @@ export async function exportLedgerCsvToExcel(csv, { from, to } = {}) {
   };
 
   let totalAmount = 0;
-  let totalCargoFee = 0;
-  let totalPassThrough = 0;
 
   rows.forEach((item, index) => {
     const row = ws.addRow(DISPLAY_COLUMNS.map((column) => item[column.key] ?? ""));
     styleDataRow(row, index);
     totalAmount += Number(item.amount) || 0;
-    totalCargoFee += Number(item.cargoFee) || 0;
-    totalPassThrough += Number(item.passThrough) || 0;
   });
 
   const totalRow = ws.addRow([
-    "", "", "", "TỔNG CỘNG", "", "", totalAmount, totalCargoFee || "", totalPassThrough || "", "", "", "",
+    "", "", "", "TỔNG CỘNG", "", "", totalAmount, "", "", "",
   ]);
   totalRow.height = 26;
   totalRow.eachCell((cell, colNumber) => {

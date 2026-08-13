@@ -45,7 +45,8 @@ router.patch('/payrolls/:id/revert', managerController.revertPayroll);
 router.get('/receipt-requests', managerController.getReceiptRequests);
 
 // Quản lý chi — chi phí tài xế (chỉ xem lịch sử, Manager không còn quyền duyệt/từ
-// chối — chỉ coordinator mới duyệt, hoặc tự động duyệt với đơn không thu tiền mặt),
+// chối — chỉ coordinator mới duyệt, hoặc được duyệt kèm khi phát hành phiếu thu với
+// đơn CASH; đơn non-cash không có phiếu thu nên phải duyệt tay, không có nhánh tự động),
 // phiếu chi thủ công (Manager duyệt), tổng hợp chi
 const spendingController = require('../controllers/spendingController');
 router.get('/expenses', spendingController.listExpenses);

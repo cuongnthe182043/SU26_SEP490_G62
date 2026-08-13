@@ -867,15 +867,21 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
+        // Trạng thái chuyến quyết định bên chịu chi phí (chuyến hủy/thất bại ⇒ DN chịu),
+        // dùng cả cho bút toán ghi nhận bên dưới lẫn cho công thức tiền khách phải trả.
+        const shipmentStatusById = new Map(
+            (pricingSnapshot.shipments || []).map((shipment) => [Number(shipment.id), shipment.status]),
+        );
+
         for (const expense of normalizedExpenses) {
             const expenseShipmentId = expense.shipment_id ?? targetShipment.id;
             if (!validShipmentIds.has(Number(expenseShipmentId))) {
                 throw new Error('Chi phí có chuyến xe không thuộc đơn hàng này');
             }
             const expenseVehicleId = pricingSnapshot.shipments.find((shipment) => Number(shipment.id) === Number(expenseShipmentId))?.vehicle_id ?? null;
-            // Không ghi sổ ở đây — tiền tài đã ứng, chờ hoàn (cấn trừ nợ TH2 hoặc qua lương TH1)
             await coordinatorRepository.insertApprovedExpense(client, {
                 shipmentId: expenseShipmentId,
+                shipmentStatus: shipmentStatusById.get(Number(expenseShipmentId)),
                 vehicleId: expenseVehicleId,
                 coordinatorId,
                 expenseType: expense.expense_type,
@@ -906,9 +912,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         // Chi phí thuộc chuyến hủy vì hàng hư hại cũng KHÔNG cộng vào tiền khách — kể cả
         // loại chi hộ, kể cả khoản coordinator vừa nhập tay ở màn duyệt (nếu không, quy tắc
         // chỉ đúng với chi phí tài xế khai mà thủng ngay ở đường coordinator nhập).
-        const shipmentStatusById = new Map(
-            (pricingSnapshot.shipments || []).map((shipment) => [Number(shipment.id), shipment.status]),
-        );
+        // shipmentStatusById dựng sẵn ở trên, dùng chung với bút toán ghi nhận chi phí.
         const snapshotPassThrough = sumPassThroughExpenses(pricingSnapshot.shipments);
         const coordinatorPassThrough = normalizedExpenses.reduce((sum, expense) => {
             const shipmentStatus = shipmentStatusById.get(Number(expense.shipment_id ?? targetShipment.id));

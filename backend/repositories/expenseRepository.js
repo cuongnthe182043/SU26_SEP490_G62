@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description, clientRequestId }) => {
     // Driver khai chi phí → pending, chờ coordinator duyệt (ghi sổ FT khi duyệt)
@@ -183,50 +184,110 @@ const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
 };
 
 // Coordinator/Manager duyệt chi phí tài xế khai.
-// KHÔNG ghi sổ tại đây nữa — tiền là tài ứng túi, duyệt chỉ xác nhận "công ty nợ tài"
-// (reimbursement_status = 'pending'). Bút toán chi được ghi khi khoản này thực sự
-// được hoàn: cấn trừ vào nợ thu hộ (TH2) hoặc hoàn qua kỳ lương (TH1).
+//
+// Duyệt = công ty xác nhận nợ tài xế khoản này ⇒ GHI SỔ NGAY (Nợ 3388 chi hộ / Nợ 642
+// DN chịu, Có 334 phải trả tài xế), lấy ngày phát sinh là expense_date chứ không phải
+// ngày bấm duyệt. Trước đây bút toán chỉ được ghi lúc HOÀN TIỀN, nên khoản không đi qua
+// đường hoàn nào (tài xế nghỉ việc, khách CK thẳng nên không có nợ để cấn trừ) thì vĩnh
+// viễn vắng mặt trên sổ, còn khoản có hoàn thì rơi sai tháng.
+//
+// Việc hoàn tiền sau đó chỉ còn là tất toán khoản phải trả (Nợ 334 | Có 1388/1111/1121).
 const approveExpense = async (expenseId, reviewerId) => {
-    const { rows: [expense] } = await pool.query(
-        `UPDATE expenses
-         SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(),
-             reimbursement_status = 'pending', updated_at = NOW()
-         WHERE id = $1 AND status = 'pending'
-         RETURNING id, shipment_id, expense_type, amount, created_by`,
-        [expenseId, reviewerId],
-    );
-    if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
-    return expense;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [expense] } = await client.query(
+            `UPDATE expenses e
+             SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(),
+                 reimbursement_status = 'pending', updated_at = NOW()
+             WHERE e.id = $1 AND e.status = 'pending'
+             RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.expense_date, e.created_by,
+                       (SELECT os.status FROM order_shipments os WHERE os.id = e.shipment_id) AS shipment_status`,
+            [expenseId, reviewerId],
+        );
+        if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
+
+        await financialLedgerRepository.recordExpenseAccrual(client, {
+            expenseId: expense.id,
+            expenseType: expense.expense_type,
+            shipmentStatus: expense.shipment_status,
+            amount: expense.amount,
+            actorId: reviewerId,
+            occurredAt: expense.expense_date,
+        });
+
+        await client.query('COMMIT');
+        return expense;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 // Gỡ duyệt — đưa chi phí đã duyệt về 'pending' để tài xế sửa lại.
 // Không có nó thì chi phí duyệt sai là bế tắc vĩnh viễn: tài không sửa được
 // (đã approved), coord cũng không từ chối được (rejectExpense chỉ chạy trên
 // 'pending'). Chặn khi phiếu thu của đơn đã chốt vì lúc đó tiền đã thu của khách.
+//
+// Chặn thêm khi khoản ĐÃ ĐƯỢC HOÀN (reimbursement_status khác 'pending'): hoàn tiền
+// không đổi expenses.status nên nếu chỉ xét status thì một khoản đã trả tiền cho tài xế
+// vẫn gỡ duyệt được, rồi duyệt lại là ghi sổ + hoàn LẦN HAI. Với chi phí không gắn chuyến
+// (bảo dưỡng) thì mệnh đề NOT EXISTS bên dưới luôn đúng nên không có gì chặn.
+//
+// Bút toán ghi nhận lúc duyệt được ĐẢO tại đây — không sửa, không xoá dòng gốc.
 const unapproveExpense = async (expenseId, reviewerId) => {
-    const { rows: [expense] } = await pool.query(
-        `UPDATE expenses e
-         SET status = 'pending', reviewed_by = $2, reviewed_at = NULL,
-             reject_reason = NULL, reimbursement_status = NULL, updated_at = NOW()
-         WHERE e.id = $1
-           AND e.status = 'approved'
-           AND NOT EXISTS (
-               SELECT 1
-               FROM order_shipments os
-               JOIN order_receipt_requests orr ON orr.order_id = os.order_id
-               WHERE os.id = e.shipment_id
-                 AND orr.status = 'approved'
-           )
-           -- Đang có phiếu chi hoàn ứng cho khoản này thì KHÔNG được gỡ duyệt: gỡ ra là
-           -- reimbursement_status về NULL, phiếu kẹt cứng (lúc chi tìm 'pending' không thấy
-           -- nên báo lỗi mãi, chỉ còn nước huỷ phiếu). Tệ hơn: nếu chi phí được sửa số tiền
-           -- rồi duyệt lại, phiếu cũ vẫn giữ số cũ và sẽ chi sai số. Kế toán phải huỷ phiếu
-           -- trước rồi mới gỡ duyệt được.
-           AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
-         RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.created_by`,
-        [expenseId, reviewerId],
-    );
-    return expense ?? null;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [expense] } = await client.query(
+            `UPDATE expenses e
+             SET status = 'pending', reviewed_by = $2, reviewed_at = NULL,
+                 reject_reason = NULL, reimbursement_status = NULL, updated_at = NOW()
+             WHERE e.id = $1
+               AND e.status = 'approved'
+               AND e.reimbursement_status = 'pending'
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM order_shipments os
+                   JOIN order_receipt_requests orr ON orr.order_id = os.order_id
+                   WHERE os.id = e.shipment_id
+                     AND orr.status = 'approved'
+               )
+               -- Đang có phiếu chi hoàn ứng cho khoản này thì KHÔNG được gỡ duyệt: gỡ ra là
+               -- reimbursement_status về NULL, phiếu kẹt cứng (lúc chi tìm 'pending' không thấy
+               -- nên báo lỗi mãi, chỉ còn nước huỷ phiếu). Tệ hơn: nếu chi phí được sửa số tiền
+               -- rồi duyệt lại, phiếu cũ vẫn giữ số cũ và sẽ chi sai số. Kế toán phải huỷ phiếu
+               -- trước rồi mới gỡ duyệt được.
+               --
+               -- Điều kiện này KHÔNG thừa so với reimbursement_status = 'pending' ở trên:
+               -- trong lúc phiếu chi chờ manager duyệt, khoản vẫn mang 'pending' nên vế kia
+               -- cho qua. Ngược lại, khoản hoàn thẳng qua lương thì không sinh phiếu nào nên
+               -- vế kia mới là cái chặn. Hai vế bịt hai lối khác nhau, phải giữ cả hai.
+               AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
+             RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.created_by`,
+            [expenseId, reviewerId],
+        );
+        if (!expense) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        await financialLedgerRepository.reverseExpenseAccrual(client, {
+            expenseId: expense.id,
+            reason: 'Gỡ duyệt chi phí — khoản quay lại chờ tài xế khai lại',
+            actorId: reviewerId,
+        });
+
+        await client.query('COMMIT');
+        return expense;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 const rejectExpense = async (expenseId, reviewerId, reason) => {

@@ -75,8 +75,8 @@ const VIEW_META = {
   bonus: { title: "Thưởng & Phúc lợi", subtitle: "Duyệt thưởng Tết, phúc lợi kết hôn/tang gia/sinh nhật và thưởng đặc biệt." },
   "bonus-rules": { title: "Quy tắc thưởng", subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe." },
   kpi: { title: "KPI & Xếp hạng", subtitle: "Theo dõi KPI và bảng xếp hạng của toàn bộ tài xế theo tháng, theo nhóm xe." },
-  holidays: { title: "Quản lý ngày lễ", subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương." },
-  spending: { title: "Quản lý chi", subtitle: "Duyệt chi phí tài xế, duyệt phiếu chi và theo dõi tổng hợp mọi khoản chi của công ty." },
+  holidays: { title: "Quản lý ngày lễ", subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ hưởng thêm theo hệ số ở Quy tắc thưởng (mặc định 200%)." },
+  spending: { title: "Quản lý chi", subtitle: "Duyệt phiếu chi và theo dõi tổng hợp mọi khoản chi của công ty. Chi phí tài xế chỉ xem lịch sử — quyền duyệt thuộc Điều phối." },
 };
 
 const VIEW_STORAGE_KEY = "manager_active_view";

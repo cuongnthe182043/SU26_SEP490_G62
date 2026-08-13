@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const VEHICLE_GROUP_DETAIL_SELECT = `
     SELECT
@@ -1192,12 +1193,25 @@ const verifyMaintenanceRecordAndSetStatus = async ({
         );
         const expenseId = expenseResult.rows[0].id;
 
-        // Tài xế đã ứng tiền trả xưởng — không ghi sổ tại đây, chuyển 'pending'
-        // chờ hoàn (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
+        // Tài xế đã ứng tiền trả xưởng ⇒ 'pending' chờ hoàn (cấn trừ nợ thu hộ / qua lương
+        // / phiếu chi hoàn ứng). Bút toán ghi nhận chi phí đi ngay tại đây theo ngày bảo
+        // dưỡng: khoản này KHÔNG gắn chuyến nên trước kia chỉ có đúng một đường ra sổ là kỳ
+        // lương — chưa tới kỳ, hoặc người thực hiện không phải tài xế có bảng lương, là chi
+        // phí thật biến mất khỏi sổ.
         await client.query(
             `UPDATE expenses SET reimbursement_status = 'pending', updated_at = NOW() WHERE id = $1`,
             [expenseId],
         );
+
+        await financialLedgerRepository.recordExpenseAccrual(client, {
+            expenseId,
+            expenseType: 'maintenance',
+            shipmentStatus: null, // không gắn chuyến ⇒ luôn là chi phí DN chịu (642)
+            amount: expenseAmount,
+            actorId: managerId,
+            occurredAt: record.maintenance_date,
+            note: `Nghiệm thu bảo dưỡng xe #${vehicleId}, phiếu #${record.id}`,
+        });
 
         for (const fileUrl of billPics) {
             await client.query(

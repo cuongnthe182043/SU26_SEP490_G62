@@ -17,6 +17,7 @@ let pool;
 let teardown;
 let spendingService;
 let payrollRepository;
+let expenseRepository;
 
 const MGR_ID = 1;
 const ACCT_ID = 3;
@@ -27,6 +28,7 @@ beforeAll(async () => {
     ({ pool, teardown } = await setupTestDb());
     spendingService = require('../../services/spendingService');
     payrollRepository = require('../../repositories/payrollRepository');
+    expenseRepository = require('../../repositories/expenseRepository');
 
     await pool.query(`
         TRUNCATE financial_transactions, payment_vouchers, debt_payments, debts,
@@ -49,12 +51,14 @@ beforeAll(async () => {
 
     // Chi phí BẢO DƯỠNG: shipment_id NULL, created_by là MANAGER (người xác minh) — tài xế
     // thụ hưởng chỉ suy ra được qua maintenance_records.performed_by.
+    // Duyệt qua đúng hàm production để bút toán ghi nhận chi phí được ghi như thật.
     await pool.query(`
         INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, updated_by, expense_type,
-                              amount, description, expense_date, status, reimbursement_status)
+                              amount, description, expense_date, status)
         VALUES (1, NULL, 1, 1, 1, 'maintenance', ${MAINTENANCE_COST}, 'Thay dau + loc gio',
-                CURRENT_DATE, 'approved', 'pending')
+                CURRENT_DATE, 'pending')
     `);
+    await expenseRepository.approveExpense(1, MGR_ID);
     await pool.query(`
         INSERT INTO maintenance_records (id, vehicle_id, maintenance_type, maintenance_date, status,
                                          cost, performed_by, expense_id, created_by)
@@ -129,7 +133,7 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
         assert.strictEqual(conThaoTacDuoc.length, 0, 'màn Hoàn ứng không còn gì để lập phiếu');
     });
 
-    it('E — Manager duyệt → Kế toán chi: khoản chuyển "settled" và ghi sổ Nợ 642 / Có 1111', async () => {
+    it('E — Manager duyệt → Kế toán chi: khoản chuyển "settled", chi phí đã ghi Nợ 642 từ lúc duyệt và giờ tất toán Nợ 334 / Có 1111', async () => {
         await spendingService.approveVoucher(voucherId, MGR_ID);
         const paid = await spendingService.payVoucher(voucherId, ACCT_ID, { paymentMethod: 'cash' });
         assert.strictEqual(paid.status, 'paid');
@@ -138,17 +142,37 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
         assert.strictEqual(exp.reimbursement_status, 'settled', 'khoản phải được khoá lại, không hoàn thêm lần nữa');
         assert.notStrictEqual(exp.reimbursed_at, null);
 
+        // Vế 1 — GHI NHẬN CHI PHÍ, đã ghi từ lúc DUYỆT khoản chi chứ không đợi chi tiền.
         // Bảo dưỡng là chi phí DOANH NGHIỆP chịu → Nợ 642, không phải 3388 (chi hộ khách).
         // Ghi 3388 cho khoản không đòi được ai thì số dư treo vĩnh viễn trên sổ.
-        const { rows: [ft] } = await pool.query(
-            `SELECT event_type, debit_account, credit_account, amount::numeric AS amount, ref_type, ref_id
+        const { rows: [accrual] } = await pool.query(
+            `SELECT event_type, debit_account, credit_account, amount::numeric AS amount
              FROM financial_transactions WHERE ref_type = 'expense' AND ref_id = 1`,
         );
-        assert.ok(ft, 'phải ghi một bút toán cho khoản chi phí này');
-        assert.strictEqual(ft.event_type, 'expense_recorded');
-        assert.strictEqual(ft.debit_account, '642');
-        assert.strictEqual(ft.credit_account, '1111', 'chi tiền mặt → Có 1111');
-        assert.strictEqual(Number(ft.amount), MAINTENANCE_COST);
+        assert.ok(accrual, 'duyệt chi phí phải ghi ngay một bút toán ghi nhận');
+        assert.strictEqual(accrual.event_type, 'expense_recorded');
+        assert.strictEqual(accrual.debit_account, '642');
+        assert.strictEqual(accrual.credit_account, '334', 'công ty nợ tài xế khoản đã ứng');
+        assert.strictEqual(Number(accrual.amount), MAINTENANCE_COST);
+
+        // Vế 2 — CHI TIỀN, chỉ tất toán khoản phải trả. Ghi lại 642 ở đây là đội chi phí gấp đôi.
+        const { rows: [settle] } = await pool.query(
+            `SELECT event_type, debit_account, credit_account, amount::numeric AS amount
+             FROM financial_transactions WHERE ref_type = 'voucher' AND ref_id = $1`,
+            [voucherId],
+        );
+        assert.ok(settle, 'chi tiền phải ghi bút toán tất toán gắn với phiếu chi');
+        assert.strictEqual(settle.event_type, 'expense_reimbursed');
+        assert.strictEqual(settle.debit_account, '334');
+        assert.strictEqual(settle.credit_account, '1111', 'chi tiền mặt → Có 1111');
+        assert.strictEqual(Number(settle.amount), MAINTENANCE_COST);
+
+        // Chốt chặn chống đội chi phí: đúng MỘT bút toán ghi nhận cho khoản này
+        const { rows: [dup] } = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM financial_transactions
+             WHERE event_type IN ('expense_recorded', 'pass_through_cost') AND ref_id = 1 AND ref_type = 'expense'`,
+        );
+        assert.strictEqual(dup.c, 1, 'một hoá đơn chỉ được ghi nhận chi phí đúng một lần');
     });
 
     it('F — Đã chi rồi thì khoản biến khỏi danh sách chờ hoàn và khỏi bảng lương', async () => {
@@ -235,9 +259,19 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
         `);
         await pool.query(`
             INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, updated_by, expense_type,
-                                  amount, description, expense_date, status, reimbursement_status)
-            VALUES (2, 1, 1, 4, 4, 'toll', 60000, 'Phi cau duong', CURRENT_DATE, 'approved', 'pending')
+                                  amount, description, expense_date, status)
+            VALUES (2, 1, 1, 4, 4, 'toll', 60000, 'Phi cau duong', CURRENT_DATE, 'pending')
         `);
+        await expenseRepository.approveExpense(2, MGR_ID);
+
+        // Bên chịu chi phí được chốt ngay lúc DUYỆT: chi hộ khách → Nợ 3388 (còn đòi lại được).
+        const { rows: [accrual] } = await pool.query(
+            `SELECT event_type, debit_account, credit_account FROM financial_transactions
+             WHERE ref_type = 'expense' AND ref_id = 2`,
+        );
+        assert.strictEqual(accrual.event_type, 'pass_through_cost');
+        assert.strictEqual(accrual.debit_account, '3388', 'chi hộ khách phải treo 3388 để còn đòi lại khách');
+        assert.strictEqual(accrual.credit_account, '334', 'công ty nợ tài xế khoản đã ứng');
 
         const voucher = await spendingService.createReimbursementVoucher(
             { expense_id: 2, payment_method: 'bank_transfer' }, ACCT_ID,
@@ -245,12 +279,22 @@ describe('L2-FLOW-19 — Kế toán hoàn ứng ngay cho tài xế', () => {
         await spendingService.approveVoucher(voucher.id, MGR_ID);
         await spendingService.payVoucher(voucher.id, ACCT_ID, { paymentMethod: 'bank_transfer' });
 
-        const { rows: [ft] } = await pool.query(
+        // Chi tiền chỉ tất toán khoản phải trả — KHÔNG đụng lại 3388, nếu không thì khoản
+        // phải thu của khách bị xoá mất trong khi khách chưa trả đồng nào.
+        const { rows: [settle] } = await pool.query(
             `SELECT event_type, debit_account, credit_account FROM financial_transactions
-             WHERE ref_type = 'expense' AND ref_id = 2`,
+             WHERE ref_type = 'voucher' AND ref_id = $1`,
+            [voucher.id],
         );
-        assert.strictEqual(ft.event_type, 'pass_through_cost');
-        assert.strictEqual(ft.debit_account, '3388', 'chi hộ khách phải treo 3388 để còn đòi lại khách');
-        assert.strictEqual(ft.credit_account, '1121', 'chi chuyển khoản → Có 1121');
+        assert.strictEqual(settle.event_type, 'expense_reimbursed');
+        assert.strictEqual(settle.debit_account, '334');
+        assert.strictEqual(settle.credit_account, '1121', 'chi chuyển khoản → Có 1121');
+
+        // 3388 của đơn vẫn còn nguyên số phải thu: khách chưa trả thì chưa được tất toán
+        const { rows: [pass] } = await pool.query(`
+            SELECT COALESCE(SUM(CASE WHEN debit_account = '3388' THEN amount ELSE -amount END), 0)::numeric AS balance
+            FROM financial_transactions WHERE debit_account = '3388' OR credit_account = '3388'
+        `);
+        assert.strictEqual(Number(pass.balance), 60000, 'chi hộ vẫn treo Nợ 3388 cho tới khi khách trả tiền');
     });
 });
