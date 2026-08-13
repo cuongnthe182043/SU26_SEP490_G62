@@ -242,7 +242,7 @@ describe('L3-FLOW-03 — API: Chi phí tài xế + Phiếu chi 2 cấp → Tổn
         assert.strictEqual(c.c, 0);
     });
 
-    it('B2 [coordinator] — GET /api/coordinator/expenses thấy pending → PATCH approve → ghi sổ 642/1111', async () => {
+    it('B2 [coordinator] — GET /api/coordinator/expenses thấy pending → PATCH approve → ghi sổ ngay 642/334', async () => {
         // Manager vẫn XEM được danh sách (màn lịch sử) nhưng KHÔNG còn quyền duyệt
         const mgrList = await request(app).get('/api/manager/expenses?status=pending')
             .set('Authorization', `Bearer ${mgrToken}`);
@@ -258,11 +258,19 @@ describe('L3-FLOW-03 — API: Chi phí tài xế + Phiếu chi 2 cấp → Tổn
             .set('Authorization', `Bearer ${coordToken}`);
         assert.strictEqual(approve.status, 200);
 
-        // Duyệt = công ty nhận nợ tài (chờ hoàn) — sổ CHƯA ghi chi cho tới khi hoàn
+        // Duyệt = công ty nhận nợ tài (chờ hoàn) VÀ chi phí lên sổ ngay theo phát sinh:
+        // Nợ 642 (xăng dầu — DN chịu) | Có 334 (phải trả tài xế khoản đã ứng).
         const { rows: [e] } = await pool.query(`SELECT reimbursement_status FROM expenses WHERE id = $1`, [exp.id]);
         assert.strictEqual(e.reimbursement_status, 'pending');
-        const { rows: [c] } = await pool.query(`SELECT COUNT(*)::int AS c FROM financial_transactions WHERE ref_type = 'expense' AND ref_id = $1`, [exp.id]);
-        assert.strictEqual(c.c, 0);
+
+        const { rows: fts } = await pool.query(
+            `SELECT event_type, debit_account, credit_account FROM financial_transactions
+             WHERE ref_type = 'expense' AND ref_id = $1`, [exp.id],
+        );
+        assert.strictEqual(fts.length, 1, 'đúng một bút toán ghi nhận cho khoản vừa duyệt');
+        assert.strictEqual(fts[0].event_type, 'expense_recorded');
+        assert.strictEqual(fts[0].debit_account, '642');
+        assert.strictEqual(fts[0].credit_account, '334');
     });
 
     it('B3 [accountant→manager→accountant] — phiếu chi: tạo → duyệt → chi → ghi sổ 642/1121', async () => {
@@ -303,8 +311,9 @@ describe('L3-FLOW-03 — API: Chi phí tài xế + Phiếu chi 2 cấp → Tổn
         assert.strictEqual(res.status, 200);
 
         const byType = Object.fromEntries(res.body.by_type.map((r) => [r.event_type, Number(r.total_amount)]));
-        // 500k dầu duyệt SAU kỳ lương đã chi → còn 'chờ hoàn', chưa vào tổng chi
-        assert.strictEqual(byType.expense_recorded, 2_500_000, 'chỉ phiếu chi tiền điện đã chi');
+        // 500k dầu duyệt SAU kỳ lương nên chưa được hoàn, nhưng chi phí đã phát sinh và đã
+        // lên sổ từ lúc duyệt — tổng chi phải có nó.
+        assert.strictEqual(byType.expense_recorded, 3_000_000, 'phiếu chi tiền điện 2,5tr + 500k dầu tài đã ứng');
         assert.ok(byType.payroll_paid > 0, 'tổng hợp phải gồm cả chi lương từ FLOW-02');
         assert.strictEqual(byType.advance_disbursed, 3_000_000);
     });

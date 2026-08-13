@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 // GET /api/accountant/receipts/bank-transfer — danh sách phiếu thu bank_transfer chưa xác nhận
 const getPendingBankTransfers = async ({ limit, offset, like }) => {
@@ -125,14 +126,17 @@ const confirmBankTransfer = async (receiptId, accountantId, { notes, actualRecei
             ? `Kế toán xác nhận chuyển khoản — phiếu thu #${rec.sr_id}. ${notes}`
             : `Kế toán xác nhận chuyển khoản — phiếu thu #${rec.sr_id}`;
 
+        // Tiền khách chuyển về = CƯỚC + CHI HỘ. Ghi Có 131 toàn bộ thì 131 bị Có thừa đúng
+        // bằng phần chi hộ (số dư âm) còn 3388 treo Nợ mãi — insertCustomerCashIn tách hai vế.
         const ftAmount = actualReceived > 0 ? actualReceived : receiptAmount;
-        await client.query(
-            `INSERT INTO financial_transactions
-                (event_type, debit_account, credit_account, amount, description,
-                 ref_type, ref_id, actor_id, occurred_at)
-             VALUES ('bank_receipt', '1121', '131', $1, $2, 'shipment', $3, $4, NOW())`,
-            [ftAmount, baseDesc, rec.shipment_id, accountantId],
-        );
+        await financialLedgerRepository.insertCustomerCashIn(client, {
+            eventType: 'bank_receipt',
+            debitAccount: '1121',
+            amount: ftAmount,
+            orderId: rec.order_id,
+            description: baseDesc,
+            refType: 'shipment', refId: rec.shipment_id, actorId: accountantId,
+        });
 
         let result = { confirmed: true, diff: 0, action: 'exact' };
 

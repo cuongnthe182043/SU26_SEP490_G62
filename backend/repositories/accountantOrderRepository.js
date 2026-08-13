@@ -343,19 +343,36 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 
     const expList = expenses || [];
     if (expList.length > 0) {
-        // Không ghi sổ tại đây — khoản tài ứng vào trạng thái 'pending' chờ hoàn
-        // (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
-        await client.query(
+        // Khoản tài ứng vào thẳng 'approved' ⇒ ghi sổ ngay như mọi đường duyệt khác.
+        // Ngày phát sinh lấy theo ngày hoàn thành chuyến (đơn import là dữ liệu quá khứ),
+        // không phải ngày nhập liệu — nếu không thì chi phí của cả năm cũ dồn vào hôm nay.
+        const { rows: insertedExpenses } = await client.query(
             `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
-             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW()
-             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)`,
+             SELECT $1, $2, $3, $3, typ, amt, dsc,
+                    COALESCE($7::timestamptz, NOW())::date,
+                    'approved', $3, NOW(), 'pending', NOW(), NOW()
+             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)
+             RETURNING id, expense_type, amount, expense_date`,
             [
                 shipmentId, vehicleId, createdByUserId,
                 expList.map((e) => e.expense_type),
                 expList.map((e) => Number(e.amount)),
                 expList.map((e) => e.description || null),
+                completedAt,
             ]
         );
+
+        for (const expense of insertedExpenses) {
+            await financialLedgerRepository.recordExpenseAccrual(client, {
+                expenseId: expense.id,
+                expenseType: expense.expense_type,
+                shipmentStatus: 'completed', // chuyến import luôn chốt ở 'completed'
+                amount: expense.amount,
+                actorId: createdByUserId,
+                occurredAt: expense.expense_date,
+                note: `Import đơn ngoài, chuyến #${shipmentId}`,
+            });
+        }
     }
 
     return shipmentId;
@@ -400,10 +417,13 @@ const insertDebtForShipment = async (client, {
             [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
         const driverDebtId = debtInsertResult.rows[0].id;
-        await financialLedgerRepository.insertTransaction(client, {
+        // Tách vế chi hộ: đơn import có khai chi phí toll/parking/etc thì phần đó tất toán
+        // 3388 (đã ghi Nợ 3388 lúc tạo chi phí), phần còn lại mới là cước trên 131.
+        await financialLedgerRepository.insertCustomerCashIn(client, {
             eventType: 'driver_debt_created',
-            debitAccount: '1388', creditAccount: '131',
+            debitAccount: '1388',
             amount: actualPrice,
+            orderId,
             description: `Công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
             refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
             occurredAt,

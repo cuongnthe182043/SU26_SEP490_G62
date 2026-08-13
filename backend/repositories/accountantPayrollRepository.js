@@ -2,7 +2,7 @@
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
-const { isCustomerBillableExpense, NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
+const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
@@ -549,12 +549,11 @@ const markPayrollPaid = async (payrollId, accountantId) => {
 
         // 2b. HOÀN CHI PHÍ TÀI ĐÃ ỨNG qua lương (TH1) — tất toán các expense 'pending'
         // của tài; đồng bộ lại snapshot (khoản có thể đã được cấn trừ nợ TH2 sau khi
-        // generate) rồi ghi bút toán chi phí/chi hộ với TK đối ứng 334 (trả qua lương).
+        // generate). Chi phí đã lên sổ từ lúc duyệt nên ở đây chỉ còn việc đánh dấu đã hoàn.
         {
             const { rows: pendingExpenses } = await client.query(`
-                SELECT e.id, e.expense_type, e.amount, os.status AS shipment_status
+                SELECT e.id, e.amount
                 FROM expenses e
-                LEFT JOIN order_shipments os ON os.id = e.shipment_id
                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
                 LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
                 WHERE e.status = 'approved'
@@ -583,31 +582,11 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                      WHERE id = ANY($1::int[])`,
                     [pendingExpenses.map((e) => e.id)],
                 );
-                // Chi hộ của chuyến hủy vì hàng hư hại KHÔNG còn là chi hộ: phiếu thu đã
-                // thôi đòi khách khoản đó nên ghi Nợ 3388 sẽ để lại số dư phải thu không
-                // bao giờ tất toán. Chuyển sang 642 — doanh nghiệp chịu.
-                const passSum = pendingExpenses
-                    .filter((e) => isCustomerBillableExpense(e.expense_type, e.shipment_status))
-                    .reduce((s, e) => s + Number(e.amount), 0);
-                const companySum = actualReimb - passSum;
-                if (passSum > 0) {
-                    await financialLedgerRepository.insertTransaction(client, {
-                        eventType: 'pass_through_cost',
-                        debitAccount: '3388', creditAccount: '334',
-                        amount: passSum,
-                        description: `Hoàn chi hộ khách tài đã ứng — qua lương ${row.payroll_month}/${row.payroll_year}, bảng lương #${payrollId}`,
-                        refType: 'payroll', refId: payrollId, actorId: accountantId,
-                    });
-                }
-                if (companySum > 0) {
-                    await financialLedgerRepository.insertTransaction(client, {
-                        eventType: 'expense_recorded',
-                        debitAccount: '642', creditAccount: '334',
-                        amount: companySum,
-                        description: `Hoàn chi phí công ty tài đã ứng — qua lương ${row.payroll_month}/${row.payroll_year}, bảng lương #${payrollId}`,
-                        refType: 'payroll', refId: payrollId, actorId: accountantId,
-                    });
-                }
+                // KHÔNG ghi bút toán chi phí ở đây: các khoản này đã được ghi nhận từ lúc
+                // DUYỆT (Nợ 3388/642 | Có 334 — recordExpenseAccrual). Tiền hoàn nằm trong
+                // net_salary nên bút toán chi lương (Nợ 334 | Có 1111) ở bước 4 chính là
+                // vế tất toán khoản phải trả tài xế. Ghi thêm ở đây là ghi nhận chi phí
+                // lần hai cho cùng một hoá đơn.
             }
         }
 
@@ -622,12 +601,30 @@ const markPayrollPaid = async (payrollId, accountantId) => {
             });
         }
 
-        // 4. Ghi sổ chi lương
+        // 4. Ghi sổ chi tiền — TÁCH lương và tiền hoàn ứng, dù cả hai cùng ra khỏi quỹ
+        // trong một lần trả và cùng bút toán Nợ 334 | Có 1111.
+        //
+        // Vì sao phải tách: tiền hoàn ứng KHÔNG phải chi phí của kỳ này — chi phí đó đã
+        // được ghi nhận từ lúc DUYỆT khoản chi (Nợ 642/3388 | Có 334). Gộp chung vào
+        // 'payroll_paid' thì màn Tổng hợp chi cộng khoản đó lần thứ hai, một hoá đơn xăng
+        // 500k hiện thành 1 triệu tiền đã chi. 'expense_reimbursed' là tất toán khoản phải
+        // trả nên không nằm trong danh sách sự kiện chi.
+        const netSalary   = Number(row.net_salary ?? 0);
+        const reimbAmount = Math.min(Number(row.expense_reimbursement ?? 0), netSalary);
+        const salaryOnly  = netSalary - reimbAmount;
+
         await financialLedgerRepository.insertTransaction(client, {
             eventType: 'payroll_paid',
             debitAccount: '334', creditAccount: '1111',
-            amount: Number(row.net_salary ?? 0),
+            amount: salaryOnly,
             description: `Chi lương tháng ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
+            refType: 'payroll', refId: payrollId, actorId: accountantId,
+        });
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'expense_reimbursed',
+            debitAccount: '334', creditAccount: '1111',
+            amount: reimbAmount,
+            description: `Hoàn chi phí tài đã ứng — trả cùng lương ${row.payroll_month}/${row.payroll_year}, bảng lương #${payrollId}`,
             refType: 'payroll', refId: payrollId, actorId: accountantId,
         });
 

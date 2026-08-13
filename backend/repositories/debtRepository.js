@@ -169,14 +169,14 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
         // Lấy thông tin payment + debt
         const payRes = await client.query(
             `SELECT dp.id, dp.debt_id, dp.amount, dp.status, dp.payment_method,
-                    d.total_amount, d.driver_id, d.debt_type,
+                    d.total_amount, d.driver_id, d.debt_type, d.order_id,
                     COALESCE(SUM(dp2.amount) FILTER (WHERE dp2.status = 'confirmed'), 0) AS already_paid
              FROM debt_payments dp
              JOIN debts d ON d.id = dp.debt_id
              LEFT JOIN debt_payments dp2 ON dp2.debt_id = dp.debt_id
              WHERE dp.id = $1
              GROUP BY dp.id, dp.debt_id, dp.amount, dp.status, dp.payment_method,
-                      d.total_amount, d.driver_id, d.debt_type`,
+                      d.total_amount, d.driver_id, d.debt_type, d.order_id`,
             [paymentId],
         );
         const pay = payRes.rows[0];
@@ -209,10 +209,13 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
                 refType: 'debt', refId: pay.debt_id, actorId: confirmedBy,
             });
         } else {
-            await financialLedgerRepository.insertTransaction(client, {
+            // Tiền khách gồm cả phần chi hộ tài xế đã ứng ⇒ tách vế: Có 3388 phần chi hộ,
+            // Có 131 phần cước.
+            await financialLedgerRepository.insertCustomerCashIn(client, {
                 eventType: 'customer_payment',
-                debitAccount: cashAccount, creditAccount: '131',
+                debitAccount: cashAccount,
                 amount: Number(pay.amount),
+                orderId: pay.order_id,
                 description: `Khách hàng thanh toán — công nợ #${pay.debt_id}`,
                 refType: 'debt', refId: pay.debt_id, actorId: confirmedBy,
             });

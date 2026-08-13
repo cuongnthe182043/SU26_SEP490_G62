@@ -7,8 +7,6 @@ const {
     STATUS_TIMESTAMP_COL,
 } = require('../constants/tripConstants');
 const {
-    isCompanyBorneShipment,
-    isCustomerBillableExpense,
     CUSTOMER_BILLABLE_EXPENSE_SQL,
     NO_LIVE_REIMBURSEMENT_VOUCHER_SQL,
 } = require('../constants/expenseConstants');
@@ -600,6 +598,17 @@ const cancelShipmentForCargoDamage = async ({ shipmentId, reason, coordinatorId 
              RETURNING *`,
             [shipmentId, SHIPMENT_STATUS.CANCELLED, reason],
         );
+
+        // Chi phí của chuyến này có thể ĐÃ được duyệt (và ghi Nợ 3388 — chi hộ, phải thu
+        // lại của khách) trước khi hàng hư. Hủy chuyến là lúc phiếu thu thôi đòi khách
+        // khoản đó, nên phải chuyển sang Nợ 642 (DN chịu): để nguyên 3388 là treo một
+        // khoản phải thu không bao giờ có ai trả. Tài xế vẫn được hoàn đủ tiền đã ứng —
+        // chỉ đổi bên chịu chi phí.
+        await financialLedgerRepository.reclassPassThroughToCompany(client, {
+            shipmentId,
+            reason: `Hủy chuyến #${shipmentId} vì hàng hư hại — chi hộ chuyển sang DN chịu`,
+            actorId: coordinatorId,
+        });
 
         await recomputeOrderDerivedStatus(shipment.order_id, client);
 
@@ -1771,10 +1780,13 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                      RETURNING id`,
                     [driverId, rec.order_id, rec.shipment_id, totalCollected, debtNote],
                 ));
-                await financialLedgerRepository.insertTransaction(client, {
+                // Tiền tài xế cầm = CƯỚC + CHI HỘ. Ghi Có 131 toàn bộ thì 131 bị Có thừa
+                // đúng bằng phần chi hộ còn 3388 treo Nợ mãi — tách hai vế tại đây.
+                await financialLedgerRepository.insertCustomerCashIn(client, {
                     eventType: 'driver_debt_created',
-                    debitAccount: '1388', creditAccount: '131',
+                    debitAccount: '1388',
                     amount: totalCollected,
+                    orderId: rec.order_id,
                     description: `Tài xế thu tiền mặt từ khách — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
                     refType: 'debt', refId: driverDebt.id, actorId: driverId,
                 });
@@ -1813,24 +1825,17 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                     [driverDebt.id, offsetAmount, driverId,
                      `Cấn trừ chi phí tài đã ứng (${exp.expense_type}) — expense #${exp.id}`],
                 );
-                // Chi phí của chuyến hủy vì hàng hư hại KHÔNG được ghi 3388 (chi hộ - phải
-                // thu lại của khách): phiếu thu không đòi khách khoản đó nữa nên số dư 3388
-                // sẽ treo vĩnh viễn. Ghi 642 — doanh nghiệp chịu.
-                const expPassThrough = isCustomerBillableExpense(exp.expense_type, exp.shipment_status);
-                const costLabel = expPassThrough
-                    ? 'Chi hộ khách'
-                    : isCompanyBorneShipment(exp.shipment_status)
-                        ? 'Chi phí DN chịu (chuyến hủy/thất bại)'
-                        : 'Chi phí vận hành';
-                // Ghi nhận chi phí/chi hộ tại thời điểm hoàn (Có 1388 — hoàn bằng cấn trừ
-                // nợ thu hộ, không có tiền mặt ra khỏi công ty)
+                // Chi phí đã được GHI NHẬN từ lúc duyệt (Nợ 3388/642 | Có 334) — bước này
+                // chỉ TẤT TOÁN khoản phải trả tài xế bằng cách trừ vào nợ thu hộ mà tài
+                // đang giữ: Nợ 334 | Có 1388, không có tiền ra khỏi quỹ.
+                //
+                // Ghi lại Nợ 3388/642 ở đây là ghi nhận chi phí lần hai cho cùng một hoá đơn.
                 await financialLedgerRepository.insertTransaction(client, {
-                    eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                    debitAccount: expPassThrough ? '3388' : '642',
-                    creditAccount: '1388',
+                    eventType: 'driver_debt_paid',
+                    debitAccount: '334', creditAccount: '1388',
                     amount: offsetAmount,
-                    description: `${costLabel} (${exp.expense_type}) — hoàn tài xế bằng cấn trừ nợ thu hộ, expense #${exp.id}`,
-                    refType: 'expense', refId: exp.id, actorId: driverId,
+                    description: `Hoàn tài xế bằng cấn trừ nợ thu hộ — chi phí #${exp.id} (${exp.expense_type})`,
+                    refType: 'debt', refId: driverDebt.id, actorId: driverId,
                 });
                 await client.query(
                     `UPDATE expenses SET reimbursement_status = 'offset_debt', reimbursed_at = NOW(), updated_at = NOW() WHERE id = $1`,
