@@ -8,11 +8,17 @@ const { notifyRolesSafe } = require('./roleNotificationService');
 // Đơn ngoài được tạo với shipment status='completed' ngay từ đầu (không qua luồng
 // driver hoàn thành trip bình thường), nên phải tự trigger tính KPI ở đây — nếu không
 // kpi_records sẽ không bao giờ được cập nhật cho các chuyến import này.
-const triggerKpiRecalc = (result) => {
-    (result?.kpiTriggers || []).forEach(({ driverId, completedAt }) => {
-        kpiService.recalculateAfterCompletion(driverId, completedAt ? new Date(completedAt) : new Date());
-    });
+//
+// PHẢI await. Trước đây gọi rồi bỏ đó: import 1000 dòng sinh ra 1000 promise recalc
+// rời rạc, response trả về ngay sau vòng lặp, và Cloud Run bóp CPU về gần 0 ngay lúc
+// đó — phần lớn recalc không bao giờ chạy xong. Đó là lý do doanh thu đơn ngoài đã
+// import vào rồi mà bảng lương vẫn không thấy cộng, và cộng thiếu một cách ngẫu nhiên.
+const triggerKpiRecalc = async (result) => {
+    const triggers = result?.kpiTriggers || [];
     delete result?.kpiTriggers;
+    await Promise.all(triggers.map(({ driverId, completedAt }) =>
+        kpiService.recalculateAfterCompletion(driverId, completedAt ? new Date(completedAt) : new Date()),
+    ));
     return result;
 };
 
@@ -35,7 +41,7 @@ const getOrderShipments = async (orderId) => {
 const createOrder = async (orderData) => {
     const result = await accountantOrderRepository.createOrderWithShipments(orderData);
     accountantLookupRepository.invalidateLookupCache();
-    const finalResult = triggerKpiRecalc(result);
+    const finalResult = await triggerKpiRecalc(result);
     if (!orderData.suppress_notifications) {
         notifyRolesSafe(['coordinator', 'manager'], {
             title: 'Có đơn hàng doanh thu mới',
@@ -67,7 +73,7 @@ const importOrders = async (orders, createdByUserId) => {
             created_by: createdByUserId,
             suppress_notifications: true,
         });
-        results.push(triggerKpiRecalc(result));
+        results.push(await triggerKpiRecalc(result));
     }
     accountantLookupRepository.invalidateLookupCache();
     notifyImportSummary({ count: results.length, actorId: createdByUserId });

@@ -1,4 +1,5 @@
 const kpiRepository = require('../repositories/kpiRepository');
+const logger = require('../config/logger');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,16 +184,46 @@ const getDriverGroupHistory = async (driverId, limit) => {
     return kpiRepository.listDriverGroupChanges(parsed, limit);
 };
 
-// Trigger tự động sau khi trip hoàn thành — gọi fire-and-forget (không await)
+/**
+ * Tính lại KPI tháng cho các tài xế vừa có chuyến hoàn thành.
+ *
+ * TRẢ VỀ PROMISE VÀ BÊN GỌI PHẢI await. Trước đây hàm này cố ý bắn-rồi-quên, và đó
+ * là chỗ doanh thu import bị rơi: Cloud Run bóp CPU về gần 0 ngay khi response đi ra,
+ * nên đống promise chưa xong bị đóng băng. Import 1000 dòng đơn ngoài là 1000 lần
+ * recalc rời rạc chạy đua với thời điểm trả response — vào được bao nhiêu là tuỳ may,
+ * đúng triệu chứng "doanh thu import không thấy cộng vào bảng lương".
+ *
+ * Vẫn không bao giờ ném lỗi ra ngoài: KPI hỏng không được phép làm hỏng nghiệp vụ
+ * đã commit. Nhưng mọi nhánh hỏng đều phải có log để còn lần ra được.
+ */
 const recalculateAfterCompletion = (driverIds, completedAt = new Date()) => {
     const month = completedAt.getMonth() + 1;
     const year  = completedAt.getFullYear();
     const ids = Array.isArray(driverIds) ? driverIds : [driverIds];
-    [...new Set(ids.map(Number).filter(Boolean))].forEach((driverId) => {
-        kpiRepository.recalculateDriverKPI(driverId, month, year).catch((err) => {
-            console.error(`[KPI] Recalculate failed for driver ${driverId} ${month}/${year}:`, err.message);
-        });
-    });
+    return Promise.all(
+        [...new Set(ids.map(Number).filter(Boolean))].map((driverId) =>
+            kpiRepository.recalculateDriverKPI(driverId, month, year)
+                .then((row) => {
+                    // recalculateDriverKPI trả null ở hai nhánh IM LẶNG, cả hai đều làm
+                    // doanh thu không bao giờ tới bảng lương:
+                    //  - tài xế chưa có default_vehicle_group_id (chưa gán xe bao giờ);
+                    //  - kỳ lương tháng đó đã rời 'pending' nên bản ghi bị khoá.
+                    // Không log thì kế toán chỉ thấy "lương thiếu tiền" mà không có manh mối.
+                    if (!row) {
+                        logger.warn('[KPI] Bỏ qua cập nhật KPI — tài xế chưa có nhóm xe mặc định, hoặc kỳ lương đã chốt', {
+                            driverId, month, year,
+                        });
+                    }
+                    return row;
+                })
+                .catch((err) => {
+                    logger.error('[KPI] Tính lại KPI thất bại', {
+                        driverId, month, year, message: err.message,
+                    });
+                    return null;
+                }),
+        ),
+    );
 };
 
 module.exports = {

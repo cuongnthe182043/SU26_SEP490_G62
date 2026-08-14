@@ -969,15 +969,21 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             ).catch(() => {});
         }
 
-        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026)
+        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026).
+        // await: chốt phiếu thu là lúc doanh thu THẬT của chuyến được ghi nhận. Bỏ đó cho
+        // chạy nền thì Cloud Run đóng băng nó ngay khi response đi ra và KPI giữ số cũ.
         const shipmentIds = computed.shipment_breakdown.map((s) => s.shipment_id);
         if (shipmentIds.length > 0) {
-            coordinatorRepository.getShipmentOwnersForKpi(shipmentIds).then((rows) => {
-                const kpiService = require('./kpiService');
-                rows.forEach(({ owner_driver_id, completed_at }) => {
-                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now()));
+            const kpiService = require('./kpiService');
+            await coordinatorRepository.getShipmentOwnersForKpi(shipmentIds)
+                .then((rows) => Promise.all(rows.map(({ owner_driver_id, completed_at }) =>
+                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now())),
+                )))
+                .catch((err) => {
+                    logger.warn('[KPI] Không tính lại được KPI sau khi chốt phiếu thu', {
+                        orderId: req.order_id, message: err.message,
+                    });
                 });
-            }).catch(() => {});
         }
 
         // Notify driver
