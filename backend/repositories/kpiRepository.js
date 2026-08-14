@@ -298,9 +298,37 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
 const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = false } = {}) => {
     await revenueAllocationRepository.ensureRevenueAllocationTable();
 
+    // kpi_records.vehicle_group_id là NOT NULL nên bắt buộc phải có nhóm xe mới ghi được.
+    //
+    // Trước đây chỉ đọc drivers.default_vehicle_group_id, không có thì `return null` —
+    // im lặng, không log, không ghi gì. Tài xế chưa từng được gán xe (rất hay gặp với
+    // tài nhập từ file đơn ngoài của kế toán) rơi đúng vào nhánh này: chuyến đã
+    // 'completed', doanh thu đã ghi sổ, mà kpi_records không bao giờ có dòng nào →
+    // bảng lương đọc total_revenue = 0. Tiền biến mất mà không để lại dấu vết.
+    //
+    // Giờ lùi dần qua các nguồn suy ra được nhóm xe, chỉ bỏ cuộc khi thật sự không còn
+    // căn cứ nào. Tài xế đã có nhóm cố định thì nhánh đầu trúng ngay, hành vi không đổi.
     const vgRes = await pool.query(
-        `SELECT default_vehicle_group_id AS vehicle_group_id FROM drivers WHERE profile_id = $1`,
-        [driverId],
+        `SELECT COALESCE(
+                    d.default_vehicle_group_id,
+                    -- xe đang gán cho tài
+                    (SELECT v.vehicle_group_id FROM vehicles v WHERE v.id = d.vehicle_id),
+                    -- xe của chuyến gần nhất tài đã chạy trong kỳ đang tính
+                    (SELECT v2.vehicle_group_id
+                       FROM order_shipments os
+                       JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                       JOIN vehicles v2 ON v2.id = sc.vehicle_id
+                      WHERE sc.owner_driver_id = d.profile_id
+                        AND os.status = 'completed'
+                        AND EXTRACT(MONTH FROM os.completed_at) = $2
+                        AND EXTRACT(YEAR  FROM os.completed_at) = $3
+                        AND v2.vehicle_group_id IS NOT NULL
+                      ORDER BY os.completed_at DESC
+                      LIMIT 1)
+                ) AS vehicle_group_id
+           FROM drivers d
+          WHERE d.profile_id = $1`,
+        [driverId, month, year],
     );
     const vehicleGroupId = vgRes.rows[0]?.vehicle_group_id;
     if (!vehicleGroupId) return null;
