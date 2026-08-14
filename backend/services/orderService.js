@@ -1,4 +1,3 @@
-const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const notificationGateway = require('./notificationGateway');
@@ -311,6 +310,8 @@ const createOrder = async (userId, payload) => {
 const importOrdersFromExcel = async (userId, fileBuffer) => {
     if (!fileBuffer) throw new Error('Thiếu file Excel');
 
+    // Nạp muộn — xem ghi chú ở coordinatorService.parseSpreadsheet.
+    const XLSX = require('xlsx');
     const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error('File Excel không có sheet nào');

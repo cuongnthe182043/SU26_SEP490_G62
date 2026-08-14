@@ -1,5 +1,5 @@
-const XLSX = require('xlsx');
 const pool = require('../config/database');
+const logger = require('../config/logger');
 const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
@@ -89,6 +89,9 @@ const extractRouteValue = (row, headerMap) => {
 };
 
 const parseSpreadsheet = (buffer) => {
+  // Nạp muộn: `xlsx` tốn ~100ms lúc require và CHỈ dùng cho luồng import Excel.
+  // Để ở đầu file là mọi cold start của Cloud Run đều phải trả khoản đó.
+  const XLSX = require('xlsx');
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error('File Excel không có sheet nào');
@@ -1259,16 +1262,9 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
     }
 
     const count = result.assignedShipmentIds.length;
-    notificationService.createForUser(parsedDriverId, {
-        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
-        message: count > 1
-            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
-            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
-    }, { displayMode: 'alert' }).catch(() => {});
 
+    // Đẩy sự kiện điều hướng TRƯỚC rồi mới tới thông báo: app tài xế nghe 'trip.assigned'
+    // để tải lại chuyến đang chạy, còn 'notification.created' chỉ lo bung alert.
     try {
         notificationGateway.broadcastToUser(parsedDriverId, {
             type: 'trip.assigned',
@@ -1277,6 +1273,24 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
             activatedShipmentId: result.activatedShipmentId,
         });
     } catch { /* realtime failure must not abort the assignment */ }
+
+    // await chứ không bắn-rồi-quên: đây là việc CUỐI CÙNG trước khi controller trả
+    // response, mà Cloud Run bóp CPU ngay sau đó. Bỏ await là giao việc báo tin cho một
+    // instance sắp bị đóng băng — đúng triệu chứng "gán đơn xong tài xế không nhận được gì".
+    // Lỗi báo tin vẫn không được phép huỷ kết quả gán chuyến đã commit.
+    await notificationService.createForUser(parsedDriverId, {
+        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
+        message: count > 1
+            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
+            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
+    }, { displayMode: 'alert' }).catch((err) => {
+        logger.warn('[assign] không gửi được thông báo cho tài xế', {
+            driverId: parsedDriverId, orderId: parsedOrderId, message: err.message,
+        });
+    });
 
     return result;
 };

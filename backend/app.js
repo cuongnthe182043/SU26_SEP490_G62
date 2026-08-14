@@ -9,9 +9,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-const swaggerUi = require('swagger-ui-express');
 const routes = require('./routes');
-const swaggerDocument = require('./config/swagger');
 const pool = require('./config/database');
 const logger = require('./config/logger');
 const authService = require('./services/authService');
@@ -124,8 +122,15 @@ app.get('/', (req, res) => {
     res.json({ message: 'Backend up and running' });
 });
 
-// API documentation — chỉ bật ngoài production, tránh lộ toàn bộ API + "try it out" ra ngoài
+// API documentation — chỉ bật ngoài production, tránh lộ toàn bộ API + "try it out" ra ngoài.
+//
+// require() nằm TRONG nhánh if: `config/swagger` chạy swagger-jsdoc ngay lúc nạp module,
+// tức là quét + parse JSDoc của cả 22 file trong docs/ (~350ms trên máy dev, nhiều hơn
+// hẳn trên vCPU của Cloud Run). Trước đây khoản đó bị trả ở MỌI cold start production
+// dù /api-docs đã tắt và không ai dùng tới spec.
 if (!isProduction) {
+    const swaggerUi = require('swagger-ui-express');
+    const swaggerDocument = require('./config/swagger');
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
         swaggerOptions: {
             persistAuthorization: true,
