@@ -1,11 +1,11 @@
 import { Skeleton } from "@heroui/react";
-import { RiLineChartLine, RiCheckboxCircleLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
+import { RiLineChartLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
 
 const CARDS = [
   {
     // Doanh thu ghi nhận = tổng cước các đơn hoàn thành (không gồm chi hộ khách,
-    // không phụ thuộc đã thu tiền hay chưa). "Đã thu về" mới là tiền thực nắm.
+    // không phụ thuộc đã thu tiền hay chưa).
     key: "total_gross_revenue",
     label: "Tổng doanh thu",
     icon: RiLineChartLine,
@@ -13,16 +13,6 @@ const CARDS = [
     lightBg: "bg-blue-50 dark:bg-blue-500/10",
     text: "text-blue-600 dark:text-blue-300",
     border: "border-blue-100 dark:border-blue-500/20",
-    isMoney: true,
-  },
-  {
-    key: "total_collected",
-    label: "Đã thu về",
-    icon: RiCheckboxCircleLine,
-    gradient: "from-emerald-500 to-emerald-600",
-    lightBg: "bg-emerald-50 dark:bg-emerald-500/10",
-    text: "text-emerald-600 dark:text-emerald-300",
-    border: "border-emerald-100 dark:border-emerald-500/20",
     isMoney: true,
   },
   {
@@ -68,7 +58,7 @@ const CARDS = [
 
 export function StatsGrid({ stats, loading }) {
   return (
-    <div className="grid grid-cols-5 gap-4">
+    <div className="grid grid-cols-4 gap-4">
       {CARDS.map(({ key, label, icon: Icon, gradient, lightBg, text, border, isMoney, suffix, hintKey, hint }) => (
         <div
           key={key}

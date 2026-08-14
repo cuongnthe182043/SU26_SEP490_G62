@@ -20,8 +20,15 @@ const createForUser = async (userId, payload, options = {}) => {
         displayMode: options.displayMode ?? payload.displayMode ?? 'toast',
     });
 
-    // ITEM 6 — Also fire FCM push if device token is registered (never throws)
-    fcmService.sendNotification(userId, {
+    // Push nền cho thiết bị đã đăng ký. sendNotification không bao giờ ném lỗi.
+    //
+    // PHẢI await, không được bắn-rồi-quên: Cloud Run không bật "CPU always allocated"
+    // nên NGAY khi response đi ra, instance bị bóp CPU về gần 0. Promise còn dang dở ở
+    // thời điểm đó bị đóng băng — có thể tới vài phút sau, khi có request khác rơi vào
+    // đúng instance này, mới chạy tiếp; hoặc mất hẳn nếu instance bị thu hồi trước đó.
+    // Đây chính là lý do push "về rất chậm" hoặc không về. await kéo nó vào trong vòng
+    // đời request, nơi CPU còn được cấp.
+    await fcmService.sendNotification(userId, {
         title: payload.title,
         body: payload.message ?? payload.body ?? '',
         data: {

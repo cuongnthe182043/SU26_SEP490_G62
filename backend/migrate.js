@@ -25,10 +25,22 @@ const logger = require('./config/logger');
  *    Mỗi file .sql tự có BEGIN/COMMIT và tự ghi tên mình vào schema_migrations, nên
  *    bộ chạy này thực thi nguyên văn nội dung file. Nếu file nào quên tự ghi thì bộ
  *    chạy ghi bù ở bước sau.
+ *
+ * 4. ĐỌC TRƯỚC, KHOÁ SAU.
+ *    Hàm này chặn `server.listen` (xem app.js), nên nó nằm thẳng trên đường cold start
+ *    của Cloud Run — mọi mili-giây ở đây là mọi mili-giây người dùng phải chờ. Gần như
+ *    100% lần khởi động không có gì để áp, nên đọc schema_migrations TRƯỚC: không có gì
+ *    mới thì đi ra luôn, khỏi CREATE TABLE, khỏi tranh khoá. Chỉ khi thật sự có file
+ *    mới mới trả giá khoá — và lúc đó có `lock_timeout` để một instance đang chạy
+ *    migration dài không treo cold start của instance này vô thời hạn.
  */
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const MIGRATION_LOCK_ID = 62999;   // id cố định cho pg_advisory_lock
+// Chờ khoá tối đa ngần này rồi bỏ cuộc và đọc lại danh sách đã áp — instance kia có
+// thể đã áp xong hộ mình. Không đặt thì một migration dài ở instance khác giữ cold
+// start của instance này treo cho tới khi Cloud Run bỏ cuộc.
+const LOCK_TIMEOUT_MS = 60_000;
 
 // Kết nối riêng, KHÔNG kế thừa statement_timeout của pool app
 function createClient() {
@@ -70,13 +82,45 @@ async function runMigrations() {
         return { applied: [] };
     }
 
+    const batDau = Date.now();
     const client = createClient();
     await client.connect();
 
+    /**
+     * Danh sách file còn thiếu. Trả null khi bảng schema_migrations chưa tồn tại —
+     * DB cũ tạo trước khi cơ chế migration ra đời, phải vào nhánh khoá để tạo bảng.
+     */
+    const conThieu = async () => {
+        const res = await client.query('SELECT filename FROM schema_migrations').catch(() => null);
+        if (!res) return null;   // bảng chưa tồn tại (hoặc DB trục trặc) → đi đường khoá
+        const existing = new Set(res.rows.map((r) => r.filename));
+        return danhSach.filter((f) => !existing.has(f));
+    };
+
     const applied = [];
     try {
-        // Chờ tới khi lấy được khoá — instance khác đang chạy thì đứng đây
-        await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
+        // Đường nhanh: không có gì để áp thì đi ra ngay, không đụng tới khoá.
+        const thieuTruocKhoa = await conThieu();
+        if (thieuTruocKhoa?.length === 0) {
+            logger.info(`[migrate] Schema đã mới nhất (${danhSach.length} migration, ${Date.now() - batDau}ms)`);
+            return { applied: [] };
+        }
+
+        // Có việc thật sự → tranh khoá với các instance khác, nhưng không chờ vô hạn.
+        await client.query(`SET lock_timeout = ${LOCK_TIMEOUT_MS}`);
+        try {
+            await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
+        } catch (err) {
+            // Hết giờ chờ: instance khác đang áp. Rất có thể nó đã áp xong phần mình
+            // cần — đọc lại, đủ rồi thì cứ khởi động bình thường.
+            const thieuSauChoKhoa = await conThieu();
+            if (thieuSauChoKhoa?.length === 0) {
+                logger.info('[migrate] Instance khác đã áp xong migration — tiếp tục khởi động');
+                return { applied: [] };
+            }
+            throw new Error(`Không lấy được khoá migration sau ${LOCK_TIMEOUT_MS}ms: ${err.message}`);
+        }
+        await client.query('SET lock_timeout = 0');   // migration được phép chạy lâu
 
         // DB cũ có thể chưa có bảng này (tạo trước khi cơ chế migration ra đời)
         await client.query(`
@@ -86,10 +130,8 @@ async function runMigrations() {
             )
         `);
 
-        const { rows } = await client.query('SELECT filename FROM schema_migrations');
-        const existing = new Set(rows.map((r) => r.filename));
-
-        const toApply = danhSach.filter((f) => !existing.has(f));
+        // Đọc lại SAU khi có khoá: instance khác có thể vừa áp xong trong lúc mình chờ.
+        const toApply = await conThieu();
         if (toApply.length === 0) {
             logger.info(`[migrate] Schema đã mới nhất (${danhSach.length} migration)`);
             return { applied: [] };
