@@ -1132,21 +1132,49 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
         note: 'Điều phối viên/Quản lý chủ động điều chuyển (ngoài luồng sự cố)',
     });
 
-    notificationService.createForUser(fromDriverId, {
-        title: 'Chuyến của bạn đã được điều chuyển',
-        message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // Sự kiện điều hướng đi TRƯỚC, thông báo (alert) đi sau — cùng quy ước với
+    // assignOrderShipments và cancelShipment.
+    //
+    // Tài cũ đang mở màn chuyến này phải bị đá ra ngay: chuyến không còn là của họ nữa,
+    // ở lại thì mọi nút cập nhật trạng thái đều ăn lỗi mà không hiểu vì sao. Tài mới cần
+    // trang chủ tự hiện chuyến, không phải tự kéo refresh.
+    try {
+        notificationGateway.broadcastToUser(fromDriverId, {
+            type: 'trip.reassigned',
+            shipmentId: Number(shipmentId),
+            orderId: shipment.order_id ?? null,
+        });
+        notificationGateway.broadcastToUser(parsedToDriverId, {
+            type: 'trip.assigned',
+            orderId: shipment.order_id ?? null,
+            shipmentIds: [Number(shipmentId)],
+            activatedShipmentId: Number(shipmentId),
+        });
+    } catch { /* realtime failure must not abort the reassignment */ }
 
-    notificationService.createForUser(parsedToDriverId, {
-        title: 'Bạn được điều chuyển 1 chuyến mới',
-        message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // await: đây là việc cuối trước khi controller trả response, mà Cloud Run bóp CPU
+    // ngay sau đó — bỏ đó cho chạy nền là đúng cách làm mất thông báo. Lỗi báo tin vẫn
+    // không được phép huỷ kết quả điều chuyển đã commit.
+    await Promise.all([
+        notificationService.createForUser(fromDriverId, {
+            title: 'Chuyến của bạn đã được điều chuyển',
+            message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+        notificationService.createForUser(parsedToDriverId, {
+            title: 'Bạn được điều chuyển 1 chuyến mới',
+            message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+    ]).catch((err) => {
+        logger.warn('[reassign] không gửi được thông báo điều chuyển', {
+            shipmentId, fromDriverId, toDriverId: parsedToDriverId, message: err.message,
+        });
+    });
 
     return reassigned;
 };

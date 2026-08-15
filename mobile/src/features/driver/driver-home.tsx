@@ -232,15 +232,22 @@ export function DriverHomeScreen() {
     // Load on mount
     useEffect(() => { reloadSummary(); }, [reloadSummary]);
 
-    // Điều phối viên vừa gán chuyến cho mình. Backend đã phát sự kiện này từ lâu nhưng
-    // KHÔNG bên nào nghe, nên trang chủ đứng im: tài xế thấy alert báo "bạn được giao
-    // chuyến mới" mà bên dưới vẫn trống, phải tự kéo refresh mới hiện. Nghe ở đây để
-    // banner chuyến đang chạy tự lên ngay.
-    useEffect(() => appEvents.on('trip.assigned', () => {
-        void refreshActiveTrip();
-        void reloadSummary();
-        void refreshStats();
-    }), [refreshActiveTrip, reloadSummary, refreshStats]);
+    // Chuyến vừa được gán cho mình, hoặc vừa bị điều chuyển đi khỏi mình. Backend đã
+    // phát trip.assigned từ lâu nhưng KHÔNG bên nào nghe, nên trang chủ đứng im: tài xế
+    // thấy alert báo "bạn được giao chuyến mới" mà bên dưới vẫn trống, phải tự kéo
+    // refresh mới hiện. Chiều ngược lại cũng vậy — mất chuyến rồi mà banner vẫn còn.
+    useEffect(() => {
+        const lamMoi = () => {
+            void refreshActiveTrip();
+            void reloadSummary();
+            void refreshStats();
+        };
+        const huy = [
+            appEvents.on('trip.assigned', lamMoi),
+            appEvents.on('trip.reassigned', lamMoi),
+        ];
+        return () => huy.forEach((bo) => bo());
+    }, [refreshActiveTrip, reloadSummary, refreshStats]);
 
     // Reload pending receipt khi quay lại màn hình (driver vừa submit hoặc bỏ qua)
     useFocusEffect(useCallback(() => {
