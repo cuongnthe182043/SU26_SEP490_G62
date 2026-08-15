@@ -588,6 +588,16 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
         router.replace('/(tabs)');
     }), [trip.id]);
 
+    // Chuyến bị điều chuyển sang tài khác (điều phối làm tay, hoặc qua luồng sự cố).
+    // Cùng lý do với trip.cancelled: chuyến không còn là của mình, ở lại màn này thì
+    // mọi nút cập nhật trạng thái đều ăn lỗi. Popup giải thích do notification
+    // displayMode='alert' bung ở tầng provider, ở đây CHỈ điều hướng.
+    useEffect(() => appEvents.on('trip.reassigned', (payload) => {
+        const event = payload as { shipmentId?: number };
+        if (Number(event?.shipmentId) !== Number(trip.id)) return;
+        router.replace('/(tabs)');
+    }), [trip.id]);
+
     // Vừa có mạng trở lại sau khi mất sóng — tải lại để trạng thái chuyến khớp với
     // server, vì lúc offline mọi cập nhật realtime (WebSocket) đều không tới được.
     const { reconnectedAt } = useNetwork();

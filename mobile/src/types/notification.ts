@@ -42,6 +42,11 @@ export type NotificationEvent =
   | { type: 'maintenance.completed'; vehicleId: number; maintenanceRecordId: number }
   | { type: 'trip.cancelled'; shipmentId: number; orderId: number | null; reason: string }
   | { type: 'trip.failed_resolved'; shipmentId: number; action: 'redeliver' | 'return'; status: string }
+  // Được gán chuyến: điều phối gán trước (kèm orderId), điều chuyển tay, hoặc tiếp quản
+  // qua luồng sự cố (không có orderId vì bảng incidents không giữ cột đó).
+  | { type: 'trip.assigned'; orderId?: number | null; shipmentIds: number[]; activatedShipmentId: number | null }
+  // Bị lấy mất chuyến — tài xế đang mở màn chuyến phải rời khỏi đó ngay.
+  | { type: 'trip.reassigned'; shipmentId: number; orderId?: number | null }
   | { type: 'pong' };
 
 export type MarkNotificationReadResponse = {
