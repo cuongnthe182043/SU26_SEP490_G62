@@ -386,6 +386,9 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     let replacementVehicleId = null;
     let revenueMode = null;
     let originalVehicleId = null;
+    // Tài xế bị lấy mất chuyến — cần ở phạm vi ngoài để còn báo realtime cho họ sau
+    // khi transaction commit (bên trong IIFE thì không với tới được).
+    let originalDriverId = null;
 
     const parsedReplacementDriverId = replacementDriverId ? Number(replacementDriverId) : null;
     if (parsedReplacementDriverId) {
@@ -419,7 +422,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
                     throw new Error('Tài xế thay thế phải khác tài xế đang giữ chuyến');
                 }
 
-                const originalDriverId = Number(currentShipment.owner_driver_id);
+                originalDriverId = Number(currentShipment.owner_driver_id);
                 originalVehicleId = currentShipment.vehicle_id ?? null;
                 const reassignedShipment = await tripRepository.reassignShipmentAfterIncident(incident.shipment_id, {
                     incidentId,
@@ -535,7 +538,27 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     broadcastCoordinatorIncidentChange('status_updated', incidentId);
 
     if (replacementDriver) {
-        notificationService.createForUser(replacementDriver.id, {
+        // Sự kiện điều hướng trước, alert sau — cùng quy ước với coordinatorService.
+        // Tài cũ phải rời màn chuyến ngay (chuyến không còn của họ), tài mới cần trang
+        // chủ tự hiện chuyến vừa tiếp quản.
+        try {
+            // Bảng incidents không có cột order_id — chỉ có shipment_id. Bên mobile
+            // không dùng tới orderId ở hai sự kiện này nên bỏ hẳn, không bịa null.
+            if (originalDriverId) {
+                notificationGateway.broadcastToUser(originalDriverId, {
+                    type: 'trip.reassigned',
+                    shipmentId: Number(incident.shipment_id),
+                });
+            }
+            notificationGateway.broadcastToUser(replacementDriver.id, {
+                type: 'trip.assigned',
+                shipmentIds: [Number(incident.shipment_id)],
+                activatedShipmentId: Number(incident.shipment_id),
+            });
+        } catch { /* realtime failure must not abort the resolution */ }
+
+        // await — việc cuối trước khi trả response, xem ghi chú ở coordinatorService.
+        await notificationService.createForUser(replacementDriver.id, {
             title: 'Bạn được điều chuyển thay chuyến',
             message: revenueMode === 'full_transfer'
                 ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến thuộc về bạn.`
@@ -545,7 +568,9 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
             type: 'TRIP_ASSIGNED',
             entityType: 'shipments',
             entityId: incident.shipment_id,
-        }, { displayMode: 'alert' }).catch(() => {});
+        }, { displayMode: 'alert' }).catch((err) => {
+            console.error(`[Incident] Không gửi được thông báo điều chuyển cho tài xế #${replacementDriver.id}:`, err.message);
+        });
     }
 
     return incidentRepository.getIncidentById(incidentId);

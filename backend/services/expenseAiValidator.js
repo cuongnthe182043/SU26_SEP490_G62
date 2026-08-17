@@ -1,5 +1,9 @@
-const Tesseract = require('tesseract.js');
 const cloudinary = require('../config/cloudinary');
+
+// Nạp muộn: OCR chỉ chạy khi có ai đó gửi ảnh hoá đơn, nhưng `tesseract.js` kéo theo
+// cả worker + WASM lúc require. Để ở đầu file thì mọi cold start của Cloud Run đều
+// phải trả khoản đó dù cả ngày không ai quét hoá đơn nào.
+const getTesseract = () => require('tesseract.js');
 
 const AMOUNT_TOLERANCE = 0.15;
 const OCR_TIMEOUT_MS   = 25_000;
@@ -161,7 +165,7 @@ const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
     let ocrText;
     try {
         const result = await withTimeout(
-            Tesseract.recognize(imageUrl, 'vie+eng', { logger: () => {} }),
+            getTesseract().recognize(imageUrl, 'vie+eng', { logger: () => {} }),
             OCR_TIMEOUT_MS,
         );
         ocrText = result.data.text || '';
@@ -217,7 +221,7 @@ const scanMaintenanceReceipt = async (imageUrl, { amount } = {}) => {
     let ocrText;
     try {
         const result = await withTimeout(
-            Tesseract.recognize(imageUrl, 'vie+eng', { logger: () => {} }),
+            getTesseract().recognize(imageUrl, 'vie+eng', { logger: () => {} }),
             OCR_TIMEOUT_MS,
         );
         ocrText = result.data.text || '';

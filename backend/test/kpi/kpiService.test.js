@@ -108,31 +108,48 @@ describe('Kpi Service', () => {
         });
     });
 
-    describe('recalculateAfterCompletion() — BR-030 fire-and-forget', () => {
-        it('triggers recalculation for each unique driver id, deduplicated', () => {
+    // BR-030. Hàm này TRẢ VỀ PROMISE và bên gọi phải await — không còn bắn-rồi-quên.
+    // Bỏ await là giao việc tính lại KPI cho một instance Cloud Run sắp bị bóp CPU:
+    // doanh thu đơn ngoài vừa import ghi sổ xong nhưng kpi_records không kịp cập nhật,
+    // bảng lương đọc ra 0đ. Nhưng vẫn KHÔNG BAO GIỜ được reject: KPI hỏng không được
+    // phép kéo đổ nghiệp vụ đã commit.
+    describe('recalculateAfterCompletion() — BR-030', () => {
+        it('tính lại cho từng driver id, đã khử trùng lặp', async () => {
             const calls = [];
             mock.method(kpiRepository, 'recalculateDriverKPI', async (driverId, month, year) => {
                 calls.push([driverId, month, year]);
             });
 
-            kpiService.recalculateAfterCompletion([1, 1, 2], new Date('2024-10-15'));
+            await kpiService.recalculateAfterCompletion([1, 1, 2], new Date('2024-10-15'));
 
             assert.deepStrictEqual(calls.sort(), [[1, 10, 2024], [2, 10, 2024]]);
         });
 
-        it('accepts a single non-array driverId', () => {
+        it('nhận cả driverId đơn lẻ, không phải mảng', async () => {
             const calls = [];
             mock.method(kpiRepository, 'recalculateDriverKPI', async (driverId) => { calls.push(driverId); });
 
-            kpiService.recalculateAfterCompletion(3, new Date('2024-10-15'));
+            await kpiService.recalculateAfterCompletion(3, new Date('2024-10-15'));
 
             assert.deepStrictEqual(calls, [3]);
         });
 
-        it('does not throw synchronously even if the repo call rejects (fire-and-forget)', () => {
+        it('await xong là repo CHẮC CHẮN đã chạy xong — không để sót việc sau khi trả response', async () => {
+            let done = false;
+            mock.method(kpiRepository, 'recalculateDriverKPI', async () => {
+                await new Promise((r) => setTimeout(r, 20));
+                done = true;
+            });
+
+            await kpiService.recalculateAfterCompletion([1], new Date());
+
+            assert.strictEqual(done, true);
+        });
+
+        it('repo lỗi thì promise vẫn resolve, không reject ra ngoài', async () => {
             mock.method(kpiRepository, 'recalculateDriverKPI', async () => { throw new Error('DB down'); });
 
-            assert.doesNotThrow(() => kpiService.recalculateAfterCompletion([1], new Date()));
+            await assert.doesNotReject(() => kpiService.recalculateAfterCompletion([1], new Date()));
         });
     });
 });

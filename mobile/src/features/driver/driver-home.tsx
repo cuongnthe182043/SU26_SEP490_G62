@@ -11,10 +11,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
-import { GeminiSpark } from '@/components/gemini-spark';
 import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton';
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
+import { appEvents } from '@/lib/app-events';
 import { appTheme } from '@/theme/app-theme';
 import { useNetwork } from '@/providers/network-provider';
 import { useActiveTrip }      from '@/hooks/use-active-trip';
@@ -232,6 +232,23 @@ export function DriverHomeScreen() {
     // Load on mount
     useEffect(() => { reloadSummary(); }, [reloadSummary]);
 
+    // Chuyến vừa được gán cho mình, hoặc vừa bị điều chuyển đi khỏi mình. Backend đã
+    // phát trip.assigned từ lâu nhưng KHÔNG bên nào nghe, nên trang chủ đứng im: tài xế
+    // thấy alert báo "bạn được giao chuyến mới" mà bên dưới vẫn trống, phải tự kéo
+    // refresh mới hiện. Chiều ngược lại cũng vậy — mất chuyến rồi mà banner vẫn còn.
+    useEffect(() => {
+        const lamMoi = () => {
+            void refreshActiveTrip();
+            void reloadSummary();
+            void refreshStats();
+        };
+        const huy = [
+            appEvents.on('trip.assigned', lamMoi),
+            appEvents.on('trip.reassigned', lamMoi),
+        ];
+        return () => huy.forEach((bo) => bo());
+    }, [refreshActiveTrip, reloadSummary, refreshStats]);
+
     // Reload pending receipt khi quay lại màn hình (driver vừa submit hoặc bỏ qua)
     useFocusEffect(useCallback(() => {
         void loadPendingReceipt();
@@ -320,13 +337,9 @@ export function DriverHomeScreen() {
                     </YStack>
 
                     <XStack alignItems="center" gap={10}>
-                        <Pressable
-                            onPress={() => router.push('/chatbot')}
-                            style={s.bellBtn}
-                        >
-                            <GeminiSpark size={21} />
-                        </Pressable>
-
+                        {/* Nút vào trợ lý AI đã ẩn. Màn chatbot-screen, service phía app
+                            và API phía backend vẫn còn nguyên — bật lại chỉ cần trả
+                            Pressable dẫn tới '/chatbot' về đây. */}
                         <Pressable
                             onPress={() => router.push('/notifications')}
                             style={s.bellBtn}

@@ -1,5 +1,5 @@
-const XLSX = require('xlsx');
 const pool = require('../config/database');
+const logger = require('../config/logger');
 const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
@@ -89,6 +89,9 @@ const extractRouteValue = (row, headerMap) => {
 };
 
 const parseSpreadsheet = (buffer) => {
+  // Nạp muộn: `xlsx` tốn ~100ms lúc require và CHỈ dùng cho luồng import Excel.
+  // Để ở đầu file là mọi cold start của Cloud Run đều phải trả khoản đó.
+  const XLSX = require('xlsx');
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error('File Excel không có sheet nào');
@@ -966,15 +969,21 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             ).catch(() => {});
         }
 
-        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026)
+        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026).
+        // await: chốt phiếu thu là lúc doanh thu THẬT của chuyến được ghi nhận. Bỏ đó cho
+        // chạy nền thì Cloud Run đóng băng nó ngay khi response đi ra và KPI giữ số cũ.
         const shipmentIds = computed.shipment_breakdown.map((s) => s.shipment_id);
         if (shipmentIds.length > 0) {
-            coordinatorRepository.getShipmentOwnersForKpi(shipmentIds).then((rows) => {
-                const kpiService = require('./kpiService');
-                rows.forEach(({ owner_driver_id, completed_at }) => {
-                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now()));
+            const kpiService = require('./kpiService');
+            await coordinatorRepository.getShipmentOwnersForKpi(shipmentIds)
+                .then((rows) => Promise.all(rows.map(({ owner_driver_id, completed_at }) =>
+                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now())),
+                )))
+                .catch((err) => {
+                    logger.warn('[KPI] Không tính lại được KPI sau khi chốt phiếu thu', {
+                        orderId: req.order_id, message: err.message,
+                    });
                 });
-            }).catch(() => {});
         }
 
         // Notify driver
@@ -1123,21 +1132,49 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
         note: 'Điều phối viên/Quản lý chủ động điều chuyển (ngoài luồng sự cố)',
     });
 
-    notificationService.createForUser(fromDriverId, {
-        title: 'Chuyến của bạn đã được điều chuyển',
-        message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // Sự kiện điều hướng đi TRƯỚC, thông báo (alert) đi sau — cùng quy ước với
+    // assignOrderShipments và cancelShipment.
+    //
+    // Tài cũ đang mở màn chuyến này phải bị đá ra ngay: chuyến không còn là của họ nữa,
+    // ở lại thì mọi nút cập nhật trạng thái đều ăn lỗi mà không hiểu vì sao. Tài mới cần
+    // trang chủ tự hiện chuyến, không phải tự kéo refresh.
+    try {
+        notificationGateway.broadcastToUser(fromDriverId, {
+            type: 'trip.reassigned',
+            shipmentId: Number(shipmentId),
+            orderId: shipment.order_id ?? null,
+        });
+        notificationGateway.broadcastToUser(parsedToDriverId, {
+            type: 'trip.assigned',
+            orderId: shipment.order_id ?? null,
+            shipmentIds: [Number(shipmentId)],
+            activatedShipmentId: Number(shipmentId),
+        });
+    } catch { /* realtime failure must not abort the reassignment */ }
 
-    notificationService.createForUser(parsedToDriverId, {
-        title: 'Bạn được điều chuyển 1 chuyến mới',
-        message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // await: đây là việc cuối trước khi controller trả response, mà Cloud Run bóp CPU
+    // ngay sau đó — bỏ đó cho chạy nền là đúng cách làm mất thông báo. Lỗi báo tin vẫn
+    // không được phép huỷ kết quả điều chuyển đã commit.
+    await Promise.all([
+        notificationService.createForUser(fromDriverId, {
+            title: 'Chuyến của bạn đã được điều chuyển',
+            message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+        notificationService.createForUser(parsedToDriverId, {
+            title: 'Bạn được điều chuyển 1 chuyến mới',
+            message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+    ]).catch((err) => {
+        logger.warn('[reassign] không gửi được thông báo điều chuyển', {
+            shipmentId, fromDriverId, toDriverId: parsedToDriverId, message: err.message,
+        });
+    });
 
     return reassigned;
 };
@@ -1259,16 +1296,9 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
     }
 
     const count = result.assignedShipmentIds.length;
-    notificationService.createForUser(parsedDriverId, {
-        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
-        message: count > 1
-            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
-            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
-    }, { displayMode: 'alert' }).catch(() => {});
 
+    // Đẩy sự kiện điều hướng TRƯỚC rồi mới tới thông báo: app tài xế nghe 'trip.assigned'
+    // để tải lại chuyến đang chạy, còn 'notification.created' chỉ lo bung alert.
     try {
         notificationGateway.broadcastToUser(parsedDriverId, {
             type: 'trip.assigned',
@@ -1277,6 +1307,24 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
             activatedShipmentId: result.activatedShipmentId,
         });
     } catch { /* realtime failure must not abort the assignment */ }
+
+    // await chứ không bắn-rồi-quên: đây là việc CUỐI CÙNG trước khi controller trả
+    // response, mà Cloud Run bóp CPU ngay sau đó. Bỏ await là giao việc báo tin cho một
+    // instance sắp bị đóng băng — đúng triệu chứng "gán đơn xong tài xế không nhận được gì".
+    // Lỗi báo tin vẫn không được phép huỷ kết quả gán chuyến đã commit.
+    await notificationService.createForUser(parsedDriverId, {
+        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
+        message: count > 1
+            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
+            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
+    }, { displayMode: 'alert' }).catch((err) => {
+        logger.warn('[assign] không gửi được thông báo cho tài xế', {
+            driverId: parsedDriverId, orderId: parsedOrderId, message: err.message,
+        });
+    });
 
     return result;
 };

@@ -271,8 +271,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
     }
 
     // Tự động tính lại KPI cho mọi tài xế có phân bổ doanh thu của chuyến.
+    // await: đây là việc cuối trước khi trả response, mà Cloud Run bóp CPU ngay sau đó.
     const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
-    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
+    await kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -401,7 +402,7 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     }, { displayMode: 'silent' }).catch(() => {});
 
     const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
-    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
+    await kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };

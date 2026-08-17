@@ -277,6 +277,10 @@ const importOrders = async (req, res) => {
         const errors = [];
         const duplicates = [];
         const newDrivers = [];
+        // Hoãn việc tính KPI tới cuối lượt rồi gộp theo (tài xế, tháng): mỗi lần tính là
+        // một lần quét lại TOÀN BỘ chuyến của tài trong cả tháng, nên chạy từng dòng một
+        // là mẻ import lớn đụng trần thời gian trước khi cộng xong doanh thu.
+        const kpiTriggers = [];
 
         for (const order of orders) {
             const rowLabel = order.row_index != null
@@ -301,7 +305,7 @@ const importOrders = async (req, res) => {
                     import_fingerprint: allowDuplicates ? null : buildImportFingerprint(payload),
                     created_by: req.user.userId,
                     suppress_notifications: true,
-                });
+                }, { collectKpiInto: kpiTriggers });
                 imported.push({ row_index: order.row_index ?? null, order_id: created.id });
                 (created.autoResolvedDrivers || []).forEach((d) => {
                     newDrivers.push({ row_index: order.row_index ?? null, driver_name: d.driverName, driver_id: d.driverId });
@@ -314,6 +318,10 @@ const importOrders = async (req, res) => {
                 }
             }
         }
+
+        // Chốt KPI cho cả mẻ. Phải chạy TRƯỚC khi trả response: bỏ lại chạy nền là giao
+        // cho một instance Cloud Run sắp bị bóp CPU, doanh thu sẽ không tới bảng lương.
+        await accountantOrderService.flushKpiRecalc(kpiTriggers);
 
         accountantOrderService.notifyImportSummary({
             count: imported.length,

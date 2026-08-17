@@ -24,7 +24,11 @@ class FakeClient {
 
     async connect() { this.connected = true; }
 
-    async query(text) { this.queries.push(text); return { rows: [] }; }
+    async query(text) {
+        this.queries.push(text);
+        if (this.queryFails) throw new Error('kết nối đã chết');
+        return { rows: [] };
+    }
 
     async end() { this.endCalls += 1; this.connected = false; }
 
@@ -34,14 +38,18 @@ class FakeClient {
     }
 
     emitError(err) { this.handlers.error?.(err); }
+
+    /** Postgres đóng kết nối SẠCH SẼ — pg chỉ bắn 'end', không bắn 'error'. */
+    emitEnd() { this.handlers.end?.(); }
 }
 
-const setup = ({ queryImpl } = {}) => {
+const setup = ({ queryImpl, heartbeatMs } = {}) => {
     const clients = [];
     const queries = [];
     const bus = createNotificationBus({
         channel: 'ws_test',
         reconnectDelayMs: 10,
+        ...(heartbeatMs === undefined ? {} : { heartbeatMs }),
         query: async (text, params) => {
             queries.push({ text, params });
             if (queryImpl) return queryImpl(text, params);
@@ -177,6 +185,68 @@ describe('notificationBus', () => {
         assert.strictEqual(clients.length, 2);
         assert.ok(clients[1].queries.some((q) => q === 'LISTEN ws_test'));
         await bus.stop();
+    });
+
+    // ── Phát hiện kết nối LISTEN đã chết ──────────────────────────────────────
+    // Đây là nhóm quan trọng nhất: publish() trả true là NHẬN trách nhiệm giao hàng,
+    // bên gọi sẽ không gửi local nữa. Bus tưởng mình còn sống trong khi kết nối đã
+    // đứt = nuốt sạch thông báo trong im lặng cho tới khi restart tiến trình.
+
+    it("Postgres đóng kết nối sạch (chỉ có 'end', không có 'error') vẫn phải bị phát hiện", async () => {
+        const { bus, clients } = setup();
+        bus.subscribe(() => {});
+        await tick();
+        assert.strictEqual(bus.isLive(), true);
+
+        clients[0].emitEnd();
+
+        // Không còn nhận trách nhiệm giao hàng nữa → bên gọi tự gửi cho socket local.
+        assert.strictEqual(bus.isLive(), false);
+        assert.strictEqual(bus.publish({ scope: 'user', key: '1', payload: {} }), false);
+        await bus.stop();
+    });
+
+    it("sau 'end' thì tự dựng lại client và LISTEN lại", async () => {
+        const { bus, clients } = setup();
+        bus.subscribe(() => {});
+        await tick();
+
+        clients[0].emitEnd();
+        await new Promise((r) => setTimeout(r, 40));
+        await tick();
+
+        assert.strictEqual(clients.length, 2);
+        assert.ok(clients[1].queries.some((q) => q === 'LISTEN ws_test'));
+        assert.strictEqual(bus.isLive(), true);
+        await bus.stop();
+    });
+
+    it('"chết giả" — không có event nào nổ — bị nhịp đập bắt được', async () => {
+        const { bus, clients } = setup({ heartbeatMs: 10 });
+        bus.subscribe(() => {});
+        await tick();
+        assert.strictEqual(bus.isLive(), true);
+
+        // Đường truyền đứt nhưng pg không hề bắn 'error' lẫn 'end'.
+        clients[0].queryFails = true;
+        await new Promise((r) => setTimeout(r, 30));
+        await tick();
+
+        assert.strictEqual(clients[0].endCalls, 1);
+        assert.ok(clients.length >= 2, 'phải dựng lại client mới');
+        await bus.stop();
+    });
+
+    it('nhịp đập chỉ chạy khi kết nối còn sống, stop() thì tắt hẳn', async () => {
+        const { bus, clients } = setup({ heartbeatMs: 10 });
+        bus.subscribe(() => {});
+        await tick();
+
+        await bus.stop();
+        const soQuerySauStop = clients[0].queries.length;
+        await new Promise((r) => setTimeout(r, 40));
+
+        assert.strictEqual(clients[0].queries.length, soQuerySauStop);
     });
 
     it('stop() rồi thì không tự dựng lại nữa', async () => {

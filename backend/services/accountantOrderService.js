@@ -8,12 +8,52 @@ const { notifyRolesSafe } = require('./roleNotificationService');
 // Đơn ngoài được tạo với shipment status='completed' ngay từ đầu (không qua luồng
 // driver hoàn thành trip bình thường), nên phải tự trigger tính KPI ở đây — nếu không
 // kpi_records sẽ không bao giờ được cập nhật cho các chuyến import này.
-const triggerKpiRecalc = (result) => {
-    (result?.kpiTriggers || []).forEach(({ driverId, completedAt }) => {
-        kpiService.recalculateAfterCompletion(driverId, completedAt ? new Date(completedAt) : new Date());
-    });
+//
+// PHẢI await. Trước đây gọi rồi bỏ đó: import 1000 dòng sinh ra 1000 promise recalc
+// rời rạc, response trả về ngay sau vòng lặp, và Cloud Run bóp CPU về gần 0 ngay lúc
+// đó — phần lớn recalc không bao giờ chạy xong. Đó là lý do doanh thu đơn ngoài đã
+// import vào rồi mà bảng lương vẫn không thấy cộng, và cộng thiếu một cách ngẫu nhiên.
+const triggerKpiRecalc = async (result, { collectInto = null } = {}) => {
+    const triggers = result?.kpiTriggers || [];
     delete result?.kpiTriggers;
+
+    // Import hàng loạt: gom lại, để cuối lượt gộp rồi tính MỘT lần cho mỗi tài/tháng.
+    if (collectInto) {
+        collectInto.push(...triggers);
+        return result;
+    }
+
+    await flushKpiRecalc(triggers);
     return result;
+};
+
+/**
+ * Tính lại KPI cho một mẻ trigger, ĐÃ GỘP theo (tài xế, tháng, năm).
+ *
+ * recalculateDriverKPI không cộng dồn — nó quét lại toàn bộ chuyến hoàn thành của tài
+ * trong cả tháng rồi ghi đè. Nên với một tài xế trong một tháng, gọi 1 lần hay 500 lần
+ * đều cho ra đúng con số ấy; 499 lần còn lại là quét lại y hệt, vô ích.
+ *
+ * Vì sao đây là lỗi chứ không chỉ là chậm: import 500 dòng cùng một tài trong cùng
+ * tháng trước đây chạy 500 lượt quét toàn tháng NỐI TIẾP nhau, mỗi lượt lại nặng thêm
+ * vì bảng vừa phình ra. Pool đặt statement_timeout = 15s, Cloud Run cắt request ở 300s
+ * — mẻ import lớn đụng trần trước khi chạy xong, phần còn lại không bao giờ được tính.
+ * Đó là lý do "import ít thì được, import nhiều thì tài xế không thấy doanh thu đâu".
+ * Gộp lại thì 500 lượt còn đúng 1.
+ */
+const flushKpiRecalc = async (triggers = []) => {
+    const theoTaiVaThang = new Map();
+    for (const { driverId, completedAt } of triggers) {
+        if (!driverId) continue;
+        const moc = completedAt ? new Date(completedAt) : new Date();
+        const khoa = `${driverId}|${moc.getFullYear()}|${moc.getMonth()}`;
+        if (!theoTaiVaThang.has(khoa)) theoTaiVaThang.set(khoa, { driverId, moc });
+    }
+    if (theoTaiVaThang.size === 0) return;
+
+    await Promise.all([...theoTaiVaThang.values()].map(({ driverId, moc }) =>
+        kpiService.recalculateAfterCompletion(driverId, moc),
+    ));
 };
 
 const getOrders = async (filters, page, limit) => {
@@ -32,10 +72,12 @@ const getOrderShipments = async (orderId) => {
     return accountantOrderRepository.getOrderShipments(orderId);
 };
 
-const createOrder = async (orderData) => {
+// collectKpiInto: mảng do bên gọi truyền vào để hoãn việc tính KPI (dùng khi import
+// hàng loạt — xem flushKpiRecalc). Không truyền thì tính ngay như thường.
+const createOrder = async (orderData, { collectKpiInto = null } = {}) => {
     const result = await accountantOrderRepository.createOrderWithShipments(orderData);
     accountantLookupRepository.invalidateLookupCache();
-    const finalResult = triggerKpiRecalc(result);
+    const finalResult = await triggerKpiRecalc(result, { collectInto: collectKpiInto });
     if (!orderData.suppress_notifications) {
         notifyRolesSafe(['coordinator', 'manager'], {
             title: 'Có đơn hàng doanh thu mới',
@@ -61,15 +103,18 @@ const notifyImportSummary = ({ count, actorId }) => {
 
 const importOrders = async (orders, createdByUserId) => {
     const results = [];
+    const kpiTriggers = [];
     for (const order of orders) {
         const result = await accountantOrderRepository.createOrderWithShipments({
             ...order,
             created_by: createdByUserId,
             suppress_notifications: true,
         });
-        results.push(triggerKpiRecalc(result));
+        results.push(await triggerKpiRecalc(result, { collectInto: kpiTriggers }));
     }
     accountantLookupRepository.invalidateLookupCache();
+    // Tính KPI MỘT lần cho mỗi tài/tháng sau khi đã nạp hết — xem flushKpiRecalc.
+    await flushKpiRecalc(kpiTriggers);
     notifyImportSummary({ count: results.length, actorId: createdByUserId });
     return results;
 };
@@ -135,6 +180,7 @@ module.exports = {
     getOrderShipments,
     createOrder,
     importOrders,
+    flushKpiRecalc,
     notifyImportSummary,
     getPaymentsByOrderId,
     recordPayment,
