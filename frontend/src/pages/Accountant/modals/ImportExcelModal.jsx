@@ -25,6 +25,8 @@ const TEMPLATE_HEADERS = [
   "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
+const DATE_HEADER = TEMPLATE_HEADERS[0];
+
 const TEMPLATE_EXAMPLES = [
   ["02/05/2026", "29E-080.32", "Tân", "Cty Hưng Dũng", "0912345678",
     "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", "", 30000, "", "", "",
@@ -85,6 +87,11 @@ const downloadTemplate = async () => {
     header: h,
     key: h,
     width: Math.max(h.length + 2, 16),
+    // Ép cột "Ngày chạy" hiển thị dd/mm/yyyy. Không ép thì Excel dùng định dạng ngày theo
+    // máy người nhập — máy để kiểu Mỹ thì gõ "12/8" ra ngày 8 THÁNG 12, mà ô vẫn hiện
+    // "12/8/26" nên không ai nhận ra. Chuyện này đã xảy ra thật: doanh thu rơi sang tháng
+    // 12, KPI và bảng lương tháng hiện tại không thấy gì mà chẳng có lỗi nào báo.
+    ...(h === DATE_HEADER ? { style: { numFmt: "dd/mm/yyyy" } } : {}),
   }));
 
   const headerRow = ws.getRow(1);
