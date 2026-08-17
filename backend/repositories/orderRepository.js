@@ -1334,6 +1334,30 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', acto
     }
 };
 
+/**
+ * Chủ chuyến HIỆN TẠI của mọi chuyến trong 1 đơn — đọc từ v_shipment_current.
+ *
+ * Bảng order_shipments KHÔNG có cột owner_driver_id: quyền sở hữu chuyến chỉ tồn tại
+ * trong shipment_assignment_history và được view này chốt lại thành dòng mới nhất.
+ * Vì vậy `INSERT INTO order_shipments ... RETURNING *` KHÔNG bao giờ mang theo tài xế —
+ * ai đọc owner_driver_id từ hàng vừa insert sẽ luôn nhận undefined và im lặng bỏ sót
+ * (đây đúng là lý do thông báo "được giao chuyến" chưa từng tới tay tài xế).
+ *
+ * Mọi nơi cần biết "chuyến này của ai" phải đi qua đây, không đọc từ hàng insert/update.
+ */
+const listShipmentOwners = async (orderId) => {
+    const { rows } = await pool.query(
+        `SELECT os.id, sc.owner_driver_id
+         FROM order_shipments os
+         JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         WHERE os.order_id = $1
+           AND sc.owner_driver_id IS NOT NULL
+         ORDER BY os.shipment_index ASC`,
+        [orderId],
+    );
+    return rows.map((row) => ({ id: Number(row.id), owner_driver_id: Number(row.owner_driver_id) }));
+};
+
 // Danh sách đơn có tiền trả trước ĐANG CHỜ xác nhận
 const listPendingPrepaid = async () => {
     const { rows } = await pool.query(
@@ -1437,6 +1461,7 @@ module.exports = {
     findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,
     getExistingShipmentIds,
+    listShipmentOwners,
     findOrCreateCustomer,
     findCustomerByName,
     searchCustomersByPhone,
