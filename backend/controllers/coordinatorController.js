@@ -80,7 +80,12 @@ const approveReceiptRequest = async (req, res) => {
         const receipt = await coordinatorService.approveReceiptRequest(
             requestId, req.user.userId, req.body,
         );
-        res.status(201).json({ message: 'Đã tạo phiếu thu thành công', receipt });
+        // Khách ứng dư thì việc duyệt này vừa sinh ra một khoản PHẢI CHI — nói thẳng ra,
+        // đừng để coordinator chỉ thấy "đã tạo phiếu thu" rồi tưởng đơn đã khép lại.
+        const message = receipt.refund
+            ? `Đã tạo phiếu thu. Khách ứng dư ${Number(receipt.refund.amount).toLocaleString('vi-VN')}đ — đã tạo phiếu hoàn #${receipt.refund.voucherId} để kế toán chi trả lại toàn bộ.`
+            : 'Đã tạo phiếu thu thành công';
+        res.status(201).json({ message, receipt });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('đã được duyệt') || err.message.includes('đã bị từ chối') ? 409

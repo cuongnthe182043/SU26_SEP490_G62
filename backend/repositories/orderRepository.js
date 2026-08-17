@@ -1166,6 +1166,97 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
     }
 };
 
+// Tạo PHIẾU HOÀN TIỀN ỨNG TRƯỚC (duyệt sẵn) để kế toán chi thật + đính chứng từ; bút toán
+// 'prepaid_refunded' được ghi khi kế toán bấm "Đã chi" (paymentVoucherRepository).
+//
+// Dùng chung cho BA đường cùng chạm tới tiền ứng của khách:
+//   1. Hủy cả đơn (cancelOrder — bên dưới)
+//   2. Hủy chuyến vì hàng hóa hư hại, đơn không còn gì chạy được (incidentService)
+//   3. Chốt phiếu thu mà khách đã ứng DƯ số phải trả (coordinatorService)
+//
+// Ba đường này có thể nối tiếp nhau trên cùng một đơn nên hàm chống hoàn trùng — nhưng chống
+// bằng cách trừ đi PHẦN ĐÃ HOÀN, không phải bỏ qua hẳn khi đơn đã có phiếu hoàn (BR-022E):
+// khách phải nhận lại ĐỦ số tiền thừa, một phiếu hoàn cũ nhỏ hơn không được phép nuốt phần
+// còn thiếu. `amount` là TỔNG số cần hoàn tính tới thời điểm gọi, không phải phần tăng thêm.
+//
+// Phần thừa hoàn 100% bằng tiền, KHÔNG cấn trừ vào công nợ đơn khác của khách: nợ cũ vẫn
+// giữ nguyên và thu theo đường của nó.
+const createPrepaidRefundVoucher = async (client, { orderId, amount, actorId, reason }) => {
+    const requested = Number(amount);
+    if (!Number.isFinite(requested) || requested <= 0.01) return null;
+
+    const { rows: [ord] } = await client.query(
+        `SELECT o.prepaid_status,
+                COALESCE(o.prepaid_amount, 0)::numeric AS prepaid_amount,
+                c.full_name, c.company_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         WHERE o.id = $1`,
+        [orderId],
+    );
+    // 'pending' = kế toán mới nhập, tiền CHƯA về và CHƯA ghi sổ → không có gì để hoàn.
+    // Chỉ 'confirmed' mới là tiền thật đã nằm trong két công ty.
+    if (ord?.prepaid_status !== 'confirmed') return null;
+
+    // 'rejected'/'cancelled' = phiếu không bao giờ chi ra đồng nào, KHÔNG tính là đã hoàn —
+    // tính vào thì một phiếu bị từ chối sẽ khóa vĩnh viễn quyền được hoàn lại của khách.
+    const { rows: [refunded] } = await client.query(
+        `SELECT COALESCE(SUM(amount), 0)::numeric AS total
+         FROM payment_vouchers
+         WHERE order_id = $1
+           AND voucher_type = 'prepaid_refund'
+           AND status NOT IN ('cancelled', 'rejected')`,
+        [orderId],
+    );
+    const alreadyRefunded = Number(refunded?.total || 0);
+
+    // Trần là số khách ĐÃ ứng thật: hoàn quá số đã nhận là công ty tự trả thêm tiền túi.
+    const refundAmount = Math.min(requested, Number(ord.prepaid_amount || 0)) - alreadyRefunded;
+    if (refundAmount <= 0.01) return null;
+
+    const payee = ord.company_name?.trim() || ord.full_name?.trim() || 'Khách hàng';
+    const voucher = await paymentVoucherRepository.create({
+        voucher_type: 'prepaid_refund',
+        amount: refundAmount,
+        payee,
+        reason,
+        payment_method: 'bank_transfer',
+        order_id: orderId,
+        status: 'approved',
+    }, actorId, client);
+
+    return { voucherId: voucher.id, amount: refundAmount, payee, alreadyRefunded };
+};
+
+// Đơn còn chuyến nào có thể sinh doanh thu để đòi khách nữa không?
+//
+// Dùng ở luồng hàng hư hại: khi hủy chuyến xong mà đơn KHÔNG còn gì chạy được thì sẽ không
+// bao giờ có phiếu thu (requestOrderReceipt đòi chuyến 'completed'), nên phải hoàn tiền ứng
+// NGAY tại đó — chờ tới lúc chốt phiếu thu là chờ một sự kiện không bao giờ xảy ra.
+//
+// 'cancelled' là trạng thái kết thúc DUY NHẤT — không có đường nào đưa chuyến đã hủy sống lại.
+//
+// 'failed' thì KHÔNG: đó là trạng thái CHỜ điều phối xử lý, và resolveFailedShipment đưa
+// chuyến về 'transit' (giao lại) hoặc cho chạy hoàn hàng tính GẤP ĐÔI cước. Coi 'failed' là
+// hết đòi được sẽ hoàn tiền ứng quá sớm: điều phối bấm "giao lại", chuyến chạy xong, phiếu
+// thu lại trừ prepaid lần nữa — công ty mất đúng số tiền vừa trả cho khách. Thà giữ tiền
+// tới khi điều phối đóng chuyến failed còn hơn hoàn rồi đòi lại.
+//
+// KHÔNG xét actual_price: chuyến 'cancelled' luôn được computeReceiptAmount tính doanh thu 0
+// bất kể giá đã lỡ ghi trước đó (vd. chuyến đang hoàn hàng đã chốt giá rồi mới phát hiện hàng
+// hư hại). Coi giá cũ đó là "còn đòi được" thì đơn toàn chuyến hủy sẽ không bao giờ được hoàn
+// tiền ứng, mà cũng chẳng bao giờ có phiếu thu để đòi.
+const hasBillableShipments = async (client, orderId) => {
+    const { rows: [row] } = await client.query(
+        `SELECT COUNT(*)::int AS c
+         FROM order_shipments
+         WHERE order_id = $1
+           AND status <> 'cancelled'`,
+        [orderId],
+    );
+    return Number(row?.c || 0) > 0;
+};
+
 //Phương thức hủy order
 // Trả về { order, refund } — refund != null khi đơn có tiền ứng trước cần hoàn.
 const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', actorId = null) => {
@@ -1221,21 +1312,12 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order', acto
         const prepaid = Number(ord?.prepaid_amount || 0);
         let refund = null;
         if (prepaid > 0 && ord?.prepaid_status === 'confirmed') {
-            const { rows: [cust] } = await client.query(
-                `SELECT full_name, company_name FROM customers WHERE id = $1`,
-                [ord.customer_id],
-            );
-            const payee = cust?.company_name?.trim() || cust?.full_name?.trim() || 'Khách hàng';
-            const voucher = await paymentVoucherRepository.create({
-                voucher_type: 'prepaid_refund',
+            refund = await createPrepaidRefundVoucher(client, {
+                orderId,
                 amount: prepaid,
-                payee,
+                actorId,
                 reason: `Hoàn tiền khách ứng trước do hủy đơn #${orderId}${reason ? ` — ${reason}` : ''}`,
-                payment_method: 'bank_transfer',
-                order_id: orderId,
-                status: 'approved',
-            }, actorId, client);
-            refund = { voucherId: voucher.id, amount: prepaid, payee };
+            });
         } else if (ord?.prepaid_status === 'pending') {
             // Chưa xác nhận → không có dòng tiền thật, không hoàn. Đánh dấu 'none'.
             await client.query(`UPDATE orders SET prepaid_status = 'none' WHERE id = $1`, [orderId]);
@@ -1295,11 +1377,20 @@ const confirmPrepaid = async (orderId, actorId, { paymentMethod, proofUrl } = {}
             [orderId, method, proofUrl ?? null, actorId],
         );
 
-        await financialLedgerRepository.insertTransaction(client, {
+        // Tiền ứng trước cũng là TIỀN KHÁCH VỀ nên phải đi qua insertCustomerCashIn để tách
+        // vế chi hộ (Có 3388) khỏi vế cước (Có 131), giống mọi đường thu tiền khác.
+        //
+        // Vì sao không ghi thẳng Có 131: kế toán thường xác nhận tiền ứng SAU khi chuyến đã
+        // chạy và chi phí tài ứng đã được duyệt (tiền về tài khoản muộn). Lúc đó 3388 đã ghi
+        // Nợ phần chi hộ; ghi Có 131 toàn bộ thì 3388 treo vĩnh viễn còn 131 bị ghi Có nhiều
+        // hơn phần cước thật. Khách ứng trước đủ cả đơn thì về sau không còn lần thu nào để
+        // tất toán nữa. Khi chưa có chi hộ nào (ứng trước lúc mới đặt) hàm tự trả về 0 nên
+        // hành vi y hệt như cũ.
+        await financialLedgerRepository.insertCustomerCashIn(client, {
             eventType: 'prepaid_received',
             debitAccount: method === 'cash' ? '1111' : '1121',
-            creditAccount: '131',
             amount,
+            orderId,
             description: `Khách ứng trước — đơn #${orderId} (đã xác nhận)`,
             refType: 'order', refId: orderId, actorId,
         });
@@ -1355,4 +1446,6 @@ module.exports = {
     importOrderWithShipment,
     updateOrder,
     cancelOrder,
+    createPrepaidRefundVoucher,
+    hasBillableShipments,
 };

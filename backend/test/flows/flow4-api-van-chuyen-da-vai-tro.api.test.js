@@ -169,12 +169,15 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
     });
 
     it('B7 [driver] — TH2: tài đã ứng 50k đỗ xe; thu TIỀN MẶT → nợ ghi đủ 1.5tr nhưng TỰ CẤN 50k → còn phải nộp 1.45tr', async () => {
-        // Khoản tài ứng túi đã được duyệt trước đó (chờ hoàn)
-        await pool.query(`
-            INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description,
-                                  status, reviewed_by, reviewed_at, reimbursement_status)
-            VALUES (1, 1, 4, 'parking', 50000, 'Phi do xe tai kho', 'approved', 2, NOW(), 'pending')
+        // Khoản tài ứng túi được duyệt trước đó (chờ hoàn). Duyệt qua đúng hàm production
+        // để bút toán ghi nhận chi hộ (Nợ 3388 | Có 334) được ghi như thật — vế Có 3388
+        // lúc thu tiền khách bên dưới chỉ tất toán đúng số đã ghi Nợ.
+        const { rows: [parking] } = await pool.query(`
+            INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status)
+            VALUES (1, 1, 4, 'parking', 50000, 'Phi do xe tai kho', 'pending')
+            RETURNING id
         `);
+        await require('../../repositories/expenseRepository').approveExpense(parking.id, 2);
 
         const receipts = await request(app).get('/api/trips/receipt-requests').set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(receipts.status, 200);
@@ -226,18 +229,41 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         const summary = await request(app).get('/api/debts/summary').set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(Number(summary.body.total_remaining), 0);
 
-        // Sổ kế toán khép kín: nợ tạo = tiền tài nộp + phần cấn trừ chi hộ (3388/1388)
+        // Sổ kế toán khép kín: nợ tài xế tạo ra bao nhiêu thì được tất toán hết bấy nhiêu,
+        // bằng hai đường — tài nộp tiền mặt (Nợ 1111 | Có 1388) và cấn trừ phần tài đã ứng
+        // (Nợ 334 | Có 1388). Cả hai đều là 'driver_debt_paid' vì bản chất giống nhau:
+        // giảm khoản phải thu tài xế. Chi phí chi hộ KHÔNG ghi lại ở đây — đã ghi Nợ 3388
+        // từ lúc duyệt khoản chi.
         const { rows: [led] } = await pool.query(`
             SELECT
                 COALESCE(SUM(amount) FILTER (WHERE event_type = 'driver_debt_created'), 0) AS created,
-                COALESCE(SUM(amount) FILTER (WHERE event_type = 'driver_debt_paid'), 0)    AS paid,
-                COALESCE(SUM(amount) FILTER (WHERE event_type = 'pass_through_cost' AND credit_account = '1388'), 0) AS offset_reimb
+                COALESCE(SUM(amount) FILTER (WHERE event_type = 'driver_debt_paid' AND debit_account = '1111'), 0) AS paid_cash,
+                COALESCE(SUM(amount) FILTER (WHERE event_type = 'driver_debt_paid' AND debit_account = '334'), 0)  AS offset_reimb
             FROM financial_transactions
         `);
         assert.strictEqual(Number(led.created), EXPECTED_PRICE);
-        assert.strictEqual(Number(led.paid), EXPECTED_PRICE - 50000);
+        assert.strictEqual(Number(led.paid_cash), EXPECTED_PRICE - 50000);
         assert.strictEqual(Number(led.offset_reimb), 50000);
-        assert.strictEqual(Number(led.paid) + Number(led.offset_reimb), Number(led.created), 'sổ cân tuyệt đối');
+        assert.strictEqual(Number(led.paid_cash) + Number(led.offset_reimb), Number(led.created), 'sổ cân tuyệt đối');
+
+        // Vế chi hộ của tiền khách: phần tài xế thu hộ khách được ghi Có 3388 (tất toán
+        // khoản phải thu), phần còn lại mới là cước trên 131. Ghi Có 131 toàn bộ thì 131
+        // âm đúng bằng chi hộ còn 3388 treo mãi.
+        const { rows: [split] } = await pool.query(`
+            SELECT
+                COALESCE(SUM(amount) FILTER (WHERE credit_account = '3388'), 0) AS to_pass_through,
+                COALESCE(SUM(amount) FILTER (WHERE credit_account = '131'), 0)  AS to_receivable
+            FROM financial_transactions WHERE event_type = 'driver_debt_created'
+        `);
+        assert.strictEqual(Number(split.to_pass_through), 50000, 'phần chi hộ tất toán 3388');
+        assert.strictEqual(Number(split.to_receivable), EXPECTED_PRICE - 50000, 'phần còn lại mới là cước');
+
+        // 3388 khép kín: ghi Nợ lúc duyệt chi hộ, ghi Có lúc thu được tiền của khách
+        const { rows: [pass] } = await pool.query(`
+            SELECT COALESCE(SUM(CASE WHEN debit_account = '3388' THEN amount ELSE -amount END), 0) AS balance
+            FROM financial_transactions WHERE debit_account = '3388' OR credit_account = '3388'
+        `);
+        assert.strictEqual(Number(pass.balance), 0, 'thu đủ tiền khách thì 3388 phải về 0, không treo số dư');
     });
 });
 

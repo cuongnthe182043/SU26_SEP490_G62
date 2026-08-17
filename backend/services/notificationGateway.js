@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const authService = require('./authService');
+const notificationBus = require('./notificationBus');
 
 const clientsByUserId = new Map();
 const clientsByRole   = new Map();
@@ -70,16 +71,43 @@ const addClient = (userId, role, socket) => {
 };
 
 
-const broadcastToUser = (userId, payload) => {
+// ─── Giao hàng ────────────────────────────────────────────────────────────────
+// deliverTo* chỉ gửi cho socket đang nằm trên CHÍNH instance này.
+// broadcastTo* mới là API dùng ngoài: đẩy qua bus để mọi instance cùng nhận.
+
+const deliverToUser = (userId, payload) => {
     const clients = clientsByUserId.get(String(userId));
     if (!clients) return;
     for (const client of clients) sendJson(client, payload);
 };
 
-const broadcastToRole = (role, payload) => {
+const deliverToRole = (role, payload) => {
     const clients = clientsByRole.get(role);
     if (!clients) return;
     for (const client of clients) sendJson(client, payload);
+};
+
+/**
+ * Bus đẩy message về — mọi instance (kể cả instance đã phát) đều đi qua đây. Đây là
+ * đường giao hàng DUY NHẤT khi bus sống, nên không sinh bản trùng.
+ */
+const applyBusMessage = (message) => {
+    if (!message || typeof message !== 'object') return;
+    const { scope, key, payload } = message;
+    if (scope === 'user') deliverToUser(key, payload);
+    else if (scope === 'role') deliverToRole(key, payload);
+};
+
+const broadcastToUser = (userId, payload) => {
+    const message = { scope: 'user', key: String(userId), payload };
+    // publish() trả false khi bus chưa sẵn sàng (dev một tiến trình, DB chưa lên,
+    // payload quá lớn) — khi đó tự gửi local, suy giảm đúng về hành vi cũ.
+    if (!notificationBus.publish(message)) deliverToUser(userId, payload);
+};
+
+const broadcastToRole = (role, payload) => {
+    const message = { scope: 'role', key: role, payload };
+    if (!notificationBus.publish(message)) deliverToRole(role, payload);
 };
 
 
@@ -106,6 +134,10 @@ const notifyAllRead = (userId) => {
 
 const initNotificationGateway = (server) => {
     const wss = new WebSocket.Server({ noServer: true });
+
+    // Bắt đầu nghe bus: từ đây mọi thông báo do BẤT KỲ instance nào tạo ra đều tới
+    // được socket đang giữ ở instance này.
+    notificationBus.subscribe(applyBusMessage);
 
     server.on('upgrade', (req, socket, head) => {
         const url = new URL(req.url, 'http://localhost');
@@ -180,6 +212,10 @@ module.exports = {
     initNotificationGateway,
     sendJson,
     readCookieValue,
+    addClient,
+    applyBusMessage,
+    deliverToUser,
+    deliverToRole,
     broadcastToUser,
     broadcastToRole,
     notifyCreated,

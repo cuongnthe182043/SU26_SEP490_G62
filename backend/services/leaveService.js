@@ -52,6 +52,17 @@ const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
         throw new Error(`Bảng lương tháng ${m}/${y} đã chốt — không đăng ký nghỉ lùi vào kỳ này được. Liên hệ kế toán nếu cần điều chỉnh.`);
     }
 
+    // Chặn đăng ký nghỉ chồng lên ngày đã bị chấm vắng/nửa công. Đối xứng với
+    // attendanceService (bên đó chặn chấm vắng cho ngày đã có đơn nghỉ) — trước đây chốt
+    // chặn chỉ có MỘT chiều, nên thứ tự ngược (chấm vắng trước, xin nghỉ bù sau) vẫn tạo
+    // được hai bản ghi cho cùng một ngày. Bảng lương nay đã khử trùng nên không còn trừ
+    // hai công, nhưng vẫn chặn ở đây để dữ liệu không mâu thuẫn ngay từ đầu.
+    const blocking = await leaveRepository.findBlockingAttendance(driverId, day);
+    if (blocking) {
+        const nhan = blocking.status === 'half_day' ? 'nửa công' : 'vắng không phép';
+        throw new Error(`Ngày ${day} đã được chấm công "${nhan}" — không đăng ký nghỉ chồng lên được. Liên hệ điều phối/quản lý để sửa chấm công trước.`);
+    }
+
     return leaveRepository.createLeave(driverId, { leaveDate: day, leaveType, reason });
 };
 

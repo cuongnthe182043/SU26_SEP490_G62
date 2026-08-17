@@ -1,7 +1,6 @@
 ﻿const managerRepository = require('../repositories/managerRepository');
 const accountantReportRepository = require('../repositories/accountantReportRepository');
 const managerReportRepository = require('../repositories/managerReportRepository');
-const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
 const activityLogRepository = require('../repositories/activityLogRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
@@ -326,33 +325,21 @@ const getPartnerDebtDetails = async (partnerId) => {
     };
 };
 
-// Ghi nhận đối tác thanh toán công nợ — phân bổ FIFO vào các khoản nợ đối tác còn dư
-// (tái dùng engine phân bổ chung với công nợ khách: Nợ 1121/1111, Có 131).
-const recordPartnerPayment = async (partnerId, { amount, paymentMethod, notes }, actorId) => {
+// Việc ghi nhận đối tác thanh toán công nợ thuộc về Kế toán (POST
+// /accountant/debts/payment/allocate với personType='partner'). Manager chỉ theo
+// dõi, nên sau khi kế toán thu tiền ta bắn realtime + thông báo để màn Đối tác của
+// Manager tự làm mới thay vì phải F5.
+const notifyPartnerPaymentRecorded = async (partnerId, amount, actorId = null) => {
     const existing = await managerRepository.getPartnerById(partnerId);
-    if (!existing) throw new Error('Đối tác không tồn tại');
-
-    const numericAmount = Number(amount);
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-        throw new Error('Số tiền thanh toán phải lớn hơn 0');
-    }
-    const method = paymentMethod === 'bank_transfer' ? 'bank_transfer' : 'cash';
-
-    const result = await accountantPaymentRepository.allocatePayment('partner', partnerId, {
-        amount: numericAmount,
-        paymentMethod: method,
-        notes: notes?.trim() || 'Đối tác thanh toán công nợ',
-        createdBy: actorId,
-    });
+    const label = existing?.company_name ?? `#${partnerId}`;
 
     broadcastPartnerChange('payment', { partnerId });
     notifyManagerWorkflow('partners', 'payment', {
         title: 'Đối tác đã thanh toán công nợ',
-        message: `Đã ghi nhận thanh toán ${numericAmount.toLocaleString('vi-VN')}đ cho đối tác "${existing.company_name}".`,
+        message: `Kế toán đã ghi nhận thanh toán ${Number(amount).toLocaleString('vi-VN')}đ cho đối tác "${label}".`,
         entityType: 'partner',
         entityId: partnerId,
     }, actorId);
-    return result;
 };
 
 module.exports = {
@@ -373,5 +360,5 @@ module.exports = {
     createPartner,
     updatePartner,
     getPartnerDebtDetails,
-    recordPartnerPayment,
+    notifyPartnerPaymentRecorded,
 };

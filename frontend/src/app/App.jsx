@@ -13,11 +13,15 @@ const AccountantPage = lazy(() => import("../pages/Accountant/AccountantPage"));
 const CoordinatorPage = lazy(() => import("../pages/Coordinator/CoordinatorPage"));
 const ChatbotWidget = lazy(() => import("../components/chatbot/ChatbotWidget"));
 
+// Cờ tắt trợ lý AI. Đang ẨN chứ không xoá: widget, service phía web và toàn bộ
+// API phía backend vẫn còn nguyên, bật lại chỉ cần đổi cờ này về true.
+const CHATBOT_ENABLED = false;
+
 function AppShell() {
   const { user, loading, setSession, refreshSession, logout } = useAuthSession();
 
   // Chỉ hiện trợ lý AI khi đã đăng nhập xong (không ở màn login / đổi mật khẩu bắt buộc).
-  const showChatbot = Boolean(user) && !user?.must_change_password;
+  const showChatbot = CHATBOT_ENABLED && Boolean(user) && !user?.must_change_password;
 
   const renderPage = () => {
     if (loading) return <LoadingScreen label="Đang tải..." />;

@@ -1,5 +1,6 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 
 const _debtStatus = (paid, total) => {
     if (paid >= total - 0.01) return 'paid';
@@ -36,21 +37,34 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
         [debt.id, numericAmount, method || 'cash', createdBy, notes || null]
     );
 
-    // Ghi sổ nhật ký tài chính theo loại công nợ
+    // Ghi sổ nhật ký tài chính theo loại công nợ.
+    // Tài xế nộp quỹ là luân chuyển nội bộ 1388 → tiền, KHÔNG tách chi hộ (tiền của khách
+    // đã được ghi nhận từ lúc tài cầm — driver_debt_created). Khách/đối tác trả tiền thì
+    // phải tách: phần chi hộ tất toán 3388, phần còn lại mới là cước trên 131.
     const { rows: [debtInfo] } = await client.query(
-        `SELECT debt_type FROM debts WHERE id = $1`, [debt.id],
+        `SELECT debt_type, order_id FROM debts WHERE id = $1`, [debt.id],
     );
-    const isDriverDebt = debtInfo?.debt_type === 'driver';
-    await financialLedgerRepository.insertTransaction(client, {
-        eventType: isDriverDebt ? 'driver_debt_paid' : 'customer_payment',
-        debitAccount: method === 'bank_transfer' ? '1121' : '1111',
-        creditAccount: isDriverDebt ? '1388' : '131',
-        amount: numericAmount,
-        description: isDriverDebt
-            ? `Tài xế nộp quỹ — công nợ #${debt.id}`
-            : `Khách hàng thanh toán — công nợ #${debt.id}`,
-        refType: 'debt', refId: debt.id, actorId: createdBy,
-    });
+    const isDriverDebt  = debtInfo?.debt_type === 'driver';
+    const debitAccount  = method === 'bank_transfer' ? '1121' : '1111';
+
+    if (isDriverDebt) {
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'driver_debt_paid',
+            debitAccount, creditAccount: '1388',
+            amount: numericAmount,
+            description: `Tài xế nộp quỹ — công nợ #${debt.id}`,
+            refType: 'debt', refId: debt.id, actorId: createdBy,
+        });
+    } else {
+        await financialLedgerRepository.insertCustomerCashIn(client, {
+            eventType: 'customer_payment',
+            debitAccount,
+            amount: numericAmount,
+            orderId: debtInfo?.order_id ?? null,
+            description: `Khách hàng thanh toán — công nợ #${debt.id}`,
+            refType: 'debt', refId: debt.id, actorId: createdBy,
+        });
+    }
 
     return { payment, newPaidAmount, newStatus };
 };
@@ -269,11 +283,11 @@ const recordPaymentWithOverflow = async (orderId, paymentData) => {
             ]
         );
 
-        await financialLedgerRepository.insertTransaction(client, {
+        await financialLedgerRepository.insertCustomerCashIn(client, {
             eventType: 'customer_payment',
             debitAccount: paymentData.paymentMethod === 'bank_transfer' ? '1121' : '1111',
-            creditAccount: '131',
             amount: requestedAmount,
+            orderId,
             description: `Khách hàng thanh toán — đơn #${orderId}${allocations.length > 1 ? ` (phân bổ ${allocations.length} công nợ)` : ''}`,
             refType: 'order', refId: orderId, actorId: paymentData.createdBy,
         });
@@ -451,7 +465,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
         // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
         const { rows: debts } = await client.query(
             `SELECT
-                d.id AS debt_id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id,
+                d.id AS debt_id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id, d.order_id,
                 paid.paid AS paid_amount,
                 GREATEST(0, d.total_amount - paid.paid) AS remaining
              FROM debts d
@@ -498,6 +512,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
             details.push({
                 debtId:       debt.debt_id,
                 shipmentId:   debt.shipment_id,
+                orderId:      debt.order_id,
                 amount:       alloc,
                 previousPaid: Number(debt.paid_amount),
                 newPaid,
@@ -525,18 +540,34 @@ const allocatePayment = async (personType, personId, paymentData) => {
             ]
         );
 
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: personType === 'driver' ? 'driver_debt_paid' : 'customer_payment',
-            debitAccount: paymentData.paymentMethod === 'bank_transfer' ? '1121' : '1111',
-            creditAccount: personType === 'driver' ? '1388' : '131',
-            amount: totalAllocated,
-            description: personType === 'driver'
-                ? `Tài xế nộp quỹ (phân bổ ${debtIds.length} công nợ)`
-                : personType === 'partner'
-                    ? `Đối tác thanh toán (phân bổ ${debtIds.length} công nợ)`
-                    : `Khách hàng thanh toán (phân bổ ${debtIds.length} công nợ)`,
-            refType: 'debt', refId: debtIds[0], actorId: paymentData.createdBy,
-        });
+        const debitAccount = paymentData.paymentMethod === 'bank_transfer' ? '1121' : '1111';
+        if (personType === 'driver') {
+            // Tài xế nộp quỹ: luân chuyển nội bộ 1388 → tiền, không có phần chi hộ để tách.
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_paid',
+                debitAccount, creditAccount: '1388',
+                amount: totalAllocated,
+                description: `Tài xế nộp quỹ (phân bổ ${debtIds.length} công nợ)`,
+                refType: 'debt', refId: debtIds[0], actorId: paymentData.createdBy,
+            });
+        } else {
+            // Khách/đối tác trả tiền: phần chi hộ phải tất toán 3388 chứ không dồn hết vào 131.
+            // Ghi TỪNG khoản nợ một chứ không gộp: chi hộ được theo dõi theo ĐƠN, mà một lần
+            // trả có thể phân bổ vào nợ của nhiều đơn khác nhau — gộp lại thì không biết phần
+            // chi hộ thuộc đơn nào và tất toán 3388 sai đơn.
+            const who = personType === 'partner' ? 'Đối tác' : 'Khách hàng';
+            for (const item of details) {
+                await financialLedgerRepository.insertCustomerCashIn(client, {
+                    eventType: 'customer_payment',
+                    debitAccount,
+                    amount: item.amount,
+                    orderId: item.orderId,
+                    description: `${who} thanh toán — công nợ #${item.debtId}`
+                        + (details.length > 1 ? ` (phân bổ ${details.length} công nợ)` : ''),
+                    refType: 'debt', refId: item.debtId, actorId: paymentData.createdBy,
+                });
+            }
+        }
 
         await client.query('COMMIT');
         return { success: true, totalAllocated, overpayment: remaining, allocations: details, payments };
@@ -565,7 +596,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
                             SELECT SUM(e.amount) FROM expenses e
                             WHERE e.shipment_id = os.id
                               AND e.status != 'rejected'
-                              AND e.expense_type IN ('toll', 'parking', 'etc')
+                              AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}
                         ), 0) AS pass_through_total
                  FROM order_shipments os
                  JOIN orders o ON o.id = os.order_id
@@ -583,10 +614,13 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
                  RETURNING id`,
                 [s.owner_driver_id, s.order_id, shipmentId, shipmentPrice, confirmedBy]
             );
-            await financialLedgerRepository.insertTransaction(client, {
+            // Nợ tài xế gồm cả chi hộ ⇒ vế Có phải tách: phần chi hộ tất toán 3388,
+            // phần cước mới ghi Có 131 (nếu không, 131 âm và 3388 treo mãi).
+            await financialLedgerRepository.insertCustomerCashIn(client, {
                 eventType: 'driver_debt_created',
-                debitAccount: '1388', creditAccount: '131',
+                debitAccount: '1388',
                 amount: shipmentPrice,
+                orderId: s.order_id,
                 description: `Ghi nhận công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
                 refType: 'debt', refId: newDebt.id, actorId: confirmedBy,
             });
@@ -640,8 +674,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
 };
 
 const getPaymentHistoryByPerson = async (personType, personId) => {
-    const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
-    const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
+    const { field: personField, type: debtType } = _personMap(personType);
 
     const { rows } = await pool.query(
         `SELECT
@@ -714,7 +747,7 @@ const listAllDebtPayments = async ({ personType, status, method, month, year, se
     if (month)      { conds.push(`EXTRACT(MONTH FROM dp.paid_at) = $${i++}`); params.push(Number(month)); }
     if (year)       { conds.push(`EXTRACT(YEAR  FROM dp.paid_at) = $${i++}`); params.push(Number(year)); }
     if (search) {
-        conds.push(`(drv.full_name ILIKE $${i} OR c.full_name ILIKE $${i} OR c.company_name ILIKE $${i})`);
+        conds.push(`(drv.full_name ILIKE $${i} OR c.full_name ILIKE $${i} OR c.company_name ILIKE $${i} OR pn.company_name ILIKE $${i})`);
         params.push(`%${search}%`);
         i++;
     }
@@ -729,6 +762,7 @@ const listAllDebtPayments = async ({ personType, status, method, month, year, se
         FROM debt_payments dp
         JOIN debts d           ON d.id = dp.debt_id
         LEFT JOIN customers c  ON c.id = d.customer_id
+        LEFT JOIN partners pn  ON pn.id = d.partner_id
         LEFT JOIN profiles drv ON drv.id = d.driver_id
         LEFT JOIN profiles cfb ON cfb.id = dp.confirmed_by
         LEFT JOIN profiles crb ON crb.id = dp.created_by
@@ -740,10 +774,14 @@ const listAllDebtPayments = async ({ personType, status, method, month, year, se
                 dp.id, dp.debt_id, dp.amount::text, dp.payment_method, dp.status,
                 dp.paid_at, dp.confirmed_at, dp.notes, dp.reject_reason, dp.receipt_url,
                 d.debt_type, d.order_id, d.shipment_id, d.total_amount::text AS debt_total,
-                CASE WHEN d.debt_type = 'driver'
-                     THEN drv.full_name
+                CASE d.debt_type
+                     WHEN 'driver'  THEN drv.full_name
+                     WHEN 'partner' THEN pn.company_name
                      ELSE COALESCE(c.company_name, c.full_name) END AS person_name,
-                CASE WHEN d.debt_type = 'driver' THEN drv.phone ELSE c.phone END AS person_phone,
+                CASE d.debt_type
+                     WHEN 'driver'  THEN drv.phone
+                     WHEN 'partner' THEN pn.phone
+                     ELSE c.phone END AS person_phone,
                 cfb.full_name AS confirmed_by_name,
                 crb.full_name AS created_by_name
              ${baseFrom} ${where}
@@ -758,7 +796,8 @@ const listAllDebtPayments = async ({ personType, status, method, month, year, se
                 COUNT(*) FILTER (WHERE dp.status = 'confirmed')::int                     AS confirmed_count,
                 COUNT(*) FILTER (WHERE dp.status = 'pending')::int                       AS pending_count,
                 COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'customer'), 0)::text AS customer_confirmed_total,
-                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'driver'),   0)::text AS driver_confirmed_total
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'driver'),   0)::text AS driver_confirmed_total,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'partner'), 0)::text AS partner_confirmed_total
              ${baseFrom} ${where}`,
             params,
         ),

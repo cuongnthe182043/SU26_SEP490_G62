@@ -35,6 +35,9 @@ const HEADER_KEYS = [
   ["ten hang",             "cargo_name"],
   ["cuoc xe",              "cargo_fee"],
   ["gia chot",             "settled_fee"],
+  // Thu hộ (COD) — tiền hàng công ty thu hộ khách khi giao. KHÔNG phải doanh thu, không
+  // cộng vào số khách phải trả; chỉ ghi nhận để đối chiếu và trả lại khách.
+  ["thu ho",               "collect_on_behalf"],
   ["phi cau duong",        "toll"],
   ["phi do xe",            "parking"],
   ["xang dau",             "fuel"],
@@ -62,6 +65,7 @@ const MONEY_FIELD_LABELS = [
   ["fuel", "Xăng dầu"],
   ["repair", "Sửa xe"],
   ["holding", "Tiền tài đang giữ"],
+  ["collect_on_behalf", "Thu hộ"],
 ];
 
 /**
@@ -127,6 +131,20 @@ const parseDateCell = (cell, XLSX) => {
   return Number.isNaN(new Date(iso).getTime()) ? null : iso;
 };
 
+// Hôm nay theo GIỜ MÁY người dùng, dạng YYYY-MM-DD để so chuỗi trực tiếp với dateIso.
+// Không dùng toISOString() vì nó quy về UTC — từ 0h đến 7h sáng giờ VN sẽ ra ngày hôm qua
+// và chặn oan đơn chạy trong ngày.
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// YYYY-MM-DD → dd/mm/yyyy, để thông báo lỗi và màn xem trước nói đúng thứ người Việt đọc.
+export const viDate = (iso) => {
+  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
+
 // Tách nhiều điểm lấy/trả trong cùng 1 ô — phân cách bằng "|" hoặc xuống dòng (Alt+Enter)
 const splitStops = (v) => String(v ?? "")
   .split(/\r?\n|\|/)
@@ -169,6 +187,17 @@ export function parseWorkbook(wb, XLSX) {
     const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
     const dateIso = parseDateCell(ws[dateCellAddr], XLSX);
     if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
+    else if (dateIso > todayIso()) {
+      // Đơn ở đây là đơn ĐÃ HOÀN THÀNH nên ngày chạy không thể ở tương lai. Chặn tại đây
+      // bắt được lỗi hay gặp nhất: ô ngày trong Excel đang để định dạng kiểu Mỹ (m/d/yy),
+      // gõ "12/8" ra ngày 8 tháng 12 nhưng màn hình vẫn hiện "12/8/26" nên người nhập
+      // tưởng là 12 tháng 8. Không chặn thì doanh thu rơi sang tháng 12, KPI và bảng lương
+      // tháng hiện tại không thấy gì mà chẳng có lỗi nào báo ra.
+      rowErr.push(
+        `Ngày chạy ${viDate(dateIso)} ở tương lai — đơn đã hoàn thành không thể có ngày sau hôm nay. `
+        + `Kiểm tra định dạng ô ngày trong Excel (phải là dd/mm/yyyy)`,
+      );
+    }
 
     const plate = String(get(r, "plate")).trim();
     if (!plate) rowErr.push("Thiếu biển số xe");
@@ -211,6 +240,9 @@ export function parseWorkbook(wb, XLSX) {
     const parking = parseMoney(get(r, "parking"));
     const fuel = parseMoney(get(r, "fuel"));
     const repair = parseMoney(get(r, "repair"));
+    // Thu hộ (COD): tiền của KHÁCH mà công ty thu giúp rồi trả lại — ngược chiều với công
+    // nợ cước nên KHÔNG cộng vào customerTotal và không đụng gì tới doanh thu.
+    const collectOnBehalf = parseMoney(get(r, "collect_on_behalf"));
 
     // Giá chốt: giá thật sau khi hai bên thống nhất lại, giống việc coordinator sửa giá
     // lúc duyệt phiếu thu trong app (estimated_price → actual_price). Để trống thì giá
@@ -233,12 +265,17 @@ export function parseWorkbook(wb, XLSX) {
 
     // Kiểm tra THẬT SỰ có ý nghĩa: tài không thể đang giữ nhiều hơn số khách đưa.
     // So với GIÁ CHỐT chứ không phải giá báo — chốt 1tr2 rồi thì tài cầm 1tr2 là đúng.
-    if (holding != null && effectiveFee > 0 && runs != null && holding > customerTotal) {
+    // Trần gồm CẢ thu hộ: tài xế thu COD của người nhận thì cũng đang cầm số tiền đó, nên
+    // giữ nhiều hơn cước là hợp lệ. Bỏ thu hộ ra khỏi trần sẽ chặn oan đúng những dòng có
+    // COD — dòng mà cột thu hộ sinh ra để phục vụ.
+    const holdingCeiling = customerTotal + collectOnBehalf;
+    if (holding != null && effectiveFee > 0 && runs != null && holding > holdingCeiling) {
       const goc = settledFee != null ? "giá chốt" : "cước";
       rowErr.push(
-        `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số khách phải trả `
-        + `(${customerTotal.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
-        + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""})`,
+        `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số tiền tài có thể cầm `
+        + `(${holdingCeiling.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
+        + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""}`
+        + `${collectOnBehalf > 0 ? ` + thu hộ ${collectOnBehalf.toLocaleString("vi-VN")}đ` : ""})`,
       );
     }
 
@@ -280,6 +317,9 @@ export function parseWorkbook(wb, XLSX) {
         settled_fee: settledFee,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
+        // Thu hộ là số của CẢ DÒNG (giống chi phí, khác cước xe vốn tính theo lượt) — dồn
+        // vào chuyến đầu để tăng bo N lượt không nhân số COD lên N lần.
+        collect_on_behalf: isFirst ? collectOnBehalf : 0,
         expenses,
         payment_type: payment.payment_type,
         driver_payment_state: payment.driver_payment_state,
@@ -291,7 +331,11 @@ export function parseWorkbook(wb, XLSX) {
     rows.push({
       rowIndex: rowNo,
       display: {
-        date: get(r, "date"), plate, driver,
+        // Hiện ngày ĐÃ HIỂU ĐƯỢC (dd/mm/yyyy) chứ không phải chuỗi thô trong ô Excel.
+        // Ô ngày kiểu Mỹ hiện "12/8/26" nhưng thực chất là 8 tháng 12 — chép nguyên chuỗi
+        // thô ra màn xem trước thì kế toán không đời nào phát hiện được, còn hiện ngày đã
+        // giải mã thì sai lệch lộ ra ngay trước khi bấm Import.
+        date: viDate(dateIso) || get(r, "date"), plate, driver,
         // Chỉ gọi là "Khách lẻ" khi KHÔNG có cả tên lẫn SĐT. Dòng chỉ có SĐT vẫn định
         // danh được nên hiện SĐT, gọi là khách lẻ thì kế toán tưởng dòng bị mất khách.
         customer: customerName || phone || "Khách lẻ",

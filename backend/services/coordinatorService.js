@@ -1,12 +1,17 @@
-const XLSX = require('xlsx');
 const pool = require('../config/database');
+const logger = require('../config/logger');
 const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
 const coordinatorRepository = require('../repositories/coordinatorRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
-const { ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
+const {
+    ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES,
+    PASS_THROUGH_EXPENSE_TYPES,
+    isCompanyBorneShipment,
+    isCustomerBillableExpense,
+} = require('../constants/expenseConstants');
 const financialLedgerRepository = require('../repositories/financialLedgerRepository');
 const { normalizeVietnamPhone } = require('../utils/phone');
 
@@ -84,6 +89,9 @@ const extractRouteValue = (row, headerMap) => {
 };
 
 const parseSpreadsheet = (buffer) => {
+  // Nạp muộn: `xlsx` tốn ~100ms lúc require và CHỈ dùng cho luồng import Excel.
+  // Để ở đầu file là mọi cold start của Cloud Run đều phải trả khoản đó.
+  const XLSX = require('xlsx');
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error('File Excel không có sheet nào');
@@ -418,11 +426,23 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
         // pending sẽ khiến coordinator xem 0đ rồi chốt ra số khác.
         const countableExpenses = expenses.filter((expense) => expense.status !== 'rejected');
         const totalExpenses = countableExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+        // Chuyến hủy vì hàng hư hại / giao thất bại: KHÔNG có khoản nào đòi khách được nữa
+        // (xem isCustomerBillableExpense). Toàn bộ chi phí của chuyến chuyển sang DN chịu —
+        // tách riêng total_company_borne_expenses để coordinator nhìn thấy phần đã gạt ra
+        // thay vì thấy chi phí "biến mất" khỏi tổng thu mà không hiểu vì sao.
+        const isCompanyBorne = isCompanyBorneShipment(shipment.status);
         const passThroughExpenses = countableExpenses.reduce((sum, expense) => (
-            PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
+            isCustomerBillableExpense(expense.expense_type, shipment.status)
                 ? sum + Number(expense.amount || 0)
                 : sum
         ), 0);
+        const companyBorneExpenses = isCompanyBorne
+            ? countableExpenses.reduce((sum, expense) => (
+                PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
+                    ? sum + Number(expense.amount || 0)
+                    : sum
+            ), 0)
+            : 0;
         const pickupStops = shipment.stops.filter((stop) => stop.stop_type === 'pickup');
         const deliveryStop = shipment.stops.find((stop) => stop.stop_type === 'delivery') ?? null;
         const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
@@ -438,6 +458,8 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
             expenses,
             total_expenses: totalExpenses,
             total_pass_through_expenses: passThroughExpenses,
+            total_company_borne_expenses: companyBorneExpenses,
+            is_company_borne_cost: isCompanyBorne,
             pickup_address: pickupStops[0]?.address || null,
             pickup_addresses: pickupStops,
             delivery_address: deliveryStop?.address || null,
@@ -449,8 +471,14 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
     return shipments;
 };
 
+// Chỉ cộng phần chi hộ THẬT SỰ đòi được khách. Chuyến hủy vì hàng hư hại đã bị
+// getOrderShipmentsForReceipt đưa total_pass_through_expenses về 0.
 const sumPassThroughExpenses = (shipments = []) => shipments.reduce((sum, shipment) => (
     sum + Number(shipment.total_pass_through_expenses || 0)
+), 0);
+
+const sumCompanyBorneExpenses = (shipments = []) => shipments.reduce((sum, shipment) => (
+    sum + Number(shipment.total_company_borne_expenses || 0)
 ), 0);
 
 const resolvePrimaryReceiptShipment = (shipments, driverId) => {
@@ -673,9 +701,23 @@ const getReceiptRequestDetail = async (requestId) => {
     // xem trước KHỚP với số thực sự chốt lúc duyệt (approveReceiptRequest dùng đúng computed này).
     const totalActualPrice = computed.actual_income;
     const totalPassThroughExpenses = sumPassThroughExpenses(shipments);
+    // Chi hộ của các chuyến hủy vì hàng hư hại — đã chuyển sang DN chịu, KHÔNG nằm trong
+    // finalPrice. Vẫn trả về để màn xem trước hiện rõ "DN chịu: X đ".
+    const totalCompanyBorneExpenses = sumCompanyBorneExpenses(shipments);
     const finalPrice = totalActualPrice + totalPassThroughExpenses;
-    const prepaidAmount = Math.max(Number(row.order_prepaid_amount || 0), 0);
+    // CHỈ tiền ứng đã xác nhận mới được trừ vào số phải thu — giống hệt quy tắc của
+    // createPrepaidRefundVoucher ('pending' = kế toán mới nhập, tiền chưa về, chưa ghi sổ).
+    // Trước đây màn xem trước trừ cả khoản 'pending' rồi hiện "khách phải trả 0đ / phải hoàn
+    // X đ", trong khi approveReceiptRequest CHẶN CỨNG đơn còn prepaid 'pending' — coordinator
+    // nhìn một con số không bao giờ chốt được rồi bấm Duyệt và ăn lỗi.
+    const rawPrepaidAmount = Math.max(Number(row.order_prepaid_amount || 0), 0);
+    const prepaidPending = row.order_prepaid_status === 'pending' && rawPrepaidAmount > 0;
+    const prepaidAmount = prepaidPending ? 0 : rawPrepaidAmount;
     const remainingReceiptAmount = Math.max(finalPrice - prepaidAmount, 0);
+    // Khách ứng nhiều hơn số phải trả (hay gặp khi chuyến bị hủy vì hàng hư hại kéo cước về 0)
+    // → phần dư phải hoàn lại. Hiện ngay ở màn xem trước để coordinator biết trước khi bấm
+    // Duyệt rằng thao tác này sẽ sinh một phiếu hoàn tiền cho kế toán.
+    const prepaidRefundDue = Math.max(prepaidAmount - finalPrice, 0);
 
     return {
         request: {
@@ -705,6 +747,12 @@ const getReceiptRequestDetail = async (requestId) => {
             total_actual_price: totalActualPrice,
             final_price: finalPrice,
             prepaid_amount: prepaidAmount,
+            // Số khách KHAI là đã ứng, kể cả khi chưa xác nhận — để UI nói được "đang chờ
+            // xác nhận X đ" thay vì im lặng bỏ qua khoản đó.
+            prepaid_amount_declared: rawPrepaidAmount,
+            prepaid_status: row.order_prepaid_status ?? null,
+            // true = còn tiền ứng chưa xác nhận ⇒ approveReceiptRequest sẽ TỪ CHỐI phát hành
+            prepaid_pending: prepaidPending,
         },
         shipment: primaryShipment,
         shipments,
@@ -714,9 +762,13 @@ const getReceiptRequestDetail = async (requestId) => {
             total_actual_price: totalActualPrice,
             total_expenses: totalExpenses,
             total_pass_through_expenses: totalPassThroughExpenses,
+            total_company_borne_expenses: totalCompanyBorneExpenses,
             final_price: finalPrice,
             prepaid_amount: prepaidAmount,
+            prepaid_amount_declared: rawPrepaidAmount,
+            prepaid_pending: prepaidPending,
             remaining_receipt_amount: remainingReceiptAmount,
+            prepaid_refund_due: prepaidRefundDue,
             shipment_count: shipments.length,
             shipment_breakdown: computed.shipment_breakdown,
         },
@@ -818,15 +870,21 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
+        // Trạng thái chuyến quyết định bên chịu chi phí (chuyến hủy/thất bại ⇒ DN chịu),
+        // dùng cả cho bút toán ghi nhận bên dưới lẫn cho công thức tiền khách phải trả.
+        const shipmentStatusById = new Map(
+            (pricingSnapshot.shipments || []).map((shipment) => [Number(shipment.id), shipment.status]),
+        );
+
         for (const expense of normalizedExpenses) {
             const expenseShipmentId = expense.shipment_id ?? targetShipment.id;
             if (!validShipmentIds.has(Number(expenseShipmentId))) {
                 throw new Error('Chi phí có chuyến xe không thuộc đơn hàng này');
             }
             const expenseVehicleId = pricingSnapshot.shipments.find((shipment) => Number(shipment.id) === Number(expenseShipmentId))?.vehicle_id ?? null;
-            // Không ghi sổ ở đây — tiền tài đã ứng, chờ hoàn (cấn trừ nợ TH2 hoặc qua lương TH1)
             await coordinatorRepository.insertApprovedExpense(client, {
                 shipmentId: expenseShipmentId,
+                shipmentStatus: shipmentStatusById.get(Number(expenseShipmentId)),
                 vehicleId: expenseVehicleId,
                 coordinatorId,
                 expenseType: expense.expense_type,
@@ -853,31 +911,82 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         // Tạo phiếu thu để driver xem — payment_type = NULL cho đến khi driver xác nhận
         // Tổng khách phải trả = cước (km × đơn giá − trả trước) + chi hộ khách (toll/parking/etc)
         // Chi phí công ty chịu (fuel/repair) KHÔNG cộng vào tiền khách.
+        //
+        // Chi phí thuộc chuyến hủy vì hàng hư hại cũng KHÔNG cộng vào tiền khách — kể cả
+        // loại chi hộ, kể cả khoản coordinator vừa nhập tay ở màn duyệt (nếu không, quy tắc
+        // chỉ đúng với chi phí tài xế khai mà thủng ngay ở đường coordinator nhập).
+        // shipmentStatusById dựng sẵn ở trên, dùng chung với bút toán ghi nhận chi phí.
         const snapshotPassThrough = sumPassThroughExpenses(pricingSnapshot.shipments);
-        const coordinatorPassThrough = normalizedExpenses.reduce((sum, expense) => (
-            PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type) ? sum + Number(expense.amount) : sum
-        ), 0);
-        const totalAmount = computed.remaining_amount + snapshotPassThrough + coordinatorPassThrough;
+        const coordinatorPassThrough = normalizedExpenses.reduce((sum, expense) => {
+            const shipmentStatus = shipmentStatusById.get(Number(expense.shipment_id ?? targetShipment.id));
+            return isCustomerBillableExpense(expense.expense_type, shipmentStatus)
+                ? sum + Number(expense.amount)
+                : sum;
+        }, 0);
+
+        // Tiền ứng trước trừ vào TOÀN BỘ số khách phải trả (cước + chi hộ), không chỉ trừ
+        // vào cước. Trước đây lúc duyệt tính max(cước − prepaid, 0) + chi hộ trong khi màn
+        // xem trước tính max(cước + chi hộ − prepaid, 0): khách ứng dư hơn cước thì hai số
+        // lệch đúng bằng phần chi hộ — coordinator nhìn 0đ rồi chốt ra một con số khác.
+        // Chuyến hủy vì hàng hư hại kéo cước về 0 nên "ứng dư hơn cước" thành chuyện thường.
+        const grossBillable = computed.actual_income + snapshotPassThrough + coordinatorPassThrough;
+        const totalAmount = Math.max(grossBillable - computed.prepaid_amount, 0);
         await coordinatorRepository.insertShipmentReceipt(client, {
             shipmentId: targetShipment.id, amount: totalAmount, driverId: req.driver_id,
             notes, requestId, coordinatorId,
         });
 
+        // Khách ứng DƯ số phải trả → phần dư là tiền của khách, hoàn lại TOÀN BỘ bằng tiền
+        // (BR-022E). Hay gặp nhất khi chuyến bị hủy vì hàng hư hại: cước về 0 mà tiền ứng vẫn
+        // nằm trong két công ty. Không tạo phiếu hoàn thì đơn đóng lại im lặng và không còn
+        // dấu vết nào để lần ra.
+        //
+        // KHÔNG cấn phần dư này vào công nợ đơn khác của khách: nợ cũ giữ nguyên và thu theo
+        // đường của nó. Cấn trừ tự động làm khách không thấy tiền về, còn kế toán mất một
+        // phiếu chi để đối chiếu — hai khoản khác đơn, khác chứng từ, không được trộn.
+        const prepaidExcess = Math.max(computed.prepaid_amount - grossBillable, 0);
+        const refund = await orderRepository.createPrepaidRefundVoucher(client, {
+            orderId: req.order_id,
+            amount: prepaidExcess,
+            actorId: coordinatorId,
+            reason: `Hoàn tiền khách ứng trước dư khi chốt phiếu thu đơn #${req.order_id}`,
+        });
+
         await client.query('COMMIT');
 
-        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026)
+        // require trễ ở đây (không đưa lên đầu file) để tránh vòng require với notificationService
+        const notificationService = require('./notificationService');
+
+        if (refund) {
+            notificationService.getUserIdsByRole('accountant').then((ids) =>
+                notificationService.createForUsers(ids, {
+                    title: 'Cần hoàn tiền ứng trước cho khách',
+                    message: `Đơn #${req.order_id} chốt phiếu thu xong còn dư ${refund.amount.toLocaleString('vi-VN')}đ tiền khách ứng trước. Phiếu hoàn #${refund.voucherId} đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
+                    type: 'PREPAID_REFUND_REQUIRED',
+                    entityType: 'payment_voucher',
+                    entityId: refund.voucherId,
+                }, { displayMode: 'alert' })
+            ).catch(() => {});
+        }
+
+        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026).
+        // await: chốt phiếu thu là lúc doanh thu THẬT của chuyến được ghi nhận. Bỏ đó cho
+        // chạy nền thì Cloud Run đóng băng nó ngay khi response đi ra và KPI giữ số cũ.
         const shipmentIds = computed.shipment_breakdown.map((s) => s.shipment_id);
         if (shipmentIds.length > 0) {
-            coordinatorRepository.getShipmentOwnersForKpi(shipmentIds).then((rows) => {
-                const kpiService = require('./kpiService');
-                rows.forEach(({ owner_driver_id, completed_at }) => {
-                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now()));
+            const kpiService = require('./kpiService');
+            await coordinatorRepository.getShipmentOwnersForKpi(shipmentIds)
+                .then((rows) => Promise.all(rows.map(({ owner_driver_id, completed_at }) =>
+                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now())),
+                )))
+                .catch((err) => {
+                    logger.warn('[KPI] Không tính lại được KPI sau khi chốt phiếu thu', {
+                        orderId: req.order_id, message: err.message,
+                    });
                 });
-            }).catch(() => {});
         }
 
         // Notify driver
-        const notificationService = require('./notificationService');
         notificationService.createForUser(req.driver_id, {
             title: 'Phiếu thu đã được tạo',
             message: `Coordinator đã tạo phiếu thu cho đơn #${req.order_id}.`,
@@ -892,6 +1001,9 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             total_actual_price: detail.summary.total_actual_price,
             total_expenses: detail.summary.total_expenses,
             final_price: detail.summary.final_price,
+            // != null khi khách ứng dư và phần dư vừa được lập phiếu hoàn — controller cần
+            // nói ra, nếu không coordinator bấm Duyệt xong không biết đơn vừa sinh phiếu chi.
+            refund,
         };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -1020,21 +1132,49 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
         note: 'Điều phối viên/Quản lý chủ động điều chuyển (ngoài luồng sự cố)',
     });
 
-    notificationService.createForUser(fromDriverId, {
-        title: 'Chuyến của bạn đã được điều chuyển',
-        message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // Sự kiện điều hướng đi TRƯỚC, thông báo (alert) đi sau — cùng quy ước với
+    // assignOrderShipments và cancelShipment.
+    //
+    // Tài cũ đang mở màn chuyến này phải bị đá ra ngay: chuyến không còn là của họ nữa,
+    // ở lại thì mọi nút cập nhật trạng thái đều ăn lỗi mà không hiểu vì sao. Tài mới cần
+    // trang chủ tự hiện chuyến, không phải tự kéo refresh.
+    try {
+        notificationGateway.broadcastToUser(fromDriverId, {
+            type: 'trip.reassigned',
+            shipmentId: Number(shipmentId),
+            orderId: shipment.order_id ?? null,
+        });
+        notificationGateway.broadcastToUser(parsedToDriverId, {
+            type: 'trip.assigned',
+            orderId: shipment.order_id ?? null,
+            shipmentIds: [Number(shipmentId)],
+            activatedShipmentId: Number(shipmentId),
+        });
+    } catch { /* realtime failure must not abort the reassignment */ }
 
-    notificationService.createForUser(parsedToDriverId, {
-        title: 'Bạn được điều chuyển 1 chuyến mới',
-        message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: shipmentId,
-    }, { displayMode: 'alert' }).catch(() => {});
+    // await: đây là việc cuối trước khi controller trả response, mà Cloud Run bóp CPU
+    // ngay sau đó — bỏ đó cho chạy nền là đúng cách làm mất thông báo. Lỗi báo tin vẫn
+    // không được phép huỷ kết quả điều chuyển đã commit.
+    await Promise.all([
+        notificationService.createForUser(fromDriverId, {
+            title: 'Chuyến của bạn đã được điều chuyển',
+            message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+        notificationService.createForUser(parsedToDriverId, {
+            title: 'Bạn được điều chuyển 1 chuyến mới',
+            message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }),
+    ]).catch((err) => {
+        logger.warn('[reassign] không gửi được thông báo điều chuyển', {
+            shipmentId, fromDriverId, toDriverId: parsedToDriverId, message: err.message,
+        });
+    });
 
     return reassigned;
 };
@@ -1156,16 +1296,9 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
     }
 
     const count = result.assignedShipmentIds.length;
-    notificationService.createForUser(parsedDriverId, {
-        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
-        message: count > 1
-            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
-            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
-        type: 'TRIP_ASSIGNED',
-        entityType: 'shipments',
-        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
-    }, { displayMode: 'alert' }).catch(() => {});
 
+    // Đẩy sự kiện điều hướng TRƯỚC rồi mới tới thông báo: app tài xế nghe 'trip.assigned'
+    // để tải lại chuyến đang chạy, còn 'notification.created' chỉ lo bung alert.
     try {
         notificationGateway.broadcastToUser(parsedDriverId, {
             type: 'trip.assigned',
@@ -1174,6 +1307,24 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
             activatedShipmentId: result.activatedShipmentId,
         });
     } catch { /* realtime failure must not abort the assignment */ }
+
+    // await chứ không bắn-rồi-quên: đây là việc CUỐI CÙNG trước khi controller trả
+    // response, mà Cloud Run bóp CPU ngay sau đó. Bỏ await là giao việc báo tin cho một
+    // instance sắp bị đóng băng — đúng triệu chứng "gán đơn xong tài xế không nhận được gì".
+    // Lỗi báo tin vẫn không được phép huỷ kết quả gán chuyến đã commit.
+    await notificationService.createForUser(parsedDriverId, {
+        title: count > 1 ? `Bạn được giao ${count} chuyến trong đơn #${parsedOrderId}` : 'Bạn được giao 1 chuyến mới',
+        message: count > 1
+            ? `Điều phối viên đã giao ${count} chuyến của đơn #${parsedOrderId} cho bạn. Chạy xong chuyến này thì chuyến tiếp theo sẽ tự mở.`
+            : `Điều phối viên đã giao chuyến #${result.assignedShipmentIds[0]} (đơn #${parsedOrderId}) cho bạn.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: result.activatedShipmentId ?? result.assignedShipmentIds[0],
+    }, { displayMode: 'alert' }).catch((err) => {
+        logger.warn('[assign] không gửi được thông báo cho tài xế', {
+            driverId: parsedDriverId, orderId: parsedOrderId, message: err.message,
+        });
+    });
 
     return result;
 };

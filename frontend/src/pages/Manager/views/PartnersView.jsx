@@ -57,7 +57,12 @@ export default function PartnersView({ user }) {
 
   useRoleRealtime(user, {
     onMessage: (payload) => {
-      if (payload?.type === "manager.partners.changed") load();
+      if (payload?.type !== "manager.partners.changed") return;
+      load();
+      // Kế toán vừa thu tiền đối tác đang mở → làm mới luôn công nợ trong modal
+      if (payload.action === "payment" && Number(payload.partnerId) === Number(selectedPartner?.id)) {
+        refreshDebts(selectedPartner.id);
+      }
     },
   });
 
@@ -114,17 +119,13 @@ export default function PartnersView({ user }) {
     }
   };
 
-  // Sau khi ghi nhận đối tác thanh toán → tải lại công nợ trong modal + danh sách ngoài
-  const handlePartnerPaid = async (partnerId) => {
-    setDebtLoading(true);
+  // Làm mới im lặng khi kế toán vừa thu tiền — không đóng modal nếu lỗi
+  const refreshDebts = async (partnerId) => {
     try {
       const data = await managerService.getPartnerDebts(partnerId);
-      setSelectedPartner(data.partner || selectedPartner);
+      setSelectedPartner((prev) => data.partner || prev);
       setSelectedDebts(data.debts || []);
-    } catch { /* ignore */ } finally {
-      setDebtLoading(false);
-    }
-    load();
+    } catch { /* giữ nguyên số liệu đang hiển thị */ }
   };
 
   const totalRemaining = Number(summary.total_remaining || 0);
@@ -267,7 +268,6 @@ export default function PartnersView({ user }) {
         partner={selectedPartner}
         debts={selectedDebts}
         loading={debtLoading}
-        onPaid={handlePartnerPaid}
         onClose={() => { setDebtModalOpen(false); setSelectedPartner(null); setSelectedDebts([]); }}
       />
     </div>

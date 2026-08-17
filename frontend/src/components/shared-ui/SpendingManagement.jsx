@@ -25,10 +25,21 @@ const EXPENSE_TYPE_LABEL = {
   maintenance: "Bảo dưỡng", depreciation: "Khấu hao", other: "Khác",
 };
 
-const VOUCHER_TYPE_LABEL = {
+// Loại phiếu kế toán được TỰ CHỌN khi lập phiếu tay ở màn này — phải khớp allowlist
+// VOUCHER_TYPES của backend, chọn loại ngoài danh sách là server từ chối.
+const CREATABLE_VOUCHER_TYPES = {
   office: "Văn phòng phẩm", rent: "Thuê mặt bằng/kho", utilities: "Điện nước/Internet",
   equipment: "Mua sắm thiết bị", entertainment: "Tiếp khách", compensation: "Đền bù hàng hóa",
-  prepaid_refund: "Hoàn tiền trả trước", other: "Khác",
+  other: "Khác",
+};
+
+// Thêm các loại CHỈ ĐỂ HIỂN THỊ: chúng luôn gắn với một bản ghi cụ thể (đơn hàng / khoản
+// chi phí) nên chỉ sinh ra từ đúng luồng của nó, không cho chọn tay. Nhưng bảng và bộ lọc
+// vẫn phải đọc được tên tiếng Việt, nếu không sẽ hiện chuỗi thô như "driver_reimbursement".
+const VOUCHER_TYPE_LABEL = {
+  ...CREATABLE_VOUCHER_TYPES,
+  prepaid_refund: "Hoàn tiền trả trước",
+  driver_reimbursement: "Hoàn ứng tài xế",
 };
 
 const EVENT_LABEL = {
@@ -652,7 +663,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               onSelectionChange={(k) => setVoucherForm((p) => ({ ...p, voucher_type: [...k][0] ?? "" }))}
               variant="bordered"
             >
-              {Object.entries(VOUCHER_TYPE_LABEL).map(([k, v]) => <SelectItem key={k} textValue={v}>{v}</SelectItem>)}
+              {Object.entries(CREATABLE_VOUCHER_TYPES).map(([k, v]) => <SelectItem key={k} textValue={v}>{v}</SelectItem>)}
             </Select>
             <NumberInput label="Số tiền (đồng)" minValue={0} step={100000} value={voucherForm.amount || undefined} onValueChange={(v) => setVoucherForm((p) => ({ ...p, amount: v }))} variant="bordered" />
             <Input label="Người / đơn vị nhận tiền" value={voucherForm.payee} onValueChange={(v) => setVoucherForm((p) => ({ ...p, payee: v }))} variant="bordered" />

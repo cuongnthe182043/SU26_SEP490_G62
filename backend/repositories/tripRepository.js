@@ -6,11 +6,44 @@ const {
     ACTIVE_STATUSES,
     STATUS_TIMESTAMP_COL,
 } = require('../constants/tripConstants');
+const {
+    CUSTOMER_BILLABLE_EXPENSE_SQL,
+    NO_LIVE_REIMBURSEMENT_VOUCHER_SQL,
+} = require('../constants/expenseConstants');
 
 // Địa chỉ pickup/delivery lưu trong trip_stops — dùng subquery để kéo ra
 const PICKUP_SUBQ  = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'   ORDER BY ts.stop_index ASC  LIMIT 1)`;
 const DELIVERY_SUBQ = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery' ORDER BY ts.stop_index DESC LIMIT 1)`;
 const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.payment_type, o.payment_type)`;
+
+// Số tiền phiếu thu khi phiếu CHƯA chốt (sr.amount còn NULL) — chỉ để tài xế xem trước.
+// Cần alias `orr` (yêu cầu phiếu thu) và `o` (đơn) ở câu truy vấn gọi nó.
+//
+// Dùng CHUNG cho màn DANH SÁCH và màn CHI TIẾT phiếu thu của tài xế: trước đây danh sách cộng
+// chi hộ khách vào tổng còn chi tiết thì không, nên cùng một phiếu chưa duyệt hiện hai số khác
+// nhau tùy tài xế đang đứng ở màn nào.
+//
+// Công thức phải khớp approveReceiptRequest (BR-022D): tiền ứng trước trừ vào TOÀN BỘ số phải
+// trả (cước + chi hộ), KHÔNG phải trừ vào cước rồi cộng chi hộ lên trên. Hai cách chỉ khác nhau
+// khi khách ứng nhiều hơn cước — mà chuyến hủy vì hàng hư hại kéo cước về 0 nên đó là chuyện
+// thường, không phải ca hiếm.
+//
+// Chỉ trừ tiền ứng ĐÃ XÁC NHẬN: 'pending' là kế toán mới nhập, tiền chưa về và chưa ghi sổ —
+// approveReceiptRequest cũng từ chối chốt phiếu trong trạng thái đó.
+const PENDING_RECEIPT_AMOUNT_SQL = `GREATEST(
+    (SELECT COALESCE(SUM(COALESCE(os2.actual_price, os2.estimated_price)), 0)
+     FROM order_shipments os2
+     WHERE os2.order_id = orr.order_id
+       AND os2.status NOT IN ('cancelled', 'failed'))
+    + (SELECT COALESCE(SUM(e.amount), 0)
+       FROM expenses e
+       JOIN order_shipments os3 ON os3.id = e.shipment_id
+       WHERE os3.order_id = orr.order_id
+         AND e.status != 'rejected'
+         AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os3')})
+    - CASE WHEN o.prepaid_status = 'confirmed' THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END,
+    0
+)`;
 
 // Tài xế/xe hiện tại của chuyến được suy ra từ dòng shipment_assignment_history mới nhất
 // (view v_shipment_current). owner_driver_id IS NULL ⇒ chuyến đang ở pool, không ai giữ.
@@ -565,6 +598,17 @@ const cancelShipmentForCargoDamage = async ({ shipmentId, reason, coordinatorId 
              RETURNING *`,
             [shipmentId, SHIPMENT_STATUS.CANCELLED, reason],
         );
+
+        // Chi phí của chuyến này có thể ĐÃ được duyệt (và ghi Nợ 3388 — chi hộ, phải thu
+        // lại của khách) trước khi hàng hư. Hủy chuyến là lúc phiếu thu thôi đòi khách
+        // khoản đó, nên phải chuyển sang Nợ 642 (DN chịu): để nguyên 3388 là treo một
+        // khoản phải thu không bao giờ có ai trả. Tài xế vẫn được hoàn đủ tiền đã ứng —
+        // chỉ đổi bên chịu chi phí.
+        await financialLedgerRepository.reclassPassThroughToCompany(client, {
+            shipmentId,
+            reason: `Hủy chuyến #${shipmentId} vì hàng hư hại — chi hộ chuyển sang DN chịu`,
+            actorId: coordinatorId,
+        });
 
         await recomputeOrderDerivedStatus(shipment.order_id, client);
 
@@ -1442,26 +1486,11 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             orr.status                                                         AS request_status,
             ${RECEIPT_PAYMENT_TYPE_SQL}                                       AS payment_type,
             -- sr.amount (đã gồm cước + chi hộ − trả trước, chốt khi duyệt);
-            -- fallback cho phiếu chưa duyệt / dữ liệu cũ: cước (thực tế/ước tính) − trả trước + chi hộ
+            -- fallback cho phiếu chưa duyệt / dữ liệu cũ — xem PENDING_RECEIPT_AMOUNT_SQL.
             -- Loại chuyến 'cancelled'/'failed' (vd. hủy do sự cố hàng hư hỏng) khỏi tổng —
             -- khớp đúng rule ở computeReceiptAmount, nếu không estimated_price của chuyến hư
             -- hỏng vẫn bị cộng vào số tài xế thấy trong lúc phiếu còn chờ duyệt.
-            COALESCE(sr.amount,
-                GREATEST(
-                    (SELECT COALESCE(SUM(COALESCE(os2.actual_price, os2.estimated_price)), 0)
-                     FROM order_shipments os2
-                     WHERE os2.order_id = orr.order_id
-                       AND os2.status NOT IN ('cancelled', 'failed'))
-                    - COALESCE(o.prepaid_amount, 0),
-                    0
-                )
-                + (SELECT COALESCE(SUM(e.amount), 0)
-                   FROM expenses e
-                   JOIN order_shipments os3 ON os3.id = e.shipment_id
-                   WHERE os3.order_id = orr.order_id
-                     AND e.status != 'rejected'
-                     AND e.expense_type IN ('toll', 'parking', 'etc'))
-            )                                                                  AS amount,
+            COALESCE(sr.amount, ${PENDING_RECEIPT_AMOUNT_SQL})                 AS amount,
             COALESCE(sr.collected_at, orr.processed_at, orr.requested_at)    AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)                         AS notes,
             orr.coordinator_notes                                              AS rejection_reason,
@@ -1479,7 +1508,7 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
              JOIN order_shipments os4 ON os4.id = e.shipment_id
              WHERE os4.order_id = orr.order_id
                AND e.status != 'rejected'
-               AND e.expense_type IN ('toll', 'parking', 'etc'))::text        AS pass_through_total
+               AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os4')})::text        AS pass_through_total
          FROM order_receipt_requests orr
          JOIN orders o                   ON o.id  = orr.order_id
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
@@ -1509,15 +1538,15 @@ const getDriverReceiptDetail = async (orrId, driverId) => {
             sr.payment_type              AS payment_type,
             o.payment_type               AS order_payment_type,
             o.customer_id                AS customer_id,
-            o.prepaid_amount             AS prepaid_amount,
-            COALESCE(sr.amount,
-                (SELECT GREATEST(
-                    COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
-                    0
-                ) FROM order_shipments os2
-                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL
-                   AND os2.status NOT IN ('cancelled', 'failed'))
-            )                            AS amount,
+            -- Chỉ hiện tiền ứng ĐÃ XÁC NHẬN — đúng bằng số được trừ khỏi tiền khách phải trả.
+            -- Hiện khoản 'pending' (kế toán mới nhập, tiền chưa về) là báo tài xế một dòng
+            -- "đã trả trước" không hề được trừ vào tổng bên dưới.
+            CASE WHEN o.prepaid_status = 'confirmed'
+                 THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END AS prepaid_amount,
+            -- Phiếu chưa chốt dùng CHUNG công thức với màn danh sách (PENDING_RECEIPT_AMOUNT_SQL):
+            -- trước đây chỗ này bỏ quên phần chi hộ khách nên hai màn hiện hai số khác nhau.
+            COALESCE(sr.amount, ${PENDING_RECEIPT_AMOUNT_SQL})
+                                         AS amount,
             COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
             o.id                         AS order_id,
@@ -1708,6 +1737,13 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
     const excessAmount   = Math.max(0, totalCollected - receiptAmount);
     const shortfall      = isPartial ? receiptAmount - totalCollected : 0;
 
+    // Phiếu thu 0đ là hợp lệ, KHÔNG phải lỗi dữ liệu: mọi chuyến của đơn bị hủy vì hàng
+    // hư hại (doanh thu 0, toàn bộ chi phí chuyển sang DN chịu) hoặc khách đã trả trước
+    // đủ. Không có gì để thu ⇒ không được sinh công nợ: debts.total_amount có CHECK > 0
+    // nên INSERT 0 sẽ ném lỗi Postgres thô ra tận app tài xế. Vẫn ghi payment_type +
+    // ảnh bằng chứng để phiếu đóng lại đúng quy trình.
+    const NOTHING_TO_COLLECT = receiptAmount <= 0.01;
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1725,46 +1761,58 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
         if (claimedCount === 0) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
 
         if (paymentType === 'cash_collected') {
-            // Driver cầm tiền mặt → Driver Debt = số thực nhận (không phải toàn bộ phiếu thu)
-            const debtNote = notes
-                ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
-                : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
-            const { rows: [driverDebt] } = await client.query(
-                `INSERT INTO debts (
-                    debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
-                    total_amount, due_date, notes, updated_by, created_at, updated_at
-                )
-                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
-                    CURRENT_DATE + INTERVAL '30 days',
-                    $5, $1, NOW(), NOW())
-                 RETURNING id`,
-                [driverId, rec.order_id, rec.shipment_id, totalCollected, debtNote],
-            );
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: 'driver_debt_created',
-                debitAccount: '1388', creditAccount: '131',
-                amount: totalCollected,
-                description: `Tài xế thu tiền mặt từ khách — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
-                refType: 'debt', refId: driverDebt.id, actorId: driverId,
-            });
+            // Driver cầm tiền mặt → Driver Debt = số thực nhận (không phải toàn bộ phiếu thu).
+            // Không thu được đồng nào (phiếu 0đ vì hàng hư hại, hoặc khách chưa trả gì) thì
+            // KHÔNG có nợ tài xế để ghi — debts.total_amount CHECK > 0 sẽ ném lỗi thô.
+            let driverDebt = null;
+            if (totalCollected > 0.01) {
+                const debtNote = notes
+                    ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
+                    : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
+                ({ rows: [driverDebt] } = await client.query(
+                    `INSERT INTO debts (
+                        debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                        total_amount, due_date, notes, updated_by, created_at, updated_at
+                    )
+                     VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
+                        CURRENT_DATE + INTERVAL '30 days',
+                        $5, $1, NOW(), NOW())
+                     RETURNING id`,
+                    [driverId, rec.order_id, rec.shipment_id, totalCollected, debtNote],
+                ));
+                // Tiền tài xế cầm = CƯỚC + CHI HỘ. Ghi Có 131 toàn bộ thì 131 bị Có thừa
+                // đúng bằng phần chi hộ còn 3388 treo Nợ mãi — tách hai vế tại đây.
+                await financialLedgerRepository.insertCustomerCashIn(client, {
+                    eventType: 'driver_debt_created',
+                    debitAccount: '1388',
+                    amount: totalCollected,
+                    orderId: rec.order_id,
+                    description: `Tài xế thu tiền mặt từ khách — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
+                    refType: 'debt', refId: driverDebt.id, actorId: driverId,
+                });
+            }
 
             // TH2 — CẤN TRỪ CHI PHÍ TÀI ĐÃ ỨNG: tiền khách đưa gồm cả phần chi hộ/chi phí
             // tài trả trước; tài giữ lại phần mình đã ứng là hợp lệ. Cấn tự động các expense
             // đã duyệt (reimbursement 'pending') của CHÍNH tài này trong CHÍNH đơn này vào nợ,
             // mỗi khoản 1 dòng debt_payments 'offset' confirmed + 1 bút toán, không cấn quá nợ.
-            const { rows: offsetables } = await client.query(
-                `SELECT e.id, e.expense_type, e.amount
+            //
+            // Không có nợ tài xế (không thu được đồng nào) ⇒ không cấn trừ được gì; chi phí
+            // tài đã ứng vẫn giữ reimbursement_status = 'pending' để hoàn qua lương (TH1).
+            const { rows: offsetables } = driverDebt ? await client.query(
+                `SELECT e.id, e.expense_type, e.amount, os.status AS shipment_status
                  FROM expenses e
                  JOIN order_shipments os ON os.id = e.shipment_id
                  LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
                  WHERE os.order_id = $1
                    AND e.status = 'approved'
                    AND e.reimbursement_status = 'pending'
+                   AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
                    AND COALESCE(sc.owner_driver_id, e.created_by) = $2
                  ORDER BY e.id
                  FOR UPDATE OF e`,
                 [rec.order_id, driverId],
-            );
+            ) : { rows: [] };
             let remainingDebt = Number(totalCollected);
             for (const exp of offsetables) {
                 const offsetAmount = Math.min(Number(exp.amount), remainingDebt);
@@ -1777,16 +1825,17 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                     [driverDebt.id, offsetAmount, driverId,
                      `Cấn trừ chi phí tài đã ứng (${exp.expense_type}) — expense #${exp.id}`],
                 );
-                const expPassThrough = ['toll', 'parking', 'etc'].includes(exp.expense_type);
-                // Ghi nhận chi phí/chi hộ tại thời điểm hoàn (Có 1388 — hoàn bằng cấn trừ
-                // nợ thu hộ, không có tiền mặt ra khỏi công ty)
+                // Chi phí đã được GHI NHẬN từ lúc duyệt (Nợ 3388/642 | Có 334) — bước này
+                // chỉ TẤT TOÁN khoản phải trả tài xế bằng cách trừ vào nợ thu hộ mà tài
+                // đang giữ: Nợ 334 | Có 1388, không có tiền ra khỏi quỹ.
+                //
+                // Ghi lại Nợ 3388/642 ở đây là ghi nhận chi phí lần hai cho cùng một hoá đơn.
                 await financialLedgerRepository.insertTransaction(client, {
-                    eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                    debitAccount: expPassThrough ? '3388' : '642',
-                    creditAccount: '1388',
+                    eventType: 'driver_debt_paid',
+                    debitAccount: '334', creditAccount: '1388',
                     amount: offsetAmount,
-                    description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — hoàn tài xế bằng cấn trừ nợ thu hộ, expense #${exp.id}`,
-                    refType: 'expense', refId: exp.id, actorId: driverId,
+                    description: `Hoàn tài xế bằng cấn trừ nợ thu hộ — chi phí #${exp.id} (${exp.expense_type})`,
+                    refType: 'debt', refId: driverDebt.id, actorId: driverId,
                 });
                 await client.query(
                     `UPDATE expenses SET reimbursement_status = 'offset_debt', reimbursed_at = NOW(), updated_at = NOW() WHERE id = $1`,
@@ -1830,9 +1879,11 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                     [rec.sr_id, proofUrl],
                 );
             }
-        } else if (paymentType === 'client_credit') {
+        } else if (paymentType === 'client_credit' && !NOTHING_TO_COLLECT) {
             // Ghi nợ công ty → Customer Debt, hoặc Partner Debt nếu là đơn đối tác.
             // KHÔNG ghi FT: doanh thu đã ghi khi duyệt phiếu thu — nợ theo dõi ở bảng debts.
+            // Phiếu 0đ (hàng hư hại / đã trả trước đủ): không có gì để nợ — bỏ qua, phiếu
+            // vẫn được đóng bằng payment_type ở trên.
             const who = isPartnerOrder ? 'Đối tác' : 'Khách hàng';
             await client.query(
                 `INSERT INTO debts (
@@ -1922,6 +1973,10 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
             excessAllocated,
             partialPayment: isPartial,
             shortfall,
+            // Phiếu 0đ: đã đóng nhưng KHÔNG sinh công nợ nào — tầng trên cần biết để báo
+            // "không phải thu" thay vì "đã ghi nhận công nợ khách".
+            nothingToCollect: NOTHING_TO_COLLECT,
+            receiptAmount,
         };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -1929,6 +1984,28 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
     } finally {
         client.release();
     }
+};
+
+// Số tiền phiếu thu của một yêu cầu — dùng để biết phiếu có phải 0đ hay không TRƯỚC khi
+// bắt tài xế chụp ảnh bằng chứng. Cùng công thức COALESCE với recordReceiptCollection.
+const getReceiptAmountForDriver = async (orrId, driverId) => {
+    const { rows } = await pool.query(
+        `SELECT COALESCE(sr.amount,
+                   (SELECT GREATEST(
+                       COALESCE(SUM(os2.actual_price),0) - COALESCE(MAX(o2.prepaid_amount),0), 0
+                   ) FROM order_shipments os2
+                    JOIN orders o2 ON o2.id = os2.order_id
+                    WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL
+                      AND os2.status NOT IN ('cancelled', 'failed'))
+               ) AS amount
+         FROM shipment_receipts sr
+         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
+         WHERE orr.id = $1 AND orr.driver_id = $2
+         ORDER BY (sr.payment_type IS NOT NULL) ASC, sr.id ASC
+         LIMIT 1`,
+        [orrId, driverId],
+    );
+    return rows[0] ? Number(rows[0].amount) : null;
 };
 
 const getOrderCustomerId = async (orderId) => {
@@ -1995,6 +2072,7 @@ module.exports = {
     getOrderWithShipments,
     getDriverReceipts,
     getDriverReceiptDetail,
+    getReceiptAmountForDriver,
     getOrderShipmentsWithExpenses,
     resubmitReceiptRequest,
     recordReceiptCollection,

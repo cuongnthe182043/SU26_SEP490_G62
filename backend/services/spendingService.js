@@ -46,6 +46,82 @@ const createVoucher = async (data, createdBy, client = null) => {
     return voucher;
 };
 
+// ─── Hoàn ứng tài xế ──────────────────────────────────────────────────────────
+// Tài xế ứng tiền túi (chi hộ khách, xăng, sửa xe, bảo dưỡng) mà muốn nhận lại ngay,
+// không đợi kỳ lương. Đi qua đúng luồng phiếu chi 2 cấp như mọi khoản tiền ra khỏi quỹ.
+
+const listPendingReimbursements = () => paymentVoucherRepository.listPendingReimbursements();
+
+const EXPENSE_LABEL = {
+    toll: 'phí cầu đường', parking: 'phí đỗ xe', etc: 'phí ETC',
+    fuel: 'xăng dầu', repair: 'sửa xe', maintenance: 'bảo dưỡng xe',
+};
+
+// Ném lỗi kèm mã HTTP: sendError của controller chỉ đoán mã theo từ khoá trong câu chữ,
+// câu nào không khớp từ khoá nào sẽ rơi về 500 — lỗi nghiệp vụ bình thường mà báo "lỗi máy chủ".
+const businessError = (message, statusCode) => {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+};
+
+// Số tiền hoàn LẤY TỪ DB, không nhận từ client: cho client gửi lên là mở đường chi khác
+// số đã duyệt trên chứng từ.
+const createReimbursementVoucher = async ({ expense_id, payment_method, notes }, createdBy) => {
+    const expenseId = Number(expense_id);
+    if (!expenseId) throw businessError('Thiếu khoản chi phí cần hoàn', 400);
+    if (payment_method && !paymentVoucherRepository.PAYMENT_METHODS.includes(payment_method)) {
+        throw businessError('Hình thức thanh toán không hợp lệ', 400);
+    }
+
+    const target = await paymentVoucherRepository.getPendingReimbursement(expenseId);
+    if (!target) {
+        throw businessError(
+            'Khoản này không còn chờ hoàn (đã có phiếu hoàn ứng, đã cấn trừ nợ, đã hoàn qua lương, '
+            + 'hoặc người ứng không phải tài xế)',
+            409,
+        );
+    }
+
+    const label = EXPENSE_LABEL[target.expense_type] ?? target.expense_type;
+    const reason = `Hoàn tiền tài xế đã ứng — ${label}`
+        + (target.plate_number ? ` (xe ${target.plate_number})` : '')
+        + (target.order_id ? `, đơn #${target.order_id}` : '')
+        + (notes ? `. ${String(notes).trim()}` : '');
+
+    // Kiểm tra ở trên chạy ngoài transaction nên vẫn là check-then-act: hai kế toán bấm cùng
+    // lúc (hoặc double-click) thì cả hai đều đọc thấy "còn chờ hoàn". Unique index của DB là
+    // chốt chặn thật — bắt lấy 23505 và trả về đúng lỗi nghiệp vụ, đừng để lộ lỗi pg thô
+    // thành 500 làm kế toán tưởng hệ thống hỏng.
+    let voucher;
+    try {
+        voucher = await paymentVoucherRepository.create({
+            voucher_type: 'driver_reimbursement',
+            amount: Number(target.amount),
+            payee: target.driver_name || `Tài xế #${target.driver_id}`,
+            reason,
+            payment_method: payment_method || 'cash',
+            expense_id: expenseId,
+        }, createdBy);
+    } catch (err) {
+        if (err.code === '23505') {
+            throw businessError('Khoản này vừa được người khác lập phiếu hoàn ứng rồi', 409);
+        }
+        throw err;
+    }
+
+    notifyRolesSafe(['manager'], {
+        title: 'Có phiếu hoàn ứng tài xế cần duyệt',
+        message: `Phiếu chi #${voucher.id} hoàn ${Number(voucher.amount).toLocaleString('vi-VN')}đ `
+            + `cho ${voucher.payee} (${label}) đang chờ duyệt.`,
+        type: 'VOUCHER_CREATED',
+        entityType: 'payment_vouchers',
+        entityId: voucher.id,
+    }, { excludeUserId: createdBy, displayMode: 'alert' });
+
+    return voucher;
+};
+
 const listVouchers = (filters) => paymentVoucherRepository.list(filters);
 const getVoucherStats = (filters) => paymentVoucherRepository.getStats(filters);
 
@@ -178,6 +254,18 @@ const payVoucher = async (id, paidBy, { proofUrl = null, paymentMethod = null } 
         console.error(`[Spending] Không gửi được thông báo chi tiền phiếu chi #${id}:`, err.message);
     });
 
+    // Tài xế phải biết tiền mình ứng đã được hoàn — nếu không họ vẫn tưởng khoản đó còn
+    // treo và sẽ chờ nó xuất hiện trong bảng lương cuối tháng.
+    if (voucher.voucher_type === 'driver_reimbursement' && voucher.expense_driver_id) {
+        notificationService.createForUser(voucher.expense_driver_id, {
+            title: 'Đã hoàn tiền bạn ứng',
+            message: `Công ty đã chi ${Number(voucher.amount).toLocaleString('vi-VN')}đ hoàn lại khoản bạn ứng trước.`,
+            type: 'VOUCHER_PAID',
+            entityType: 'payment_vouchers',
+            entityId: voucher.id,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
     if (isCompensation) {
         notificationGateway.broadcastToRole('coordinator', {
             type: 'coordinator.incidents.changed',
@@ -204,6 +292,8 @@ const getSpendingSummary = ({ month, year }) => {
 
 module.exports = {
     createVoucher,
+    listPendingReimbursements,
+    createReimbursementVoucher,
     listVouchers,
     getVoucherStats,
     approveVoucher,

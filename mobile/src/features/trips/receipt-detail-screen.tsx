@@ -45,10 +45,21 @@ const EXPENSE_TYPE_LABEL: Record<string, string> = {
 // Xăng dầu / sửa xe là chi phí công ty — không cộng vào phiếu thu.
 const PASS_THROUGH_TYPES = new Set(['toll', 'parking', 'etc']);
 
-const sumPassThrough = (expenses: { expense_type: string; amount: string | number; status?: string }[] | undefined) =>
-    (expenses ?? [])
+// Chuyến bị hủy vì hàng hóa hư hại (hoặc giao thất bại): mọi chi phí của chuyến do DOANH
+// NGHIỆP chịu, kể cả loại vốn là chi hộ khách — phiếu thu không đòi khách khoản đó nữa.
+// Phải khớp backend/constants/expenseConstants.js, nếu không màn hình tài xế cộng ra tổng
+// khác hẳn số tiền in trên phiếu.
+const COMPANY_BORNE_SHIPMENT_STATUSES = new Set(['cancelled', 'failed']);
+
+const sumPassThrough = (
+    expenses: { expense_type: string; amount: string | number; status?: string }[] | undefined,
+    shipmentStatus?: string,
+) => {
+    if (COMPANY_BORNE_SHIPMENT_STATUSES.has(String(shipmentStatus ?? '').trim().toLowerCase())) return 0;
+    return (expenses ?? [])
         .filter((e) => e.status !== 'rejected' && PASS_THROUGH_TYPES.has(e.expense_type))
         .reduce((s, e) => s + Number(e.amount), 0);
+};
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
     cash_collected: 'Tiền mặt (Driver thu)',
@@ -197,7 +208,7 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
     const km           = s.actual_distance_km ?? s.estimated_distance_km;
     const color        = SHIPMENT_STATUS_COLOR[s.status] ?? '#6B7280';
     // Chỉ chi hộ khách được cộng vào tiền khách; fuel/repair chỉ hiển thị tham khảo
-    const expTotal     = sumPassThrough(s.expenses);
+    const expTotal     = sumPassThrough(s.expenses, s.status);
     const hasExpenses  = (s.expenses ?? []).length > 0;
 
     return (
@@ -596,6 +607,38 @@ export function ReceiptDetailScreen() {
         if (!result.canceled && result.assets[0]) setProofUri(result.assets[0].uri);
     };
 
+    // Đóng phiếu thu 0đ. Gửi 'client_credit' vì đó là hình thức DUY NHẤT không đòi ảnh
+    // xác minh; backend thấy phiếu 0đ thì KHÔNG tạo công nợ khách nào (xem
+    // NOTHING_TO_COLLECT trong tripRepository.recordReceiptCollection), nên không có
+    // khoản nợ 0đ rác nào sinh ra dù nhãn hình thức là "khách nợ".
+    const handleCloseZeroReceipt = async () => {
+        if (!receipt) return;
+        Alert.alert(
+            'Đóng phiếu thu',
+            'Phiếu thu 0₫ — không thu tiền của khách và không tạo công nợ. Xác nhận đóng phiếu?',
+            [
+                { text: 'Huỷ', style: 'cancel' },
+                {
+                    text: 'Đồng ý', onPress: async () => {
+                        setIsSubmitting(true);
+                        try {
+                            const fd = new FormData();
+                            fd.append('payment_type', 'client_credit');
+                            fd.append('notes', 'Phiếu thu 0₫ — không phát sinh khoản phải thu của khách');
+                            await tripService.recordReceiptCollection(receipt.orr_id, fd);
+                            load();
+                            Alert.alert('Đã đóng phiếu thu', 'Phiếu thu không phát sinh khoản phải thu nào.');
+                        } catch (err: any) {
+                            Alert.alert('Không ghi nhận được', err?.message ?? 'Thử lại.');
+                        } finally {
+                            setIsSubmitting(false);
+                        }
+                    },
+                },
+            ],
+        );
+    };
+
     const handleSubmitCollection = async () => {
         if (!selected || !receipt) return;
         if (selected === 'cash_collected') {
@@ -745,6 +788,11 @@ export function ReceiptDetailScreen() {
     // bank_transfer cần kế toán xác nhận; trước khi confirm thì vẫn là "chờ xác nhận"
     const bankPendingConfirm = alreadyRecorded && receipt.payment_type === 'bank_transfer' && !receipt.bank_confirmed;
     const needsProof      = selected === 'cash_collected' || selected === 'bank_transfer';
+    // Phiếu 0đ: mọi chuyến của đơn bị hủy vì hàng hóa hư hại (doanh thu 0, toàn bộ chi phí
+    // chuyển sang doanh nghiệp chịu) hoặc khách đã trả trước đủ. Không có tiền để thu nên
+    // 3 nút thanh toán đều vô nghĩa — và ép chụp ảnh xác minh sẽ khóa cứng tài xế, không
+    // cách nào đóng được phiếu. Thay bằng một nút đóng phiếu duy nhất.
+    const nothingToCollect = Number(receipt.amount) <= 0;
     // Sửa/xoá được khi khoản đó CHƯA được duyệt và phiếu thu của đơn chưa chốt
     // (chốt rồi là đã thu tiền khách, không được đổi số nữa). Trước đây chỉ xét
     // request_status === 'rejected' nên nút vẫn hiện với khoản đã duyệt rồi tài
@@ -871,7 +919,9 @@ export function ReceiptDetailScreen() {
                             {fmtMoney(Number(receipt.amount))}
                         </Text>
                         <Text fontSize={10} color={appTheme.colors.textMuted}>
-                            Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)
+                            {nothingToCollect
+                                ? 'Không phát sinh khoản phải thu — chi phí chuyến do công ty chịu'
+                                : 'Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)'}
                         </Text>
 
                         {Number(receipt.prepaid_amount) > 0 ? (
@@ -937,7 +987,7 @@ export function ReceiptDetailScreen() {
                         const shipments     = receipt.order_shipments ?? [];
                         const isMulti       = shipments.length > 1;
                         // Chỉ chi hộ khách (toll/parking/etc) mới cộng vào tiền khách phải trả
-                        const totalExpAll   = shipments.reduce((s, sh) => s + sumPassThrough(sh.expenses), 0);
+                        const totalExpAll   = shipments.reduce((s, sh) => s + sumPassThrough(sh.expenses, sh.status), 0);
                         const completedList = shipments.filter(sh => sh.status === 'completed');
                         const totalActual   = completedList.reduce((s, sh) => s + Number(sh.actual_price ?? 0), 0);
                         const totalEst      = completedList.reduce((s, sh) => s + Number(sh.estimated_price ?? 0), 0);
@@ -1165,8 +1215,32 @@ export function ReceiptDetailScreen() {
                     <RecordedBanner pt={receipt.payment_type!} hasDriverDebt={receipt.has_driver_debt} />
                 ) : null}
 
+                {/* ── Phiếu 0đ: không có gì để thu, chỉ cần đóng phiếu ────── */}
+                {isApproved && !alreadyRecorded && nothingToCollect ? (
+                    <View style={styles.card}>
+                        <Text fontSize={14} fontWeight="900" color={appTheme.colors.text} marginBottom={4}>
+                            Không phải thu của khách
+                        </Text>
+                        <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={14}>
+                            Phiếu thu này là 0₫ — chuyến bị hủy do hàng hóa hư hại nên toàn bộ chi phí
+                            phát sinh do công ty chịu, hoặc khách đã thanh toán trước đủ. Bạn không cần
+                            thu tiền và không cần chụp ảnh; chi phí bạn đã ứng vẫn được hoàn qua lương.
+                        </Text>
+                        <TouchableOpacity
+                            style={[styles.saveBtn, isSubmitting && { opacity: 0.45 }]}
+                            onPress={handleCloseZeroReceipt}
+                            disabled={isSubmitting}
+                        >
+                            <CheckCircle size={18} color="#fff" weight="fill" />
+                            <Text fontSize={14} fontWeight="900" color="#fff" marginLeft={8}>
+                                {isSubmitting ? 'Đang ghi nhận...' : 'Đóng phiếu thu'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : null}
+
                 {/* ── 3-button payment (chỉ khi approved + chưa ghi nhận) ─── */}
-                {isApproved && !alreadyRecorded ? (
+                {isApproved && !alreadyRecorded && !nothingToCollect ? (
                     <View style={styles.card}>
                         <Text fontSize={14} fontWeight="900" color={appTheme.colors.text} marginBottom={4}>
                             Khách thanh toán thế nào?

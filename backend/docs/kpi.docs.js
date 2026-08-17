@@ -164,11 +164,12 @@
  * /api/kpi/driver/{driverId}/vehicle-group:
  *   patch:
  *     tags: [KPI]
- *     summary: Sửa tay nhóm xe KPI cố định của tài xế (Coordinator / Manager / Accountant)
+ *     summary: Sửa tay nhóm xe KPI cố định của tài xế (Manager only)
  *     description: |
  *       Gắn cố định (default_vehicle_group_id) cho tài xế dùng để tính KPI/leaderboard,
  *       KHÔNG tự động đổi theo xe hiện tại đang lái. Dùng khi tài xế chuyển hẳn sang lái
- *       nhóm xe khác lâu dài. Chỉ coordinator/manager/accountant được sửa.
+ *       nhóm xe khác lâu dài. Chỉ manager được sửa; coordinator/accountant chỉ đọc được
+ *       nhóm hiện tại và lịch sử đổi nhóm (GET .../vehicle-group/history).
  *     security:
  *       - bearerAuth: []
  *     parameters:

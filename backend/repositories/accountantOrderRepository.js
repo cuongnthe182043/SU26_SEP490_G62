@@ -1,12 +1,20 @@
 ﻿const pool = require('../config/database');
 const { insertAssignmentHistory } = require('./tripRepository');
-const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
+const { PASS_THROUGH_EXPENSE_TYPES, CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const { normalizeVietnamPhone, normalizeVietnamPhonePrefix, normalizedPhoneSql } = require('../utils/phone');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
     return text || null;
+};
+
+// Tiền không được âm và không được là NaN. Excel do người gõ nên ô rỗng / chữ / số âm đều
+// có thể lọt tới đây; quy về 0 thay vì để NaN đi thẳng vào câu INSERT rồi vỡ ở tầng DB.
+// Frontend đã chặn số âm và báo đúng dòng Excel — đây là lớp chặn cuối, không phải lớp duy nhất.
+const normalizeNonNegativeMoney = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
 const buildOrderNotes = (orderData) => {
@@ -38,30 +46,10 @@ const buildOrderPaymentType = (shipments = []) => {
 };
 
 const WALK_IN_NAME = 'Khách lẻ';
-
-// Chuẩn hoá tên khách để so khớp: gộp khoảng trắng thừa, bỏ phân biệt hoa/thường.
-// KHÔNG bỏ dấu tiếng Việt — "Hùng" và "Hưng" là hai khách khác nhau, gộp lại là gộp
-// luôn công nợ của hai người.
 const normalizeCustomerName = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 const normalizedCustomerNameSql = (col) => `lower(regexp_replace(btrim(${col}), '\\s+', ' ', 'g'))`;
 const CUSTOMER_NAME_COL = `COALESCE(full_name, company_name, '')`;
 
-/**
- * Tìm khách theo định danh có trong dòng nhập. Trả về:
- *   { status: 'matched',   customerId, matchedName }      — khớp đúng 1 khách đã có
- *   { status: 'new' }                                     — chưa có, sẽ tạo mới
- *   { status: 'ambiguous', matchedName, candidates: [] }  — tên khớp nhiều khách, cần SĐT
- *
- * Dùng CHUNG cho cả lúc import thật lẫn lúc xem trước, để những gì kế toán thấy ở màn
- * xem trước đúng bằng những gì sẽ xảy ra — nếu tách làm hai bản logic thì sớm muộn
- * cũng lệch nhau.
- *
- * Thứ tự ưu tiên:
- *   1. Có SĐT  → khớp theo SĐT. Đây là khoá tự nhiên, gõ sai định dạng vẫn khớp được.
- *   2. Không SĐT nhưng có tên → khớp theo tên đã chuẩn hoá. Trùng tên thì KHÔNG đoán,
- *      báo về để kế toán điền SĐT — gán nhầm khách là đòi nợ nhầm người.
- *   3. Không cả hai → hồ sơ "Khách lẻ" dùng chung (khách vãng lai, không theo dõi nợ).
- */
 const findCustomerByIdentity = async (client, { phone, name, companyName }) => {
     const cleanPhone = normalizeVietnamPhone(phone);
     const inputName = trimToNull(name) || trimToNull(companyName);
@@ -151,14 +139,6 @@ const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
     return insert.rows[0].id;
 };
 
-/**
- * Xem trước cả file: mỗi dòng khớp khách nào / tạo khách mới / trùng tên, và đã từng
- * import chưa. Chỉ ĐỌC.
- *
- * Vân tay được tra theo LÔ bằng một câu query. Trước đây dòng trùng chỉ lộ ra lúc import
- * thật, mỗi dòng tốn trọn một transaction (tra khách, insert, đụng unique, rollback) —
- * file 500 dòng gộp thêm 10 dòng mới là 490 transaction vứt đi.
- */
 const previewImport = async (items = []) => {
     const client = await pool.connect();
     try {
@@ -172,9 +152,6 @@ const previewImport = async (items = []) => {
             for (const r of rows) existing.add(r.import_fingerprint);
         }
 
-        // Hai dòng giống hệt nhau trong CÙNG một file: dòng đầu là mới, dòng sau là bản
-        // sao của chính nó. Không xét thì xem trước báo cả hai đều mới, import xong lại
-        // ra một dòng bị bỏ qua — đúng kiểu sai lệch giữa xem trước và thực tế.
         const seen = new Set();
         const results = [];
         for (const item of items) {
@@ -196,8 +173,6 @@ const previewImport = async (items = []) => {
     }
 };
 
-// Gợi ý "khách cũ" theo phần đầu SĐT (gõ nửa chừng) cho màn Nhập đơn ngoài.
-// Trả danh sách (tối đa `limit`) kèm số đơn đã có. Guard tối thiểu 3 số để tránh quét rộng.
 const searchCustomersByPhone = async (phonePrefix, limit = 8) => {
     const prefix = normalizeVietnamPhonePrefix(phonePrefix);
     if (prefix.length < 3) return [];
@@ -224,11 +199,6 @@ const findVehicleById = async (client, id) => {
     return result.rows.length > 0 ? result.rows[0].id : null;
 };
 
-// So khớp biển số BỎ QUA hoa/thường và mọi dấu phân cách. Kế toán gõ tay trong Excel
-// nên "51C-123.45", "51c 123.45", "51C12345" đều là cùng một xe — trước đây so khớp
-// nguyên văn nên chỉ lệch một dấu chấm là cả dòng bị từ chối.
-// Trả về null nếu không có, ném lỗi nếu chuẩn hoá xong lại khớp nhiều xe (không được
-// đoán bừa vì gán sai xe là sai luôn doanh thu/KPI của tài xế khác).
 const findVehicleByPlate = async (client, plate) => {
     if (!plate) return null;
     const result = await client.query(
@@ -258,11 +228,6 @@ const findDriverById = async (client, id) => {
     return result.rows.length > 0 ? result.rows[0].id : null;
 };
 
-// So khớp tên tài xế bỏ qua hoa/thường và gộp khoảng trắng thừa ("Phạm  Văn Tiền"
-// dán từ Excel vẫn ra đúng người). KHÔNG bỏ dấu tiếng Việt — "Tiến" và "Tiền" là hai
-// người khác nhau, bỏ dấu sẽ gán nhầm doanh thu.
-// Trùng tên thì ném lỗi thay vì lấy bừa người đầu tiên: gán sai tài xế là sai KPI,
-// sai lương, sai công nợ của cả hai người và rất khó phát hiện về sau.
 const findDriverByName = async (client, name) => {
     if (!name) return null;
     const result = await client.query(
@@ -288,6 +253,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     pickupAddresses, deliveryAddresses, contactName, contactPhone,
     expenses, createdByUserId,
     distanceKm = null, completedAt = null,
+    collectOnBehalfAmount = 0,
 }) => {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
@@ -295,9 +261,10 @@ const insertShipmentWithStopsAndExpenses = async (client, {
             estimated_price, actual_price,
             estimated_distance_km, actual_distance_km,
             cargo_name, cargo_weight_kg,
+            collect_on_behalf_amount,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 'completed', $8, COALESCE($9::timestamptz, NOW()), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $10, 'completed', $8, COALESCE($9::timestamptz, NOW()), NOW(), NOW())
          RETURNING id`,
         [
             orderId, shipmentIndex,
@@ -306,6 +273,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
             cargoName || null, cargoWeight || 0,
             shipmentNotes,
             completedAt,
+            collectOnBehalfAmount,
         ]
     );
     const shipmentId = shipmentResult.rows[0].id;
@@ -332,19 +300,33 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 
     const expList = expenses || [];
     if (expList.length > 0) {
-        // Không ghi sổ tại đây — khoản tài ứng vào trạng thái 'pending' chờ hoàn
-        // (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
-        await client.query(
+       const { rows: insertedExpenses } = await client.query(
             `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
-             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW()
-             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)`,
+             SELECT $1, $2, $3, $3, typ, amt, dsc,
+                    COALESCE($7::timestamptz, NOW())::date,
+                    'approved', $3, NOW(), 'pending', NOW(), NOW()
+             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)
+             RETURNING id, expense_type, amount, expense_date`,
             [
                 shipmentId, vehicleId, createdByUserId,
                 expList.map((e) => e.expense_type),
                 expList.map((e) => Number(e.amount)),
                 expList.map((e) => e.description || null),
+                completedAt,
             ]
         );
+
+        for (const expense of insertedExpenses) {
+            await financialLedgerRepository.recordExpenseAccrual(client, {
+                expenseId: expense.id,
+                expenseType: expense.expense_type,
+                shipmentStatus: 'completed', // chuyến import luôn chốt ở 'completed'
+                amount: expense.amount,
+                actorId: createdByUserId,
+                occurredAt: expense.expense_date,
+                note: `Import đơn ngoài, chuyến #${shipmentId}`,
+            });
+        }
     }
 
     return shipmentId;
@@ -389,10 +371,11 @@ const insertDebtForShipment = async (client, {
             [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
         const driverDebtId = debtInsertResult.rows[0].id;
-        await financialLedgerRepository.insertTransaction(client, {
+        await financialLedgerRepository.insertCustomerCashIn(client, {
             eventType: 'driver_debt_created',
-            debitAccount: '1388', creditAccount: '131',
+            debitAccount: '1388',
             amount: actualPrice,
+            orderId,
             description: `Công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
             refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
             occurredAt,
@@ -436,8 +419,6 @@ const insertDebtForShipment = async (client, {
                 createdByUserId,
             ]
         );
-        // KHÔNG ghi FT: shipment_revenue (131/511) đã ghi cho chuyến này khi tạo đơn ngoài
-        // — ghi thêm customer_debt_created sẽ đội doanh thu. Nợ theo dõi ở bảng debts.
     }
 
 };
@@ -454,13 +435,6 @@ const createOrderWithShipments = async (orderData) => {
               name: orderData.customer_name,
               companyName: orderData.customer_company,
           });
-
-    // Cước xe (doanh thu, KPI) tách khỏi chi hộ khách (BR-027: pass-through không vào revenue)
-    // Giá BÁO (estimated_price) và giá CHỐT (actual_price) là hai số khác nhau — đúng như
-    // luồng trong app: đơn tạo ra với giá báo, coordinator duyệt phiếu thu thì chốt lại
-    // giá thật. Import cũng phải giữ được cả hai, nếu không thì mỗi lần giá đổi là mất
-    // vết giá gốc.
-    // Mọi tính toán tiền (doanh thu, KPI, công nợ, ghi sổ) đều dùng giá CHỐT.
     const computeEstimatedPrice = (shipment) => Number(shipment.cargo_fee || 0);
     const computeActualPrice = (shipment) => (
         shipment.settled_fee != null && Number(shipment.settled_fee) > 0
@@ -480,8 +454,6 @@ const createOrderWithShipments = async (orderData) => {
     const orderCargoName = buildOrderCargoName(orderData.shipments || []);
     const orderPaymentType = buildOrderPaymentType(orderData.shipments || []);
 
-    // Đơn ngoài do Kế toán tự nhập (đơn đã hoàn thành) → nếu có tiền ứng trước thì XÁC NHẬN
-    // NGAY (kế toán chính là người thu). Kênh suy ra từ payment_type: tiền mặt → 1111, còn lại → 1121.
     const prepaidAmt = Number(orderData.prepaid_amount || 0);
     const prepaidMethod = prepaidAmt > 0 ? (orderPaymentType === 'cash' ? 'cash' : 'bank_transfer') : null;
     const prepaidStatus = prepaidAmt > 0 ? 'confirmed' : 'none';
@@ -500,11 +472,6 @@ const createOrderWithShipments = async (orderData) => {
                  CASE WHEN $6::numeric > 0 THEN NOW() ELSE NULL END,
                  'completed', $7, $8, $9, $12, NOW(), NOW())
          RETURNING *`,
-        // Ép kiểu $2::int và $6::numeric là BẮT BUỘC, không phải cho đẹp: trong CASE,
-        // Postgres suy kiểu kết quả độc lập với cột đích, gặp "THEN $2 ELSE NULL" thì
-        // cả hai nhánh đều vô định nên rơi về text — trong khi $2 ở created_by lại là
-        // integer, gây "inconsistent types deduced for parameter $2" và HỎNG TOÀN BỘ
-        // việc tạo đơn ngoài (cả nhập tay lẫn import Excel).
         [
             customerId,
             orderData.created_by,
@@ -522,17 +489,6 @@ const createOrderWithShipments = async (orderData) => {
     );
         const newOrder = orderResult.rows[0];
 
-        // Ghi sổ tiền khách ứng trước (đã xác nhận ngay) — Nợ 1111/1121 theo kênh / Có 131.
-        // insertTransaction tự bỏ qua khi amount = 0.
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: 'prepaid_received',
-            debitAccount: prepaidMethod === 'cash' ? '1111' : '1121', creditAccount: '131',
-            amount: prepaidAmt,
-            description: `Khách ứng trước — đơn ngoài #${newOrder.id}`,
-            refType: 'order', refId: newOrder.id, actorId: orderData.created_by,
-            occurredAt: orderData.completed_at || null,
-        });
-
         const shipmentIds = [];
         const kpiTriggers = [];
         const autoResolvedDrivers = [];
@@ -540,11 +496,7 @@ const createOrderWithShipments = async (orderData) => {
             const s = orderData.shipments[i];
             const rowLabel = `Chuyến ${i + 1}`;
 
-            // KHÔNG tự tạo xe/tài xế nữa — Excel ghi biển số/tên không khớp hệ thống là
-            // dấu hiệu sai sót (gõ nhầm, xe/tài chưa được thêm) chứ không nên âm thầm
-            // tạo bản ghi thiếu thông tin (không nhóm xe, không hồ sơ đầy đủ) rồi để
-            // KPI/lương/thưởng tính sai hoặc bỏ sót sau này. Bắt buộc xe và tài khoản
-            // tài xế phải có sẵn trong hệ thống trước khi import.
+
             let vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
             if (!vehicleId && trimToNull(s.vehicle_plate)) {
                 throw new Error(`${rowLabel}: Xe biển số "${s.vehicle_plate.trim()}" chưa có trong hệ thống — vui lòng thêm xe trước khi import.`);
@@ -558,11 +510,7 @@ const createOrderWithShipments = async (orderData) => {
                 throw new Error(`${rowLabel}: Không tìm thấy tài xế với ID đã chọn.`);
             }
 
-            // Tài xế đã tồn tại nhưng chưa có "xe nhà" (drivers.vehicle_id) — vd tài
-            // xế được Manager tạo qua form thường, chưa từng gán xe. KPI dùng
-            // default_vehicle_group_id (nhóm cố định, không đổi theo xe hiện tại) nên
-            // phải gán ngay lần đầu có đủ thông tin xe, tránh KPI/lương/thưởng bị bỏ sót.
-            if (driverId && vehicleId) {
+           if (driverId && vehicleId) {
                 await client.query(
                     `UPDATE drivers
                      SET vehicle_id = $2,
@@ -613,11 +561,9 @@ const createOrderWithShipments = async (orderData) => {
                 createdByUserId: orderData.created_by,
                 distanceKm: s.distance_km != null && Number(s.distance_km) > 0 ? Number(s.distance_km) : null,
                 completedAt: s.completed_at || orderData.completed_at || null,
+                collectOnBehalfAmount: normalizeNonNegativeMoney(s.collect_on_behalf),
             });
 
-            // Nợ mặc định = số khách phải trả (cước + chi hộ); import cho phép ghi đè
-            // bằng số tiền tài xế thực giữ (khách trả thiếu / tài nộp một phần) —
-            // chỉ áp dụng cho trạng thái tiền nằm ở tài xế
             const isDriverMoneyState = ['driver_holding', 'driver_paid'].includes(s.driver_payment_state);
             const debtAmount = (isDriverMoneyState && s.driver_holding_amount != null && Number(s.driver_holding_amount) >= 0)
                 ? Number(s.driver_holding_amount)
@@ -653,6 +599,16 @@ const createOrderWithShipments = async (orderData) => {
             shipmentIds.push(shipmentId);
         }
 
+        await financialLedgerRepository.insertCustomerCashIn(client, {
+            eventType: 'prepaid_received',
+            debitAccount: prepaidMethod === 'cash' ? '1111' : '1121',
+            amount: prepaidAmt,
+            orderId: newOrder.id,
+            description: `Khách ứng trước — đơn ngoài #${newOrder.id}`,
+            refType: 'order', refId: newOrder.id, actorId: orderData.created_by,
+            occurredAt: orderData.completed_at || null,
+        });
+
         await client.query('COMMIT');
 
         const result = await pool.query(
@@ -674,9 +630,6 @@ const createOrderWithShipments = async (orderData) => {
         return { ...result.rows[0], kpiTriggers, autoResolvedDrivers };
     } catch (err) {
         await client.query('ROLLBACK');
-        // Đụng UNIQUE vân tay = dòng này đã import trước đó rồi. Đây KHÔNG phải lỗi dữ
-        // liệu của kế toán nên đánh dấu riêng để tầng trên xếp vào nhóm "bỏ qua vì
-        // trùng" thay vì trộn lẫn với các dòng sai định dạng.
         if (err.code === '23505' && String(err.constraint) === 'uq_orders_import_fingerprint') {
             const trung = new Error('Dòng này đã được import trước đó — bỏ qua để không nhân đôi doanh thu.');
             trung.isDuplicateImport = true;
@@ -775,7 +728,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         LEFT JOIN LATERAL (
             SELECT
                 COALESCE(SUM(e.amount), 0) AS total_expenses,
-                COALESCE(SUM(e.amount) FILTER (WHERE e.expense_type IN ('toll','parking','etc')), 0) AS pass_through_total
+                COALESCE(SUM(e.amount) FILTER (WHERE ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}), 0) AS pass_through_total
             FROM expenses e
             JOIN order_shipments os ON os.id = e.shipment_id
             WHERE os.order_id = o.id
@@ -888,9 +841,10 @@ const getOrderShipments = async (orderId) => {
                 COALESCE(SUM(CASE WHEN e.expense_type = 'etc'         THEN e.amount END), 0)          AS etc,
                 COALESCE(SUM(CASE WHEN e.expense_type = 'repair'      THEN e.amount END), 0)          AS repair,
                 COALESCE(SUM(CASE WHEN e.expense_type NOT IN ('fuel','toll','parking','etc','repair') THEN e.amount END), 0) AS other,
-                COALESCE(SUM(CASE WHEN e.expense_type IN ('toll','parking','etc') THEN e.amount END), 0) AS pass_through_total
+                COALESCE(SUM(CASE WHEN ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')} THEN e.amount END), 0) AS pass_through_total
             FROM expenses e
-            WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            JOIN order_shipments os ON os.id = e.shipment_id
+            WHERE os.order_id = $1
               AND e.status != 'rejected'
             GROUP BY e.shipment_id
         ),
@@ -952,6 +906,9 @@ const getOrderShipments = async (orderId) => {
         SELECT
             os.id, os.shipment_index, sc.vehicle_id, sc.owner_driver_id,
             os.estimated_price, os.actual_price, os.cargo_name, os.cargo_weight_kg,
+            -- Thu hộ (COD) — tiền của khách công ty đang giữ. Tách hẳn khỏi actual_price
+            -- (doanh thu) và khỏi mọi con số công nợ cước.
+            COALESCE(os.collect_on_behalf_amount, 0) AS collect_on_behalf_amount,
             os.status, os.notes, os.completed_at, os.created_at,
             v.plate_number                         AS vehicle_plate,
             p.full_name                            AS driver_name,

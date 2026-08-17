@@ -45,6 +45,14 @@ const STATUS_CHIP = {
   paid:    { label: "Đã thu đủ",    color: "success" },
 };
 
+// Nhãn theo loại chủ nợ — đối tác được thu như công nợ phải thu, giống khách hàng
+const DEBT_TYPE_CHIP = {
+  driver:  { short: "Tài xế",  long: "Tài xế nộp quỹ",      color: "warning" },
+  partner: { short: "Đối tác", long: "Đối tác thanh toán",  color: "secondary" },
+  customer:{ short: "Khách",   long: "Khách thanh toán",    color: "primary" },
+};
+const debtTypeChip = (t) => DEBT_TYPE_CHIP[t] ?? DEBT_TYPE_CHIP.customer;
+
 function getPersonInfo(person) {
   if (person.debt_type === "driver") {
     return {
@@ -188,9 +196,9 @@ function PendingRepaymentsPanel({ onChanged, onCountChange }) {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{item.driver_name}</span>
                   <Chip size="sm" variant="flat"
-                    color={item.debt_type === "driver" ? "warning" : "primary"}
+                    color={debtTypeChip(item.debt_type).color}
                     className="text-[10px] h-4">
-                    {item.debt_type === "driver" ? "Tài xế nộp quỹ" : "Khách thanh toán"}
+                    {debtTypeChip(item.debt_type).long}
                   </Chip>
                 </div>
                 <span className="text-[11px] text-gray-400 dark:text-gray-400">
@@ -314,8 +322,8 @@ function PaymentHistoryPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Thống kê theo bộ lọc hiện tại */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Thống kê theo bộ lọc hiện tại — tách đủ 3 loại chủ nợ để cộng lại đúng bằng tổng */}
+      <div className="grid grid-cols-4 gap-4">
         <DebtStatCard
           label="Đã thu (xác nhận)"
           value={stats?.confirmed_total ?? 0}
@@ -330,6 +338,13 @@ function PaymentHistoryPanel() {
           icon={RiGroupLine}
           gradient="from-blue-500 to-blue-600"
           lightBg="bg-blue-50 dark:bg-blue-500/10" text="text-blue-600 dark:text-blue-300" border="border-blue-100 dark:border-blue-500/20"
+        />
+        <DebtStatCard
+          label="Đối tác đã trả"
+          value={stats?.partner_confirmed_total ?? 0}
+          icon={RiBuilding2Line}
+          gradient="from-violet-500 to-violet-600"
+          lightBg="bg-violet-50 dark:bg-violet-500/10" text="text-violet-600 dark:text-violet-300" border="border-violet-100 dark:border-violet-500/20"
         />
         <DebtStatCard
           label="Tài xế đã nộp"
@@ -349,6 +364,7 @@ function PaymentHistoryPanel() {
           <SelectItem key="" textValue="Tất cả đối tượng">Tất cả đối tượng</SelectItem>
           <SelectItem key="customer" textValue="Khách hàng">Khách hàng</SelectItem>
           <SelectItem key="driver" textValue="Tài xế">Tài xế</SelectItem>
+          <SelectItem key="partner" textValue="Đối tác">Đối tác</SelectItem>
         </Select>
         <Select aria-label="Trạng thái" placeholder="Tất cả trạng thái" size="sm" className="w-40"
           startContent={fic(RiFlag2Line)}
@@ -413,8 +429,8 @@ function PaymentHistoryPanel() {
                     <td className="py-3 px-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtDateTime(r.paid_at)}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <Chip size="sm" variant="flat" color={r.debt_type === "driver" ? "warning" : "primary"} className="text-[10px] h-4">
-                          {r.debt_type === "driver" ? "Tài xế" : "Khách"}
+                        <Chip size="sm" variant="flat" color={debtTypeChip(r.debt_type).color} className="text-[10px] h-4">
+                          {debtTypeChip(r.debt_type).short}
                         </Chip>
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.person_name ?? "—"}</span>

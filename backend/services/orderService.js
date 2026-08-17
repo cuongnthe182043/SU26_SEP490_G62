@@ -1,5 +1,5 @@
-const XLSX = require('xlsx');
 const pool = require('../config/database');
+const logger = require('../config/logger');
 const orderRepository = require('../repositories/orderRepository');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
@@ -143,6 +143,65 @@ const notifyOrderChange = (action, order, actorId = null, extra = {}) => {
         entityType: 'orders',
         entityId: order?.id ?? null,
     }, { displayMode: action === 'cancelled' ? 'alert' : 'toast', excludeUserId: actorId });
+};
+
+/**
+ * Báo cho tài xế khi chuyến rơi thẳng vào tay họ ngay lúc tạo/sửa đơn.
+ *
+ * Vì sao cần: chọn biển số xe đã có tài xế cố định là shipment sinh ra với
+ * owner_driver_id = tài đó và status = 'claimed' luôn — tài xế KHÔNG phải bấm nhận,
+ * chuyến tự nằm trong danh sách của họ. Nhưng cả luồng này trước đây chỉ gọi
+ * notifyOrderChange, mà hàm đó bắn theo VAI TRÒ (coordinator/accountant/manager) —
+ * tài xế không nằm trong danh sách nào nên tuyệt đối không nhận được gì. Điều phối
+ * viên tưởng đã giao việc xong, tài xế thì không hề biết mình có chuyến.
+ *
+ * Khác với assignOrderShipments (gán sau, tài đã có đơn sẵn), đây là đường "gán ngay
+ * lúc tạo đơn" nên phải tự lo phần báo tin.
+ */
+const notifyDriversAssignedOnOrder = async (orderId, shipments = [], { isUpdate = false } = {}) => {
+    // require trễ: notificationService kéo ngược lại orderService qua chuỗi service khác.
+    // notificationGateway thì đã nạp sẵn ở đầu file, không vướng vòng.
+    const notificationService = require('./notificationService');
+
+    // Một tài có thể ôm nhiều chuyến trong cùng đơn — gộp lại, đừng bắn n lần.
+    const shipmentsByDriver = new Map();
+    for (const shipment of shipments) {
+        const driverId = Number(shipment?.owner_driver_id);
+        if (!driverId) continue;
+        if (!shipmentsByDriver.has(driverId)) shipmentsByDriver.set(driverId, []);
+        shipmentsByDriver.get(driverId).push(Number(shipment.id));
+    }
+    if (shipmentsByDriver.size === 0) return;
+
+    for (const [driverId, shipmentIds] of shipmentsByDriver) {
+        try {
+            notificationGateway.broadcastToUser(driverId, {
+                type: 'trip.assigned',
+                orderId: Number(orderId),
+                shipmentIds,
+                activatedShipmentId: shipmentIds[0],
+            });
+        } catch { /* realtime failure must not abort order creation */ }
+    }
+
+    // await: việc cuối trước khi controller trả response, mà Cloud Run bóp CPU ngay sau
+    // đó. Đơn đã commit rồi nên lỗi báo tin không được phép ném ra ngoài.
+    await Promise.all([...shipmentsByDriver].map(([driverId, shipmentIds]) => {
+        const nhieu = shipmentIds.length > 1;
+        return notificationService.createForUser(driverId, {
+            title: nhieu ? `Bạn được giao ${shipmentIds.length} chuyến mới` : 'Bạn được giao 1 chuyến mới',
+            message: nhieu
+                ? `Điều phối viên đã giao ${shipmentIds.length} chuyến của đơn #${orderId} cho bạn.`
+                : `Điều phối viên đã giao chuyến #${shipmentIds[0]} (đơn #${orderId}) cho bạn.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipmentIds[0],
+        }, { displayMode: 'alert' });
+    })).catch((err) => {
+        logger.warn('[order] không gửi được thông báo giao chuyến cho tài xế', {
+            orderId, isUpdate, message: err.message,
+        });
+    });
 };
 
 const createOrder = async (userId, payload) => {
@@ -297,6 +356,7 @@ const createOrder = async (userId, payload) => {
         await dbClient.query('COMMIT');
         broadcastCoordinatorOrderChange('created', result.order);
         notifyOrderChange('created', result.order, userId);
+        await notifyDriversAssignedOnOrder(result.order?.id, result.shipments);
         return result;
     } catch (err) {
         if (dbClient) {
@@ -311,6 +371,8 @@ const createOrder = async (userId, payload) => {
 const importOrdersFromExcel = async (userId, fileBuffer) => {
     if (!fileBuffer) throw new Error('Thiếu file Excel');
 
+    // Nạp muộn — xem ghi chú ở coordinatorService.parseSpreadsheet.
+    const XLSX = require('xlsx');
     const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error('File Excel không có sheet nào');

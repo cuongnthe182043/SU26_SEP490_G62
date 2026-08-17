@@ -1,5 +1,6 @@
 const incidentRepository = require('../repositories/incidentRepository');
 const tripRepository = require('../repositories/tripRepository');
+const orderRepository = require('../repositories/orderRepository');
 const driverRepository = require('../repositories/driverRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const pool = require('../config/database');
@@ -385,6 +386,9 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     let replacementVehicleId = null;
     let revenueMode = null;
     let originalVehicleId = null;
+    // Tài xế bị lấy mất chuyến — cần ở phạm vi ngoài để còn báo realtime cho họ sau
+    // khi transaction commit (bên trong IIFE thì không với tới được).
+    let originalDriverId = null;
 
     const parsedReplacementDriverId = replacementDriverId ? Number(replacementDriverId) : null;
     if (parsedReplacementDriverId) {
@@ -418,7 +422,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
                     throw new Error('Tài xế thay thế phải khác tài xế đang giữ chuyến');
                 }
 
-                const originalDriverId = Number(currentShipment.owner_driver_id);
+                originalDriverId = Number(currentShipment.owner_driver_id);
                 originalVehicleId = currentShipment.vehicle_id ?? null;
                 const reassignedShipment = await tripRepository.reassignShipmentAfterIncident(incident.shipment_id, {
                     incidentId,
@@ -534,7 +538,27 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     broadcastCoordinatorIncidentChange('status_updated', incidentId);
 
     if (replacementDriver) {
-        notificationService.createForUser(replacementDriver.id, {
+        // Sự kiện điều hướng trước, alert sau — cùng quy ước với coordinatorService.
+        // Tài cũ phải rời màn chuyến ngay (chuyến không còn của họ), tài mới cần trang
+        // chủ tự hiện chuyến vừa tiếp quản.
+        try {
+            // Bảng incidents không có cột order_id — chỉ có shipment_id. Bên mobile
+            // không dùng tới orderId ở hai sự kiện này nên bỏ hẳn, không bịa null.
+            if (originalDriverId) {
+                notificationGateway.broadcastToUser(originalDriverId, {
+                    type: 'trip.reassigned',
+                    shipmentId: Number(incident.shipment_id),
+                });
+            }
+            notificationGateway.broadcastToUser(replacementDriver.id, {
+                type: 'trip.assigned',
+                shipmentIds: [Number(incident.shipment_id)],
+                activatedShipmentId: Number(incident.shipment_id),
+            });
+        } catch { /* realtime failure must not abort the resolution */ }
+
+        // await — việc cuối trước khi trả response, xem ghi chú ở coordinatorService.
+        await notificationService.createForUser(replacementDriver.id, {
             title: 'Bạn được điều chuyển thay chuyến',
             message: revenueMode === 'full_transfer'
                 ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến thuộc về bạn.`
@@ -544,7 +568,9 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
             type: 'TRIP_ASSIGNED',
             entityType: 'shipments',
             entityId: incident.shipment_id,
-        }, { displayMode: 'alert' }).catch(() => {});
+        }, { displayMode: 'alert' }).catch((err) => {
+            console.error(`[Incident] Không gửi được thông báo điều chuyển cho tài xế #${replacementDriver.id}:`, err.message);
+        });
     }
 
     return incidentRepository.getIncidentById(incidentId);
@@ -589,6 +615,61 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
         resolution: `Đã hủy chuyến #${incident.shipment_id} do hàng hóa hư hại: ${reason.trim()}`,
     }).catch(() => {});
 
+    // Hoàn tiền ứng trước khi đơn KHÔNG còn chuyến nào đòi được khách nữa.
+    //
+    // Vì sao phải làm ngay tại đây chứ không đợi lúc chốt phiếu thu: phiếu thu chỉ sinh ra
+    // từ chuyến 'completed' (requestOrderReceipt). Hủy hết chuyến vì hàng hư hại thì sẽ
+    // KHÔNG bao giờ có phiếu thu nào — đợi tới đó là đợi một sự kiện không xảy ra, tiền của
+    // khách nằm im trong két công ty và đơn thì nhìn như đã xong.
+    //
+    // Đơn còn chuyến chạy được thì để đường chốt phiếu thu xử lý phần dư
+    // (approveReceiptRequest) — hàm tạo phiếu hoàn là idempotent nên hai đường không đụng nhau.
+    //
+    // order_id lấy từ CHUYẾN vừa hủy, KHÔNG lấy từ incident: bảng incidents không có cột
+    // order_id (getIncidentById trả i.* nên incident.order_id luôn undefined).
+    const orderId = updatedShipment?.order_id ?? null;
+    const refund = orderId === null ? null : await (async () => {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            if (await orderRepository.hasBillableShipments(client, orderId)) {
+                await client.query('ROLLBACK');
+                return null;
+            }
+            const { rows: [ord] } = await client.query(
+                `SELECT prepaid_amount FROM orders WHERE id = $1 FOR UPDATE`,
+                [orderId],
+            );
+            const created = await orderRepository.createPrepaidRefundVoucher(client, {
+                orderId,
+                amount: Number(ord?.prepaid_amount || 0),
+                actorId: coordinatorId,
+                reason: `Hoàn tiền khách ứng trước — đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại`,
+            });
+            await client.query('COMMIT');
+            return created;
+        } catch (err) {
+            await client.query('ROLLBACK');
+            // Best-effort: hủy chuyến đã commit rồi, không được nuốt kết quả đó vì phiếu hoàn lỗi.
+            console.error(`[Incident] Không tạo được phiếu hoàn tiền ứng trước cho đơn #${orderId}:`, err.message);
+            return null;
+        } finally {
+            client.release();
+        }
+    })();
+
+    if (refund) {
+        notificationService.getUserIdsByRole('accountant').then((ids) =>
+            notificationService.createForUsers(ids, {
+                title: 'Cần hoàn tiền ứng trước cho khách',
+                message: `Đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại. Phiếu hoàn ${refund.amount.toLocaleString('vi-VN')}đ (#${refund.voucherId}) đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
+                type: 'PREPAID_REFUND_REQUIRED',
+                entityType: 'payment_voucher',
+                entityId: refund.voucherId,
+            }, { displayMode: 'alert' })
+        ).catch(() => {});
+    }
+
     if (incident.reported_by) {
         notificationService.createForUser(incident.reported_by, {
             title: 'Chuyến đã bị hủy do hàng hóa hư hại',
@@ -602,7 +683,9 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
             notificationGateway.broadcastToUser(incident.reported_by, {
                 type: 'trip.cancelled',
                 shipmentId: Number(incident.shipment_id),
-                orderId: incident.order_id ?? null,
+                // Lấy từ chuyến, không từ incident — bảng incidents không có cột order_id
+                // nên incident.order_id luôn undefined, app tài xế nhận về null vô nghĩa.
+                orderId,
                 reason: reason.trim(),
             });
         } catch { /* realtime failure must not abort the cancellation */ }
@@ -613,6 +696,8 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
     return {
         incident: await incidentRepository.getIncidentById(incidentId),
         shipment: updatedShipment,
+        // != null khi việc hủy chuyến này làm đơn không còn gì giao được và khách đã ứng tiền
+        refund,
     };
 };
 

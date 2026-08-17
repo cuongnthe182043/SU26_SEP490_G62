@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const getOrderShipments = async (db, orderId) => {
     const shipmentResult = await db.query(
@@ -96,12 +98,20 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
             -- dải ID chồng nhau; gộp lại thành một số thì client không biết mình đang
             -- giữ khoá bảng nào. Khoá của rr đã có sẵn ở cột id phía trên.
             sr.id AS shipment_receipt_id,
+            -- Phiếu chưa chốt: phải ra ĐÚNG con số approveReceiptRequest sẽ chốt (BR-022D),
+            -- nếu không danh sách hiện một đằng, mở modal ra một nẻo, chốt xong lại một số khác.
+            --   * cộng chi hộ khách vào tổng (trước đây bỏ quên)
+            --   * tiền ứng trừ vào TOÀN BỘ cước + chi hộ, không phải chỉ trừ vào cước
+            --   * chỉ trừ tiền ứng ĐÃ XÁC NHẬN — 'pending' là tiền chưa về, chưa ghi sổ
             COALESCE(sr.amount, GREATEST(
-                COALESCE(revenue_summary.total_actual_price, 0) - COALESCE(o.prepaid_amount, 0),
+                COALESCE(revenue_summary.total_actual_price, 0)
+                + COALESCE(exp.pass_through_expenses, 0)
+                - CASE WHEN o.prepaid_status = 'confirmed' THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END,
                 0
             )) AS receipt_amount,
             COALESCE(revenue_summary.total_actual_price, 0) AS gross_amount,
-            COALESCE(o.prepaid_amount, 0) AS prepaid_amount,
+            CASE WHEN o.prepaid_status = 'confirmed'
+                 THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END AS prepaid_amount,
             COALESCE(sr.collected_at, rr.processed_at) AS receipt_created_at,
             COALESCE(sr.notes, rr.coordinator_notes) AS receipt_notes,
             COALESCE(shipments.shipment_count, 0) AS shipment_count,
@@ -137,22 +147,25 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
                 -- Preview trước khi actual_price được chốt — phải khớp đúng thứ tự ưu tiên
                 -- thật trong computeReceiptAmount (coordinatorService.js), nếu không danh
                 -- sách yêu cầu phiếu thu hiện sai số so với lúc mở chi tiết/duyệt:
-                --   1) actual_price đã chốt → dùng thẳng
+                --   1) cancelled/failed → 0 (lọc ở WHERE bên dưới, xem ghi chú ở đó)
                 --   2) is_price_manual → luôn = estimated_price, không suy theo km
-                --   3) cancelled/failed → 0
+                --   3) actual_price đã chốt → dùng thẳng
                 --   4) chuyến HOÀN HÀNG (returning_at) → km × đơn giá × 2 (chạy cả hai chiều)
                 --   5) bình thường → km × đơn giá
+                --
+                -- is_price_manual đứng TRƯỚC actual_price vì computeReceiptAmount xét nó đầu
+                -- tiên: giá công ty chốt tay thắng tuyệt đối, bất kể km hay giá đã ghi trước đó.
                 SUM(
-                    COALESCE(
-                        NULLIF(os_revenue.actual_price, 0),
-                        CASE
-                            WHEN os_revenue.is_price_manual = TRUE THEN COALESCE(os_revenue.estimated_price, 0)
-                            WHEN os_revenue.status IN ('cancelled', 'failed') THEN 0
-                            ELSE COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
-                                * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
-                                * CASE WHEN os_revenue.returning_at IS NOT NULL THEN 2 ELSE 1 END
-                        END
-                    )
+                    CASE
+                        WHEN os_revenue.is_price_manual IS TRUE
+                            THEN COALESCE(os_revenue.estimated_price, 0)
+                        ELSE COALESCE(
+                            NULLIF(os_revenue.actual_price, 0),
+                            COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
+                            * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                            * CASE WHEN os_revenue.returning_at IS NOT NULL THEN 2 ELSE 1 END
+                        )
+                    END
                 ) AS total_actual_price,
                 SUM(COALESCE(os_revenue.estimated_price, 0)) AS total_estimated_price
             FROM order_shipments os_revenue
@@ -161,6 +174,18 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
             LEFT JOIN vehicle_groups vg_vehicle_revenue ON vg_vehicle_revenue.id = v_revenue.vehicle_group_id
             LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = os_revenue.vehicle_group_id
             WHERE os_revenue.order_id = rr.order_id
+              -- Chuyến hủy/thất bại không phát sinh doanh thu (BR-022B, khớp computeReceiptAmount
+              -- và resolveShipmentActualRevenue). Bỏ điều kiện này thì chuyến hàng hư hại vẫn
+              -- được tính tiền ở đây — và tính CẢ SAU KHI duyệt: lúc chốt phiếu, chuyến hủy bị
+              -- set actual_price = 0, NULLIF(...,0) biến 0 thành NULL rồi rơi xuống nhánh
+              -- km × đơn giá, hồi sinh đúng khoản doanh thu vừa bị gạt đi.
+              --
+              -- Lọc ở WHERE chứ KHÔNG phải thêm nhánh "WHEN status IN (...) THEN 0" vào CASE:
+              -- nhánh CASE nằm sau NULLIF(actual_price, 0) nên chuyến hủy còn sót actual_price
+              -- cũ (vd. chuyến đang hoàn hàng đã chốt giá rồi mới phát hiện hàng hư hại) vẫn
+              -- lọt qua. Lọc cả dòng thì không có đường nào lách được, và total_estimated_price
+              -- bên dưới cũng thôi cộng giá báo của chuyến sẽ không bao giờ thu được.
+              AND os_revenue.status NOT IN ('cancelled', 'failed')
          ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (
             SELECT os_primary.*, sc_primary.owner_driver_id, sc_primary.vehicle_id
@@ -174,9 +199,12 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
          LEFT JOIN LATERAL (
             SELECT
                 SUM(e.amount) AS total_expenses,
+                -- Chỉ phần THẬT SỰ đòi được khách: chi hộ của chuyến hủy vì hàng hư hại đã
+                -- chuyển sang doanh nghiệp chịu (BR-022B), cộng vào đây là danh sách hiện
+                -- "Tổng thu" cao hơn số phiếu thu thật sự chốt.
                 SUM(
                     CASE
-                        WHEN e.expense_type IN ('parking', 'toll', 'etc') THEN e.amount
+                        WHEN ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os_exp')} THEN e.amount
                         ELSE 0
                     END
                 ) AS pass_through_expenses
@@ -229,6 +257,7 @@ const getReceiptRequestHeader = async (requestId) => {
             o.cargo_weight_kg,
             o.notes                    AS order_notes,
             COALESCE(o.prepaid_amount, 0) AS order_prepaid_amount,
+            o.prepaid_status           AS order_prepaid_status,
             c.id                       AS customer_id,
             c.full_name                AS customer_name,
             c.phone                    AS customer_phone,
@@ -266,15 +295,28 @@ const updateShipmentActualDistance = async (client, shipmentId, actualKm) => {
     );
 };
 
-const insertApprovedExpense = async (client, { shipmentId, vehicleId, coordinatorId, expenseType, amount, description }) => {
+// Coordinator nhập tay chi phí ngay tại màn duyệt phiếu thu — khoản này vào thẳng
+// 'approved' nên phải ghi sổ ngay như mọi đường duyệt khác (xem recordExpenseAccrual).
+const insertApprovedExpense = async (client, { shipmentId, shipmentStatus, vehicleId, coordinatorId, expenseType, amount, description }) => {
     const { rows: [expense] } = await client.query(
         `INSERT INTO expenses
             (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date,
              status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
          VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW())
-         RETURNING id`,
+         RETURNING id, expense_date`,
         [shipmentId, vehicleId, coordinatorId, expenseType, amount, description],
     );
+
+    await financialLedgerRepository.recordExpenseAccrual(client, {
+        expenseId: expense.id,
+        expenseType,
+        shipmentStatus,
+        amount,
+        actorId: coordinatorId,
+        occurredAt: expense.expense_date,
+        note: 'Coordinator nhập tại màn duyệt phiếu thu',
+    });
+
     return expense;
 };
 
@@ -288,6 +330,9 @@ const updateShipmentActualPrice = async (client, shipmentId, actualIncome) => {
     );
 };
 
+// Phát hành phiếu thu CHÍNH LÀ hành động duyệt chi phí của đơn — nên đây cũng là lúc
+// ghi sổ từng khoản (Nợ 3388 chi hộ / Nợ 642 DN chịu, Có 334). os.status quyết định bên
+// chịu: chuyến đã huỷ/thất bại thì chi hộ chuyển sang DN chịu.
 const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
     const { rows } = await client.query(
         `UPDATE expenses e
@@ -297,9 +342,23 @@ const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
          WHERE os.id = e.shipment_id
            AND os.order_id = $2
            AND e.status = 'pending'
-         RETURNING e.id, e.shipment_id, e.expense_type, e.amount`,
+         RETURNING e.id, e.shipment_id, e.expense_type, e.amount, e.expense_date,
+                   os.status AS shipment_status`,
         [coordinatorId, orderId],
     );
+
+    for (const expense of rows) {
+        await financialLedgerRepository.recordExpenseAccrual(client, {
+            expenseId: expense.id,
+            expenseType: expense.expense_type,
+            shipmentStatus: expense.shipment_status,
+            amount: expense.amount,
+            actorId: coordinatorId,
+            occurredAt: expense.expense_date,
+            note: `Duyệt cùng phiếu thu đơn #${orderId}`,
+        });
+    }
+
     return rows;
 };
 

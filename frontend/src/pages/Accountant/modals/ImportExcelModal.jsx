@@ -21,26 +21,32 @@ import {
 const TEMPLATE_HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
   "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
+const DATE_HEADER = TEMPLATE_HEADERS[0];
+
 const TEMPLATE_EXAMPLES = [
   ["02/05/2026", "29E-080.32", "Tân", "Cty Hưng Dũng", "0912345678",
-    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", 30000, "", "", "",
+    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", "", 30000, "", "", "",
     "CK công ty", "", ""],
   ["03/05/2026", "29E-080.32", "Tân", "", "",
-    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "", "",
+    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "", "", "",
     "Tiền mặt - tài đang giữ", "", "Khách lẻ"],
   ["05/05/2026", "29E-080.32", "Tân", "An Trần", "0987654321",
-    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, "", 30000, "", 1450075, "",
+    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, "", "", 30000, "", 1450075, "",
     "Khách nợ", "", ""],
   ["08/05/2026", "29E-080.32", "Tân", "", "",
-    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", "", 900133, "",
+    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", "", "", 900133, "",
     "CK công ty", "", "Cước 300.000 MỘT LƯỢT × 5 lượt → doanh thu 1.500.000"],
   ["09/05/2026", "29E-080.32", "Tân", "Ngọc Hà", "0905111222",
-    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, 1200000, "", "", "", "",
+    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, 1200000, "", "", "", "", "",
     "Tiền mặt - tài đang giữ", 1200000, "Báo 1tr, chốt lại 1tr2 — tài cầm đủ 1tr2"],
+  ["10/05/2026", "29E-080.32", "Tân", "Cty Minh Long", "0913222333",
+    "Kho Long Biên", "Hải Phòng", 120, 1, "Hàng điện tử", 2000000, "", 15000000, "", "", "", "",
+    "Tiền mặt - tài đang giữ", 17000000,
+    "Thu hộ 15tr tiền hàng — tài cầm cả cước lẫn thu hộ. Doanh thu vẫn chỉ là 2tr"],
 ];
 
 const REQUIRED_COLS = new Set([
@@ -48,7 +54,7 @@ const REQUIRED_COLS = new Set([
   "Điểm giao hàng (*)", "Cước xe 1 lượt (đ) (*)", "Thanh toán (*)",
 ]);
 const MONEY_COLS = new Set([
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
 ]);
 
 const BRAND_BLUE = "FF2563EB";
@@ -81,6 +87,11 @@ const downloadTemplate = async () => {
     header: h,
     key: h,
     width: Math.max(h.length + 2, 16),
+    // Ép cột "Ngày chạy" hiển thị dd/mm/yyyy. Không ép thì Excel dùng định dạng ngày theo
+    // máy người nhập — máy để kiểu Mỹ thì gõ "12/8" ra ngày 8 THÁNG 12, mà ô vẫn hiện
+    // "12/8/26" nên không ai nhận ra. Chuyện này đã xảy ra thật: doanh thu rơi sang tháng
+    // 12, KPI và bảng lương tháng hiện tại không thấy gì mà chẳng có lỗi nào báo.
+    ...(h === DATE_HEADER ? { style: { numFmt: "dd/mm/yyyy" } } : {}),
   }));
 
   const headerRow = ws.getRow(1);
@@ -91,6 +102,15 @@ const downloadTemplate = async () => {
     cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    // Ghi chú dán ngay trên ô tiêu đề cột ngày — hiện lúc rê chuột vào, tức là đúng lúc
+    // người dùng đang gõ. Để trong sheet hướng dẫn thôi thì phần lớn không ai mở sang đọc.
+    if (h === DATE_HEADER) {
+      cell.note = 'Gõ dd/mm/yyyy — 12/8/2026 là NGÀY 12 THÁNG 8.\n\n'
+        + 'Cột này đã đặt sẵn định dạng dd/mm/yyyy, đừng đổi và đừng chép sang file cũ:\n'
+        + 'nếu ô để định dạng kiểu Mỹ (m/d/yy) thì "12/8" bị hiểu thành NGÀY 8 THÁNG 12,\n'
+        + 'mà ô vẫn hiện "12/8" nên nhìn không ra — doanh thu sẽ bị ghi sang tháng khác.\n\n'
+        + 'Kiểm tra nhanh: =TEXT(A2;"dd/mm/yyyy")';
+    }
   });
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: TEMPLATE_HEADERS.length } };
 
@@ -165,8 +185,17 @@ const downloadTemplate = async () => {
   };
   addNote("• Nhập dữ liệu vào sheet DON_HANG. Sheet VI_DU_MAU chỉ để xem cách nhập — hệ thống KHÔNG đọc sheet đó.");
   addNote("• Mỗi dòng = 1 chuyến đã chạy xong. Cột có nền vàng ở sheet DON_HANG là BẮT BUỘC — thiếu sẽ bị từ chối.");
-  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy) và KHÔNG ÂM. Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
+  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy) và KHÔNG ÂM.");
+  // Cảnh báo này đến từ một sự cố có thật: file để cột ngày ở định dạng kiểu Mỹ (m/d/yy),
+  // kế toán gõ "12/8" định là 12 tháng 8, Excel hiểu thành 8 THÁNG 12 và lưu số 46364 —
+  // nhưng ô vẫn hiện "12/8/26" nên không ai nhận ra. Doanh thu 11.900.000 rơi sang tháng 12,
+  // bảng lương tháng 8 không thấy gì mà chẳng có lỗi nào báo ra.
+  addNote("• NGÀY CHẠY — cột này đã được đặt sẵn định dạng dd/mm/yyyy, ĐỪNG đổi. Gõ 12/8/2026 nghĩa là NGÀY 12 THÁNG 8.");
+  addNote("   ⚠ Đừng chép dữ liệu vào file template CŨ hoặc file tự tạo: nếu ô ngày đang để định dạng kiểu Mỹ (m/d/yy) thì gõ \"12/8\" Excel sẽ hiểu thành NGÀY 8 THÁNG 12, mà ô vẫn hiện \"12/8\" nên nhìn không ra. Doanh thu sẽ bị ghi sang tháng khác, KPI và bảng lương tháng này không thấy gì.");
+  addNote("   ✓ Cách kiểm tra: bấm vào ô ngày rồi gõ ở ô trống bên cạnh =TEXT(A2;\"dd/mm/yyyy\") — ra đúng ngày mình định nhập là được. Hoặc xem lại ngày ở màn XEM TRƯỚC lúc import, hệ thống hiện ngày đã đọc được theo dd/mm/yyyy.");
   addNote("• Nhiều điểm lấy/điểm trả trong 1 chuyến: gõ nhiều dòng trong CÙNG 1 ô (Alt+Enter) hoặc phân cách bằng dấu \"|\", vd: Kho A|Kho B.");
+  addNote("• Cột \"Thu hộ\" = tiền HÀNG công ty thu hộ khách khi giao (COD). Đây là tiền CỦA KHÁCH công ty đang giữ, KHÔNG phải doanh thu và KHÔNG cộng vào số khách nợ — hệ thống theo dõi riêng để đối chiếu và trả lại. Cước xe vẫn ghi ở cột \"Cước xe 1 lượt\" như bình thường.");
+  addNote("• Chuyến tăng bo nhiều lượt: \"Thu hộ\" là số của CẢ DÒNG (giống các cột chi phí), không nhân theo số lượt. Riêng \"Cước xe 1 lượt\" mới là giá của MỘT lượt.");
   addNote("• KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng.");
   addNote("• Biển số xe và Tên tài xế PHẢI có sẵn trong hệ thống — hệ thống KHÔNG tự tạo xe hoặc tài khoản tài xế. Nếu chưa có, nhờ Manager thêm xe/tạo tài khoản trước khi import (dòng không khớp sẽ báo lỗi và không được import).");
   addNote("• Biển số không phân biệt hoa/thường và dấu cách/chấm/gạch: 51C-123.45 = 51c 123 45. Tên tài xế phải đúng dấu tiếng Việt (Tiến ≠ Tiền) nhưng không phân biệt hoa/thường.");

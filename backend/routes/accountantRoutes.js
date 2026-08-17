@@ -59,6 +59,11 @@ router.get  ('/vouchers',          spendingController.listVouchers);
 router.post ('/vouchers',          handleUpload(uploadPaymentVoucher.single('proof')), spendingController.createVoucher);
 router.patch('/vouchers/:id/pay',  handleUpload(uploadPaymentVoucher.single('proof')), spendingController.payVoucher);
 router.patch('/vouchers/:id/cancel', spendingController.cancelVoucher);
+
+// Hoàn ứng tài xế — chi trả ngay khoản tài đã ứng tiền túi, không đợi kỳ lương.
+// Phiếu tạo ra vẫn phải qua Manager duyệt rồi mới chi (dùng chung /vouchers/:id/pay).
+router.get ('/reimbursements', spendingController.listPendingReimbursements);
+router.post('/reimbursements', spendingController.createReimbursementVoucher);
 router.get  ('/spending-summary',  spendingController.getSpendingSummary);
 
 // Nhật ký tài chính (append-only ledger) + xuất kỳ kế toán

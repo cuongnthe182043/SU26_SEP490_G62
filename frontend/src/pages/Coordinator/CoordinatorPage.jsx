@@ -71,7 +71,7 @@ const VIEW_META = {
   },
   expenses: {
     title: "Chi phí tài xế",
-    subtitle: "Duyệt / từ chối chi phí tài xế khai (toll, đỗ xe, sửa xe...). Đơn không thu tiền mặt tự động duyệt.",
+    subtitle: "Duyệt / từ chối chi phí tài xế khai (toll, đỗ xe, sửa xe...). Đơn thu tiền mặt được duyệt kèm khi phát hành phiếu thu; đơn chuyển khoản / khách nợ không có phiếu thu nên phải duyệt tay tại đây.",
     searchPlaceholder: "",
   },
   customers: {

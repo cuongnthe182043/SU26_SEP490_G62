@@ -271,8 +271,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
     }
 
     // Tự động tính lại KPI cho mọi tài xế có phân bổ doanh thu của chuyến.
+    // await: đây là việc cuối trước khi trả response, mà Cloud Run bóp CPU ngay sau đó.
     const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
-    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
+    await kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -401,7 +402,7 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
     }, { displayMode: 'silent' }).catch(() => {});
 
     const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
-    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
+    await kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -554,7 +555,14 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
     const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
-        throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
+        // Phiếu thu 0đ (mọi chuyến của đơn bị hủy vì hàng hư hại — toàn bộ chi phí chuyển
+        // sang DN chịu; hoặc khách đã trả trước đủ) thì không có giao dịch nào để chụp:
+        // giữ nguyên yêu cầu ảnh sẽ khóa cứng tài xế, không cách nào đóng được phiếu.
+        // Chỉ tra DB ở nhánh THIẾU ảnh nên luồng bình thường không tốn thêm truy vấn.
+        const receiptAmount = await tripRepository.getReceiptAmountForDriver(orrId, driverId);
+        if (receiptAmount === null || receiptAmount > 0.01) {
+            throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
+        }
     }
     const result = await tripRepository.recordReceiptCollection(orrId, driverId, { paymentType, proofUrl, notes, collectedAmount });
 

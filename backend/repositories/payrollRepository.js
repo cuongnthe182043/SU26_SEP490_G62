@@ -1,6 +1,8 @@
 const pool = require('../config/database');
 const revenueAllocationRepository = require('./revenueAllocationRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
+const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
+const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -122,43 +124,11 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const monthsOfService = getMonthsOfServiceAtPeriodEnd(hire_date, month, year);
     const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
 
-    // 2. Số ngày nghỉ không lương / vắng không phép tháng này (khớp logic với
-    // accountantPayrollRepository — gồm cả chấm công 'absent_unexcused', ghi đè
-    // 'present' được ưu tiên) để màn ước tính khớp số với bảng lương chính thức
-    // Ngày lễ được loại khỏi mọi phép trừ công (Điều V.1 — nghỉ lễ hưởng nguyên lương)
-    const leaveRes = await pool.query(
-        `SELECT COUNT(*)::int AS unpaid_days
-         FROM leave_requests lr
-         LEFT JOIN attendance_overrides ao
-                ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
-         WHERE lr.driver_id = $1
-           AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
-           AND EXTRACT(MONTH FROM lr.leave_date) = $2
-           AND EXTRACT(YEAR  FROM lr.leave_date) = $3
-           AND COALESCE(ao.status, 'leave_unpaid') != 'present'
-           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date)`,
-        [driverId, month, year],
-    );
-    const attRes = await pool.query(
-        `SELECT COUNT(*)::int AS unexcused_days
-         FROM attendance_overrides ao
-         WHERE ao.driver_id = $1 AND ao.status = 'absent_unexcused'
-           AND EXTRACT(MONTH FROM ao.work_date) = $2 AND EXTRACT(YEAR FROM ao.work_date) = $3
-           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)`,
-        [driverId, month, year],
-    );
-    // Nửa công — trừ 0.5 ngày, khớp với accountantPayrollRepository
-    const halfRes = await pool.query(
-        `SELECT COUNT(*)::int AS half_days
-         FROM attendance_overrides ao
-         WHERE ao.driver_id = $1 AND ao.status = 'half_day'
-           AND EXTRACT(MONTH FROM ao.work_date) = $2 AND EXTRACT(YEAR FROM ao.work_date) = $3
-           AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)`,
-        [driverId, month, year],
-    );
-    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0)
-                     + Number(attRes.rows[0].unexcused_days ?? 0)
-                     + Number(halfRes.rows[0].half_days ?? 0) * 0.5;
+    // 2. Số ngày nghỉ không lương / vắng không phép tháng này — DÙNG CHUNG một câu SQL với
+    // accountantPayrollRepository (UNPAID_DAYS_SQL). Hai bên lệch công thức nghĩa là tài xế
+    // xem trước một số rồi nhận một số khác, nên tuyệt đối không chép lại logic ở đây.
+    const dayRes = await pool.query(UNPAID_DAYS_SQL, [driverId, month, year]);
+    const unpaidDays = Number(dayRes.rows[0].unpaid_days ?? 0);
     // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
     // trả — khớp accountantPayrollRepository. Tháng dài hơn 28 ngày lịch mà tài đi làm
     // hết cả những ngày dư (29, 30, 31) thì được trả thêm đúng phần dư đó (proRatedBase
@@ -280,6 +250,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
          LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
          WHERE e.status = 'approved'
            AND e.reimbursement_status = 'pending'
+           AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
            AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1`,
         [driverId],
     );

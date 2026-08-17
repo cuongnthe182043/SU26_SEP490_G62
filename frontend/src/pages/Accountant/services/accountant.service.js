@@ -18,9 +18,8 @@ export const accountantService = {
   getVehicleGroupsForKpi: () =>
     apiRequest(`${BASE}/vehicle-groups`),
 
-  updateDriverVehicleGroup: (driverId, vehicleGroupId, reason) =>
-    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId, reason } }),
-  // Lịch sử đổi nhóm cố định — ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo
+  // Đổi nhóm xe cố định là độc quyền Manager — kế toán chỉ đọc lịch sử để đối chiếu
+  // KPI khi tính lương (ai đổi, lúc nào, KPI kỳ nào đã cập nhật theo).
   getDriverGroupHistory: (driverId) =>
     apiRequest(`/api/kpi/driver/${driverId}/vehicle-group/history`),
 
@@ -253,6 +252,15 @@ export const accountantService = {
 
   getSpendingSummary: (params = {}) =>
     apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
+
+  // ─── Hoàn ứng tài xế ────────────────────────────────────────────────────────
+  // Chi trả ngay khoản tài đã ứng tiền túi, không đợi kỳ lương. Phiếu tạo ra vẫn phải
+  // qua Manager duyệt rồi kế toán mới chi (dùng lại payVoucher).
+  getPendingReimbursements: () =>
+    apiRequest(`${BASE}/reimbursements`),
+
+  createReimbursementVoucher: (body) =>
+    apiRequest(`${BASE}/reimbursements`, { method: "POST", body }),
 
   // ─── Chấm công (attendance) ───────────────────────────────────────────────
   getAttendanceGrid: (params = {}) =>

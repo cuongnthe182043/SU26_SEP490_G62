@@ -1,11 +1,11 @@
 import { Skeleton } from "@heroui/react";
-import { RiLineChartLine, RiCheckboxCircleLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
+import { RiLineChartLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
 
 const CARDS = [
   {
     // Doanh thu ghi nhận = tổng cước các đơn hoàn thành (không gồm chi hộ khách,
-    // không phụ thuộc đã thu tiền hay chưa). "Đã thu về" mới là tiền thực nắm.
+    // không phụ thuộc đã thu tiền hay chưa).
     key: "total_gross_revenue",
     label: "Tổng doanh thu",
     icon: RiLineChartLine,
@@ -13,16 +13,6 @@ const CARDS = [
     lightBg: "bg-blue-50 dark:bg-blue-500/10",
     text: "text-blue-600 dark:text-blue-300",
     border: "border-blue-100 dark:border-blue-500/20",
-    isMoney: true,
-  },
-  {
-    key: "total_collected",
-    label: "Đã thu về",
-    icon: RiCheckboxCircleLine,
-    gradient: "from-emerald-500 to-emerald-600",
-    lightBg: "bg-emerald-50 dark:bg-emerald-500/10",
-    text: "text-emerald-600 dark:text-emerald-300",
-    border: "border-emerald-100 dark:border-emerald-500/20",
     isMoney: true,
   },
   {
@@ -51,6 +41,12 @@ const CARDS = [
     // công ty CHƯA hoàn lại — chưa cấn trừ nợ (TH2), chưa hoàn qua lương (TH1)
     key: "total_reimbursable",
     label: "Cần hoàn trả tài xế",
+    // Khoản đã lập phiếu chi nhưng chưa chi xong vẫn nằm trong tổng (tiền chưa ra khỏi
+    // quỹ, công ty vẫn đang nợ tài) — nhưng màn "Hoàn ứng tài xế" cố ý ẩn nó đi để khỏi
+    // lập phiếu trùng. Không chú thích thì hai màn hiện hai số khác nhau, người xem tưởng
+    // hệ thống tính sai.
+    hintKey: "total_reimbursable_in_progress",
+    hint: (v) => `trong đó ${v} đang chờ duyệt phiếu chi`,
     icon: RiHandCoinLine,
     gradient: "from-teal-500 to-teal-600",
     lightBg: "bg-teal-50 dark:bg-teal-500/10",
@@ -62,8 +58,8 @@ const CARDS = [
 
 export function StatsGrid({ stats, loading }) {
   return (
-    <div className="grid grid-cols-5 gap-4">
-      {CARDS.map(({ key, label, icon: Icon, gradient, lightBg, text, border, isMoney, suffix }) => (
+    <div className="grid grid-cols-4 gap-4">
+      {CARDS.map(({ key, label, icon: Icon, gradient, lightBg, text, border, isMoney, suffix, hintKey, hint }) => (
         <div
           key={key}
           className={`relative overflow-hidden rounded-2xl bg-white dark:bg-[#161922] border ${border} p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow`}
@@ -87,6 +83,11 @@ export function StatsGrid({ stats, loading }) {
                 {isMoney
                   ? <MoneyText amount={stats?.[key]} />
                   : `${stats?.[key] ?? 0}${suffix ?? ""}`}
+              </span>
+            )}
+            {!loading && hintKey && Number(stats?.[hintKey]) > 0 && (
+              <span className="text-[11px] text-gray-400 dark:text-gray-400 mt-0.5 leading-snug">
+                {hint(new Intl.NumberFormat("vi-VN").format(Number(stats[hintKey])) + "đ")}
               </span>
             )}
           </div>
