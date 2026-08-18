@@ -47,14 +47,24 @@ const ACCESS_TOKEN_EXPIRES_IN_MS = parseDurationToMs(ACCESS_TOKEN_EXPIRES_IN) ||
 const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS)
     || parseDurationToMs(REFRESH_TOKEN_EXPIRES_IN)
     || (7 * 24 * 60 * 60 * 1000);
+// Cửa sổ ân hạn khi xoay (rotate) refresh token. Sau một lúc idle, access-token cookie
+// hết hạn và MỌI thứ trên client cùng phát hiện một lượt: request người dùng vừa bấm,
+// hai WebSocket reconnect, các tab khác đang mở... Chúng có thể gửi /auth/refresh song
+// song với CÙNG một refresh token cũ. Nếu lời gọi tới sau bị 401 vì token vừa bị revoke,
+// nó sẽ phá phiên mà lời gọi trước vừa cấp thành công. Trong cửa sổ này, một lần gửi lại
+// đúng token vừa bị xoay được coi là bản sao của cuộc đua đó và vẫn nhận phiên hợp lệ.
+const REFRESH_ROTATION_GRACE_MS = Number(process.env.JWT_REFRESH_ROTATION_GRACE_MS) || 60 * 1000;
 
 let refreshTokenTableReadyPromise = null;
 
 class AuthError extends Error {
-    constructor(message, status = 400) {
+    // `code` để tầng trên phân biệt được nguyên nhân mà không phải so khớp chuỗi tiếng Việt —
+    // /auth/refresh dựa vào đó để quyết định có nên xoá cookie refresh hay không.
+    constructor(message, status = 400, code = null) {
         super(message);
         this.name = 'AuthError';
         this.status = status;
+        this.code = code;
     }
 }
 
@@ -127,7 +137,7 @@ const verifyRefreshToken = (token) => {
         }
         return decoded;
     } catch {
-        throw new AuthError('Invalid refresh token', 401);
+        throw new AuthError('Invalid refresh token', 401, 'REFRESH_TOKEN_INVALID');
     }
 };
 
@@ -387,9 +397,25 @@ const getUserFromToken = async (userId) => {
     return profile;
 };
 
+// Token đã revoke có được coi là "bản sao của một cuộc đua rotate" hay không.
+// Điều kiện chặt: phải bị revoke VÌ ĐÃ XOAY (có replaced_by_token_id), bản thay thế
+// vẫn còn sống, và chỉ vừa bị revoke trong cửa sổ ân hạn. Logout hay khoá tài khoản
+// revoke token mà không có replaced_by_token_id nên không lọt qua nhánh này.
+const isRotationRaceReplay = async (storedToken) => {
+    if (!storedToken.replaced_by_token_id) return false;
+
+    const revokedAtMs = new Date(storedToken.revoked_at).getTime();
+    if (!Number.isFinite(revokedAtMs) || Date.now() - revokedAtMs > REFRESH_ROTATION_GRACE_MS) {
+        return false;
+    }
+
+    const replacement = await authRepository.getRefreshTokenById(storedToken.replaced_by_token_id);
+    return Boolean(replacement) && !replacement.revoked_at;
+};
+
 const refreshSession = async (refreshToken) => {
     if (!refreshToken) {
-        throw new AuthError('Refresh token is required', 401);
+        throw new AuthError('Refresh token is required', 401, 'REFRESH_TOKEN_MISSING');
     }
 
     await ensureRefreshTokenTable();
@@ -398,33 +424,44 @@ const refreshSession = async (refreshToken) => {
     const storedToken = await authRepository.getRefreshTokenById(decoded.tokenId);
 
     if (!storedToken || Number(storedToken.user_id) !== Number(decoded.userId)) {
-        throw new AuthError('Refresh token is invalid', 401);
+        throw new AuthError('Refresh token is invalid', 401, 'REFRESH_TOKEN_INVALID');
     }
-    if (storedToken.revoked_at) {
-        throw new AuthError('Refresh token has been revoked', 401);
+    // Kiểm tra hash trước mọi thứ khác: nó xác thực token cầm trên tay đúng là token đã
+    // phát ra cho tokenId này. Không có bước này thì nhánh ân hạn bên dưới có thể tha cho
+    // một token giả mạo trùng tokenId.
+    if (storedToken.token_hash !== hashToken(refreshToken)) {
+        await revokeStoredRefreshToken(decoded.tokenId);
+        throw new AuthError('Refresh token mismatch', 401, 'REFRESH_TOKEN_MISMATCH');
     }
     if (new Date(storedToken.expires_at).getTime() <= Date.now()) {
         await revokeStoredRefreshToken(decoded.tokenId);
-        throw new AuthError('Refresh token has expired', 401);
+        throw new AuthError('Refresh token has expired', 401, 'REFRESH_TOKEN_EXPIRED');
     }
-    if (storedToken.token_hash !== hashToken(refreshToken)) {
-        await revokeStoredRefreshToken(decoded.tokenId);
-        throw new AuthError('Refresh token mismatch', 401);
+
+    const isRaceReplay = storedToken.revoked_at ? await isRotationRaceReplay(storedToken) : false;
+    if (storedToken.revoked_at && !isRaceReplay) {
+        throw new AuthError('Refresh token has been revoked', 401, 'REFRESH_TOKEN_REVOKED');
     }
 
     const account = await profileRepository.getAccountById(decoded.userId);
     if (!account) {
         await revokeStoredRefreshToken(decoded.tokenId);
-        throw new AuthError('User not found', 401);
+        throw new AuthError('User not found', 401, 'USER_NOT_FOUND');
     }
     if (account.is_active === false) {
         await revokeStoredRefreshToken(decoded.tokenId);
-        throw new AuthError('Tài khoản của bạn đã bị khóa.', 403);
+        throw new AuthError('Tài khoản của bạn đã bị khóa.', 403, 'ACCOUNT_LOCKED');
     }
 
     const session = await issueSession(account);
-    const nextRefreshPayload = verifyRefreshToken(session.refreshToken);
-    await revokeStoredRefreshToken(decoded.tokenId, nextRefreshPayload.tokenId);
+    // Bản sao của cuộc đua thì KHÔNG revoke lại: token này đã revoked sẵn, và ghi đè
+    // replaced_by_token_id sẽ cắt mất mắt xích tới bản thay thế đang sống — lần gửi lại
+    // thứ ba trong cửa sổ ân hạn sẽ không còn nhận ra đây là cuộc đua nữa. Bản thay thế
+    // cũng được giữ nguyên hiệu lực: client thắng cuộc đang cầm nó.
+    if (!isRaceReplay) {
+        const nextRefreshPayload = verifyRefreshToken(session.refreshToken);
+        await revokeStoredRefreshToken(decoded.tokenId, nextRefreshPayload.tokenId);
+    }
 
     return {
         token: session.accessToken,
@@ -471,6 +508,7 @@ module.exports = {
     REFRESH_TOKEN_EXPIRES_IN,
     ACCESS_TOKEN_EXPIRES_IN_MS,
     REFRESH_TOKEN_TTL_MS,
+    REFRESH_ROTATION_GRACE_MS,
     AuthError,
     AUTH_COOKIE_NAME,
     REFRESH_COOKIE_NAME,

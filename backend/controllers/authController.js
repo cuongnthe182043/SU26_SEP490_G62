@@ -59,6 +59,21 @@ const clearRefreshCookieOnly = (res) => {
     });
 };
 
+// Hai lời gọi /auth/refresh song song cùng mang một token cũ (nhiều tab, hoặc WebSocket
+// reconnect trùng nhịp với request của người dùng) là chuyện bình thường sau khi máy idle.
+// Lời gọi tới sau thất bại KHÔNG có nghĩa cookie hiện tại đã hỏng — lúc đó trong cookie jar
+// là token MỚI mà lời gọi thắng vừa cấp. Xoá cookie ở đây là xoá đúng token tốt đó, khiến
+// phiên mất hẳn refresh token và người dùng phải F5 thủ công. Chỉ dọn cookie khi nó thật sự
+// vô dụng: không có token, token hỏng/không khớp, hết hạn, hoặc tài khoản không dùng được nữa.
+const REFRESH_FAILURE_CODES_CLEARING_COOKIE = new Set([
+    'REFRESH_TOKEN_MISSING',
+    'REFRESH_TOKEN_INVALID',
+    'REFRESH_TOKEN_MISMATCH',
+    'REFRESH_TOKEN_EXPIRED',
+    'USER_NOT_FOUND',
+    'ACCOUNT_LOCKED',
+]);
+
 const readCookieValue = (cookieHeader, cookieName) => {
     if (!cookieHeader) return null;
 
@@ -188,9 +203,17 @@ const refresh = async (req, res) => {
             user: result.user,
         });
     } catch (err) {
-        clearRefreshCookieOnly(res);
+        // Lỗi không phân loại được (DB rớt, bug...) cũng giữ nguyên cookie: mất phiên vì một
+        // sự cố hạ tầng thoáng qua là cái giá đắt hơn nhiều so với việc để lại cookie thừa.
+        if (REFRESH_FAILURE_CODES_CLEARING_COOKIE.has(err.code)) {
+            clearRefreshCookieOnly(res);
+        }
         const status = Number.isInteger(err.status) ? err.status : 401;
-        res.status(status).json({ error: err.message || 'Unable to refresh session' });
+        logger.warn('Refresh session failed', { code: err.code || 'UNKNOWN', message: err.message, status });
+        res.status(status).json({
+            error: err.message || 'Unable to refresh session',
+            code: err.code || undefined,
+        });
     }
 };
 

@@ -34,7 +34,7 @@ const revokeRefreshToken = async (tokenId, replacedByTokenId = null) => {
 
 const getRefreshTokenById = async (tokenId) => {
     const { rows } = await pool.query(
-        `SELECT token_id, user_id, token_hash, expires_at, revoked_at
+        `SELECT token_id, user_id, token_hash, expires_at, revoked_at, replaced_by_token_id
          FROM auth_refresh_tokens
          WHERE token_id = $1`,
         [tokenId],
