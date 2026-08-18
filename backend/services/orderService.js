@@ -146,30 +146,52 @@ const notifyOrderChange = (action, order, actorId = null, extra = {}) => {
 };
 
 /**
+ * Ảnh chụp "chuyến nào đang thuộc về tài nào" của một đơn, dạng Map<shipmentId, driverId>.
+ * Chụp TRƯỚC khi sửa đơn để sau đó biết ai là người MỚI được giao việc.
+ */
+const snapshotShipmentOwners = async (orderId) => {
+    const owners = await orderRepository.listShipmentOwners(orderId);
+    return new Map(owners.map((row) => [row.id, row.owner_driver_id]));
+};
+
+/**
  * Báo cho tài xế khi chuyến rơi thẳng vào tay họ ngay lúc tạo/sửa đơn.
  *
- * Vì sao cần: chọn biển số xe đã có tài xế cố định là shipment sinh ra với
- * owner_driver_id = tài đó và status = 'claimed' luôn — tài xế KHÔNG phải bấm nhận,
- * chuyến tự nằm trong danh sách của họ. Nhưng cả luồng này trước đây chỉ gọi
- * notifyOrderChange, mà hàm đó bắn theo VAI TRÒ (coordinator/accountant/manager) —
- * tài xế không nằm trong danh sách nào nên tuyệt đối không nhận được gì. Điều phối
- * viên tưởng đã giao việc xong, tài xế thì không hề biết mình có chuyến.
+ * Vì sao cần: chọn biển số xe đã có tài xế cố định là chuyến sinh ra đã thuộc về tài đó
+ * với status = 'claimed' luôn — tài xế KHÔNG phải bấm nhận, chuyến tự nằm trong danh
+ * sách của họ. Nhưng luồng tạo/sửa đơn chỉ gọi notifyOrderChange, mà hàm đó bắn theo
+ * VAI TRÒ (coordinator/accountant/manager) — tài xế không nằm trong danh sách nào nên
+ * tuyệt đối không nhận được gì. Điều phối viên tưởng đã giao việc xong, tài xế thì
+ * không hề biết mình có chuyến.
  *
  * Khác với assignOrderShipments (gán sau, tài đã có đơn sẵn), đây là đường "gán ngay
- * lúc tạo đơn" nên phải tự lo phần báo tin.
+ * lúc tạo/sửa đơn" nên phải tự lo phần báo tin.
+ *
+ * Chủ chuyến LUÔN đọc lại từ DB (v_shipment_current), không nhận từ hàng vừa insert:
+ * order_shipments không có cột owner_driver_id nên `RETURNING *` không hề mang tài xế
+ * theo. Bản trước duyệt owner_driver_id trên chính những hàng đó, giá trị luôn là
+ * undefined nên vòng lặp bỏ qua sạch và hàm thoát ở "không có ai để báo" — thông báo
+ * giao chuyến chưa từng tới tay tài xế lần nào, dù code trông như đã gửi.
+ *
+ * `truoc` = ảnh chụp chủ chuyến trước thao tác. Chỉ báo cho người có thay đổi, nên sửa
+ * lại giá cước hay địa chỉ của đơn cũ không bắn lại thông báo cho tài đã biết chuyến.
  */
-const notifyDriversAssignedOnOrder = async (orderId, shipments = [], { isUpdate = false } = {}) => {
+const notifyDriversAssignedOnOrder = async (orderId, { truoc = new Map(), isUpdate = false } = {}) => {
+    if (!orderId) return;
     // require trễ: notificationService kéo ngược lại orderService qua chuỗi service khác.
     // notificationGateway thì đã nạp sẵn ở đầu file, không vướng vòng.
     const notificationService = require('./notificationService');
 
+    const shipments = await orderRepository.listShipmentOwners(orderId);
+
     // Một tài có thể ôm nhiều chuyến trong cùng đơn — gộp lại, đừng bắn n lần.
     const shipmentsByDriver = new Map();
     for (const shipment of shipments) {
-        const driverId = Number(shipment?.owner_driver_id);
+        const driverId = shipment.owner_driver_id;
         if (!driverId) continue;
+        if (truoc.get(shipment.id) === driverId) continue;   // tài này đã biết chuyến rồi
         if (!shipmentsByDriver.has(driverId)) shipmentsByDriver.set(driverId, []);
-        shipmentsByDriver.get(driverId).push(Number(shipment.id));
+        shipmentsByDriver.get(driverId).push(shipment.id);
     }
     if (shipmentsByDriver.size === 0) return;
 
@@ -356,7 +378,7 @@ const createOrder = async (userId, payload) => {
         await dbClient.query('COMMIT');
         broadcastCoordinatorOrderChange('created', result.order);
         notifyOrderChange('created', result.order, userId);
-        await notifyDriversAssignedOnOrder(result.order?.id, result.shipments);
+        await notifyDriversAssignedOnOrder(result.order?.id);
         return result;
     } catch (err) {
         if (dbClient) {
@@ -606,6 +628,12 @@ const updateOrder = async (orderId, payload) => {
         dbClient.release();
     }
 
+    // Chụp chủ chuyến TRƯỚC khi sửa: sửa đơn cũng là một đường giao việc (chuyến đang
+    // trống được điền BKS thì thuộc luôn về tài của xe đó, status = 'claimed'), nên tài
+    // xế phải được báo y như lúc tạo đơn. Có ảnh chụp này mới phân biệt được "vừa giao
+    // cho người mới" với "chỉ sửa giá cước của chuyến tài đã cầm".
+    const chuTruocKhiSua = await snapshotShipmentOwners(orderId);
+
     const updatedOrder = await orderRepository.updateOrder(orderId, {
         customer_name,
         customer_phone,
@@ -621,6 +649,7 @@ const updateOrder = async (orderId, payload) => {
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
     broadcastCoordinatorOrderChange('updated', updatedOrder);
     notifyOrderChange('updated', updatedOrder, payload.updated_by ?? null);
+    await notifyDriversAssignedOnOrder(orderId, { truoc: chuTruocKhiSua, isUpdate: true });
     return updatedOrder;
 };
 

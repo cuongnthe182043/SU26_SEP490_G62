@@ -131,6 +131,20 @@ const parseDateCell = (cell, XLSX) => {
   return Number.isNaN(new Date(iso).getTime()) ? null : iso;
 };
 
+// Hôm nay theo GIỜ MÁY người dùng, dạng YYYY-MM-DD để so chuỗi trực tiếp với dateIso.
+// Không dùng toISOString() vì nó quy về UTC — từ 0h đến 7h sáng giờ VN sẽ ra ngày hôm qua
+// và chặn oan đơn chạy trong ngày.
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// YYYY-MM-DD → dd/mm/yyyy, để thông báo lỗi và màn xem trước nói đúng thứ người Việt đọc.
+export const viDate = (iso) => {
+  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
+
 // Tách nhiều điểm lấy/trả trong cùng 1 ô — phân cách bằng "|" hoặc xuống dòng (Alt+Enter)
 const splitStops = (v) => String(v ?? "")
   .split(/\r?\n|\|/)
@@ -173,6 +187,17 @@ export function parseWorkbook(wb, XLSX) {
     const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
     const dateIso = parseDateCell(ws[dateCellAddr], XLSX);
     if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
+    else if (dateIso > todayIso()) {
+      // Đơn ở đây là đơn ĐÃ HOÀN THÀNH nên ngày chạy không thể ở tương lai. Chặn tại đây
+      // bắt được lỗi hay gặp nhất: ô ngày trong Excel đang để định dạng kiểu Mỹ (m/d/yy),
+      // gõ "12/8" ra ngày 8 tháng 12 nhưng màn hình vẫn hiện "12/8/26" nên người nhập
+      // tưởng là 12 tháng 8. Không chặn thì doanh thu rơi sang tháng 12, KPI và bảng lương
+      // tháng hiện tại không thấy gì mà chẳng có lỗi nào báo ra.
+      rowErr.push(
+        `Ngày chạy ${viDate(dateIso)} ở tương lai — đơn đã hoàn thành không thể có ngày sau hôm nay. `
+        + `Kiểm tra định dạng ô ngày trong Excel (phải là dd/mm/yyyy)`,
+      );
+    }
 
     const plate = String(get(r, "plate")).trim();
     if (!plate) rowErr.push("Thiếu biển số xe");
@@ -306,7 +331,11 @@ export function parseWorkbook(wb, XLSX) {
     rows.push({
       rowIndex: rowNo,
       display: {
-        date: get(r, "date"), plate, driver,
+        // Hiện ngày ĐÃ HIỂU ĐƯỢC (dd/mm/yyyy) chứ không phải chuỗi thô trong ô Excel.
+        // Ô ngày kiểu Mỹ hiện "12/8/26" nhưng thực chất là 8 tháng 12 — chép nguyên chuỗi
+        // thô ra màn xem trước thì kế toán không đời nào phát hiện được, còn hiện ngày đã
+        // giải mã thì sai lệch lộ ra ngay trước khi bấm Import.
+        date: viDate(dateIso) || get(r, "date"), plate, driver,
         // Chỉ gọi là "Khách lẻ" khi KHÔNG có cả tên lẫn SĐT. Dòng chỉ có SĐT vẫn định
         // danh được nên hiện SĐT, gọi là khách lẻ thì kế toán tưởng dòng bị mất khách.
         customer: customerName || phone || "Khách lẻ",

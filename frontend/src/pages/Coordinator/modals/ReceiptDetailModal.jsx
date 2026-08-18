@@ -57,7 +57,7 @@ export default function ReceiptDetailModal({
         (data.results || []).forEach((r) => { map[r.expense_id] = r; });
         setOcrResults(map);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setOcrLoading(false));
   }, [open, detail?.request?.id]);
 
@@ -175,7 +175,7 @@ export default function ReceiptDetailModal({
                       )}
                       <div className="col-span-2"><span className="text-xs text-gray-400 dark:text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
                       <div>
-                        <span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí chuyến</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí phát sinh</span>
                         <strong>{formatCurrency(shipment.total_expenses)}</strong>
                         {isCompanyBorneShipment(shipment) && Number(shipment.total_expenses) > 0 && (
                           <span className="text-[11px] text-amber-600 dark:text-amber-400 block">Doanh nghiệp chịu</span>
