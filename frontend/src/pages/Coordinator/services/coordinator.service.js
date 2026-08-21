@@ -41,16 +41,22 @@ export const coordinatorService = {
       body: { action },
     }),
 
-  // Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế (chạy tuần tự)
-  assignOrderShipments: (orderId, { shipmentIds, driverId }) =>
+  // Gán trước nhiều chuyến của CÙNG một đơn cho 1 tài xế (chạy tuần tự).
+  // vehicleId tùy chọn — bỏ trống thì backend dùng xe biên chế của tài. Truyền vào thì
+  // dùng đúng xe đó, kể cả khác nhóm xe của đơn (cước vẫn theo nhóm ghi trong đơn).
+  assignOrderShipments: (orderId, { shipmentIds, driverId, vehicleId = null }) =>
     apiRequest(`${BASE}/orders/${orderId}/assign-driver`, {
       method: "POST",
-      body: { shipment_ids: shipmentIds, driver_id: driverId },
+      body: { shipment_ids: shipmentIds, driver_id: driverId, vehicle_id: vehicleId },
     }),
   getTripPool: (params) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
 
   // ─── Lookups ──────────────────────────────────────────────────────────────
   getVehicleGroups: () => apiRequest(`${BASE}/vehicle-groups`),
+  // Xe đang sẵn sàng nhận chuyến, KHÔNG lọc theo nhóm xe. order_id để chừa lại xe đã
+  // gắn sẵn vào chuyến của chính đơn đang gán.
+  getAssignableVehicles: (params = {}) =>
+    apiRequest(`${BASE}/assignable-vehicles?${new URLSearchParams(params)}`),
   getDrivers: () => apiRequest("/api/drivers"),
   getPartners: () => apiRequest(`${BASE}/partners`),
 

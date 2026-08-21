@@ -4,6 +4,7 @@ const activityLogRepository = require('./activityLogRepository');
 const {
     SHIPMENT_STATUS,
     ACTIVE_STATUSES,
+    BLOCKING_STATUSES,
     STATUS_TIMESTAMP_COL,
 } = require('../constants/tripConstants');
 const {
@@ -632,7 +633,7 @@ const cancelShipmentForCargoDamage = async ({ shipmentId, reason, coordinatorId 
     }
 };
 
-// Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
+/// Coordinator gán TRƯỚC nhiều chuyến của CÙNG một order cho một tài xế.
 //
 // Cách hoạt động: ghi shipment_assignment_history (⇒ v_shipment_current.owner_driver_id
 // trỏ về tài) nhưng GIỮ os.status = 'available' cho các chuyến sau. Chuyến có
@@ -643,8 +644,29 @@ const cancelShipmentForCargoDamage = async ({ shipmentId, reason, coordinatorId 
 // getAvailableShipments lọc owner_driver_id IS NULL nên các chuyến đã pre-assign tự
 // biến khỏi trip pool của tài khác — không cần đổi gì ở đó.
 //
-// Ràng buộc: chỉ gán nhiều chuyến trong CÙNG order. Nếu tài đang vướng chuyến của
-// order khác (đang chạy hoặc đã được pre-assign) thì chặn.
+// XE RỜI KHỎI KHÁI NIỆM "XE BIÊN CHẾ CỦA TÀI". vehicleId truyền vào đây là xe CHẠY
+// CHUYẾN NÀY, không nhất thiết là drivers.vehicle_id của tài. Bảng
+// shipment_assignment_history vốn đã lưu to_vehicle_id theo từng chuyến nên hạ tầng
+// không phải đổi — chỉ các guard cũ là ép hai khái niệm đó phải bằng nhau. Hệ quả có
+// chủ ý: KHÔNG còn đối chiếu vehicles.assigned_driver_id ↔ drivers.vehicle_id ở đây.
+//
+// NHÓM XE KHÔNG CÒN LÀ RÀNG BUỘC ĐIỀU PHỐI. Trước đây chuyến chỉ nhận được xe cùng
+// os.vehicle_group_id; giờ gán được xe bất kỳ miễn xe và tài đều SẴN SÀNG.
+// os.vehicle_group_id giữ đúng MỘT vai trò là cơ sở tính cước (xem saveShipmentActualKm
+// và getOrderShipments) — gán xe khác nhóm không được phép làm đổi giá đã chốt với khách.
+//
+// Điều kiện SẴN SÀNG (đối xứng với claimShipment và reassignShipmentAfterIncident):
+//   xe  — status = 'active', không có phiếu bảo trì đang mở, không vướng chuyến khác
+//   tài — không vướng chuyến của đơn khác, không đang phụ trách bảo trì xe khác
+//
+// CỐ Ý KHÔNG KIỂM TẢI TRỌNG. Phép so nhóm xe cũ vô tình là thứ duy nhất thực thi giới
+// hạn tải (vehicle_groups.max_load_weight_kg chưa từng được dùng để chặn ở bất kỳ đâu),
+// nên gỡ nó đi là gỡ luôn lớp bảo vệ đó. Nhóm dự án đã cân nhắc và chốt: điều phối viên
+// tự chịu trách nhiệm chọn xe đủ tải, hệ thống không chặn. Đừng thêm guard tải trọng vào
+// đây như một "lỗi bỏ sót" — nếu muốn đổi thì đổi ở cấp quyết định nghiệp vụ trước.
+//
+// Ràng buộc còn giữ: chỉ gán nhiều chuyến trong CÙNG order. Tài đang vướng chuyến của
+// order khác (đang chạy, đang treo 'failed', hoặc đã được pre-assign) thì chặn.
 const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, vehicleId, coordinatorId }) => {
     const client = await pool.connect();
     try {
@@ -657,7 +679,7 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
         // Khoá toàn bộ chuyến của order để hai coordinator không gán chồng nhau
         const lockedResult = await client.query(
             `SELECT os.id, os.shipment_index, os.status, os.vehicle_group_id,
-                    sc.owner_driver_id
+                    sc.owner_driver_id, sc.vehicle_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE os.order_id = $1
@@ -686,20 +708,55 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
             targets.push(shipment);
         }
 
-        // Xe của tài phải đúng nhóm xe mà chuyến yêu cầu (BR-003)
-        const vehicleGroupResult = await client.query(
-            `SELECT vehicle_group_id FROM vehicles WHERE id = $1`,
+        // ── Xe có sẵn sàng không ─────────────────────────────────────────────
+        // KHÔNG kiểm assigned_driver_id: xe chạy chuyến này không cần là xe biên chế
+        // của tài. Chỉ hỏi đúng ba câu: xe còn dùng được, không nằm xưởng, không kẹt
+        // chuyến khác.
+        const vehicleResult = await client.query(
+            `SELECT id, plate_number, status FROM vehicles WHERE id = $1`,
             [vehicleId],
         );
-        const driverGroupId = vehicleGroupResult.rows[0]?.vehicle_group_id ?? null;
-        const groupMismatch = targets.some((s) => s.vehicle_group_id !== null
-            && Number(s.vehicle_group_id) !== Number(driverGroupId));
-        if (groupMismatch) {
+        const vehicle = vehicleResult.rows[0];
+        if (!vehicle) {
             await client.query('ROLLBACK');
-            throw new Error('VEHICLE_GROUP_MISMATCH');
+            throw new Error('VEHICLE_NOT_FOUND');
+        }
+        if (vehicle.status !== 'active') {
+            await client.query('ROLLBACK');
+            const err = new Error('VEHICLE_UNAVAILABLE');
+            err.plateNumber = vehicle.plate_number;
+            err.vehicleStatus = vehicle.status;
+            throw err;
         }
 
-        // Vướng order khác: đang chạy, HOẶC đã được pre-assign (available + có owner)
+        const vehicleMaintenanceResult = await client.query(
+            `SELECT id FROM maintenance_records
+             WHERE vehicle_id = $1 AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [vehicleId],
+        );
+        if (vehicleMaintenanceResult.rows[0]) {
+            await client.query('ROLLBACK');
+            const err = new Error('VEHICLE_MAINTENANCE');
+            err.plateNumber = vehicle.plate_number;
+            throw err;
+        }
+
+        // ── Tài có sẵn sàng không ────────────────────────────────────────────
+        const driverMaintenanceResult = await client.query(
+            `SELECT id FROM maintenance_records
+             WHERE performed_by = $1 AND vehicle_id <> $2
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [driverId, vehicleId],
+        );
+        if (driverMaintenanceResult.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('DRIVER_MAINTENANCE');
+        }
+
+        // Vướng order khác: đang chạy, đang treo 'failed' (chờ coordinator xử lý — cả
+        // hai hướng xử lý đều đưa chuyến về chạy tiếp), HOẶC đã pre-assign.
         const otherOrderResult = await client.query(
             `SELECT os.order_id
              FROM order_shipments os
@@ -708,7 +765,7 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
                AND os.order_id <> $2
                AND (os.status = ANY($3::text[]) OR os.status = 'available')
              LIMIT 1`,
-            [driverId, orderId, ACTIVE_STATUSES],
+            [driverId, orderId, BLOCKING_STATUSES],
         );
         if (otherOrderResult.rows[0]) {
             await client.query('ROLLBACK');
@@ -717,27 +774,34 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
             throw err;
         }
 
-        // Xe đang chạy chuyến của order khác (tài khác cầm xe này)
+        // Xe đang vướng chuyến của order khác. Tính CẢ chuyến đã pre-assign ('available'
+        // + có owner) cho đối xứng với guard của tài ngay trên: xe rời khỏi biên chế
+        // nghĩa là hai tài khác nhau có thể cùng nhắm một chiếc xe, nên nếu chỉ chặn
+        // chuyến đang chạy thì một xe pre-assign được vào hai đơn cùng lúc.
         const vehicleBusyResult = await client.query(
             `SELECT os.order_id
              FROM order_shipments os
              JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE sc.vehicle_id = $1
                AND os.order_id <> $2
-               AND os.status = ANY($3::text[])
+               AND (os.status = ANY($3::text[]) OR os.status = 'available')
              LIMIT 1`,
-            [vehicleId, orderId, ACTIVE_STATUSES],
+            [vehicleId, orderId, BLOCKING_STATUSES],
         );
         if (vehicleBusyResult.rows[0]) {
             await client.query('ROLLBACK');
             const err = new Error('VEHICLE_BUSY_OTHER_ORDER');
             err.conflictingOrderId = vehicleBusyResult.rows[0].order_id;
+            err.plateNumber = vehicle.plate_number;
             throw err;
         }
 
         for (const shipment of targets) {
+            // fromVehicleId: chuyến có thể đã mang sẵn một xe mà chưa có tài (lúc tạo đơn
+            // chọn BKS của xe chưa gán tài xế nào). Ghi lại để lịch sử đổi xe không đứt đoạn.
             await insertAssignmentHistory(client, {
                 shipmentId: shipment.id,
+                fromVehicleId: shipment.vehicle_id ?? null,
                 toDriverId: driverId,
                 toVehicleId: vehicleId,
                 changedBy: coordinatorId,
@@ -746,13 +810,14 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
             });
         }
 
-        // Chỉ kích hoạt ngay nếu tài chưa có chuyến nào đang chạy trong đơn này —
-        // giữ đúng nguyên tắc 1 chuyến active tại một thời điểm.
-        const hasActiveInOrder = orderShipments.some((s) => ACTIVE_STATUSES.includes(s.status)
+        // Chỉ kích hoạt ngay nếu tài chưa có chuyến nào còn giữ chân trong đơn này —
+        // giữ đúng nguyên tắc 1 chuyến active tại một thời điểm. Dùng BLOCKING_STATUSES
+        // để chuyến 'failed' chưa xử lý cũng được tính là còn dở dang.
+        const hasBlockingInOrder = orderShipments.some((s) => BLOCKING_STATUSES.includes(s.status)
             && Number(s.owner_driver_id) === Number(driverId));
 
         let activated = null;
-        if (!hasActiveInOrder) {
+        if (!hasBlockingInOrder) {
             const first = targets.reduce(
                 (min, s) => (min === null || s.shipment_index < min.shipment_index ? s : min),
                 null,
@@ -1428,10 +1493,17 @@ const getPendingReceiptOrder = async (driverId) => {
 // request nào được tạo → actual_price không bao giờ được chốt → BR-026 fallback về estimated_price
 // (giá MỘT CHIỀU cũ trước khi hoàn hàng) mãi mãi, doanh thu/KPI sai một nửa mà không có gì báo lỗi.
 // Giá cố định do DN chốt tay (is_price_manual) thì giữ nguyên, không suy diễn theo km.
+//
+// ĐƠN GIÁ LẤY THEO NHÓM XE CỦA ĐƠN (os.vehicle_group_id) TRƯỚC, xe chạy thật chỉ là
+// dự phòng khi chuyến không ghi nhóm. Từ khi coordinator gán được xe bất kỳ (kể cả khác
+// nhóm), thứ tự cũ — xe trước, đơn sau — biến việc điều một chiếc xe to hơn vào phút
+// chót thành một lần tăng giá với khách mà không ai duyệt: tài khai km xong là cước tự
+// nhảy theo bảng giá của nhóm xe mới. Giá đã chốt với khách phải bám nhóm xe ghi trong
+// đơn, bất kể cuối cùng chiếc nào chạy.
 const saveShipmentActualKm = async (shipmentId, km) => {
     await pool.query(
         `WITH pricing AS (
-            SELECT COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
+            SELECT COALESCE(vg_order.price_per_km, vg_vehicle.price_per_km, 0) AS price_per_km
             FROM order_shipments os2
             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os2.id
             LEFT JOIN vehicles v ON v.id = sc.vehicle_id

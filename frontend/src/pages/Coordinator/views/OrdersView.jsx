@@ -42,6 +42,9 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
+  // Xe SẴN SÀNG nhận chuyến — nạp lại mỗi khi mở một đơn khác, vì danh sách phụ thuộc
+  // vào đúng đơn đang xem (xe đã gắn sẵn vào chuyến của chính đơn này vẫn chọn được).
+  const [assignableVehicles, setAssignableVehicles] = useState([]);
   const [prepaidTarget, setPrepaidTarget] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -96,6 +99,15 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     coordinatorService.getDrivers().then((data) => setDrivers(data.drivers || [])).catch(() => {});
     coordinatorService.getPartners().then((data) => setPartners(data.partners || [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!detailOrder?.orderId) { setAssignableVehicles([]); return; }
+    let huy = false;
+    coordinatorService.getAssignableVehicles({ order_id: detailOrder.orderId })
+      .then((data) => { if (!huy) setAssignableVehicles(data.vehicles || []); })
+      .catch(() => { if (!huy) setAssignableVehicles([]); });
+    return () => { huy = true; };
+  }, [detailOrder?.orderId]);
 
   const closeOrderModal = () => {
     setCreateOpen(false);
@@ -185,6 +197,14 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     }
 
     form.trips.forEach((trip, index) => {
+      // Nhóm xe là BẮT BUỘC: nó quyết định đơn giá/km, và từ khi chuyến gán được xe khác
+      // nhóm thì đây là cơ sở tính cước DUY NHẤT. Bỏ trống trước đây vẫn gửi đi được
+      // (Number("") = 0) rồi backend lặng lẽ lấy nhóm có id nhỏ nhất — cước sai mà không
+      // ai thấy. Backend giờ cũng chặn; kiểm ở đây để báo ngay tại ô nhập.
+      if (!trip.vehicle_group_id) {
+        nextErrors[`trip_${index}_vehicle_group_id`] = "Nhóm xe là bắt buộc (quyết định đơn giá/km).";
+      }
+
       const normalizedDistance = normalizeDistanceText(trip.distance);
       if (!normalizedDistance) {
         nextErrors[`trip_${index}_distance`] = "Quãng đường là bắt buộc.";
@@ -210,7 +230,9 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       const manualPrice = normalizeNumericText(trip.price);
 
       return {
-        vehicle_group_id: Number(trip.vehicle_group_id),
+        // Number("") === 0 và 0 là falsy — backend sẽ hiểu nhầm thành "không chọn".
+        // Gửi null cho rõ nghĩa; validate ở trên đã chặn trường hợp trống rồi.
+        vehicle_group_id: trip.vehicle_group_id ? Number(trip.vehicle_group_id) : null,
         plate: String(trip.plate || "").trim(),
         distance: Number(normalizeDistanceText(trip.distance)),
         price: manualPrice ? Number(manualPrice) : null,
@@ -302,12 +324,16 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
 
   // Gán trước chuyến cho tài xế từ modal chi tiết đơn. Ném lỗi lên lại để panel
   // giữ nguyên lựa chọn khi thất bại (VD tài đang vướng đơn khác).
-  const submitAssignShipments = async ({ shipmentIds, driverId }) => {
+  const submitAssignShipments = async ({ shipmentIds, driverId, vehicleId }) => {
     try {
-      const res = await coordinatorService.assignOrderShipments(detailOrder.orderId, { shipmentIds, driverId });
+      const res = await coordinatorService.assignOrderShipments(detailOrder.orderId, { shipmentIds, driverId, vehicleId });
       const refreshed = await loadOrders(pagination.page);
       const updated = (refreshed ?? []).find((o) => Number(o.orderId) === Number(detailOrder.orderId));
       if (updated) setDetailOrder(updated);
+      // Xe vừa gán không còn rảnh — nạp lại để lần gán tiếp theo không chọn trúng nó
+      coordinatorService.getAssignableVehicles({ order_id: detailOrder.orderId })
+        .then((data) => setAssignableVehicles(data.vehicles || []))
+        .catch(() => {});
       notify.success(res.message || "Đã gán chuyến cho tài xế.");
     } catch (error) {
       notify.error(error.message || "Không thể gán chuyến.");
@@ -542,6 +568,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         order={detailOrder}
         onClose={() => setDetailOrder(null)}
         drivers={drivers}
+        vehicles={assignableVehicles}
         onAssignShipments={submitAssignShipments}
       />
 

@@ -4,6 +4,9 @@ const pool = require('../config/database');
 // Lớp an toàn cho Text-to-SQL của chatbot.
 //
 // Nhiều tầng phòng thủ (defense in depth):
+//   0. Chuẩn hoá TRƯỚC khi kiểm: bỏ chú thích, cấm định danh nháy kép. Không có bước
+//      này thì mọi lớp dưới kiểm một chuỗi khác với chuỗi Postgres thực sự chạy —
+//      xem stripSqlComments và test/chatbot/sqlAllowlistBypass.test.js.
 //   1. Allowlist VIEW theo role — chatbot chỉ đụng view curated, không bao giờ
 //      bảng gốc (accounts/profiles thô... => không lộ password/PII).
 //   2. Chỉ cho phép 1 câu SELECT/WITH — chặn mọi từ khoá ghi/DDL.
@@ -45,6 +48,78 @@ const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|grant|revoke|trunca
 
 const stripTrailingSemicolons = (sql) => sql.replace(/;\s*$/g, '').trim();
 
+// Bỏ chú thích SQL TRƯỚC mọi phép kiểm tra.
+//
+// Vì sao bắt buộc: extractTables tìm tên bảng ngay sau FROM/JOIN bằng regex. Chú thích
+// chen vào giữa làm regex trượt hoàn toàn, và một câu đã được xác minh là "chỉ đụng view
+// cho phép" thật ra đang đọc bảng gốc:
+//     SELECT email FROM/**/accounts        → regex không thấy bảng nào
+//     SELECT email FROM--x\naccounts       → cũng vậy
+// Postgres thì bỏ qua chú thích và chạy bình thường ⇒ lọt sạch lớp allowlist.
+//
+// Phải bám nháy đơn và dollar-quote khi quét, nếu không một chuỗi dữ liệu hợp lệ chứa
+// '--' (vd ghi chú của khách) sẽ bị cắt cụt và câu SQL đúng biến thành sai cú pháp.
+const stripSqlComments = (sql) => {
+    let out = '';
+    let i = 0;
+    const n = sql.length;
+
+    while (i < n) {
+        const c = sql[i];
+        const c2 = sql[i + 1];
+
+        // Chuỗi nháy đơn: '' bên trong là một dấu nháy escape, không phải kết thúc chuỗi
+        if (c === "'") {
+            out += c; i += 1;
+            while (i < n) {
+                if (sql[i] === "'" && sql[i + 1] === "'") { out += "''"; i += 2; continue; }
+                out += sql[i];
+                if (sql[i] === "'") { i += 1; break; }
+                i += 1;
+            }
+            continue;
+        }
+
+        // Dollar-quote $tag$ ... $tag$
+        if (c === '$') {
+            const m = /^\$[a-z_][a-z0-9_]*\$|^\$\$/i.exec(sql.slice(i));
+            if (m) {
+                const tag = m[0];
+                const end = sql.indexOf(tag, i + tag.length);
+                const stop = end === -1 ? n : end + tag.length;
+                out += sql.slice(i, stop);
+                i = stop;
+                continue;
+            }
+        }
+
+        // Chú thích dòng -- ... đến hết dòng. Thay bằng dấu cách để hai token hai bên
+        // không dính vào nhau thành một từ mới.
+        if (c === '-' && c2 === '-') {
+            while (i < n && sql[i] !== '\n') i += 1;
+            out += ' ';
+            continue;
+        }
+
+        // Chú thích khối /* ... */ — Postgres cho lồng nhau nên phải đếm độ sâu
+        if (c === '/' && c2 === '*') {
+            let depth = 1;
+            i += 2;
+            while (i < n && depth > 0) {
+                if (sql[i] === '/' && sql[i + 1] === '*') { depth += 1; i += 2; continue; }
+                if (sql[i] === '*' && sql[i + 1] === '/') { depth -= 1; i += 2; continue; }
+                i += 1;
+            }
+            out += ' ';
+            continue;
+        }
+
+        out += c;
+        i += 1;
+    }
+    return out;
+};
+
 // Lấy tên CTE (WITH x AS (...), y AS (...)) để không bị report nhầm là bảng lạ.
 // CTE luôn có dạng "<tên> AS (" — table alias (table alias) và subquery alias
 // (") AS sub") không khớp mẫu này nên không bị bắt nhầm.
@@ -70,8 +145,22 @@ const extractTables = (sql) => {
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 const validateSelect = (rawSql, allowedViews) => {
-    const sql = stripTrailingSemicolons(String(rawSql || ''));
+    // Kiểm TRÊN BẢN ĐÃ BỎ CHÚ THÍCH. Postgres bỏ qua chú thích khi chạy, nên nếu ta kiểm
+    // trên bản còn chú thích thì kẻ tấn công chỉ cần chèn /**/ vào giữa FROM và tên bảng
+    // là mọi lớp bên dưới nhìn thấy một câu SQL khác hẳn câu sẽ thực sự chạy.
+    const sql = stripTrailingSemicolons(stripSqlComments(String(rawSql || '')));
     if (!sql) return { ok: false, reason: 'Câu SQL rỗng.' };
+
+    // CẤM NHÁY KÉP. Toàn bộ view trong allowlist đều là tên thường, không dấu cách, nên
+    // câu hợp lệ không bao giờ cần định danh trích dẫn. Ngược lại, nháy kép là đường
+    // chính để lách extractTables:
+    //     SELECT * FROM"accounts"      → regex đòi \s+ sau FROM nên không khớp gì
+    //     SELECT * FROM "accounts"     → regex đòi [a-z_] ngay sau khoảng trắng, gặp " là trượt
+    // Cả hai đều được Postgres chạy ngon lành và đọc thẳng bảng gốc (lộ password_hash).
+    // Chặn nguyên ký tự này giết cả lớp lỗi, thay vì vá từng biến thể regex.
+    if (sql.includes('"')) {
+        return { ok: false, reason: 'Không được dùng định danh trong nháy kép.' };
+    }
 
     // 1 câu duy nhất — không cho nhiều statement.
     if (sql.includes(';')) return { ok: false, reason: 'Chỉ cho phép một câu SELECT duy nhất.' };
@@ -113,7 +202,9 @@ const runReadOnlyQuery = async (rawSql, { role, actorId, maxRows = 200 }) => {
     const check = validateSelect(rawSql, allowedViews);
     if (!check.ok) throw new Error(check.reason);
 
-    const sql = stripTrailingSemicolons(rawSql);
+    // CHẠY ĐÚNG CHUỖI ĐÃ KIỂM, không chạy lại bản thô. Nếu kiểm một chuỗi rồi thực thi
+    // một chuỗi khác thì mọi bảo đảm của validateSelect chỉ áp cho văn bản không ai chạy.
+    const sql = stripTrailingSemicolons(stripSqlComments(String(rawSql || '')));
     const limit = Math.min(Math.max(1, Number(maxRows) || 200), 500);
     // Bọc trong subquery + LIMIT — chặn số dòng, đồng thời vô hiệu hoá mọi mưu
     // đồ chèn thêm statement (sẽ thành lỗi cú pháp; READ ONLY vẫn chặn ghi).
@@ -180,6 +271,7 @@ const getSchemaForRole = async (role) => {
 
 module.exports = {
     ROLE_ALLOWLIST,
+    stripSqlComments,
     getAllowedViews,
     validateSelect,
     runReadOnlyQuery,

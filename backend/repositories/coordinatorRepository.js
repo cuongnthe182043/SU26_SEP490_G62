@@ -22,9 +22,17 @@ const getOrderShipments = async (db, orderId) => {
             os.returning_at,
             v.plate_number,
             p.full_name AS driver_name,
-            COALESCE(vg_vehicle.id, vg_order.id) AS vehicle_group_id,
-            COALESCE(vg_vehicle.name, vg_order.name) AS vehicle_group_name,
-            COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
+            -- Nhóm xe TÍNH CƯỚC = nhóm ghi trong đơn (os.vehicle_group_id), nhóm của xe
+            -- chạy thật chỉ là dự phòng. Coordinator giờ gán được xe khác nhóm, nên nếu
+            -- vẫn ưu tiên nhóm của xe thì đổi xe phút chót = đổi giá đã chốt với khách.
+            -- Ba dòng này nuôi computeReceiptAmount nên phải khớp saveShipmentActualKm
+            -- và listReceiptRequests, nếu không xem trước một số mà chốt ra số khác.
+            COALESCE(vg_order.id, vg_vehicle.id) AS vehicle_group_id,
+            COALESCE(vg_order.name, vg_vehicle.name) AS vehicle_group_name,
+            COALESCE(vg_order.price_per_km, vg_vehicle.price_per_km, 0) AS price_per_km,
+            -- Nhóm của chiếc xe thực sự chạy — chỉ để hiển thị/đối chiếu, KHÔNG dùng tính tiền
+            vg_vehicle.id   AS actual_vehicle_group_id,
+            vg_vehicle.name AS actual_vehicle_group_name
          FROM order_shipments os
          LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN vehicles v ON v.id = sc.vehicle_id
@@ -155,6 +163,10 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
                 --
                 -- is_price_manual đứng TRƯỚC actual_price vì computeReceiptAmount xét nó đầu
                 -- tiên: giá công ty chốt tay thắng tuyệt đối, bất kể km hay giá đã ghi trước đó.
+                --
+                -- Đơn giá lấy theo NHÓM XE CỦA ĐƠN trước, nhóm của xe chạy thật chỉ dự
+                -- phòng — khớp getOrderShipments và saveShipmentActualKm. Gán xe khác nhóm
+                -- không được làm đổi giá đã chốt với khách.
                 SUM(
                     CASE
                         WHEN os_revenue.is_price_manual IS TRUE
@@ -162,7 +174,7 @@ const listReceiptRequests = async ({ where, params, limit, offset, sort = null }
                         ELSE COALESCE(
                             NULLIF(os_revenue.actual_price, 0),
                             COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
-                            * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                            * COALESCE(vg_order_revenue.price_per_km, vg_vehicle_revenue.price_per_km, 0)
                             * CASE WHEN os_revenue.returning_at IS NOT NULL THEN 2 ELSE 1 END
                         )
                     END

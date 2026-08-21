@@ -1243,9 +1243,23 @@ const resolveFailedShipment = async (shipmentId, { action }, actorId) => {
     return updated;
 };
 
+// Danh sách xe SẴN SÀNG để gán — cùng bộ điều kiện với guard trong
+// assignOrderShipmentsToDriver, không lọc theo nhóm xe.
+const listAssignableVehicles = async ({ excludeOrderId = null } = {}) =>
+    orderRepository.listAssignableVehicles({ excludeOrderId });
+
 // Coordinator gán trước nhiều chuyến của CÙNG một đơn cho một tài xế.
-// Ràng buộc nghiệp vụ: chỉ trong cùng đơn. Tài đang vướng đơn khác thì không gán được.
-const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId) => {
+//
+// Tài xế và xe được chọn ĐỘC LẬP với nhau: vehicleId là xe chạy những chuyến này, không
+// bắt buộc là xe biên chế (drivers.vehicle_id) của tài. Bỏ trống thì mặc định lấy xe biên
+// chế — giữ nguyên thói quen cũ của điều phối viên cho trường hợp thường gặp nhất.
+//
+// Nhóm xe KHÔNG còn là ràng buộc: gán được xe khác nhóm với nhóm ghi trong đơn. Đổi lại,
+// os.vehicle_group_id trở thành cơ sở tính cước DUY NHẤT (xem saveShipmentActualKm và
+// getOrderShipments) nên cước đã chốt với khách không đổi theo chiếc xe cuối cùng chạy.
+//
+// Ràng buộc còn giữ: chỉ trong cùng đơn; tài và xe đều phải sẵn sàng.
+const assignOrderShipments = async (orderId, { shipmentIds, driverId, vehicleId = null }, actorId) => {
     const tripRepository = require('../repositories/tripRepository');
     const driverRepository = require('../repositories/driverRepository');
     const notificationService = require('./notificationService');
@@ -1259,9 +1273,21 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
     if (ids.length === 0) throw new Error('Phải chọn ít nhất 1 chuyến để gán');
     const uniqueIds = [...new Set(ids)];
 
-    const driver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedDriverId);
-    if (!driver) throw new Error('Tài xế không tồn tại');
-    if (!driver.vehicle_id) throw new Error('Tài xế chưa được gán xe');
+    const driver = await driverRepository.getDriverForAssignment(parsedDriverId);
+    if (!driver) throw new Error('Tài xế không tồn tại hoặc tài khoản đã bị khóa');
+
+    // Xe chỉ định > xe biên chế. Tài chưa có xe biên chế mà điều phối cũng không chọn xe
+    // thì không suy ra được gì — báo rõ thay vì để guard dưới ném VEHICLE_NOT_FOUND khó hiểu.
+    const requestedVehicleId = vehicleId === null || vehicleId === undefined || vehicleId === ''
+        ? null
+        : Number(vehicleId);
+    if (requestedVehicleId !== null && (!Number.isInteger(requestedVehicleId) || requestedVehicleId <= 0)) {
+        throw new Error('Xe được chọn không hợp lệ');
+    }
+    const finalVehicleId = requestedVehicleId ?? (driver.default_vehicle_id ? Number(driver.default_vehicle_id) : null);
+    if (!finalVehicleId) {
+        throw new Error('Tài xế chưa có xe biên chế — vui lòng chọn xe cho chuyến này');
+    }
 
     // Cùng ràng buộc như khi tài tự nhận chuyến: chưa xong nghĩa vụ phiếu thu của
     // chuyến trước thì không được nhận việc mới — nếu bỏ ở đây thì coordinator gán
@@ -1279,17 +1305,21 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId }, actorId)
             orderId: parsedOrderId,
             shipmentIds: uniqueIds,
             driverId: parsedDriverId,
-            vehicleId: Number(driver.vehicle_id),
+            vehicleId: finalVehicleId,
             coordinatorId: Number(actorId),
         });
     } catch (err) {
+        const bienSo = err.plateNumber ? `Xe ${err.plateNumber}` : 'Xe được chọn';
         const messages = {
             ORDER_NOT_FOUND: 'Đơn hàng không tồn tại hoặc chưa có chuyến nào',
             SHIPMENT_NOT_IN_ORDER: 'Có chuyến không thuộc đơn hàng này',
             SHIPMENT_NOT_ASSIGNABLE: 'Có chuyến đã được tài xế khác nhận hoặc đã bắt đầu chạy — hãy tải lại danh sách',
-            VEHICLE_GROUP_MISMATCH: 'Xe của tài xế không thuộc nhóm xe mà chuyến yêu cầu',
+            VEHICLE_NOT_FOUND: 'Xe được chọn không tồn tại',
+            VEHICLE_UNAVAILABLE: `${bienSo} hiện không sẵn sàng cho điều phối (trạng thái: ${err.vehicleStatus})`,
+            VEHICLE_MAINTENANCE: `${bienSo} đang trong bảo trì`,
+            DRIVER_MAINTENANCE: 'Tài xế đang phụ trách bảo trì một xe khác',
             OTHER_ORDER_ACTIVE: `Tài xế đang có chuyến thuộc đơn #${err.conflictingOrderId} — chỉ gán được nhiều chuyến trong cùng một đơn`,
-            VEHICLE_BUSY_OTHER_ORDER: `Xe của tài xế đang chạy chuyến thuộc đơn #${err.conflictingOrderId}`,
+            VEHICLE_BUSY_OTHER_ORDER: `${bienSo} đang vướng chuyến thuộc đơn #${err.conflictingOrderId}`,
         };
         if (messages[err.message]) throw new Error(messages[err.message]);
         throw err;
@@ -1343,6 +1373,7 @@ const getDashboard = async () => {
 module.exports = {
   importExcel,
   listVehicleGroups,
+  listAssignableVehicles,
   listPartners,
   getIncidents,
   getReceiptRequests,

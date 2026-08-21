@@ -211,7 +211,15 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
     // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
-    const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
+    //
+    // expenseReimbursement PHẢI nằm trong mẫu số của trần khấu trừ. Nó không phải thu nhập
+    // (không vào gross, không vào BHXH) nhưng net_salary có cộng nó, nên nó là một phần của
+    // "số tài xế còn được nhận" — đúng thứ mà trần này lấy N%.
+    //
+    // Bỏ sót nó làm bản chốt lệch bản tài xế xem trước (payrollRepository.getPayrollEstimate
+    // đã cộng từ đầu): tài có chi phí ứng túi chờ hoàn sẽ thấy một số tiền trừ nợ ở app rồi
+    // nhận về một số khác trên phiếu lương. Lệch đúng bằng N% × tiền hoàn chi phí.
+    const netBeforeDebt= gross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction;
 
     // Trần khấu trừ công nợ mỗi kỳ: chỉ lấy tối đa N% số tài xế còn được nhận, phần nợ
     // còn lại tự chuyển sang kỳ sau (lần tính lương tháng sau vẫn thấy nó trong tổng nợ).

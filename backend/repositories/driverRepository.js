@@ -56,4 +56,32 @@ const driverExists = async (driverId) => {
     return !!rows[0];
 };
 
-module.exports = { getAllDrivers, getDriverVehicle, driverExists };
+// Tra ĐÚNG MỘT tài xế cho luồng điều phối, kèm xe biên chế (có thể NULL).
+//
+// Thay cho `getAllDrivers().find(...)` mà coordinatorService dùng trước đây: hàm đó kéo
+// cả bảng rồi lọc trong JS, và quan trọng hơn là KHÔNG lọc tài khoản đã khoá — tài nghỉ
+// việc vẫn gán được chuyến. `is_active = TRUE` ở đây là điều kiện "tài xế sẵn sàng" ở
+// mức cơ bản nhất; các điều kiện còn lại (đang chạy chuyến khác, đang phụ trách bảo trì)
+// nằm trong transaction của assignOrderShipmentsToDriver vì chúng cần khoá.
+//
+// default_vehicle_group_id trả kèm để tầng trên biết nhóm biên chế của tài — dùng cho
+// KPI/xếp hạng, KHÔNG dùng để chặn gán xe khác nhóm.
+const getDriverForAssignment = async (driverId) => {
+    const { rows: [row] } = await pool.query(
+        `SELECT
+            d.profile_id            AS id,
+            p.full_name,
+            d.vehicle_id            AS default_vehicle_id,
+            d.default_vehicle_group_id,
+            v.plate_number          AS default_plate_number
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         JOIN accounts a ON a.id = d.profile_id AND a.is_active = TRUE
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE d.profile_id = $1`,
+        [driverId],
+    );
+    return row ?? null;
+};
+
+module.exports = { getAllDrivers, getDriverVehicle, driverExists, getDriverForAssignment };

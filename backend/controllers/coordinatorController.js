@@ -198,8 +198,24 @@ const unapproveExpense = async (req, res) => {
     }
 };
 
-// POST /api/coordinator/orders/:id/assign-driver  Body: { shipment_ids: [], driver_id }
-// Gán trước nhiều chuyến của CÙNG đơn cho 1 tài xế (chạy tuần tự)
+// GET /api/coordinator/assignable-vehicles?order_id=123
+// Xe đang SẴN SÀNG nhận chuyến — không lọc theo nhóm xe, vì gán xe khác nhóm là hợp lệ.
+const listAssignableVehicles = async (req, res) => {
+    try {
+        const vehicles = await coordinatorService.listAssignableVehicles({
+            excludeOrderId: req.query?.order_id ? Number(req.query.order_id) : null,
+        });
+        res.json({ vehicles });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// POST /api/coordinator/orders/:id/assign-driver
+// Body: { shipment_ids: [], driver_id, vehicle_id? }
+// Gán trước nhiều chuyến của CÙNG đơn cho 1 tài xế (chạy tuần tự).
+// vehicle_id tùy chọn — bỏ trống thì dùng xe biên chế của tài; truyền vào thì dùng đúng
+// xe đó, kể cả khác nhóm xe ghi trong đơn (cước vẫn tính theo nhóm của đơn).
 const assignOrderShipments = async (req, res) => {
     try {
         const orderId = Number(req.params.id);
@@ -208,16 +224,20 @@ const assignOrderShipments = async (req, res) => {
         const result = await coordinatorService.assignOrderShipments(orderId, {
             shipmentIds: req.body?.shipment_ids,
             driverId: req.body?.driver_id,
+            vehicleId: req.body?.vehicle_id ?? null,
         }, req.user.userId);
 
         const count = result.assignedShipmentIds.length;
         res.json({ message: `Đã gán ${count} chuyến cho tài xế`, ...result });
     } catch (err) {
-        const code = err.message.includes('không tồn tại') ? 404
+        const code = err.message.includes('không tồn tại') || err.message.includes('đã bị khóa') ? 404
             : err.message.includes('chỉ gán được') || err.message.includes('đã được tài xế khác')
-                || err.message.includes('đang chạy chuyến') ? 409
+                || err.message.includes('đang vướng chuyến') || err.message.includes('đang chạy chuyến')
+                || err.message.includes('không sẵn sàng') || err.message.includes('đang trong bảo trì')
+                || err.message.includes('phụ trách bảo trì') ? 409
             : err.message.includes('bắt buộc') || err.message.includes('không hợp lệ')
-                || err.message.includes('Phải chọn') || err.message.includes('không thuộc') ? 400
+                || err.message.includes('Phải chọn') || err.message.includes('không thuộc')
+                || err.message.includes('vui lòng chọn xe') ? 400
             : err.message.includes('chưa nhập km') ? 422
             : 500;
         res.status(code).json({ error: err.message });
@@ -290,6 +310,7 @@ const getDashboard = async (_req, res) => {
 
 module.exports = {
     listVehicleGroups,
+    listAssignableVehicles,
     getDashboard,
     listPartners,
     getIncidents,

@@ -285,6 +285,16 @@ const createOrder = async (userId, payload) => {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
 
+            // CẢNH BÁO NGHIỆP VỤ: defaultVehicleGroupId là nhóm có id NHỎ NHẤT — dòng đầu
+            // bảng, không mang nghĩa "nhóm phù hợp". Bỏ trống nhóm xe nghĩa là chuyến nhận
+            // một bảng giá ngẫu nhiên, và kể từ khi os.vehicle_group_id trở thành cơ sở
+            // tính cước DUY NHẤT (xe chạy thật có thể khác nhóm) thì đoán hộ giá trị này
+            // chính là đoán hộ số tiền khách phải trả.
+            //
+            // Form điều phối đã bắt buộc chọn nhóm xe nên đường này không còn đi vào trong
+            // thực tế; fallback giữ lại để không phá hợp đồng API hiện có (import, kiểm thử,
+            // client cũ). Muốn siết cứng thì đổi thành `: null` và ném lỗi ngay dưới —
+            // nhớ cập nhật các ca kiểm thử đang gọi createOrder không kèm nhóm xe.
             const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
 
             if (!finalVehicleGroupId) {
@@ -566,13 +576,31 @@ const updateOrder = async (orderId, payload) => {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
 
-            const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
+            // Sửa đơn: thiếu nhóm xe thì GIỮ NHÓM CŨ CỦA CHUYẾN, không rơi về nhóm mặc
+            // định của hệ thống. Nhóm cũ là cơ sở cước đã chốt với khách; thay nó bằng
+            // "nhóm id nhỏ nhất" là âm thầm đổi giá của một đơn đang chạy. Chỉ khi chuyến
+            // chưa từng có nhóm (dữ liệu cũ) mới đành dùng nhóm mặc định.
+            const finalVehicleGroupId = vehicle_group_id
+                ? Number(vehicle_group_id)
+                : (existingShipments[index]?.vehicle_group_id ?? defaultVehicleGroupId);
             const vehicleGroup = finalVehicleGroupId ? await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId) : null;
             if (!vehicleGroup) {
                 throw new Error('Nhóm xe không tồn tại');
             }
 
-            const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
+            const existing = existingShipments[index] ?? null;
+
+            // Tra xe theo BKS: ưu tiên trong nhóm xe của đơn (giữ nguyên quy tắc cũ cho
+            // luồng chọn xe lúc sửa đơn), nhưng CHẤP NHẬN xe ngoài nhóm nếu đó đúng là
+            // chiếc xe chuyến này đang chạy. Coordinator gán được xe ad-hoc khác nhóm ở
+            // màn chi tiết đơn, và form sửa đơn nạp lại đúng BKS đó — không có nhánh dự
+            // phòng này thì mở ra sửa mỗi ghi chú cũng ăn lỗi "BKS không tồn tại trong
+            // nhóm xe đã chọn", tức là chuyến đã gán xe ad-hoc thành không sửa được nữa.
+            let vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
+            if (plate && !vehicle && existing?.plate_number
+                && String(existing.plate_number).trim().toUpperCase() === String(plate).trim().toUpperCase()) {
+                vehicle = await orderRepository.getVehicleByPlate(dbClient, plate);
+            }
             if (plate && !vehicle) {
                 throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
             }
@@ -585,14 +613,33 @@ const updateOrder = async (orderId, payload) => {
             const manualPrice = normalizeNumber(trip.price);
             const isPriceManual = manualPrice !== null && manualPrice > 0;
             const finalPrice = isPriceManual ? manualPrice : normalizedPrice;
-            const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
 
-            if (finalDriverId && finalVehicleId) {
+            // Chuyến VẪN GIỮ ĐÚNG CHIẾC XE CŨ thì giữ luôn chủ chuyến cũ, KHÔNG suy lại
+            // từ vehicles.assigned_driver_id.
+            //
+            // Suy lại là sai kể từ khi tài và xe tách rời nhau: chuyến do coordinator gán
+            // ad-hoc có chủ là tài A trong khi chiếc xe đó biên chế cho tài B (hoặc chưa
+            // biên chế ai). Suy từ xe sẽ ra B/null, và với chuyến còn 'available' thì lớp
+            // dưới lặng lẽ ghi lịch sử chuyển chủ — tài A mất chuyến mà không ai báo, chỉ
+            // vì có người mở đơn ra sửa một dòng ghi chú.
+            const keepsCurrentVehicle = existing?.vehicle_id && finalVehicleId
+                && Number(existing.vehicle_id) === Number(finalVehicleId);
+            const finalDriverId = keepsCurrentVehicle && existing.owner_driver_id
+                ? Number(existing.owner_driver_id)
+                : (vehicle?.assigned_driver_id ?? null);
+
+            // Chỉ kiểm tra khi cặp tài–xe THỰC SỰ ĐỔI. Giữ nguyên cặp đang chạy mà vẫn
+            // kiểm thì cặp ad-hoc luôn trượt: validateVehicleShipmentAssignment đòi
+            // vehicles.assigned_driver_id ↔ drivers.vehicle_id khớp nhau, đúng thứ mà việc
+            // gán xe bất kỳ đã cố ý bỏ.
+            const assignmentChanged = Number(existing?.owner_driver_id || 0) !== Number(finalDriverId || 0)
+                || Number(existing?.vehicle_id || 0) !== Number(finalVehicleId || 0);
+            if (finalDriverId && finalVehicleId && assignmentChanged) {
                 await orderRepository.validateVehicleShipmentAssignment(dbClient, {
                     vehicleId: finalVehicleId,
                     driverId: finalDriverId,
-                    excludeShipmentId: existingShipments[index]?.id ?? null,
+                    excludeShipmentId: existing?.id ?? null,
                 });
             }
             ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle?.plate_number || plate}`);

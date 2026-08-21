@@ -20,6 +20,19 @@ const ACTIVE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.RETURNING,
 ]);
 
+// Chuyến ĐANG GIỮ CHÂN tài xế/xe — dùng cho mọi guard "còn rảnh không".
+//
+// Khác ACTIVE_STATUSES ở đúng một điểm: có thêm FAILED. Chuyến giao thất bại KHÔNG
+// phải đã xong — coordinator còn phải chọn giao lại hay hoàn hàng, và cả hai lựa chọn
+// đều đưa chuyến về trạng thái đang chạy (resolveFailedShipment → TRANSIT / RETURNING).
+// Nếu guard chỉ nhìn ACTIVE_STATUSES thì tài đang treo một chuyến 'failed' vẫn được
+// giao chuyến mới, rồi lúc coordinator xử lý chuyến cũ là tài có HAI chuyến chạy cùng
+// lúc — vỡ nguyên tắc 1 chuyến active (BR-005).
+const BLOCKING_STATUSES = Object.freeze([
+    ...ACTIVE_STATUSES,
+    SHIPMENT_STATUS.FAILED,
+]);
+
 const CANCELLABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
     SHIPMENT_STATUS.PICKING,
@@ -62,6 +75,7 @@ const STATUS_TIMESTAMP_COL = Object.freeze({
 module.exports = {
     SHIPMENT_STATUS,
     ACTIVE_STATUSES,
+    BLOCKING_STATUSES,
     CANCELLABLE_STATUSES,
     RELEASABLE_STATUSES,
     ALLOWED_TRANSITIONS,
