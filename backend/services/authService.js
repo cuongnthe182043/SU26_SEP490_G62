@@ -68,11 +68,20 @@ class AuthError extends Error {
     }
 }
 
+// Mã xác thực 6 ký tự — PHẢI sinh bằng nguồn ngẫu nhiên mật mã.
+//
+// Math.random() dùng xorshift128+ của V8: không phải CSPRNG, và trạng thái bộ sinh có
+// thể khôi phục được từ một số lượng vừa phải kết quả đã quan sát. Với mã đặt lại mật
+// khẩu, điều đó nghĩa là kẻ tấn công tự bấm "quên mật khẩu" cho CHÍNH tài khoản của mình
+// nhiều lần, thu đủ mã, rồi suy ra mã sắp cấp cho nạn nhân — không cần đoán mò lần nào.
+//
+// crypto.randomInt lấy entropy từ hệ điều hành và loại bỏ modulo bias, nên phân phối
+// đều thật trên toàn bảng chữ cái.
 const generateVerificationCode = () => {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
     for (let index = 0; index < 6; index += 1) {
-        code += alphabet[Math.floor(Math.random() * alphabet.length)];
+        code += alphabet[crypto.randomInt(0, alphabet.length)];
     }
     return code;
 };

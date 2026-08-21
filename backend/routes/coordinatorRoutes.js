@@ -9,6 +9,9 @@ router.use(verifyToken, requireRole('coordinator'));
 
 router.get('/dashboard', coordinatorController.getDashboard);
 router.get('/vehicle-groups', coordinatorController.listVehicleGroups);
+// Xe sẵn sàng nhận chuyến — nuôi ô chọn xe ở panel gán chuyến. Không lọc theo nhóm
+// xe: điều phối được gán xe bất kỳ, cước vẫn bám nhóm xe ghi trong đơn.
+router.get('/assignable-vehicles', coordinatorController.listAssignableVehicles);
 router.get('/partners', coordinatorController.listPartners);
 router.get('/incidents', coordinatorController.getIncidents);
 

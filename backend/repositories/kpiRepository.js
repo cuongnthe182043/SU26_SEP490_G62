@@ -308,21 +308,33 @@ const recalculateDriverKPI = async (driverId, month, year, { syncVehicleGroup = 
     //
     // Giờ lùi dần qua các nguồn suy ra được nhóm xe, chỉ bỏ cuộc khi thật sự không còn
     // căn cứ nào. Tài xế đã có nhóm cố định thì nhánh đầu trúng ngay, hành vi không đổi.
+    //
+    // NHÓM Ở ĐÂY LÀ NHÓM BIÊN CHẾ CỦA TÀI, KHÔNG PHẢI NHÓM CỦA CHIẾC XE TÀI ĐANG LÁI.
+    // Từ khi coordinator gán được xe bất kỳ cho một chuyến, chiếc xe tài cầm hôm nay chỉ
+    // là chuyện điều xe trong ngày — nó KHÔNG được phép đổi hạng thi đua hay ngưỡng
+    // thưởng của tài. Hai nhánh đầu (default_vehicle_group_id, rồi xe biên chế
+    // drivers.vehicle_id) đều là biên chế nên giữ nguyên.
+    //
+    // Nhánh cuối là lưới an toàn cho tài CHƯA có biên chế nào — kpi_records.vehicle_group_id
+    // là NOT NULL nên vẫn phải lấy được một nhóm. Nó lấy nhóm ghi trong ĐƠN
+    // (os.vehicle_group_id) chứ không còn lấy nhóm của chiếc xe đã chạy: nhóm của đơn là
+    // loại việc tài thực sự làm và cũng chính là cơ sở tính cước, nên ổn định hơn hẳn một
+    // chiếc xe điều tạm. Lấy nhóm của xe ad-hoc ở đây sẽ ném tài vào bảng xếp hạng của
+    // một nhóm mà họ không thuộc về.
     const vgRes = await pool.query(
         `SELECT COALESCE(
                     d.default_vehicle_group_id,
-                    -- xe đang gán cho tài
+                    -- xe biên chế của tài
                     (SELECT v.vehicle_group_id FROM vehicles v WHERE v.id = d.vehicle_id),
-                    -- xe của chuyến gần nhất tài đã chạy trong kỳ đang tính
-                    (SELECT v2.vehicle_group_id
+                    -- tài chưa có biên chế: nhóm xe ghi trong đơn của chuyến gần nhất trong kỳ
+                    (SELECT os.vehicle_group_id
                        FROM order_shipments os
                        JOIN v_shipment_current sc ON sc.shipment_id = os.id
-                       JOIN vehicles v2 ON v2.id = sc.vehicle_id
                       WHERE sc.owner_driver_id = d.profile_id
                         AND os.status = 'completed'
                         AND EXTRACT(MONTH FROM os.completed_at) = $2
                         AND EXTRACT(YEAR  FROM os.completed_at) = $3
-                        AND v2.vehicle_group_id IS NOT NULL
+                        AND os.vehicle_group_id IS NOT NULL
                       ORDER BY os.completed_at DESC
                       LIMIT 1)
                 ) AS vehicle_group_id

@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
-const { ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { ACTIVE_STATUSES, BLOCKING_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { insertAssignmentHistory } = require('./tripRepository');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const paymentVoucherRepository = require('./paymentVoucherRepository');
@@ -87,6 +87,9 @@ const selectOrderProjection = `
         SELECT json_agg(
             json_build_object(
                 'vehicle_group_id', s_all.vehicle_group_id,
+                -- Nhóm xe GHI TRONG ĐƠN = cơ sở tính cước. Panel gán chuyến hiện tên này
+                -- để điều phối thấy mình đang điều xe lệch nhóm (vẫn hợp lệ, cước không đổi).
+                'vehicle_group_name', vg_all.name,
                 'shipment_id', s_all.id,
                 'shipment_index', s_all.shipment_index,
                 'owner_driver_id', sc_all.owner_driver_id,
@@ -108,6 +111,7 @@ const selectOrderProjection = `
         FROM order_shipments s_all
         LEFT JOIN v_shipment_current sc_all ON sc_all.shipment_id = s_all.id
         LEFT JOIN vehicles v_all ON v_all.id = sc_all.vehicle_id
+        LEFT JOIN vehicle_groups vg_all ON vg_all.id = s_all.vehicle_group_id
         LEFT JOIN profiles d_all ON d_all.id = sc_all.owner_driver_id
         WHERE s_all.order_id = o.id
     ) all_shipments ON TRUE
@@ -276,12 +280,25 @@ const getDefaultVehicleGroupId = async (client) => {
     return result.rows[0]?.id ?? null;
 };
 
+// Chuyến hiện có của đơn, KÈM chủ chuyến và xe đang chạy.
+//
+// Trả thêm owner_driver_id/vehicle_id/plate_number vì luồng sửa đơn cần biết chuyến đã
+// được gán cho ai chưa: từ khi coordinator gán được xe ad-hoc (xe không phải biên chế của
+// tài, có thể khác nhóm), việc suy tài xế từ vehicles.assigned_driver_id là KHÔNG còn đủ —
+// suy ra sẽ cho ra người khác và âm thầm cướp chuyến khỏi tay tài đang giữ.
 const getExistingShipmentIds = async (client, orderId) => {
     const result = await client.query(
-        `SELECT id
-         FROM order_shipments
-         WHERE order_id = $1
-         ORDER BY shipment_index ASC`,
+        `SELECT os.id,
+                os.status,
+                os.vehicle_group_id,
+                sc.owner_driver_id,
+                sc.vehicle_id,
+                v.plate_number
+         FROM order_shipments os
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+         WHERE os.order_id = $1
+         ORDER BY os.shipment_index ASC`,
         [orderId],
     );
     return result.rows;
@@ -501,6 +518,57 @@ const listCoordinatorVehicleGroups = async () => {
          GROUP BY vg.id
          ORDER BY vg.name ASC, vg.id ASC`,
         [ACTIVE_STATUSES],
+    );
+    return result.rows;
+};
+
+// Danh sách xe SẴN SÀNG nhận chuyến, phẳng và KHÔNG lọc theo nhóm xe — nuôi ô chọn xe
+// ở panel gán chuyến (màn chi tiết đơn).
+//
+// Khác listCoordinatorVehicleGroups ở hai điểm, và cả hai đều có chủ ý:
+//   1. Không gom theo nhóm, không lọc theo nhóm: coordinator gán được xe bất kỳ.
+//   2. KHÔNG loại xe theo tình trạng của assigned_driver_id. Ở đó, xe có tài biên chế
+//      đang bận thì cả chiếc xe bị ẩn — đúng cho luồng tạo đơn (chọn BKS là chọn luôn
+//      tài), nhưng sai ở đây: tài lái chuyến này do coordinator chỉ định riêng, chiếc xe
+//      vẫn rảnh dù người biên chế của nó đang chạy chuyến khác.
+//
+// Ba điều kiện còn lại chính là định nghĩa "xe sẵn sàng", trùng đúng với guard trong
+// assignOrderShipmentsToDriver — danh sách hiện ra sao thì gán được như vậy.
+//
+// excludeOrderId: bỏ qua chính đơn đang gán, y hệt `os.order_id <> $2` trong guard. Cần
+// vì một chuyến có thể đã mang sẵn BKS mà chưa có tài (tạo đơn chọn xe chưa gán tài xế
+// nào) — thiếu tham số này thì đúng chiếc xe coordinator vừa chọn lúc tạo đơn lại biến
+// mất khỏi ô chọn xe khi gán tài, trong khi guard vẫn cho gán.
+const listAssignableVehicles = async ({ excludeOrderId = null } = {}) => {
+    const result = await pool.query(
+        `SELECT
+            v.id,
+            v.plate_number,
+            v.vehicle_group_id,
+            vg.name                 AS vehicle_group_name,
+            vg.price_per_km,
+            v.assigned_driver_id,
+            p.full_name             AS assigned_driver_name
+         FROM vehicles v
+         LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+         LEFT JOIN profiles p ON p.id = v.assigned_driver_id
+         WHERE v.status = 'active'
+           AND NOT EXISTS (
+               SELECT 1
+               FROM order_shipments os
+               JOIN v_shipment_current sc ON sc.shipment_id = os.id
+               WHERE sc.vehicle_id = v.id
+                 AND ($2::int IS NULL OR os.order_id <> $2)
+                 AND (os.status = ANY($1::text[]) OR os.status = 'available')
+           )
+           AND NOT EXISTS (
+               SELECT 1
+               FROM maintenance_records mr
+               WHERE mr.vehicle_id = v.id
+                 AND mr.status IN ('open', 'pending_verification')
+           )
+         ORDER BY vg.name ASC NULLS LAST, v.plate_number ASC`,
+        [BLOCKING_STATUSES, excludeOrderId ? Number(excludeOrderId) : null],
     );
     return result.rows;
 };
@@ -1457,6 +1525,7 @@ module.exports = {
     getVehicleByPlate,
     getVehicleGroupById,
     listCoordinatorVehicleGroups,
+    listAssignableVehicles,
     listCoordinatorPartners,
     findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,

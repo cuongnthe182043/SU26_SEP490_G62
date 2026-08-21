@@ -115,9 +115,10 @@ function FailedShipmentsNotice({ order }) {
 // Gán trước chuyến cho tài xế. Chỉ chuyến còn 'available' và chưa có tài mới gán được.
 // Một đơn có thể gán NHIỀU chuyến cho CÙNG một tài (chạy tuần tự), hoặc chia mỗi
 // chuyến cho một tài khác nhau — backend chỉ chặn khi tài đang vướng đơn KHÁC.
-function AssignShipmentsPanel({ order, drivers, onAssign }) {
+function AssignShipmentsPanel({ order, drivers, vehicles, onAssign }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [driverId, setDriverId] = useState(null);
+  const [vehicleId, setVehicleId] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const assignable = useMemo(() => (order.trips || []).filter(
@@ -129,6 +130,35 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
     setSelectedIds((prev) => prev.filter((id) => assignable.some((t) => Number(t.shipment_id) === Number(id))));
   }, [assignable]);
 
+  const selectedDriver = useMemo(
+    () => (drivers || []).find((d) => Number(d.id) === Number(driverId)) ?? null,
+    [drivers, driverId],
+  );
+
+  // Nhóm xe của các chuyến đang chọn — cơ sở TÍNH CƯỚC của đơn. Xe chạy có thể khác nhóm,
+  // nên hiện ra để điều phối biết mình đang điều lệch nhóm chứ không phải để chặn.
+  const orderGroupNames = useMemo(() => {
+    const names = (order.trips || [])
+      .filter((t) => selectedIds.includes(Number(t.shipment_id)))
+      .map((t) => t.vehicle_group_name)
+      .filter(Boolean);
+    return [...new Set(names)];
+  }, [order.trips, selectedIds]);
+
+  // Xe biên chế của tài luôn có mặt trong ô chọn, kể cả khi truy vấn "xe sẵn sàng" đã lọc
+  // nó ra — để mặc định "dùng xe biên chế" không bao giờ là một lựa chọn không bấm được.
+  const vehicleOptions = useMemo(() => {
+    const list = [...(vehicles || [])];
+    if (selectedDriver?.vehicle_id && !list.some((v) => Number(v.id) === Number(selectedDriver.vehicle_id))) {
+      list.unshift({
+        id: selectedDriver.vehicle_id,
+        plate_number: selectedDriver.plate_number || `Xe #${selectedDriver.vehicle_id}`,
+        vehicle_group_name: selectedDriver.vehicle_group_name || null,
+      });
+    }
+    return list;
+  }, [vehicles, selectedDriver]);
+
   if (assignable.length === 0) return null;
 
   const toggle = (shipmentId) => setSelectedIds((prev) => (
@@ -138,13 +168,25 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
   const handleAssign = async () => {
     setBusy(true);
     try {
-      await onAssign({ shipmentIds: selectedIds, driverId: Number(driverId) });
+      await onAssign({
+        shipmentIds: selectedIds,
+        driverId: Number(driverId),
+        vehicleId: vehicleId ? Number(vehicleId) : null,
+      });
       setSelectedIds([]);
       setDriverId(null);
+      setVehicleId(null);
     } finally {
       setBusy(false);
     }
   };
+
+  const chosenVehicle = vehicleOptions.find((v) => Number(v.id) === Number(vehicleId)) ?? null;
+  const crossGroup = Boolean(
+    chosenVehicle?.vehicle_group_name
+    && orderGroupNames.length > 0
+    && !orderGroupNames.includes(chosenVehicle.vehicle_group_name),
+  );
 
   return (
     <div className="rounded-xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/[0.06] p-4">
@@ -156,7 +198,8 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
       </div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
         Chọn nhiều chuyến cho cùng một tài xế thì tài chạy lần lượt — xong chuyến trước, chuyến
-        sau tự mở. Tài đang chạy chuyến của đơn khác sẽ không gán được.
+        sau tự mở. Tài đang chạy chuyến của đơn khác sẽ không gán được. Xe có thể khác nhóm xe
+        của đơn; cước vẫn giữ nguyên theo nhóm xe ghi trong đơn.
       </p>
 
       <div className="flex flex-col gap-2 mb-3">
@@ -169,6 +212,7 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
           >
             <span className="text-xs text-gray-700 dark:text-gray-200">
               Chuyến {t.shipment_index} <span className="text-gray-400 dark:text-gray-500">#{t.shipment_id}</span>
+              {t.vehicle_group_name ? ` · ${t.vehicle_group_name}` : ""}
               {t.pickup_address || t.delivery_address
                 ? ` · ${[t.pickup_address, t.delivery_address].filter(Boolean).join(" → ")}`
                 : ""}
@@ -188,9 +232,37 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
           variant="bordered"
         >
           {(drivers || []).map((d) => (
-            <SelectItem key={String(d.id)}>{d.full_name || d.name}</SelectItem>
+            <SelectItem
+              key={String(d.id)}
+              textValue={d.full_name || d.name}
+              description={[d.vehicle_group_name, d.plate_number].filter(Boolean).join(" · ") || "Chưa có xe biên chế"}
+            >
+              {d.full_name || d.name}
+            </SelectItem>
           ))}
         </Select>
+
+        <Select
+          label="Xe chạy chuyến"
+          placeholder={selectedDriver?.plate_number ? `Mặc định: ${selectedDriver.plate_number}` : "Chọn xe"}
+          size="sm"
+          className="flex-1"
+          selectedKeys={vehicleId ? [String(vehicleId)] : []}
+          onSelectionChange={(keys) => setVehicleId([...keys][0] ?? null)}
+          variant="bordered"
+          startContent={<RiTruckLine size={15} className="text-gray-400" />}
+        >
+          {vehicleOptions.map((v) => (
+            <SelectItem
+              key={String(v.id)}
+              textValue={v.plate_number}
+              description={v.vehicle_group_name || "Chưa có nhóm xe"}
+            >
+              {v.plate_number}
+            </SelectItem>
+          ))}
+        </Select>
+
         <Button
           color="primary"
           size="md"
@@ -202,11 +274,23 @@ function AssignShipmentsPanel({ order, drivers, onAssign }) {
           {selectedIds.length > 1 ? `Gán ${selectedIds.length} chuyến` : "Gán chuyến"}
         </Button>
       </div>
+
+      {!vehicleId && selectedDriver && !selectedDriver.vehicle_id && (
+        <p className="mt-2 text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+          Tài xế này chưa có xe biên chế — vui lòng chọn xe cho chuyến.
+        </p>
+      )}
+
+      {crossGroup && (
+        <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">
+          Xe {chosenVehicle.plate_number} thuộc nhóm <b>{chosenVehicle.vehicle_group_name}</b>, khác nhóm{" "}
+          <b>{orderGroupNames.join(", ")}</b> của chuyến. Vẫn gán được — cước giữ nguyên theo nhóm của đơn.
+        </p>
+      )}
     </div>
   );
 }
-
-export default function OrderDetailModal({ open, order, onClose, drivers, onAssignShipments }) {
+export default function OrderDetailModal({ open, order, onClose, drivers, vehicles, onAssignShipments }) {
   if (!order) return null;
 
   return (
@@ -277,7 +361,7 @@ export default function OrderDetailModal({ open, order, onClose, drivers, onAssi
           <FailedShipmentsNotice order={order} />
 
           {onAssignShipments && (
-            <AssignShipmentsPanel order={order} drivers={drivers} onAssign={onAssignShipments} />
+            <AssignShipmentsPanel order={order} drivers={drivers} vehicles={vehicles} onAssign={onAssignShipments} />
           )}
 
           {order.notes && (
