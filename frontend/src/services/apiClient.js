@@ -12,6 +12,19 @@ export const apiBaseUrl = DEFAULT_API_BASE_URL;
 let refreshPromise = null;
 let csrfTokenCache = null;
 
+// Khoá liên-tab cho /auth/refresh. `refreshPromise` chỉ gộp được các lời gọi trong CÙNG một
+// tab; mở 2 tab thì mỗi tab có một bản riêng, và sau khi máy idle cả hai cùng thức dậy để
+// refresh với cùng một token cũ. Web Locks API tuần tự hoá chúng theo origin.
+const REFRESH_LOCK_NAME = "auth-refresh";
+// Mốc thời gian lần refresh thành công gần nhất, chia sẻ giữa các tab. Tab nào vào được khoá
+// sau khi tab khác vừa xoay xong thì không cần xoay lại: cookie mới đã nằm sẵn trong jar.
+const REFRESH_RECENT_KEY = "auth_refresh_at";
+const REFRESH_RECENT_WINDOW_MS = 5000;
+// Giữ promise thêm một nhịp sau khi settle. isRefreshableAuthFailure() phải đọc body (async)
+// mới biết một phản hồi 403 có đáng refresh hay không, nên request thứ hai gần như luôn tới
+// sau khi promise đã settle — xoá ngay trong finally sẽ mở thêm một lượt refresh thừa.
+const REFRESH_DEDUP_HOLD_MS = 1000;
+
 function buildUrl(path) {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -195,45 +208,91 @@ async function isRefreshableAuthFailure(response) {
   }
 }
 
-export async function refreshAuthSession() {
-  if (!refreshPromise) {
-    const headers = new Headers();
-    const csrfToken = getCsrfToken();
-    if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+function markRefreshSucceeded() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REFRESH_RECENT_KEY, String(Date.now()));
+  } catch {
+    // Storage bị chặn: mất tối ưu liên-tab, khoá vẫn tuần tự hoá nên không sai.
+  }
+}
 
-    refreshPromise = fetchOrThrowFriendly(
-      buildUrl("/auth/refresh"),
-      { method: "POST", headers, credentials: "include" },
-      { method: "POST", path: "/auth/refresh" },
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type") || "";
-          const payload = contentType.includes("application/json")
-            ? await response.json().catch(() => null)
-            : await response.text().catch(() => "");
-          const message = pickServerMessage(payload)
-            || "Không làm mới được phiên đăng nhập. Vui lòng đăng nhập lại.";
-          const error = new Error(message);
-          error.status = response.status;
-          error.path = "/auth/refresh";
-          error.debug = `[http_${response.status}] POST /auth/refresh | ${summarizeBody(payload) || "(không có thân phản hồi)"}`;
-          throw error;
-        }
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          // Body hỏng ở đây không đáng làm hỏng cả phiên — chỉ là chỗ lấy CSRF token mới
-          const payload = await response.json().catch(() => null);
-          if (payload?.csrfToken) setStoredCsrfToken(payload.csrfToken);
-        }
-        return response;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+function hasRecentRefresh() {
+  if (typeof window === "undefined") return false;
+  try {
+    const at = Number(window.localStorage.getItem(REFRESH_RECENT_KEY));
+    if (!Number.isFinite(at) || at <= 0) return false;
+    const age = Date.now() - at;
+    // age âm nghĩa là đồng hồ máy vừa bị chỉnh lùi — coi như không có mốc nào đáng tin.
+    return age >= 0 && age < REFRESH_RECENT_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function requestRefresh() {
+  const headers = new Headers();
+  const csrfToken = getCsrfToken();
+  if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+
+  const response = await fetchOrThrowFriendly(
+    buildUrl("/auth/refresh"),
+    { method: "POST", headers, credentials: "include" },
+    { method: "POST", path: "/auth/refresh" },
+  );
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => "");
+    const message = pickServerMessage(payload)
+      || "Không làm mới được phiên đăng nhập. Vui lòng đăng nhập lại.";
+    const error = new Error(message);
+    error.status = response.status;
+    error.path = "/auth/refresh";
+    if (payload && typeof payload === "object" && payload.code) error.code = payload.code;
+    error.debug = `[http_${response.status}] POST /auth/refresh | ${summarizeBody(payload) || "(không có thân phản hồi)"}`;
+    throw error;
   }
 
-  return refreshPromise;
+  markRefreshSucceeded();
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    // Body hỏng ở đây không đáng làm hỏng cả phiên — chỉ là chỗ lấy CSRF token mới
+    const payload = await response.json().catch(() => null);
+    if (payload?.csrfToken) setStoredCsrfToken(payload.csrfToken);
+  }
+  return response;
+}
+
+// Trả về Response của lần refresh, hoặc null khi bỏ qua vì tab khác vừa refresh xong.
+// Không caller nào dùng giá trị trả về ngoài việc biết lời gọi đã hoàn tất.
+function withRefreshLock(task) {
+  const locks = typeof navigator !== "undefined" ? navigator.locks : null;
+  // Trình duyệt không có Web Locks (Safari < 15.4): mất chống đua liên-tab, nhưng backend
+  // đã có cửa sổ ân hạn khi rotate nên lời gọi thua cuộc vẫn nhận được phiên hợp lệ.
+  if (!locks?.request) return task();
+
+  return locks.request(REFRESH_LOCK_NAME, async () => {
+    if (hasRecentRefresh()) return null;
+    return task();
+  });
+}
+
+export async function refreshAuthSession() {
+  if (refreshPromise) return refreshPromise;
+
+  const pending = withRefreshLock(requestRefresh).finally(() => {
+    setTimeout(() => {
+      // Chỉ dọn đúng lượt của mình — tránh xoá nhầm lượt refresh mới hơn đã bắt đầu.
+      if (refreshPromise === pending) refreshPromise = null;
+    }, REFRESH_DEDUP_HOLD_MS);
+  });
+  refreshPromise = pending;
+
+  return pending;
 }
 
 export async function apiRequest(path, options = {}) {
@@ -282,6 +341,15 @@ export async function apiRequest(path, options = {}) {
   }
 
   const payload = await parseResponse(response, { method, path });
-  if (path === "/auth/logout") clearStoredCsrfToken();
+  if (path === "/auth/logout") {
+    clearStoredCsrfToken();
+    // Bỏ mốc refresh gần nhất: phiên sau (có thể là tài khoản khác) không được phép bỏ qua
+    // lần refresh đầu tiên chỉ vì phiên trước vừa refresh xong.
+    try {
+      window.localStorage.removeItem(REFRESH_RECENT_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  }
   return payload;
 }
