@@ -3,7 +3,7 @@ import { Spinner, Select, SelectItem, Button } from "@heroui/react";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
 import {
   RiLineChartLine, RiWallet3Line, RiFundsLine, RiPercentLine,
-  RiAlertLine, RiTruckLine, RiTimeLine, RiCoinLine,
+  RiAlertLine, RiTimeLine, RiCoinLine,
   RiGroupLine, RiUserStarLine, RiArrowUpLine, RiArrowDownLine,
   RiErrorWarningLine, RiLockLine, RiShieldCheckLine,
   RiFileExcel2Line, RiFileList3Line,
@@ -15,7 +15,7 @@ import { reconcileDebtRows } from "../utils/debtReconcile";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { Section } from "../../../components/shared-ui/Section";
 import {
-  VND, VND_FULL, VehicleRevenueChart, DebtAgingBars,
+  VND, VND_FULL, DebtAgingBars,
   DriverHoldingsList, TopCustomersTable,
 } from "../../../components/shared-ui/reportCharts";
 
@@ -177,7 +177,6 @@ export default function BusinessReportView() {
   const prevCost = Number(prev.operating_cost || 0) + Number(prev.payroll_cost || 0);
   const marginPP = (Number(pnl.margin_pct || 0) - Number(prev.margin_pct || 0));
   const cash = data?.cashflow ?? {};
-  const ops = data?.fleet_ops ?? {};
   const meta = data?.meta ?? { status: "open" };
 
   return (
@@ -292,32 +291,10 @@ export default function BusinessReportView() {
         </div>
       </div>
 
-      {/* Cơ cấu chi phí + Hiệu suất đội xe */}
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-2">
-          <Section title="Cơ cấu chi phí" icon={RiWallet3Line}>
-            <CostBreakdown items={data?.cost_breakdown} total={totalCost} />
-          </Section>
-        </div>
-        <div className="col-span-3">
-          <Section
-            title="Hiệu suất đội xe"
-            icon={RiTruckLine}
-            action={
-              <div className="flex items-center gap-3 text-[11px]">
-                {/* Số chuyến CHẠY XONG trong tháng (theo completed_at) — khác với
-                    "chuyến đã chốt giá" ở ô Doanh thu (theo kỳ ghi nhận doanh thu). */}
-                <span className="text-gray-400 dark:text-gray-400">{ops.completed ?? 0} chạy xong</span>
-                <span className={`font-semibold ${Number(ops.failed_rate) > 10 ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
-                  {Number(ops.failed_rate || 0).toFixed(1)}% hỏng
-                </span>
-              </div>
-            }
-          >
-            <VehicleRevenueChart data={data?.fleet} />
-          </Section>
-        </div>
-      </div>
+      {/* Cơ cấu chi phí */}
+      <Section title="Cơ cấu chi phí" icon={RiWallet3Line}>
+        <CostBreakdown items={data?.cost_breakdown} total={totalCost} />
+      </Section>
 
       {/* Năng suất tài xế + Top khách */}
       <div className="grid grid-cols-2 gap-4">

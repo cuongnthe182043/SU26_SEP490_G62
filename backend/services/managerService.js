@@ -62,7 +62,7 @@ const getReportsOverview = async ({ months, granularity } = {}) => {
 };
 
 // Báo cáo kinh doanh theo kỳ (tháng) cho Manager: P&L (doanh thu − chi phí − lương),
-// hiệu suất đội xe, dòng tiền/công nợ, năng suất tài xế, khách hàng — kèm so kỳ trước.
+// dòng tiền/công nợ, năng suất tài xế, khách hàng — kèm so kỳ trước.
 //
 // Nếu kỳ ĐÃ KÝ DUYỆT → trả nguyên bản snapshot đã đóng băng (số không đổi). Nếu chưa
 // ký → tính động thời gian thực. Trường `meta` cho biết trạng thái để UI hiển thị.

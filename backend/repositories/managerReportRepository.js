@@ -191,51 +191,6 @@ const _pnlForPeriod = async (year, month) => {
     };
 };
 
-// B. Hiệu suất từng xe trong kỳ (doanh thu, số chuyến, tổng km → doanh thu/km).
-const _fleet = async (year, month) => {
-    const { rows } = await pool.query(`
-        SELECT
-            v.plate_number,
-            vg.name AS vehicle_group_name,
-            COALESCE(SUM(os.actual_price), 0)::float     AS revenue,
-            COUNT(*)::int                                AS trip_count,
-            COALESCE(SUM(os.actual_distance_km), 0)::float AS distance_km
-        FROM order_shipments os
-        JOIN v_shipment_current sc ON sc.shipment_id = os.id
-        JOIN vehicles v ON v.id = sc.vehicle_id
-        LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
-        WHERE ${inPeriodCompleted}
-        GROUP BY v.plate_number, vg.name
-        ORDER BY revenue DESC
-        LIMIT 12
-    `, [year, month]);
-    return rows.map(r => ({
-        ...r,
-        revenue_per_km: r.distance_km > 0 ? r.revenue / r.distance_km : 0,
-    }));
-};
-
-// B. Tỷ lệ chuyến hỏng toàn đội trong kỳ (completed vs failed).
-//
-// CỐ Ý lọc theo completed_at/failed_at chứ không theo revenue_period: đây là chỉ số
-// VẬN HÀNH — tháng này đội xe chạy bao nhiêu chuyến, hỏng bao nhiêu — không liên quan
-// tới việc tiền của chuyến rơi vào kỳ kế toán nào. Vì vậy `completed` ở đây có thể
-// khác `pnl.completed_trips` (đếm theo kỳ ghi nhận, và chỉ chuyến đã chốt giá); chỗ
-// nào hiển thị hai số này phải gọi tên khác nhau, đừng để người đọc tưởng là một.
-const _fleetOps = async (year, month) => {
-    const { rows } = await pool.query(`
-        SELECT
-            COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
-            COUNT(*) FILTER (WHERE status = 'failed')::int    AS failed
-        FROM order_shipments
-        WHERE (COALESCE(completed_at, failed_at) AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
-          AND (COALESCE(completed_at, failed_at) AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
-    `, [year, month]);
-    const { completed, failed } = rows[0];
-    const denom = completed + failed;
-    return { completed, failed, failed_rate: denom > 0 ? (failed / denom) * 100 : 0 };
-};
-
 // D. Năng suất tài xế trong kỳ (doanh thu + số chuyến). Gán tài xế theo chủ chuyến
 // hiện tại (v_shipment_current.owner_driver_id) — nhất quán với cách gán xe.
 const _drivers = async (year, month) => {
@@ -476,15 +431,12 @@ const getBusinessReport = async ({ year, month }) => {
 
     const [
         pnl, pnlPrev,
-        fleet, fleetOps,
         drivers,
         collected, debtAging, driverHoldings,
         topCustomers, riskyCustomers, customerDebts,
     ] = await Promise.all([
         _pnlForPeriod(year, month),
         _pnlForCompare(prev.year, prev.month),
-        _fleet(year, month),
-        _fleetOps(year, month),
         _drivers(year, month),
         _collectedInPeriod(year, month),
         _debtAging(),
@@ -515,8 +467,6 @@ const getBusinessReport = async ({ year, month }) => {
             { key: 'vehicle', label: 'Chi phí xe',        amount: pnl.operating_cost_vehicle },
             { key: 'office',  label: 'Chi phí văn phòng',  amount: pnl.operating_cost_office },
         ],
-        fleet,
-        fleet_ops: fleetOps,
         drivers,
         cashflow: {
             debt_aging: debtAging,

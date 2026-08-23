@@ -88,7 +88,6 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
   const pnl = data?.pnl ?? {};
   const prev = pnl.prev ?? {};
   const cash = data?.cashflow ?? {};
-  const ops = data?.fleet_ops ?? {};
   const meta = data?.meta ?? { status: "open" };
   const totalCost = num(pnl.operating_cost) + num(pnl.payroll_cost);
   const prevCost = num(prev.operating_cost) + num(prev.payroll_cost);
@@ -115,8 +114,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
       [MARGIN, Number(num(pnl.margin_pct).toFixed(1)), Number(num(prev.margin_pct).toFixed(1)),
         `${(num(pnl.margin_pct) - num(prev.margin_pct)).toFixed(1)} điểm`],
       // Chỉ đếm chuyến ĐÃ CHỐT GIÁ — cùng phạm vi với dòng Doanh thu ở trên. Chuyến chạy
-      // xong mà chưa có giá chưa ghi nhận doanh thu ở kỳ nào, xem sheet ĐỘI XE để biết
-      // tổng số chuyến chạy trong tháng.
+      // xong mà chưa có giá chưa ghi nhận doanh thu ở kỳ nào nên không nằm trong số này.
       ["Số chuyến đã chốt giá", num(pnl.completed_trips), num(prev.completed_trips), pctDelta(pnl.completed_trips, prev.completed_trips)],
     ];
     writeRows(ws, rows, new Set([1, 2]), h + 1,
@@ -137,22 +135,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     ws.getRow(h + rows.length).font = { bold: true };
   }
 
-  // 3) Hiệu suất đội xe
-  {
-    // "chuyến chạy xong" = theo completed_at (chỉ số vận hành của tháng), khác với
-    // "chuyến đã chốt giá" ở sheet P&L (theo kỳ ghi nhận doanh thu). Hai con số này
-    // không bằng nhau và không nên gọi cùng một tên.
-    const ws = wb.addWorksheet("DOI_XE");
-    const h = titleAndHeader(ws, `Hiệu suất đội xe — ${ops.completed ?? 0} chuyến chạy xong trong tháng, ${num(ops.failed_rate).toFixed(1)}% hỏng`,
-      ["Biển số", "Nhóm xe", "Doanh thu (đ)", "Số chuyến", "Quãng đường (km)", "Doanh thu/km (đ)"], [14, 18, 20, 12, 16, 18]);
-    const rows = (data?.fleet ?? []).map((v) => [
-      v.plate_number, v.vehicle_group_name ?? "", num(v.revenue), num(v.trip_count),
-      Number(num(v.distance_km).toFixed(1)), Math.round(num(v.revenue_per_km)),
-    ]);
-    writeRows(ws, rows, new Set([2, 5]), h + 1);
-  }
-
-  // 4) Năng suất tài xế
+  // 3) Năng suất tài xế
   {
     const ws = wb.addWorksheet("TAI_XE");
     const h = titleAndHeader(ws, "Năng suất tài xế", ["Tài xế", "Doanh thu (đ)", "Số chuyến"], [28, 22, 12]);
@@ -160,7 +143,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     writeRows(ws, rows, new Set([1]), h + 1);
   }
 
-  // 5) Dòng tiền & công nợ
+  // 4) Dòng tiền & công nợ
   {
     const ws = wb.addWorksheet("DONG_TIEN_CONG_NO");
     const aging = cash.debt_aging ?? {};
@@ -231,7 +214,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     }
   }
 
-  // 6) Khách hàng
+  // 5) Khách hàng
   {
     const ws = wb.addWorksheet("KHACH_HANG");
     const partyLabel = (c) => (c.party_type === "partner" ? "Đối tác" : "Khách hàng");
@@ -256,7 +239,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     }
   }
 
-  // 7) Thông tin xuất
+  // 6) Thông tin xuất
   {
     const ws = wb.addWorksheet("THONG_TIN_XUAT", { views: [{ showGridLines: false }] });
     ws.columns = [{ width: 26 }, { width: 60 }];
