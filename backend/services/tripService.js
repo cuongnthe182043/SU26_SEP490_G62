@@ -13,7 +13,10 @@ const {
     ALLOWED_TRANSITIONS,
     CANCELLABLE_STATUSES,
     RELEASABLE_STATUSES,
+    UNDO_WINDOW_MS,
+    UNDOABLE_TRANSITIONS,
 } = require('../constants/tripConstants');
+const reversalService = require('./reversalService');
 
 // Nội dung thông báo cho từng bước vòng đời chuyến
 const STATUS_NOTIF = {
@@ -78,8 +81,68 @@ const getTripPool = async (driverId, { page = 1, limit = 5, vehicleGroupId = nul
     return { ...paged, vehicleGroups };
 };
 
+// Mô tả khả năng hoàn tác của MỘT chuyến, tính từ chính dữ liệu chuyến đó.
+//
+// Server nói, không để mobile tự suy: nếu app tự tính cửa sổ 90 giây theo đồng hồ máy
+// mình thì máy lệch giờ sẽ hiện nút lúc đã hết hạn (bấm vào báo lỗi) hoặc giấu nút lúc
+// còn hạn. `undo_expires_at` là mốc tuyệt đối do server chốt — app chỉ việc đếm ngược.
+const describeUndo = (trip) => {
+    const rule = trip ? UNDOABLE_TRANSITIONS[trip.status] : null;
+    if (!rule) return { can_undo: false };
+
+    const stamp = trip[rule.clear];
+    if (!stamp) return { can_undo: false };
+
+    const expiresAt = new Date(new Date(stamp).getTime() + UNDO_WINDOW_MS);
+    return {
+        can_undo: expiresAt.getTime() > Date.now(),
+        undo_back_to: rule.back,
+        undo_expires_at: expiresAt.toISOString(),
+    };
+};
+
 const getActiveTrip = async (driverId) => {
-    return tripRepository.getActiveTrip(driverId);
+    const trip = await tripRepository.getActiveTrip(driverId);
+    if (!trip) return null;
+    return { ...trip, ...describeUndo(trip) };
+};
+
+// Hoàn tác bước trạng thái vừa bấm (tầng 1). Mọi kiểm tra thật sự nằm trong
+// tripRepository.undoTransition, chạy sau khi đã giữ khoá dòng — ở đây chỉ chuyển tiếp
+// và báo cho tài xế biết hệ thống đã lùi về đâu.
+const undoLastTransition = async (tripId, driverId, { expectedVersion } = {}) => {
+    reversalService.assertAllowed('trip.transition', {});
+
+    const result = await tripRepository.undoTransition(tripId, driverId, { expectedVersion });
+
+    reversalService.recordReversal({
+        kind: 'trip.transition',
+        entityId: tripId,
+        actorId: driverId,
+        oldData: {
+            status: result.undoneFrom,
+            version: result.fromVersion,
+            [result.clearedColumn]: result.clearedStamp,
+        },
+        newData: {
+            status: result.trip.status,
+            version: Number(result.trip.version),
+            stops_cleared: result.stopsCleared,
+            // Giữ độ trễ để sau này đo được: người dùng thường nhận ra sau bao lâu?
+            // Nếu phần lớn nằm sát mốc 90 giây thì cửa sổ đang quá ngắn.
+            age_ms: result.ageMs,
+        },
+    });
+
+    notificationService.createForUser(driverId, {
+        title: 'Đã hoàn tác',
+        message: `Chuyến #${tripId} đã quay lại trạng thái trước đó. Hãy bấm lại cho đúng bước.`,
+        type: 'TRIP_STATUS_UPDATED',
+        entityType: 'shipments',
+        entityId: tripId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return { ...result.trip, ...describeUndo(result.trip), undone_from: result.undoneFrom };
 };
 
 const claimTrip = async (shipmentId, driverId) => {
@@ -139,7 +202,7 @@ const claimTrip = async (shipmentId, driverId) => {
     return claimed;
 };
 
-const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
+const updateStatus = async (tripId, driverId, newStatus, reason = null, expectedVersion = null) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
@@ -153,7 +216,7 @@ const updateStatus = async (tripId, driverId, newStatus, reason = null) => {
         throw new Error('Lý do giao thất bại là bắt buộc');
     }
 
-    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null, driverId);
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, newStatus, newStatus === SHIPMENT_STATUS.FAILED ? reason?.trim() : null, driverId, expectedVersion);
 
     fireStatusNotif(driverId, tripId, newStatus);
 
@@ -620,6 +683,8 @@ const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
 module.exports = {
     getTripPool,
     getActiveTrip,
+    describeUndo,
+    undoLastTransition,
     claimTrip,
     updateStatus,
     releaseTrip,

@@ -24,7 +24,7 @@ const bonusRoutes            = require('./bonusRoutes');
 const customerRoutes         = require('./customerRoutes');
 const bonusRuleRoutes        = require('./bonusRuleRoutes');
 const attendanceRoutes       = require('./attendanceRoutes');
-const chatbotRoutes          = require('./chatbotRoutes');
+const reversalRequestRoutes  = require('./reversalRequestRoutes');
 
 
 // Register route modules
@@ -49,7 +49,7 @@ router.use('/api/manager',          managerRoutes);
 router.use('/api/bonuses',          bonusRoutes);
 router.use('/api/customers',        customerRoutes);
 router.use('/api/bonus-rules',      bonusRuleRoutes);
+router.use('/api/reversal-requests', reversalRequestRoutes);
 router.use('/api/attendance',       attendanceRoutes);
-router.use('/api/chatbot',          chatbotRoutes);
 
 module.exports = router;

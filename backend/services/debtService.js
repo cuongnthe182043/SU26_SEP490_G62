@@ -1,4 +1,5 @@
 const debtRepository = require('../repositories/debtRepository');
+const reversalService = require('./reversalService');
 const profileRepository = require('../repositories/profileRepository');
 const roleRepository = require('../repositories/roleRepository');
 const notificationService = require('./notificationService');
@@ -88,6 +89,18 @@ const rejectRepayment = async (paymentId, rejectedBy, reason) => {
 const voidRepayment = async (paymentId, voidedBy, reason) => {
     if (!reason?.trim()) throw new Error('Cần ghi lý do hủy xác nhận');
     const result = await debtRepository.voidRepayment(paymentId, voidedBy, reason.trim());
+
+    reversalService.recordReversal({
+        kind: 'repayment.confirm',
+        entityId: paymentId,
+        actorId: voidedBy,
+        reason: reason.trim(),
+        oldData: { status: 'confirmed', debt_id: result?.debtId ?? null },
+        // reversal_id = bút toán đảo do repository sinh ra. Ghi lại để từ dòng nhật ký
+        // này lần thẳng sang sổ kế toán được, không phải dò theo số tiền và thời gian.
+        newData: { status: 'voided', reversal_id: result?.reversalId ?? null },
+    });
+
     if (result?.driverId) broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
     if (result?.driverId) {
         notificationService.createForUser(result.driverId, {

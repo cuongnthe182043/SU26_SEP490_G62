@@ -62,17 +62,61 @@ const claimTrip = async (req, res) => {
 const updateStatus = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
-        const { status, reason } = req.body;
+        const { status, reason, version } = req.body;
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
         if (!status) return res.status(400).json({ error: 'Trạng thái không được để trống' });
 
-        const trip = await tripService.updateStatus(tripId, req.user.userId, status, reason);
+        // version tuỳ chọn: client cũ không gửi thì bỏ qua kiểm tra, client mới gửi thì
+        // được bảo vệ khỏi ghi đè lên thay đổi mình chưa thấy.
+        const expectedVersion = version === undefined || version === null ? null : Number(version);
+
+        const trip = await tripService.updateStatus(tripId, req.user.userId, status, reason, expectedVersion);
         res.json({ message: 'Cập nhật trạng thái thành công', trip });
     } catch (err) {
+        // 409 cho xung đột phiên bản: đây không phải lỗi của người dùng, app chỉ cần
+        // tải lại rồi thử lại — khác hẳn 400/422 vốn nghĩa là "yêu cầu sai".
+        if (err.code === 'STALE_VERSION') {
+            return res.status(409).json({ error: err.message.split(':').slice(1).join(':'), code: 'STALE_VERSION' });
+        }
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('không thể') || err.message.includes('bắt buộc') ? 422
                 : 400;
         res.status(code).json({ error: err.message });
+    }
+};
+
+// POST /api/trips/:id/undo
+// Body: { version?: number }
+// Hoàn tác MỘT bước trạng thái vừa bấm nhầm, trong cửa sổ ngắn (tầng 1).
+const undoStatus = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const { version } = req.body ?? {};
+        if (version === undefined || version === null) {
+            return res.status(400).json({ error: 'Thiếu số phiên bản chuyến', code: 'VERSION_REQUIRED' });
+        }
+
+        const trip = await tripService.undoLastTransition(tripId, req.user.userId, {
+            expectedVersion: Number(version),
+        });
+        res.json({ message: 'Đã hoàn tác bước vừa rồi', trip });
+    } catch (err) {
+        // Lỗi ở đây mang tiền tố mã ("WINDOW_EXPIRED:..."). Tách ra để app phân biệt
+        // "hết hạn hoàn tác" (hiện hướng dẫn báo điều phối) với "không phải chuyến của
+        // bạn" (ẩn nút hẳn) — hai việc app phải xử lý khác nhau.
+        const [maybeCode, ...rest] = String(err.message).split(':');
+        const known = ['NOT_FOUND', 'FORBIDDEN', 'NOT_UNDOABLE', 'WINDOW_EXPIRED', 'STALE_VERSION', 'CONFLICT', 'VERSION_REQUIRED'];
+        if (known.includes(maybeCode)) {
+            const status = maybeCode === 'FORBIDDEN' ? 403
+                : maybeCode === 'NOT_FOUND' ? 404
+                    : maybeCode === 'STALE_VERSION' || maybeCode === 'CONFLICT' ? 409
+                        : maybeCode === 'VERSION_REQUIRED' ? 400
+                            : 422;
+            return res.status(status).json({ error: rest.join(':').trim(), code: maybeCode });
+        }
+        res.status(400).json({ error: err.message });
     }
 };
 
@@ -409,6 +453,7 @@ module.exports = {
     getActiveTrip,
     claimTrip,
     updateStatus,
+    undoStatus,
     releaseTrip,
     arriveAtStop,
     completeStop,

@@ -3,8 +3,9 @@ import {
   Button, Chip, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader,
   Select, SelectItem, Spinner, Textarea,
 } from "@heroui/react";
-import { RiHandCoinLine, RiCheckLine, RiInformationLine } from "react-icons/ri";
+import { RiHandCoinLine, RiCheckLine, RiInformationLine, RiArrowGoBackLine } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
+import { reversalRequestService } from "../../../services/reversalRequest.service";
 import { notify } from "../../../components/shared-ui/Toast";
 
 const fmt = (v) =>
@@ -12,6 +13,69 @@ const fmt = (v) =>
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+
+// Kế toán KHÔNG có quyền gỡ duyệt chi phí — route đó chỉ mở cho Điều phối. Nên khi phát
+// hiện một khoản đã duyệt sai số tiền ngay lúc sắp chi, trước đây kế toán không có
+// đường nào ngoài việc nhắn tay cho điều phối. Nút này gửi một yêu cầu hoàn tác để
+// Manager quyết — có lý do, có người duyệt, có vết.
+function RequestUnapproveModal({ item, onClose, onDone }) {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await reversalRequestService.create({
+        kind: "expense.approve",
+        entityId: item.expense_id,
+        reason: reason.trim(),
+      });
+      notify.success("Đã gửi yêu cầu — Manager sẽ duyệt ở màn Yêu cầu hoàn tác.");
+      onDone?.();
+      onClose();
+    } catch (err) {
+      notify.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} size="lg">
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-1">
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">Xin gỡ duyệt khoản chi</span>
+          <span className="text-xs font-normal text-gray-400 dark:text-gray-400">
+            {item.driver_name || `Tài xế #${item.driver_id}`} · {fmt(item.amount)}
+          </span>
+        </ModalHeader>
+        <ModalBody>
+          <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 p-3 rounded-lg">
+            <RiInformationLine size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Khoản đã duyệt chỉ Điều phối mới gỡ được. Yêu cầu này gửi cho Manager
+              duyệt; duyệt xong hệ thống tự đưa khoản về trạng thái chờ để tài xế khai lại.
+            </span>
+          </div>
+          <Textarea
+            isRequired
+            label="Vì sao cần gỡ duyệt"
+            placeholder="Ví dụ: hoá đơn ghi 50.000 nhưng khoản khai 500.000"
+            value={reason}
+            onValueChange={setReason}
+            minRows={2}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="light" onPress={onClose} isDisabled={saving}>Đóng</Button>
+          <Button color="warning" onPress={submit} isLoading={saving} isDisabled={!reason.trim()}>
+            Gửi yêu cầu
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
 
 // Chi hộ khách (toll/parking/etc) khác chi phí công ty chịu: khoản chi hộ chi ra rồi còn
 // đòi lại được khách, nên kế toán cần nhìn thấy khác biệt này ngay trên danh sách.
@@ -56,6 +120,7 @@ export default function ReimbursementView() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [target, setTarget] = useState(null);
+  const [unapproveTarget, setUnapproveTarget] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -176,11 +241,18 @@ export default function ReimbursementView() {
                       {fmt(item.amount)}
                     </td>
                     <td className="py-3.5 pr-5 text-right">
-                      <Button size="sm" variant="flat" color="primary" className="h-8 px-3 text-xs gap-1.5"
-                        onPress={() => openModal(item)}>
-                        <RiCheckLine size={15} />
-                        <span>Lập phiếu hoàn</span>
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button size="sm" variant="light" className="h-8 px-2.5 text-xs gap-1.5 text-amber-600 dark:text-amber-300"
+                          onPress={() => setUnapproveTarget(item)}>
+                          <RiArrowGoBackLine size={14} />
+                          <span>Xin gỡ duyệt</span>
+                        </Button>
+                        <Button size="sm" variant="flat" color="primary" className="h-8 px-3 text-xs gap-1.5"
+                          onPress={() => openModal(item)}>
+                          <RiCheckLine size={15} />
+                          <span>Lập phiếu hoàn</span>
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -189,6 +261,14 @@ export default function ReimbursementView() {
           </table>
         )}
       </div>
+
+      {unapproveTarget && (
+        <RequestUnapproveModal
+          item={unapproveTarget}
+          onClose={() => setUnapproveTarget(null)}
+          onDone={load}
+        />
+      )}
 
       <Modal isOpen={Boolean(target)} onOpenChange={(open) => !open && setTarget(null)} size="lg">
         <ModalContent>

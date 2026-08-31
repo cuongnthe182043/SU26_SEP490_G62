@@ -55,7 +55,12 @@ function ExportModal({ onClose, onExported }) {
     setError(null);
     try {
       const csv = await accountantService.exportLedgerPeriod(from, to);
-      await exportLedgerCsvToExcel(csv, { from, to });
+
+      // Khối định danh đơn vị ở đầu biểu mẫu. Không lấy được thì vẫn xuất — biểu mẫu
+      // in ra các dòng chấm để điền tay, còn hơn là chặn kế toán không chốt được kỳ.
+      const company = await accountantService.getCompanyInfo().catch(() => null);
+
+      await exportLedgerCsvToExcel(csv, { from, to, company: company?.info ?? {} });
       onExported();
       notify.success("Đã xuất kỳ kế toán.");
     } catch (err) {

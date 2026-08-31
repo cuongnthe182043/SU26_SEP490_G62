@@ -3,10 +3,9 @@ const vehicleManagementRepository = require('../repositories/vehicleManagementRe
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
-// Gọi qua object (không destructure) để test thay được readReceiptTotal — helper mock
+// Gọi qua object (không destructure) để test thay được hàm kiểm tra — helper mock
 // của repo swap property trên module object.
-const expenseAiValidator = require('./expenseAiValidator');
-const { matchesTotal, fmtVND } = expenseAiValidator;
+const receiptValidationService = require('./receiptValidationService');
 
 const createError = (message, statusCode) => {
     const error = new Error(message);
@@ -22,43 +21,65 @@ const parsePositiveAmount = (value, fieldName) => {
     return parsed;
 };
 
-// Đối chiếu số tiền tài xế khai với tổng tiền đọc được trên các ảnh hóa đơn đã lưu.
+// Chốt kiểm tra hóa đơn ở bước hoàn tất bảo dưỡng.
 //
-// Vì sao cần chạy LẠI ở bước hoàn tất dù upload đã quét: lúc upload, chi phí có thể
-// chưa được nhập (cost = NULL) nên scanMaintenanceReceipt chỉ kiểm tra "ảnh có phải
-// hóa đơn đọc được" mà KHÔNG so khớp số tiền. Tài xế vì thế có thể up ảnh hóa đơn
-// 200k trước rồi khai 5 triệu — vượt rào toàn bộ lớp kiểm tra. Chốt lại ở đây là
-// điểm duy nhất biết cả ảnh lẫn số tiền cuối cùng.
+// Vì sao phải chạy LẠI dù lúc upload đã quét: lúc upload, chi phí có thể chưa được nhập
+// (cost = NULL) nên chỉ kiểm tra được "ảnh có phải hóa đơn bảo dưỡng hợp lệ" mà KHÔNG
+// so khớp số tiền. Tài xế vì thế có thể up ảnh hóa đơn 200k trước rồi khai 5 triệu —
+// vượt rào toàn bộ lớp kiểm tra. Đây là điểm duy nhất biết cả ảnh lẫn số tiền cuối cùng.
 //
-// Chấp nhận khi số khai khớp TỔNG các hóa đơn (nhiều hóa đơn rời) HOẶC khớp hóa đơn
-// lớn nhất (tài xế chụp cùng một hóa đơn nhiều góc) — nếu chỉ so tổng thì trường hợp
-// thứ hai sẽ bị từ chối oan.
+// Lần chạy này KHÔNG gọi lại model: bản đọc của từng ảnh đã được lưu ở bước upload và
+// được dùng lại, chỉ có phép đối chiếu số tiền là mới.
 //
-// Fail-open khi KHÔNG đọc được ảnh nào (OCR lỗi/ảnh mờ): manager vẫn còn chốt cuối
-// ở bước xác nhận, không chặn cứng tài xế vì sự cố hạ tầng.
-const assertMaintenanceCostMatchesBills = async (cost, billPics) => {
-    const totals = (await Promise.all(billPics.map((url) => expenseAiValidator.readReceiptTotal(url))))
-        .filter((total) => Number.isFinite(total) && total > 0);
+// Chỉ CHẶN khi verdict là `rejected`. Còn `needs_review` (ảnh mờ một phần, dòng chưa
+// phân loại được, model lỗi/timeout) thì cho đi tiếp và trả về để báo cho người duyệt —
+// không chặn cứng tài xế vì sự cố hạ tầng, nhưng cũng không để khoản đó lọt khỏi tầm mắt.
+const assertMaintenanceCostMatchesBills = async (cost, billPics, record) => {
+    // Lịch sử chi phí của chính chiếc xe. Lỗi tra cứu chỉ làm mất một lớp CẢNH BÁO,
+    // không được làm hỏng cả bước hoàn tất.
+    let costHistory = [];
+    try {
+        costHistory = await vehicleManagementRepository.getMaintenanceCostHistory(record?.vehicle_id, {
+            excludeRecordId: record?.id ?? null,
+        });
+    } catch (err) {
+        console.warn('[driverService] Không lấy được lịch sử chi phí bảo dưỡng:', err.message);
+    }
 
-    if (totals.length === 0) return;
+    const result = await receiptValidationService.validateMaintenanceBills(billPics, {
+        claimedAmount: cost,
+        plateNumber: record?.plate_number ?? null,
+        windowStart: record?.started_at ?? null,
+        entityType: 'maintenance_record',
+        entityId: record?.id ?? null,
+        profile: 'maintenance',
+        costHistory,
+        maintenanceType: record?.maintenance_type ?? null,
+    });
 
-    const sum = totals.reduce((acc, total) => acc + total, 0);
-    const max = Math.max(...totals);
-    if (matchesTotal(cost, sum) || matchesTotal(cost, max)) return;
+    if (result.blocked) {
+        const err = createError(
+            result.reject_reason
+            ?? 'Hóa đơn tải lên không hợp lệ. Vui lòng kiểm tra lại số tiền và ảnh hóa đơn.',
+            422,
+        );
+        err.reject_reason = err.message;
+        err.invalidBill = true;
+        err.receiptReasons = result.reasons;
+        throw err;
+    }
 
-    const err = createError(
-        `Số tiền khai (${fmtVND(cost)}) không khớp hóa đơn đã tải lên (đọc được ${fmtVND(sum)}). `
-        + 'Vui lòng nhập đúng số tiền trên hóa đơn hoặc chụp lại hóa đơn của khoản này.',
-        422,
-    );
-    err.reject_reason = err.message;
-    err.invalidBill = true;
-    throw err;
+    return result;
 };
 
-const buildMaintenanceVerificationMessage = (vehicle) => {
+const buildMaintenanceVerificationMessage = (vehicle, reviewCount = 0) => {
     const vehicleLabel = vehicle?.plate_number ? `xe ${vehicle.plate_number}` : 'xe vừa bảo dưỡng';
-    return `Tài xế đã hoàn tất bảo dưỡng ${vehicleLabel}. Vui lòng kiểm tra hóa đơn và xác nhận.`;
+    const base = `Tài xế đã hoàn tất bảo dưỡng ${vehicleLabel}.`;
+    // Đưa số điểm cần kiểm ngay vào thông báo: đây là thứ biến trạng thái needs_review
+    // thành hành động thật của người duyệt, thay vì một cờ nằm im trong DB.
+    return reviewCount > 0
+        ? `${base} Có ${reviewCount} điểm cần kiểm tra trên hóa đơn. Vui lòng xem và xác nhận.`
+        : `${base} Vui lòng kiểm tra hóa đơn và xác nhận.`;
 };
 
 const getAllDrivers = async () => driverRepository.getAllDrivers();
@@ -163,14 +184,29 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     }
 
     // Quét tự động NGAY khi upload — chỉ với ảnh hóa đơn ở bước bảo dưỡng (open),
-    // không quét ảnh chứng từ/báo giá lúc còn chờ duyệt (requested). Ảnh không hợp lệ
-    // bị từ chối ngay (422) và KHÔNG được lưu → tài xế phải upload ảnh khác.
+    // không quét ảnh chứng từ/báo giá lúc còn chờ duyệt (requested). Ảnh vi phạm rõ
+    // ràng bị từ chối ngay (422) và KHÔNG được lưu → tài xế phải upload ảnh khác.
+    //
+    // allowCache = false: ảnh vừa upload xong, chắc chắn chưa có bản đọc nào, tra DB
+    // trước chỉ tốn thêm một vòng truy vấn vô ích.
     if (record.status === 'open') {
-        const scan = await expenseAiValidator.scanMaintenanceReceipt(billUrl, { amount: record.cost });
-        if (!scan.valid) {
+        const scan = await receiptValidationService.validateReceipt(billUrl, {
+            claimedAmount: record.cost,
+            // Trần, không phải đích danh: đợt bảo dưỡng có thể còn hóa đơn khác chưa nộp
+            // nên chưa được đòi tấm này phải bằng đúng số đã khai.
+            claimedAmountMode: 'ceiling',
+            plateNumber: record.plate_number,
+            windowStart: record.started_at,
+            entityType: 'maintenance_record',
+            entityId: record.id,
+            profile: 'maintenance',
+            allowCache: false,
+        });
+        if (scan.blocked) {
             const err = createError(scan.reject_reason || 'Ảnh hóa đơn không hợp lệ', 422);
             err.reject_reason = scan.reject_reason;
             err.invalidBill = true;
+            err.receiptReasons = scan.reasons;
             throw err;
         }
     }
@@ -238,7 +274,8 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         throw createError('At least one maintenance bill image is required before completion', 400);
     }
 
-    await assertMaintenanceCostMatchesBills(cost, billPics);
+    const receiptCheck = await assertMaintenanceCostMatchesBills(cost, billPics, record);
+    const reviewCount = (receiptCheck?.reasons ?? []).filter((r) => r.severity === 'warning').length;
 
     await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
         vehicleId: parsedVehicleId,
@@ -250,7 +287,7 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
     });
 
     const vehicle = await vehicleManagementRepository.getVehicleById(parsedVehicleId);
-    const notificationMessage = buildMaintenanceVerificationMessage(vehicle);
+    const notificationMessage = buildMaintenanceVerificationMessage(vehicle, reviewCount);
 
     {
         const payload = {
@@ -295,7 +332,11 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         entityId: parsedVehicleId,
     }, { displayMode: 'alert', excludeUserId: driverId });
 
-    return { maintenanceRecordId: record.id };
+    return {
+        maintenanceRecordId: record.id,
+        receipt_verdict: receiptCheck?.verdict ?? 'needs_review',
+        receipt_reasons: receiptCheck?.reasons ?? [],
+    };
 };
 
 module.exports = {

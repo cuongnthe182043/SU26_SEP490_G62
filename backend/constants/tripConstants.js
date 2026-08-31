@@ -52,6 +52,27 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
 });
 
+// ─── Hoàn tác (undo) ──────────────────────────────────────────────────────────
+// Cửa sổ cho tài xế tự sửa một cú bấm nhầm. Ngắn là CỐ Ý: đây là "bấm nhầm nút",
+// không phải "đổi ý về nghiệp vụ". Việc sau đi qua tầng 2 (yêu cầu hoàn tác có
+// người duyệt), không đi qua đây.
+const UNDO_WINDOW_MS = 90_000;
+
+// Lùi đúng MỘT bước, về trạng thái ngay trước.
+//
+// `clear` là dấu thời gian của chính bước bị lùi và BẮT BUỘC phải xoá: để lại
+// arrived_at trong khi status đã quay về 'transit' thì mọi báo cáo đọc arrived_at
+// đều sai, và sai âm thầm — không có gì báo cho ai biết.
+//
+// COMPLETED cố ý KHÔNG có mặt: hoàn thành chuyến đã tính lại KPI, kích hoạt chuyến
+// kế tiếp và gửi thông báo cho người khác. FAILED cũng không: nó đã tạo bản ghi sự
+// cố và báo động toàn bộ điều phối. Hai cái đó lùi được, nhưng phải qua tầng 2.
+const UNDOABLE_TRANSITIONS = Object.freeze({
+    [SHIPMENT_STATUS.PICKING]: { back: SHIPMENT_STATUS.CLAIMED, clear: 'picking_at' },
+    [SHIPMENT_STATUS.TRANSIT]: { back: SHIPMENT_STATUS.PICKING, clear: 'transit_at' },
+    [SHIPMENT_STATUS.ARRIVED]: { back: SHIPMENT_STATUS.TRANSIT, clear: 'arrived_at' },
+});
+
 // Chuyến phải hoàn hàng được tính GẤP ĐÔI cước: tài chạy cả chiều đi lẫn chiều về.
 // Khách từ chối nhận thì chịu cả hai lượt, doanh thu/KPI của tài lấy từ cùng con số.
 const RETURN_FARE_MULTIPLIER = 2;
@@ -81,4 +102,6 @@ module.exports = {
     ALLOWED_TRANSITIONS,
     RETURN_FARE_MULTIPLIER,
     STATUS_TIMESTAMP_COL,
+    UNDO_WINDOW_MS,
+    UNDOABLE_TRANSITIONS,
 };

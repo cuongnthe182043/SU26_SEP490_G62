@@ -74,6 +74,8 @@ export default function DashboardView({ user }) {
       setReceiptRequests(receiptsData.requests || []);
       setCompanyForm({
         company_name: companyData.info?.company_name || "",
+        tax_code: companyData.info?.tax_code || "",
+        address: companyData.info?.address || "",
         hotline: companyData.info?.hotline || "",
         bank_name: companyData.info?.bank_name || "",
         bank_account_number: companyData.info?.bank_account_number || "",
@@ -388,6 +390,11 @@ export default function DashboardView({ user }) {
             <Section title="Thông tin công ty" icon={RiBuilding2Line}>
               <div className="flex flex-col gap-3">
                 <Input label="Tên công ty" value={companyForm.company_name} onValueChange={(v) => setCompanyForm((p) => ({ ...p, company_name: v }))} variant="bordered" size="sm" />
+                {/* Mã số thuế + địa chỉ in ở đầu mọi biểu mẫu xuất ra (sổ nhật ký, báo cáo
+                    doanh thu, báo cáo kinh doanh). Để trống thì biểu mẫu in ra các dòng
+                    chấm để điền tay — file vẫn xuất được, chỉ là chưa dùng để nộp. */}
+                <Input label="Mã số thuế" description="In ở đầu mọi biểu mẫu xuất ra" value={companyForm.tax_code} onValueChange={(v) => setCompanyForm((p) => ({ ...p, tax_code: v }))} variant="bordered" size="sm" />
+                <Input label="Địa chỉ trụ sở" description="In ở đầu mọi biểu mẫu xuất ra" value={companyForm.address} onValueChange={(v) => setCompanyForm((p) => ({ ...p, address: v }))} variant="bordered" size="sm" />
                 <Input label="Hotline" value={companyForm.hotline} onValueChange={(v) => setCompanyForm((p) => ({ ...p, hotline: v }))} variant="bordered" size="sm" />
                 <BankSelect value={companyForm.bank_name} onChange={(v) => setCompanyForm((p) => ({ ...p, bank_name: v }))} />
                 <Input label="Số tài khoản" value={companyForm.bank_account_number} onValueChange={(v) => setCompanyForm((p) => ({ ...p, bank_account_number: v }))} variant="bordered" size="sm" />

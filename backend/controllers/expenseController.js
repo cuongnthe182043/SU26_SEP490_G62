@@ -1,5 +1,5 @@
 const expenseService = require('../services/expenseService');
-const { deleteUploadedFile } = require('../services/expenseAiValidator');
+const { deleteUploadedFile } = require('../services/uploadCleanup');
 
 // POST /api/expenses
 // Driver tạo chi phí: lưu thẳng (status = pending), KHÔNG chạy AI đọc bill ở bước này.

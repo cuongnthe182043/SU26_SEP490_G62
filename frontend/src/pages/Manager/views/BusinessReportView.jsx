@@ -142,7 +142,14 @@ export default function BusinessReportView() {
     const opt = periodOptions.find((p) => p.key === periodKey) ?? periodOptions[0];
     setExporting(true);
     try {
-      await exportBusinessReportToExcel(data, { periodLabel: opt.label });
+      // Khối định danh đơn vị ở đầu mỗi sheet. Không lấy được thì vẫn xuất — biểu mẫu
+      // in ra các dòng chấm để điền tay, còn hơn là chặn không xuất được báo cáo.
+      const info = await managerService.getCompanyInfo().catch(() => null);
+
+      await exportBusinessReportToExcel(data, {
+        periodLabel: opt.label,
+        company: info?.info ?? {},
+      });
       notify.success("Đã xuất báo cáo kinh doanh.");
     } catch {
       setActionErr("Xuất file không thành công.");

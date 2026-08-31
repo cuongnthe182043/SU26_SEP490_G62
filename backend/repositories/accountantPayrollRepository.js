@@ -1,6 +1,7 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
+const reversalService = require('../services/reversalService');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
@@ -730,7 +731,12 @@ const reviewPayroll = async (payrollId, managerId) => {
 
 // Trả phiếu lương về 'pending' để tính lại (Manager hoặc Kế toán) — huỷ mọi dấu duyệt cũ.
 // Chỉ áp dụng khi phiếu đang reviewed/approved; đã 'paid' thì khoá (đã sinh bút toán + xoá nợ).
-const revertPayrollToPending = async (payrollId, actorId, reason = null) => {
+const revertPayrollToPending = async (payrollId, actorId, reason = null, actorRole = 'accountant') => {
+    // Tầng 2: trả phiếu lương về tính lại là đảo một quyết định đã duyệt. Trước đây lý
+    // do là tuỳ chọn, nên nửa số lần trả về không ai biết vì sao — mà đúng lúc cần tra
+    // thì đó là thứ duy nhất giải thích được con số cuối tháng.
+    reversalService.assertAllowed('payroll.review', { actorRole, reason });
+
     const { rows: [prev] } = await pool.query(`SELECT status FROM payrolls WHERE id = $1`, [payrollId]);
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
@@ -751,10 +757,13 @@ const revertPayrollToPending = async (payrollId, actorId, reason = null) => {
     if (!row) {
         throw new Error('Không thể trả về: phiếu không tồn tại, đang chờ duyệt hoặc đã trả lương');
     }
-    activityLogRepository.logSafe({
-        userId: actorId, action: 'payroll_revert', entityType: 'payroll', entityId: payrollId,
-        oldData: { status: prev?.status ?? null },
-        newData: { status: 'pending', reason: reason || null },
+    reversalService.recordReversal({
+        kind: 'payroll.review',
+        entityId: payrollId,
+        actorId,
+        reason,
+        oldData: { status: prev?.status ?? null, net_salary: row.net_salary },
+        newData: { status: 'pending' },
     });
     return row;
 };

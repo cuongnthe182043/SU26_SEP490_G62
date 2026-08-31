@@ -68,7 +68,11 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
       if (filters.customer) filterParts.push(`Khách hàng: ${filters.customer}`);
       if (filters.debt_status) filterParts.push(`Trạng thái nợ: ${filters.debt_status}`);
       if (filters.search) filterParts.push(`Tìm kiếm: ${filters.search}`);
-      await exportOrdersReportToExcel(rows, { filterLabel: filterParts.join(" · ") });
+      const info = await accountantService.getCompanyInfo().catch(() => null);
+      await exportOrdersReportToExcel(rows, {
+        filterLabel: filterParts.join(" · "),
+        company: info?.info ?? {},
+      });
       notify.success("Đã xuất báo cáo doanh thu.");
     } catch (err) {
       notify.error(err.message ?? "Xuất báo cáo thất bại.");

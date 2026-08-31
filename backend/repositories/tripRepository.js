@@ -6,6 +6,8 @@ const {
     ACTIVE_STATUSES,
     BLOCKING_STATUSES,
     STATUS_TIMESTAMP_COL,
+    UNDO_WINDOW_MS,
+    UNDOABLE_TRANSITIONS,
 } = require('../constants/tripConstants');
 const {
     CUSTOMER_BILLABLE_EXPENSE_SQL,
@@ -903,73 +905,243 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
     }
 };
 
-const updateTripStatus = async (tripId, newStatus, cancelReason = null, actorId = null) => {
-    // Đọc trạng thái cũ để ghi audit "từ status → status" (mục 27 — Status Change History)
-    const { rows: [prev] } = await pool.query(`SELECT status FROM order_shipments WHERE id = $1`, [tripId]);
+// Đổi trạng thái chuyến — NGUYÊN TỬ.
+//
+// Trước đây hàm này chạy 3-5 câu lệnh rời qua pool: đổi status xong mà cập nhật
+// trip_stops lỗi thì chuyến đã sang trạng thái mới trong khi các stop còn dở. Nay gói
+// hết vào một giao dịch, và điều đó còn mở đường cho hoàn tác: trong cùng một giao
+// dịch, NOW() của Postgres là MỘT giá trị duy nhất, nên dấu thời gian trên
+// order_shipments và trên trip_stops bằng nhau tuyệt đối. Nhờ vậy undoTransition biết
+// chính xác dòng trip_stops nào do bước này đặt, dòng nào tài xế đã tự bấm từ trước —
+// chỉ xoá đúng phần của bước bị lùi.
+//
+// expectedVersion: khoá lạc quan. Cột `version` trước đây được +1 ở nhiều nơi nhưng
+// không chỗ nào KIỂM — tăng mà không đọc thì không phải khoá. Client gửi version nó
+// đang thấy; lệch nghĩa là có người/thiết bị khác vừa đổi chuyến, phải tải lại thay vì
+// ghi đè. Để null thì bỏ qua, giữ đường cũ cho client chưa cập nhật.
+const updateTripStatus = async (tripId, newStatus, cancelReason = null, actorId = null, expectedVersion = null) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    const tsCol = STATUS_TIMESTAMP_COL[newStatus];
-    let query, params;
-    if (cancelReason && tsCol) {
-        query  = `UPDATE order_shipments SET status=$2, cancel_reason=$3, ${tsCol}=NOW(), updated_at=NOW() WHERE id=$1 RETURNING *`;
-        params = [tripId, newStatus, cancelReason];
-    } else if (cancelReason) {
-        query  = `UPDATE order_shipments SET status=$2, cancel_reason=$3, updated_at=NOW() WHERE id=$1 RETURNING *`;
-        params = [tripId, newStatus, cancelReason];
-    } else if (tsCol) {
-        query  = `UPDATE order_shipments SET status=$2, ${tsCol}=NOW(), updated_at=NOW() WHERE id=$1 RETURNING *`;
-        params = [tripId, newStatus];
-    } else {
-        query  = `UPDATE order_shipments SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *`;
-        params = [tripId, newStatus];
+        const { rows: [prev] } = await client.query(
+            `SELECT status, version FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            [tripId],
+        );
+        if (!prev) throw new Error('Chuyến không tồn tại');
+
+        if (expectedVersion !== null && expectedVersion !== undefined
+            && Number(prev.version) !== Number(expectedVersion)) {
+            const err = new Error('STALE_VERSION:Chuyến vừa được cập nhật ở nơi khác — hãy tải lại trước khi thao tác tiếp');
+            err.code = 'STALE_VERSION';
+            throw err;
+        }
+
+        // tsCol lấy từ bảng đông cứng STATUS_TIMESTAMP_COL nên nội suy vào SQL an toàn
+        const tsCol = STATUS_TIMESTAMP_COL[newStatus];
+        const sets = ['status = $2', 'updated_at = NOW()', 'version = version + 1'];
+        const params = [tripId, newStatus];
+        if (cancelReason) {
+            params.push(cancelReason);
+            sets.push(`cancel_reason = $${params.length}`);
+        }
+        if (tsCol) sets.push(`${tsCol} = NOW()`);
+
+        const { rows: [row] } = await client.query(
+            `UPDATE order_shipments SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+            params,
+        );
+
+        // Cập nhật mốc trip_stops theo vòng đời (chuyến A→B đơn giản thì tài xế không
+        // bấm từng stop). Cùng giao dịch ⇒ cùng NOW() với các cột ở trên.
+        if (newStatus === 'picking') {
+            await client.query(
+                `UPDATE trip_stops SET arrived_at = NOW()
+                 WHERE shipment_id = $1 AND stop_type = 'pickup' AND arrived_at IS NULL
+                   AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'pickup')`,
+                [tripId],
+            );
+        } else if (newStatus === 'transit') {
+            await client.query(
+                `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
+                 WHERE shipment_id = $1 AND stop_type = 'pickup' AND completed_at IS NULL`,
+                [tripId],
+            );
+        } else if (newStatus === 'arrived') {
+            await client.query(
+                `UPDATE trip_stops SET arrived_at = NOW()
+                 WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL
+                   AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL)`,
+                [tripId],
+            );
+        } else if (newStatus === 'completed') {
+            await client.query(
+                `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
+                 WHERE shipment_id = $1 AND stop_type = 'delivery' AND completed_at IS NULL`,
+                [tripId],
+            );
+        }
+
+        await client.query('COMMIT');
+
+        // Audit: ai đổi trạng thái chuyến, từ status nào → status nào
+        activityLogRepository.logSafe({
+            userId: actorId,
+            action: 'trip_status_change',
+            entityType: 'shipment',
+            entityId: tripId,
+            oldData: { status: prev.status, version: Number(prev.version) },
+            newData: {
+                status: newStatus,
+                version: Number(row.version),
+                ...(cancelReason ? { cancel_reason: cancelReason } : {}),
+            },
+        });
+
+        return row;
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
     }
-    const result = await pool.query(query, params);
-    const row = result.rows[0];
+};
 
-    // Auto-update trip_stops timestamps based on lifecycle transition
-    // (driver may not manage stops explicitly in simple A→B trips)
-    if (newStatus === 'picking') {
-        // Driver đang đến điểm lấy → mark first pickup stop as arrived
-        await pool.query(
-            `UPDATE trip_stops SET arrived_at = NOW()
-             WHERE shipment_id = $1 AND stop_type = 'pickup' AND arrived_at IS NULL
-               AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'pickup')`,
-            [tripId],
-        );
-    } else if (newStatus === 'transit') {
-        // Driver bắt đầu vận chuyển → mark tất cả pickup stops là completed
-        await pool.query(
-            `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
-             WHERE shipment_id = $1 AND stop_type = 'pickup' AND completed_at IS NULL`,
-            [tripId],
-        );
-    } else if (newStatus === 'arrived') {
-        // Driver đến điểm giao → mark first unvisited delivery stop as arrived
-        await pool.query(
-            `UPDATE trip_stops SET arrived_at = NOW()
-             WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL
-               AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'delivery' AND arrived_at IS NULL)`,
-            [tripId],
-        );
-    } else if (newStatus === 'completed') {
-        // Trip hoàn thành → mark tất cả delivery stops là completed
-        await pool.query(
-            `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
-             WHERE shipment_id = $1 AND stop_type = 'delivery' AND completed_at IS NULL`,
-            [tripId],
-        );
+// Hoàn tác MỘT bước trạng thái vừa bấm nhầm (tầng 1 — tài xế tự làm tự lùi).
+//
+// Mọi kiểm tra nằm TRONG giao dịch, sau khi đã giữ khoá dòng. Đọc cửa sổ thời gian
+// trước rồi mới khoá thì hai lần bấm sát nhau đều thấy "còn hạn" và cùng lùi.
+//
+// Cách nhận diện phần cần dọn: so BẰNG dấu thời gian của bước bị lùi. Dòng trip_stops
+// nào mang đúng mốc đó là do bước này đặt; dòng tài xế đã tự bấm trước đó mang mốc
+// khác nên giữ nguyên. Đây chính là lý do updateTripStatus phải nguyên tử.
+const undoTransition = async (tripId, driverId, { expectedVersion } = {}) => {
+    // BẮT BUỘC, khác với updateTripStatus (nơi version là tuỳ chọn để không phá client cũ).
+    // Đây là API mới nên không có client cũ để giữ, mà thiếu nó thì một cú bấm đúp lúc
+    // mạng lag sẽ lùi HAI bước: lệnh thứ hai đợi khoá xong, đọc lại thấy trạng thái đã
+    // lùi một nấc, và nấc đó cũng nằm trong bảng hoàn tác nên nó lùi tiếp. Gửi cùng một
+    // version hai lần thì lệnh sau chết ở đây, đúng như mong muốn.
+    if (expectedVersion === null || expectedVersion === undefined) {
+        throw new Error('VERSION_REQUIRED:Thiếu số phiên bản chuyến — hãy tải lại rồi thử lại');
     }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    // Audit: ai đổi trạng thái chuyến, từ status nào → status nào
-    activityLogRepository.logSafe({
-        userId: actorId,
-        action: 'trip_status_change',
-        entityType: 'shipment',
-        entityId: tripId,
-        oldData: { status: prev?.status ?? null },
-        newData: { status: newStatus, ...(cancelReason ? { cancel_reason: cancelReason } : {}) },
-    });
+        const { rows: [trip] } = await client.query(
+            `SELECT os.id, os.order_id, os.status, os.version,
+                    os.picking_at, os.transit_at, os.arrived_at,
+                    sc.owner_driver_id,
+                    EXTRACT(EPOCH FROM (NOW() - os.picking_at)) * 1000 AS picking_age_ms,
+                    EXTRACT(EPOCH FROM (NOW() - os.transit_at)) * 1000 AS transit_age_ms,
+                    EXTRACT(EPOCH FROM (NOW() - os.arrived_at)) * 1000 AS arrived_age_ms
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.id = $1
+             FOR UPDATE OF os`,
+            [tripId],
+        );
+        if (!trip) throw new Error('NOT_FOUND:Chuyến không tồn tại');
+        if (Number(trip.owner_driver_id) !== Number(driverId)) {
+            throw new Error('FORBIDDEN:Bạn không có quyền hoàn tác chuyến này');
+        }
 
-    return row;
+        const rule = UNDOABLE_TRANSITIONS[trip.status];
+        if (!rule) throw new Error(`NOT_UNDOABLE:Không hoàn tác được bước "${trip.status}"`);
+
+        if (Number(trip.version) !== Number(expectedVersion)) {
+            const err = new Error('STALE_VERSION:Chuyến vừa được cập nhật ở nơi khác — hãy tải lại trước khi hoàn tác');
+            err.code = 'STALE_VERSION';
+            throw err;
+        }
+
+        const stamp = trip[rule.clear];
+        const ageMs = Number(trip[`${rule.clear.replace(/_at$/, '')}_age_ms`]);
+        if (!stamp || !Number.isFinite(ageMs)) {
+            throw new Error('NOT_UNDOABLE:Không xác định được thời điểm của bước này');
+        }
+        if (ageMs > UNDO_WINDOW_MS) {
+            const err = new Error(`WINDOW_EXPIRED:Đã quá ${Math.round(UNDO_WINDOW_MS / 1000)} giây kể từ lúc bấm — hãy báo điều phối để xử lý`);
+            err.code = 'WINDOW_EXPIRED';
+            throw err;
+        }
+
+        // Dọn trip_stops TRƯỚC, và so thẳng với cột trên order_shipments trong cùng câu
+        // lệnh SQL.
+        //
+        // Không đưa dấu thời gian ra JS rồi truyền ngược vào: timestamptz của Postgres có
+        // độ phân giải micro-giây, Date của JavaScript chỉ tới mili-giây. Đi một vòng qua
+        // node-postgres là mất phần lẻ, và phép so BẰNG không khớp dòng nào — hoàn tác
+        // "chạy thành công" mà không dọn gì cả. Tệ hơn: các điểm lấy hàng vẫn ở trạng thái
+        // đã xong, nên lần bấm lại sẽ bỏ qua yêu cầu ảnh bắt buộc (BR-013).
+        //
+        // Vì so với cột gốc nên phải chạy TRƯỚC khi cột đó bị NULL. Cùng một giao dịch
+        // nên không có cửa cho ai chen vào giữa.
+        let stopsCleared = 0;
+        if (trip.status === 'picking') {
+            const r = await client.query(
+                `UPDATE trip_stops ts SET arrived_at = NULL
+                 FROM order_shipments os
+                 WHERE os.id = $1 AND ts.shipment_id = $1
+                   AND ts.stop_type = 'pickup' AND ts.arrived_at = os.picking_at`,
+                [tripId],
+            );
+            stopsCleared = r.rowCount;
+        } else if (trip.status === 'transit') {
+            // Bước vào transit đặt completed_at, còn arrived_at chỉ đặt KHI trước đó rỗng
+            // (COALESCE). Nên chỉ xoá arrived_at khi nó mang đúng mốc ấy — điểm mà tài xế
+            // đã tự bấm đến từ trước mang mốc khác và phải được giữ nguyên.
+            const r = await client.query(
+                `UPDATE trip_stops ts
+                 SET completed_at = NULL,
+                     arrived_at   = CASE WHEN ts.arrived_at = os.transit_at THEN NULL ELSE ts.arrived_at END
+                 FROM order_shipments os
+                 WHERE os.id = $1 AND ts.shipment_id = $1
+                   AND ts.stop_type = 'pickup' AND ts.completed_at = os.transit_at`,
+                [tripId],
+            );
+            stopsCleared = r.rowCount;
+        } else if (trip.status === 'arrived') {
+            const r = await client.query(
+                `UPDATE trip_stops ts SET arrived_at = NULL
+                 FROM order_shipments os
+                 WHERE os.id = $1 AND ts.shipment_id = $1
+                   AND ts.stop_type = 'delivery' AND ts.arrived_at = os.arrived_at`,
+                [tripId],
+            );
+            stopsCleared = r.rowCount;
+        }
+
+        const { rows: [row] } = await client.query(
+            `UPDATE order_shipments
+             SET status = $2, ${rule.clear} = NULL, version = version + 1, updated_at = NOW()
+             WHERE id = $1 AND status = $3 AND version = $4
+             RETURNING *`,
+            [tripId, rule.back, trip.status, expectedVersion],
+        );
+        if (!row) throw new Error('CONFLICT:Chuyến vừa đổi trạng thái, không hoàn tác được');
+
+        await client.query('COMMIT');
+
+        // KHÔNG ghi activity_logs ở đây. Mọi thao tác lùi đi qua đúng một cửa —
+        // reversalService.recordReversal — nên ghi cả hai nơi là ra hai dòng cho một
+        // lần bấm, và người đọc nhật ký sau này sẽ tưởng tài xế bấm hoàn tác hai lần.
+        // Trả đủ dữ liệu để cửa đó ghi được đầy đủ.
+        return {
+            trip: row,
+            undoneFrom: trip.status,
+            fromVersion: Number(trip.version),
+            clearedColumn: rule.clear,
+            clearedStamp: stamp,
+            ageMs: Math.round(ageMs),
+            stopsCleared,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 const releaseShipmentToPool = async (tripId, driverId, reason) => {
@@ -2130,6 +2302,7 @@ module.exports = {
     cancelShipmentForCargoDamage,
     recomputeOrderDerivedStatus,
     updateTripStatus,
+    undoTransition,
     releaseShipmentToPool,
     isFinalShipment,
     getShipmentFinalStatus,

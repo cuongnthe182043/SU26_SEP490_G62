@@ -1,5 +1,5 @@
 const driverService = require('../services/driverService');
-const { deleteUploadedFile } = require('../services/expenseAiValidator');
+const { deleteUploadedFile } = require('../services/uploadCleanup');
 
 const getMyVehicle = async (req, res) => {
     try {

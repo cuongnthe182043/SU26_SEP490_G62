@@ -1604,6 +1604,41 @@ const listVehicleMaintenanceRecords = async (vehicleId, db = pool) => {
     return result.rows;
 };
 
+/**
+ * Chi phí các đợt bảo dưỡng ĐÃ HOÀN TẤT của một xe, để so xem đợt mới có bất thường không.
+ *
+ * Chỉ lấy status = 'completed': đợt chưa được xác minh thì chưa ai xác nhận số tiền đó
+ * đúng. Đưa chúng vào lịch sử nghĩa là một khoản khai khống chưa duyệt sẽ tự nâng mức
+ * "bình thường" lên và che cho khoản khống tiếp theo.
+ */
+const getMaintenanceCostHistory = async (vehicleId, { excludeRecordId = null, limit = 20 } = {}, db = pool) => {
+    const result = await db.query(
+        `SELECT cost::float8 AS cost, maintenance_type
+           FROM maintenance_records
+          WHERE vehicle_id = $1
+            AND status = 'completed'
+            AND cost IS NOT NULL AND cost > 0
+            AND ($2::int IS NULL OR id <> $2)
+          ORDER BY maintenance_date DESC, id DESC
+          LIMIT $3`,
+        [vehicleId, excludeRecordId, limit],
+    );
+    return result.rows;
+};
+
+/** Một đợt bảo dưỡng kèm biển số — cho màn hình duyệt hóa đơn của quản lý. */
+const getMaintenanceRecordById = async (recordId, db = pool) => {
+    const result = await db.query(
+        `SELECT mr.id, mr.vehicle_id, mr.maintenance_type, mr.cost, mr.status,
+                mr.started_at, mr.completed_at, v.plate_number
+           FROM maintenance_records mr
+           JOIN vehicles v ON v.id = mr.vehicle_id
+          WHERE mr.id = $1`,
+        [recordId],
+    );
+    return result.rows[0] ?? null;
+};
+
 const getMaintenanceRecordsForDriver = async (driverId, db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
@@ -1636,12 +1671,17 @@ const updateMaintenanceCost = async (maintenanceRecordId, cost, db = pool) => {
 
 const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool, statuses = ['open']) => {
     const result = await db.query(
-        `SELECT id, vehicle_id, performed_by, status, bill_pics, cost, created_by
-         FROM maintenance_records
-         WHERE vehicle_id = $1
-           AND performed_by = $2
-           AND status = ANY($3)
-         ORDER BY started_at DESC, id DESC
+        // started_at + plate_number phục vụ lớp đối chiếu ngữ cảnh của kiểm tra hóa đơn:
+        // biển số in trên hóa đơn phải là xe đang bảo dưỡng, và ngày hóa đơn phải nằm
+        // trong khoảng thời gian của đợt này.
+        `SELECT mr.id, mr.vehicle_id, mr.performed_by, mr.status, mr.bill_pics, mr.cost,
+                mr.created_by, mr.started_at, v.plate_number
+         FROM maintenance_records mr
+         JOIN vehicles v ON v.id = mr.vehicle_id
+         WHERE mr.vehicle_id = $1
+           AND mr.performed_by = $2
+           AND mr.status = ANY($3)
+         ORDER BY mr.started_at DESC, mr.id DESC
          LIMIT 1`,
         [vehicleId, driverId, statuses],
     );
@@ -1867,6 +1907,8 @@ module.exports = {
     listVehicleStatusHistory,
     listVehicleMaintenanceRecords,
     getActiveMaintenanceRecordForDriver,
+    getMaintenanceCostHistory,
+    getMaintenanceRecordById,
     getMaintenanceRecordsForDriver,
     updateMaintenanceBillPics,
     updateMaintenanceCost,

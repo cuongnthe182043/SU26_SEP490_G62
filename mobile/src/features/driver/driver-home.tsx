@@ -337,9 +337,6 @@ export function DriverHomeScreen() {
                     </YStack>
 
                     <XStack alignItems="center" gap={10}>
-                        {/* Nút vào trợ lý AI đã ẩn. Màn chatbot-screen, service phía app
-                            và API phía backend vẫn còn nguyên — bật lại chỉ cần trả
-                            Pressable dẫn tới '/chatbot' về đây. */}
                         <Pressable
                             onPress={() => router.push('/notifications')}
                             style={s.bellBtn}

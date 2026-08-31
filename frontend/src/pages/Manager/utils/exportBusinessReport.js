@@ -1,5 +1,9 @@
 import { APP_NAME } from "../../../constants/brand";
 import { reconcileDebtRows } from "./debtReconcile";
+import {
+  drawEntityHeader, drawFormTitle, drawSignatureBlock,
+  setPrintLayout, downloadWorkbook,
+} from "../../../utils/vnAccountingForm";
 // Xuất báo cáo kinh doanh (Manager) ra Excel nhiều sheet — cùng phong cách trình bày
 // với báo cáo doanh thu của Kế toán (exportOrdersReport.js): header xanh thương hiệu,
 // viền mảnh, cột tiền canh phải định dạng #,##0. Dữ liệu lấy thẳng từ payload đang xem
@@ -42,27 +46,51 @@ const slugify = (s) => s
   .replace(/[^\dA-Za-z]+/g, "-")
   .replace(/^-+|-+$/g, "");
 
-// Tiêu đề lớn ở A1 + tô header cho hàng cột.
-function titleAndHeader(ws, title, headers, colWidths) {
-  ws.columns = headers.map((h, i) => ({ header: h, key: `c${i}`, width: colWidths[i] ?? 16 }));
+// Mở đầu một sheet theo khung văn bản chính thức của doanh nghiệp: khối định danh
+// đơn vị, tên biểu, kỳ báo cáo, đơn vị tính, rồi mới tới hàng tiêu đề cột.
+//
+// KHÔNG in số hiệu mẫu ở đây. Đây là báo cáo quản trị nội bộ — Bộ Tài chính không ban
+// hành mẫu cho nó, và gắn một số hiệu tự nghĩ ra lên tờ giấy là nói sai về tính pháp lý
+// của nó. Sổ Nhật ký chung thì khác: nó có mẫu S03a-DN thật và có in số hiệu.
+//
+// @returns {number} chỉ số hàng tiêu đề cột — dữ liệu bắt đầu ở hàng kế tiếp
+function titleAndHeader(ws, title, headers, colWidths, ctx = {}) {
+  ws.columns = colWidths.map((w) => ({ width: w ?? 16 }), ctx);
 
-  ws.spliceRows(1, 0, [title]);
-  ws.mergeCells(1, 1, 1, headers.length);
-  const titleCell = ws.getCell(1, 1);
-  titleCell.value = title;
-  titleCell.font = { bold: true, size: 14, color: { argb: TITLE_TEXT } };
-  titleCell.alignment = { vertical: "middle" };
-  ws.getRow(1).height = 26;
+  let r = drawEntityHeader(ws, { company: ctx.company ?? {}, colCount: headers.length });
+  r = drawFormTitle(ws, {
+    title,
+    period: ctx.periodLabel ? `Kỳ báo cáo: ${ctx.periodLabel}` : null,
+    unit: "đồng",
+    colCount: headers.length,
+    startRow: r,
+  });
 
-  const headerRow = ws.getRow(2);
+  const headerRow = ws.getRow(r);
   headerRow.height = 22;
-  headerRow.eachCell((cell) => {
+  headers.forEach((text, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = text;
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
     cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = allBorders;
   });
-  return 2; // header ở dòng 2, dữ liệu bắt đầu dòng 3
+  return r;
+}
+
+// Đóng một sheet: khối ký + khổ in.
+//
+// Ký trên TỪNG sheet chứ không chỉ sheet đầu, vì trong thực tế người ta in đúng cái
+// sheet mình cần chứ không in cả tập. Một trang không có chỗ ký thì không phải văn bản
+// — không ai chịu trách nhiệm về con số trên đó.
+function finishSheet(ws, colCount) {
+  drawSignatureBlock(ws, {
+    colCount,
+    startRow: ws.lastRow?.number ?? 1,
+    signers: ["Người lập biểu", "Kế toán trưởng", "Giám đốc"],
+  });
+  setPrintLayout(ws, { landscape: colCount > 4 });
 }
 
 // Ghi các dòng dữ liệu, moneyCols (Set chỉ số cột 0-based) canh phải + định dạng tiền.
@@ -84,7 +112,7 @@ function writeRows(ws, rows, moneyCols, startRow, rowFmt = {}) {
   });
 }
 
-export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {}) {
+export async function exportBusinessReportToExcel(data, { periodLabel = "", company = {} } = {}) {
   const pnl = data?.pnl ?? {};
   const prev = pnl.prev ?? {};
   const cash = data?.cashflow ?? {};
@@ -94,14 +122,16 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = APP_NAME;
+  wb.creator = company.company_name || APP_NAME;
   wb.created = new Date();
+
+  const ctx = { company, periodLabel };
 
   // 1) Kết quả kinh doanh (P&L)
   {
     const ws = wb.addWorksheet("KET_QUA_KINH_DOANH");
-    const h = titleAndHeader(ws, `Kết quả kinh doanh — ${periodLabel}`,
-      ["Chỉ tiêu", "Kỳ này", "Kỳ trước", "Thay đổi"], [30, 20, 20, 14]);
+    const h = titleAndHeader(ws, "Kết quả hoạt động kinh doanh",
+      ["Chỉ tiêu", "Kỳ này", "Kỳ trước", "Thay đổi"], [30, 20, 20, 14], ctx);
     const MARGIN = "Biên lợi nhuận (%)";
     const rows = [
       ["Doanh thu", num(pnl.revenue), num(prev.revenue), pctDelta(pnl.revenue, prev.revenue)],
@@ -119,12 +149,13 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     ];
     writeRows(ws, rows, new Set([1, 2]), h + 1,
       { [rows.findIndex((r) => r[0] === MARGIN)]: PERCENT1 });
+    finishSheet(ws, 4);
   }
 
   // 2) Cơ cấu chi phí
   {
     const ws = wb.addWorksheet("CO_CAU_CHI_PHI");
-    const h = titleAndHeader(ws, "Cơ cấu chi phí", ["Khoản mục", "Số tiền (đ)", "Tỷ trọng"], [28, 22, 14]);
+    const h = titleAndHeader(ws, "Cơ cấu chi phí", ["Khoản mục", "Số tiền (đ)", "Tỷ trọng"], [28, 22, 14], ctx);
     const items = data?.cost_breakdown ?? [];
     const rows = items.map((it) => [
       it.label, num(it.amount),
@@ -133,21 +164,23 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     rows.push(["TỔNG CỘNG", totalCost, "100%"]);
     writeRows(ws, rows, new Set([1]), h + 1);
     ws.getRow(h + rows.length).font = { bold: true };
+    finishSheet(ws, 3);
   }
 
   // 3) Năng suất tài xế
   {
     const ws = wb.addWorksheet("TAI_XE");
-    const h = titleAndHeader(ws, "Năng suất tài xế", ["Tài xế", "Doanh thu (đ)", "Số chuyến"], [28, 22, 12]);
+    const h = titleAndHeader(ws, "Năng suất tài xế", ["Tài xế", "Doanh thu (đ)", "Số chuyến"], [28, 22, 12], ctx);
     const rows = (data?.drivers ?? []).map((d) => [d.driver_name, num(d.revenue), num(d.trip_count)]);
     writeRows(ws, rows, new Set([1]), h + 1);
+    finishSheet(ws, 3);
   }
 
   // 4) Dòng tiền & công nợ
   {
     const ws = wb.addWorksheet("DONG_TIEN_CONG_NO");
     const aging = cash.debt_aging ?? {};
-    const h = titleAndHeader(ws, "Dòng tiền & công nợ", ["Chỉ tiêu", "Giá trị"], [34, 24]);
+    const h = titleAndHeader(ws, "Dòng tiền & công nợ", ["Chỉ tiêu", "Giá trị"], [34, 24], ctx);
     const kpiRows = [
       ["Nợ phải thu (khách + đối tác)", num(cash.receivable_total)],
       ["Doanh thu bán chịu trong kỳ (mẫu số DSO / tỷ lệ thu hồi)", num(cash.credit_revenue)],
@@ -212,6 +245,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
       writeRows(ws, rows, new Set([2, 3, 4, 5, 6]), start + 2);
       ws.getRow(start + 1 + rows.length).font = { bold: true };
     }
+    finishSheet(ws, 8);
   }
 
   // 5) Khách hàng
@@ -219,7 +253,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     const ws = wb.addWorksheet("KHACH_HANG");
     const partyLabel = (c) => (c.party_type === "partner" ? "Đối tác" : "Khách hàng");
     const h = titleAndHeader(ws, "Top khách hàng / đối tác theo doanh thu kỳ",
-      ["Khách hàng / đối tác", "Loại", "Số đơn", "Doanh thu (đ)"], [32, 14, 12, 22]);
+      ["Khách hàng / đối tác", "Loại", "Số đơn", "Doanh thu (đ)"], [32, 14, 12, 22], ctx);
     writeRows(ws, (data?.top_customers ?? []).map((c) => [c.name, partyLabel(c), num(c.total_orders), num(c.total_revenue)]),
       new Set([3]), h + 1);
 
@@ -237,6 +271,7 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
       });
       writeRows(ws, risky.map((c) => [c.name, partyLabel(c), num(c.outstanding), num(c.overdue)]), new Set([2, 3]), start + 2);
     }
+    finishSheet(ws, 4);
   }
 
   // 6) Thông tin xuất
@@ -244,7 +279,10 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     const ws = wb.addWorksheet("THONG_TIN_XUAT", { views: [{ showGridLines: false }] });
     ws.columns = [{ width: 26 }, { width: 60 }];
     const info = [
-      ["Báo cáo", "Kết quả kinh doanh"],
+      ["Đơn vị", company.company_name || "—"],
+      ["Mã số thuế", company.tax_code || "—"],
+      ["Địa chỉ", company.address || "—"],
+      ["Báo cáo", "Kết quả hoạt động kinh doanh"],
       ["Kỳ báo cáo", periodLabel],
       ["Trạng thái kỳ", STATUS_LABEL[meta.status] ?? meta.status],
       ["Người ký duyệt", meta.signed_off_by_name ?? "—"],
@@ -263,12 +301,5 @@ export async function exportBusinessReportToExcel(data, { periodLabel = "" } = {
     info.forEach((r) => { const row = ws.addRow(r); row.getCell(1).font = { bold: true }; });
   }
 
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `Bao Cao Kinh Doanh_${slugify(periodLabel)}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadWorkbook(wb, `Bao cao ket qua kinh doanh_${slugify(periodLabel)}.xlsx`);
 }

@@ -12,6 +12,7 @@ import {
   RiTrophyLine,
   RiCalendarLine,
   RiBarChart2Line,
+  RiArrowGoBackLine,
 } from "react-icons/ri";
 
 import { Sidebar } from "../../components/shared-ui/Sidebar";
@@ -30,6 +31,7 @@ import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
 import BusinessReportView from "./views/BusinessReportView";
+import ReversalRequestsView from "./views/ReversalRequestsView";
 import { APP_NAME } from "../../constants/brand";
 
 const SpendingView = lazy(() => import("./views/SpendingView"));
@@ -50,6 +52,7 @@ const NAV_GROUPS = [
       { key: "vehicles", label: "Quản lý xe", icon: RiTruckLine },
       { key: "spending", label: "Quản lý chi", icon: RiMoneyDollarCircleLine },
       { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
+      { key: "reversals", label: "Yêu cầu hoàn tác", icon: RiArrowGoBackLine },
     ],
   },
   {
@@ -76,6 +79,7 @@ const VIEW_META = {
   "bonus-rules": { title: "Quy tắc thưởng", subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe." },
   kpi: { title: "KPI & Xếp hạng", subtitle: "Theo dõi KPI và bảng xếp hạng của toàn bộ tài xế theo tháng, theo nhóm xe." },
   holidays: { title: "Quản lý ngày lễ", subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ hưởng thêm theo hệ số ở Quy tắc thưởng (mặc định 200%)." },
+  reversals: { title: "Yêu cầu hoàn tác", subtitle: "Duyệt các đề nghị lùi lại một thao tác đã lỡ tay — gỡ duyệt chi phí, huỷ xác nhận khoản nộp, huỷ phiếu chi. Duyệt là hệ thống hoàn tác luôn và ghi vết." },
   spending: { title: "Quản lý chi", subtitle: "Duyệt phiếu chi và theo dõi tổng hợp mọi khoản chi của công ty. Chi phí tài xế chỉ xem lịch sử — quyền duyệt thuộc Điều phối." },
 };
 
@@ -98,6 +102,7 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   vehicle_groups: "vehicles",
   maintenance_record: "vehicles",
   incidents: "dashboard",
+  reversal_requests: "reversals",
   orders: "dashboard",
   shipments: "dashboard",
   receipt: "dashboard",
@@ -173,6 +178,7 @@ export default function ManagerPage({ user, onLogout }) {
             {activeView === "bonus-rules" && <BonusRulesView />}
             {activeView === "kpi" && <KpiView />}
             {activeView === "holidays" && <HolidaysView />}
+            {activeView === "reversals" && <ReversalRequestsView />}
             {activeView === "spending" && (
               <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải quản lý chi...</div>}>
                 <SpendingView />

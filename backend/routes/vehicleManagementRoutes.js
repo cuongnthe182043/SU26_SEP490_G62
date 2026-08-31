@@ -36,6 +36,11 @@ router.post('/vehicles/:id/send-to-maintenance', managerOnly, vehicleManagementC
 router.post('/vehicles/:id/complete-maintenance', managerOnly, vehicleManagementController.completeMaintenance);
 router.post('/vehicles/:id/verify-maintenance', managerOnly, vehicleManagementController.verifyMaintenance);
 router.post('/vehicles/:id/reject-maintenance', managerOnly, vehicleManagementController.rejectMaintenance);
+
+// Kết quả đọc hóa đơn bằng AI. Kế toán được ĐỌC (đối chiếu khi ghi sổ chi phí bảo dưỡng)
+// nhưng chỉ manager được chốt phán quyết — cùng ranh giới quyền như phần còn lại của file.
+router.get('/maintenance/:recordId/receipts', canRead, vehicleManagementController.getMaintenanceReceipts);
+router.post('/receipt-extractions/:id/review', managerOnly, vehicleManagementController.reviewReceiptExtraction);
 router.post('/vehicles/:id/mark-broken', managerOnly, vehicleManagementController.markVehicleAsBroken);
 router.post('/vehicles/:id/restore', managerOnly, vehicleManagementController.restoreVehicle);
 router.post('/vehicles/:id/retire', managerOnly, vehicleManagementController.retireVehicle);

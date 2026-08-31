@@ -31,6 +31,10 @@ router.post('/:id/claim',   driverOnly, tripController.claimTrip);
 router.patch('/:id/status', driverOnly, tripController.updateStatus);
 router.post('/:id/release', driverOnly, tripController.releaseTrip);
 
+// Hoàn tác bước trạng thái vừa bấm nhầm (cửa sổ 90 giây, tầng 1).
+// Đặt cạnh /status vì đây đúng là đường lùi của nó.
+router.post('/:id/undo',    driverOnly, tripController.undoStatus);
+
 // ITEM 1: PICKING → TRANSIT — ảnh lấy hàng bắt buộc (BR-013/014)
 // Field: 'proof' | 'image' | 'photo'
 router.post(

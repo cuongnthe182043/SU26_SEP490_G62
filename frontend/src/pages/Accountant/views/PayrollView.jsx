@@ -439,7 +439,7 @@ function RevertModal({ row, onClose, onDone }) {
     setSaving(true);
     setError(null);
     try {
-      await accountantService.revertPayroll(row.id, reason.trim() || undefined);
+      await accountantService.revertPayroll(row.id, reason.trim());
       onDone();
       onClose();
       notify.success("Đã trả bảng lương về tính lại.");
@@ -472,13 +472,17 @@ function RevertModal({ row, onClose, onDone }) {
             </div>
           )}
           <Input
-            label="Lý do trả về (tuỳ chọn)" placeholder="Ví dụ: sai ngày công tháng này"
+            isRequired
+            label="Lý do trả về" placeholder="Ví dụ: sai ngày công tháng này"
             value={reason} onValueChange={setReason}
           />
         </ModalBody>
         <ModalFooter>
           <Button variant="light" onPress={onClose} isDisabled={saving}>Huỷ</Button>
-          <Button color="danger" onPress={handleSubmit} isLoading={saving}>
+          <Button
+            color="danger" onPress={handleSubmit} isLoading={saving}
+            isDisabled={!reason.trim()}
+          >
             Trả về tính lại
           </Button>
         </ModalFooter>

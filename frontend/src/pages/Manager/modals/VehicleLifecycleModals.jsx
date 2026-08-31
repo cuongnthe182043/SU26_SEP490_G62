@@ -5,6 +5,8 @@ import {
   RiErrorWarningFill, RiAlertLine, RiErrorWarningLine, RiCloseLine,
 } from "react-icons/ri";
 import { notify } from "../../../components/shared-ui/Toast";
+import ReceiptReviewPanel from "../../../components/shared-ui/ReceiptReviewPanel";
+import { managerService } from "../services/manager.service";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -176,6 +178,16 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
               Số tiền này đã được đối chiếu tự động với hóa đơn khi tài xế bấm hoàn tất.
               Việc còn lại là mắt người: hóa đơn có thật và đúng của xe này không.
             </p>
+          </div>
+          <div>
+            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
+              Máy đọc được gì trên hóa đơn
+            </div>
+            <ReceiptReviewPanel
+              recordId={vehicle?.active_maintenance_id}
+              fetchReview={managerService.getMaintenanceReceipts}
+              submitReview={managerService.reviewReceiptExtraction}
+            />
           </div>
           {rejecting ? (
             <div className="flex flex-col gap-2">

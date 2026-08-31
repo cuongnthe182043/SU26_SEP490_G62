@@ -19,6 +19,12 @@ TRUNCATE TABLE
 
     business_report_periods,
 
+    -- Kết quả đọc hóa đơn bằng AI. Trỏ tới expenses HOẶC maintenance_records qua cặp
+    -- (entity_type, entity_id) nên cố ý KHÔNG có khoá ngoại — CASCADE bên dưới không
+    -- với tới được. Bỏ sót thì sau khi reset, hóa đơn seed lại bị chấm là TRÙNG với
+    -- bản ghi của lần chạy trước: findDuplicates đối chiếu theo băm ảnh và số hóa đơn,
+    -- không theo entity_id, nên entity_id mồ côi vẫn khớp.
+    receipt_extractions,
     expense_attachments,
     expenses,
 

@@ -7,6 +7,13 @@
  * "Số lượt" định dạng thập phân biến 1 thành 100 lượt).
  */
 
+// Dấu hiệu nhận biết khối ký ở cuối biểu mẫu — những dòng này không phải dữ liệu.
+// So sau khi đã bỏ dấu (stripVN) nên viết ở dạng không dấu.
+const FOOTER_MARKERS = [
+    "nguoi lap bieu", "nguoi ghi so", "ke toan truong", "giam doc",
+    "(ky, ho ten", "ngay ", "so nay co", "ngay mo so",
+];
+
 export const PAYMENT_OPTIONS = ["CK công ty", "Tiền mặt - tài đã nộp", "Tiền mặt - tài đang giữ", "Khách nợ"];
 
 export const PAYMENT_MAP = {
@@ -158,8 +165,29 @@ export function parseWorkbook(wb, XLSX) {
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
   if (raw.length < 2) return { rows: [], errors: ["File không có dữ liệu."] };
 
-  // Map cột theo header
-  const headerRow = raw[0].map((h) => stripVN(h).replace(/\(\*\)/g, "").trim());
+  // TÌM dòng tiêu đề thay vì mặc định là dòng 1.
+  //
+  // File báo cáo xuất ra nay mở đầu bằng khối định danh đơn vị (Đơn vị / Địa chỉ / Mã số
+  // thuế) rồi mới tới tiêu đề cột — đó là khung bắt buộc của một biểu mẫu chính thức.
+  // Đọc cứng raw[0] thì file vừa xuất ra không nhập ngược lại được nữa, mà đó lại là một
+  // đường làm việc thật: kế toán xuất báo cáo, sửa vài dòng trong Excel, nhập lại.
+  //
+  // Quét 20 dòng đầu, lấy dòng khớp nhiều tên cột bắt buộc nhất. Cách này còn chịu được
+  // cả trường hợp ai đó chèn thêm một dòng ghi chú phía trên bảng.
+  const norm = (h) => stripVN(h).replace(/\(\*\)/g, "").trim();
+  const matchCount = (cells) => {
+    const cols = cells.map(norm);
+    return HEADER_KEYS.filter(([prefix]) => cols.some((h) => h.startsWith(prefix))).length;
+  };
+
+  let headerAt = 0;
+  let best = -1;
+  for (let i = 0; i < Math.min(raw.length, 20); i += 1) {
+    const n = matchCount(raw[i] ?? []);
+    if (n > best) { best = n; headerAt = i; }
+  }
+
+  const headerRow = (raw[headerAt] ?? []).map(norm);
   const colIndex = {};
   for (const [prefix, key] of HEADER_KEYS) {
     const idx = headerRow.findIndex((h) => h.startsWith(prefix));
@@ -175,12 +203,17 @@ export function parseWorkbook(wb, XLSX) {
   const rows = [];
   const errors = [];
 
-  for (let i = 1; i < raw.length; i += 1) {
+  for (let i = headerAt + 1; i < raw.length; i += 1) {
     const r = raw[i];
     if (!r || r.every((c) => String(c).trim() === "")) continue;
-    // Dòng tổng cộng của file báo cáo xuất ra — bỏ qua để file vừa export có thể mở lại
-    // và import ngược. Trước đây dòng này bị coi là dữ liệu và sinh 5 lỗi giả.
-    if (r.some((c) => stripVN(c) === "tong cong")) continue;
+    // Dòng TỔNG CỘNG khép lại phần dữ liệu của file báo cáo xuất ra. DỪNG hẳn ở đây,
+    // không chỉ bỏ qua một dòng: bên dưới nó còn khối ký (ngày tháng, "Người lập biểu",
+    // "(Ký, họ tên)"...). Những dòng đó không rỗng nên vòng lặp cũ đọc chúng như một
+    // chuyến và đẻ ra một loạt lỗi giả "thiếu biển số / thiếu tài xế".
+    if (r.some((c) => stripVN(c) === "tong cong")) break;
+
+    // Phòng trường hợp file bị xoá mất dòng tổng: nhận diện thẳng khối ký.
+    if (r.some((c) => FOOTER_MARKERS.some((m) => stripVN(c).startsWith(m)))) continue;
     const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
     const rowErr = [];
 

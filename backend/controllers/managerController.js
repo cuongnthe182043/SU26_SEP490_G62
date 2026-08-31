@@ -275,7 +275,7 @@ const revertPayroll = async (req, res) => {
         if (reason && reason.length > 500)
             return res.status(400).json({ error: 'Lý do không được vượt quá 500 ký tự.' });
 
-        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason);
+        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason, req.user.role);
 
         notificationService.getUserIdsByRole('accountant').then((ids) =>
             notificationService.createForUsers(ids, {
