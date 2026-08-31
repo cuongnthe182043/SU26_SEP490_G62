@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 const logger = require('./config/logger');
+const { buildDbConfig } = require('./config/dbConfig');
 
 /**
  * Tự chạy migration lúc backend khởi động.
@@ -42,24 +43,16 @@ const MIGRATION_LOCK_ID = 62999;   // id cố định cho pg_advisory_lock
 // start của instance này treo cho tới khi Cloud Run bỏ cuộc.
 const LOCK_TIMEOUT_MS = 60_000;
 
-// Kết nối riêng, KHÔNG kế thừa statement_timeout của pool app
+// Kết nối riêng, KHÔNG kế thừa statement_timeout của pool app.
+// Dùng chung buildDbConfig() với app: trước đây khối này tự dựng lại tham số kết nối,
+// nên mỗi lần đổi cách khai báo DB (thêm DATABASE_URL chẳng hạn) là migration lặng lẽ
+// chạy vào một database KHÁC với database mà app đang dùng.
 function createClient() {
-    const onCloudRun = Boolean(process.env.K_SERVICE);
-    const config = {
-        host: onCloudRun
-            ? `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`
-            : (process.env.DB_HOST || '127.0.0.1'),
-        port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        options: `-c timezone=${process.env.DB_TIMEZONE || 'Asia/Ho_Chi_Minh'}`,
+    return new Client({
+        ...buildDbConfig(),
         connectionTimeoutMillis: 15000,
         // statement_timeout: KHÔNG đặt — migration được phép chạy lâu
-    };
-    const useSsl = process.env.DB_SSL && String(process.env.DB_SSL).toLowerCase() !== 'false';
-    if (useSsl) config.ssl = { rejectUnauthorized: false };
-    return new Client(config);
+    });
 }
 
 function docDanhSachFile() {

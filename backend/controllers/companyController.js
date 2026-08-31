@@ -13,9 +13,13 @@ const getCompanyInfo = async (req, res) => {
 // PUT /api/company/info — manager only
 const updateCompanyInfo = async (req, res) => {
     try {
-        const { company_name, hotline, bank_name, bank_account_number, bank_account_name } = req.body;
+        const { company_name, tax_code, address, hotline, bank_name, bank_account_number, bank_account_name } = req.body;
         const info = await companyService.updateCompanyInfo(
-            { companyName: company_name, hotline, bankName: bank_name, bankAccountNumber: bank_account_number, bankAccountName: bank_account_name },
+            {
+                companyName: company_name, taxCode: tax_code, address,
+                hotline, bankName: bank_name,
+                bankAccountNumber: bank_account_number, bankAccountName: bank_account_name,
+            },
             req.user.userId,
         );
         res.json({ info });

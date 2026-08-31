@@ -94,7 +94,7 @@ const revertPayroll = async (req, res) => {
         if (reason && reason.length > 500)
             throw err400('Lý do không được vượt quá 500 ký tự.');
 
-        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason);
+        const row = await accountantPayrollRepository.revertPayrollToPending(payrollId, req.user.userId, reason, req.user.role);
         res.json({ message: 'Đã trả phiếu lương về để tính lại.', payroll: row });
     } catch (err) {
         if (!err.status) err.status = err.message.includes('không tồn tại') ? 404 : 400;

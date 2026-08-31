@@ -1,4 +1,5 @@
 const paymentVoucherRepository = require('../repositories/paymentVoucherRepository');
+const reversalService = require('./reversalService');
 const expenseRepository = require('../repositories/expenseRepository');
 const financialLedgerRepository = require('../repositories/financialLedgerRepository');
 const notificationService = require('./notificationService');
@@ -203,6 +204,15 @@ const cancelVoucher = async (id, cancelledBy, reason) => {
     if (!reason || !String(reason).trim()) throw new Error('Cần ghi rõ lý do huỷ phiếu chi');
     const trimmedReason = String(reason).trim();
     const voucher = await paymentVoucherRepository.cancel(id, cancelledBy, trimmedReason);
+
+    reversalService.recordReversal({
+        kind: 'voucher.approve',
+        entityId: voucher.id,
+        actorId: cancelledBy,
+        reason: trimmedReason,
+        oldData: { status: 'approved', amount: voucher.amount, payee: voucher.payee },
+        newData: { status: 'cancelled' },
+    });
 
     const isCompensation = Boolean(voucher.incident_id);
     const amountText = Number(voucher.amount).toLocaleString('vi-VN');

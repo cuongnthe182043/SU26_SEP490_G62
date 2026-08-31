@@ -1,4 +1,5 @@
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
+const reversalService = require('./reversalService');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
@@ -839,16 +840,34 @@ const restoreVehicle = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
     ensureVehicleStatus(vehicle, ['broken', 'retired'], 'Restore vehicle');
 
+    const reason = normalizeString(payload.resolution_note) || normalizeString(payload.note);
+
     // Xe đã thu hồi (ẩn) → chỉ cần bật lại 'active', không có sự cố nào để đóng.
     // Trước đây chỉ cho khôi phục xe 'broken' nên xe thu hồi không có đường quay lại,
     // khiến thao tác "ẩn xe" trở thành xoá vĩnh viễn.
     if (vehicle.status === 'retired') {
+        // Chỉ nhánh NÀY là hoàn tác. "Thu hồi xe" ẩn xe khỏi toàn hệ thống, bật lại là
+        // đảo một quyết định quản lý — phải nói rõ vì sao và để lại vết.
+        //
+        // Nhánh 'broken' bên dưới thì KHÔNG: xe hỏng được sửa xong rồi cho chạy lại là
+        // việc bình thường của vòng đời chiếc xe, không ai đang lùi quyết định của ai.
+        // Bắt gõ lý do ở đó chỉ làm phiền người dùng và làm loãng nhật ký hoàn tác.
+        reversalService.assertAllowed('vehicle.retire', { actorRole: 'manager', reason });
+
         await vehicleManagementRepository.unretireVehicle({
             vehicleId: vehicle.id,
             managerId: parsePositiveInteger(managerId, 'manager_id'),
             note: normalizeString(payload.resolution_note) || normalizeString(payload.note),
         });
         const restored = await getVehicleDetail(vehicle.id);
+        reversalService.recordReversal({
+            kind: 'vehicle.retire',
+            entityId: vehicle.id,
+            actorId: managerId,
+            reason,
+            oldData: { status: vehicle.status, plate_number: vehicle.plate_number },
+            newData: { status: restored?.status ?? 'active' },
+        });
         broadcastManagerVehicleChange('restored', restored);
         return restored;
     }

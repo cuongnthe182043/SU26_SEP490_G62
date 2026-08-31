@@ -121,6 +121,11 @@ export const managerService = {
   restoreVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/restore`, { method: "POST", body: payload }),
   retireVehicle: (id, payload = {}) => apiRequest(`/api/admin/vehicles/${id}/retire`, { method: "POST", body: payload }),
 
+  // Kết quả máy đọc hóa đơn bảo dưỡng (giúp manager đối chiếu bằng dữ liệu thay vì
+  // căng mắt vào ảnh). recordId = vehicle.active_maintenance_id.
+  getMaintenanceReceipts: (recordId) => apiRequest(`/api/admin/maintenance/${recordId}/receipts`),
+  reviewReceiptExtraction: (id, payload) => apiRequest(`/api/admin/receipt-extractions/${id}/review`, { method: "POST", body: payload }),
+
   // Maintenance requests (driver-submitted)
   getMaintenanceRequests: () => apiRequest("/api/admin/maintenance-requests"),
   approveMaintenanceRequest: (id, payload = {}) => apiRequest(`/api/admin/maintenance-requests/${id}/approve`, { method: "POST", body: payload }),

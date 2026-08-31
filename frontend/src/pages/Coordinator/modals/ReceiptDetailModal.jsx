@@ -204,6 +204,14 @@ export default function ReceiptDetailModal({
                     const ocr = ocrResults[expense.id];
                     const images = Array.isArray(expense.receipt_urls) ? expense.receipt_urls : [];
                     const hasImage = images.length > 0;
+                    // Ba trạng thái, không phải hai. Chi phí chuyến có những khoản không
+                    // xác thực được (vé giữ xe viết tay, phí không hóa đơn), nên gắn nhãn
+                    // "Hợp lệ" cho cả thứ máy không đọc nổi là nói quá điều hệ thống biết.
+                    // `valid` giữ lại làm đường lùi cho phản hồi kiểu cũ.
+                    const ocrVerdict = ocr?.verdict ?? (ocr?.valid === true ? "passed" : ocr?.valid === false ? "rejected" : null);
+                    const ocrHint = ocr?.reject_reason
+                      || (ocr?.warnings || []).map((w) => w.message).join(" ")
+                      || undefined;
                     return (
                       <div key={expense.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
@@ -217,10 +225,14 @@ export default function ReceiptDetailModal({
                             {hasImage && (
                               ocrLoading && !ocr ? (
                                 <Chip size="sm" variant="flat" color="primary" startContent={<RiLoader4Line size={12} className="animate-spin" />}>Đang quét</Chip>
-                              ) : ocr?.valid === true ? (
+                              ) : ocrVerdict === "passed" ? (
                                 <Chip size="sm" variant="flat" color="success" startContent={<RiCheckLine size={12} />}>Hợp lệ</Chip>
-                              ) : ocr?.valid === false ? (
-                                <Chip size="sm" variant="flat" color="danger" startContent={<RiErrorWarningLine size={12} />}>Không khớp</Chip>
+                              ) : ocrVerdict === "needs_review" ? (
+                                <Chip size="sm" variant="flat" color="warning" startContent={<RiErrorWarningLine size={12} />}
+                                  title={ocrHint}>Cần xem</Chip>
+                              ) : ocrVerdict === "rejected" ? (
+                                <Chip size="sm" variant="flat" color="danger" startContent={<RiErrorWarningLine size={12} />}
+                                  title={ocrHint}>Không khớp</Chip>
                               ) : null
                             )}
                             {!hasImage && (

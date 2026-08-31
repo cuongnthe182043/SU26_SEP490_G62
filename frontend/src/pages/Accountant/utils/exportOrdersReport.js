@@ -1,4 +1,8 @@
 import { APP_NAME } from "../../../constants/brand";
+import {
+  drawEntityHeader, drawFormTitle, drawSignatureBlock,
+  setPrintLayout, downloadWorkbook,
+} from "../../../utils/vnAccountingForm";
 // Dựng & tải file Excel báo cáo doanh thu — cùng phong cách trình bày với
 // "Template Import Don Ngoai.xlsx" (ImportExcelModal.jsx) nhưng là báo cáo XUẤT RA
 // (dữ liệu thật, có thêm chi phí + trạng thái thanh toán), không phải template nhập vào.
@@ -35,24 +39,45 @@ const fmtDate = (v) => {
   return `${parts.day}/${parts.month}/${parts.year}`;
 };
 
-export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {}) {
+export async function exportOrdersReportToExcel(rows, { filterLabel = "", company = {} } = {}) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = APP_NAME;
+  wb.creator = company.company_name || APP_NAME;
   wb.created = new Date();
 
-  const ws = wb.addWorksheet("BAO_CAO_DOANH_THU", { views: [{ state: "frozen", ySplit: 1 }] });
-  ws.columns = HEADERS.map((h) => ({ header: h, key: h, width: Math.max(h.length + 2, 14) }));
+  const ws = wb.addWorksheet("BAO_CAO_DOANH_THU");
+  ws.columns = HEADERS.map((h) => ({ width: Math.max(h.length + 2, 14) }));
 
-  const headerRow = ws.getRow(1);
+  // Khối định danh đơn vị + tên biểu + đơn vị tính, rồi mới tới tiêu đề cột.
+  //
+  // File này còn được NHẬP NGƯỢC LẠI (kế toán xuất ra, sửa vài dòng, nhập lại), nên
+  // parseImportRows đã được sửa để TÌM dòng tiêu đề thay vì mặc định là dòng 1 —
+  // không sửa chỗ đó thì thêm mấy dòng ở đây là hỏng cả đường nhập.
+  let r = drawEntityHeader(ws, { company, colCount: HEADERS.length });
+  r = drawFormTitle(ws, {
+    title: "Báo cáo doanh thu vận chuyển",
+    subtitle: filterLabel || "Toàn bộ đơn đã hoàn thành",
+    unit: "đồng",
+    colCount: HEADERS.length,
+    startRow: r,
+  });
+
+  const headerRowIndex = r;
+  const headerRow = ws.getRow(headerRowIndex);
   headerRow.height = 26;
-  headerRow.eachCell((cell) => {
+  HEADERS.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
     cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
   });
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: HEADERS.length } };
+  ws.views = [{ state: "frozen", ySplit: headerRowIndex }];
+  ws.autoFilter = {
+    from: { row: headerRowIndex, column: 1 },
+    to: { row: headerRowIndex, column: HEADERS.length },
+  };
 
   let totalCargoFee = 0, totalToll = 0, totalParking = 0, totalFuel = 0, totalRepair = 0, totalHolding = 0;
 
@@ -95,23 +120,24 @@ export async function exportOrdersReportToExcel(rows, { filterLabel = "" } = {})
     if (MONEY_COLS.has(h) && typeof cell.value === "number") cell.numFmt = "#,##0";
   });
 
+  drawSignatureBlock(ws, {
+    colCount: HEADERS.length,
+    startRow: ws.lastRow.number,
+    signers: ["Người lập biểu", "Kế toán trưởng", "Giám đốc"],
+  });
+  setPrintLayout(ws, { landscape: true, headerRows: `${headerRowIndex}:${headerRowIndex}` });
+
   // Sheet ghi chú bộ lọc đã áp dụng lúc xuất
   const wsInfo = wb.addWorksheet("THONG_TIN_XUAT", { views: [{ showGridLines: false }] });
   wsInfo.columns = [{ width: 24 }, { width: 60 }];
+  wsInfo.addRow(["Đơn vị", company.company_name || "—"]);
+  wsInfo.addRow(["Mã số thuế", company.tax_code || "—"]);
+  wsInfo.addRow(["Địa chỉ", company.address || "—"]);
   wsInfo.addRow(["Thời điểm xuất", new Date().toLocaleString("vi-VN")]);
   wsInfo.addRow(["Bộ lọc áp dụng", filterLabel || "Không lọc — toàn bộ đơn đã hoàn thành"]);
   wsInfo.addRow(["Số chuyến", rows.length]);
-  wsInfo.getRow(1).font = { bold: true };
-  wsInfo.getRow(2).font = { bold: true };
-  wsInfo.getRow(3).font = { bold: true };
+  for (let i = 1; i <= 6; i += 1) wsInfo.getRow(i).font = { bold: true };
 
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
   const ts = new Date().toISOString().slice(0, 10);
-  a.download = `Bao Cao Doanh Thu_${ts}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadWorkbook(wb, `Bao cao doanh thu van chuyen_${ts}.xlsx`);
 }

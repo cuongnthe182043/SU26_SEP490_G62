@@ -28,8 +28,14 @@ export const tripService = {
     getPoolShipmentDetail: (shipmentId: number) =>
         apiClient.get<import('@/types/trip').TripPoolItem>(`/api/trips/pool-shipment/${shipmentId}`),
 
-    updateStatus: (tripId: number, status: TripStatus, reason?: string) =>
-        apiClient.patch<UpdateStatusResponse>(`/api/trips/${tripId}/status`, { status, reason }),
+    updateStatus: (tripId: number, status: TripStatus, reason?: string, version?: number) =>
+        apiClient.patch<UpdateStatusResponse>(`/api/trips/${tripId}/status`, { status, reason, version }),
+
+    // Hoàn tác bước vừa bấm. version là BẮT BUỘC: bấm đúp lúc mạng lag sẽ gửi hai lần
+    // cùng một version, server nhận cái đầu và từ chối cái sau — nếu không có nó thì
+    // lệnh thứ hai sẽ lùi tiếp một bước nữa.
+    undo: (tripId: number, version: number) =>
+        apiClient.post<UpdateStatusResponse>(`/api/trips/${tripId}/undo`, { version }),
 
     // ARRIVED → COMPLETED: upload ảnh xác nhận giao hàng (BR-015/016/017).
     // formData = null khi proof đã capture per-stop rồi (không cần ảnh nữa) — gửi JSON

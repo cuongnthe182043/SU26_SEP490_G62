@@ -1,34 +1,41 @@
 import { APP_NAME } from "../../../constants/brand";
-const BRAND_BLUE = "FF2563EB";
-const BRAND_DARK = "FF1E293B";
-const HEADER_TEXT = "FFFFFFFF";
-const SUBTLE_FILL = "FFF8FAFC";
-const INFO_FILL = "FFEFF6FF";
-const WARNING_FILL = "FFFFFBEB";
-const BORDER_COLOR = "FFE2E8F0";
-const MONEY_FORMAT = '#,##0';
+import {
+  TT200, MONEY_FORMAT, DATE_FORMAT, allBorders,
+  drawEntityHeader, drawFormTitle, drawBookFooter, drawSignatureBlock,
+  setPrintLayout, downloadWorkbook,
+} from "../../../utils/vnAccountingForm";
 
-const thin = { style: "thin", color: { argb: BORDER_COLOR } };
-const allBorders = { top: thin, left: thin, right: thin, bottom: thin };
+/**
+ * SỔ NHẬT KÝ CHUNG — Mẫu số S03a-DN (Thông tư 200/2014/TT-BTC).
+ *
+ * Khác biệt lớn nhất so với bản trước: một bút toán chiếm HAI DÒNG chứ không phải một.
+ *
+ * Bản cũ in mỗi bút toán một dòng với hai cột "TK Nợ" và "TK Có" — đọc được, nhưng đó
+ * không phải nhật ký chung. Sổ nhật ký chung ghi theo VẾ: mỗi vế một dòng, cột "Số hiệu
+ * TK đối ứng" mang số tài khoản, và số tiền rơi vào cột Nợ hoặc cột Có tuỳ vế. Cách ghi
+ * đó mới cho ra dòng "Cộng số phát sinh" với tổng Nợ = tổng Có — phép cân đối là lý do
+ * tồn tại của cuốn sổ này, và bản cũ không có nó.
+ *
+ * Cột theo đúng mẫu: Ngày ghi sổ | Chứng từ (Số hiệu, Ngày tháng) | Diễn giải |
+ * Đã ghi Sổ Cái | STT dòng | Số hiệu TK đối ứng | Số phát sinh (Nợ, Có).
+ */
 
-// Không còn cột tách cước/chi hộ: sổ ghi sẵn hai dòng riêng (Có 3388 phần chi hộ,
-// Có 131 phần cước) ngay tại bút toán tiền về, nên TK Có đã nói đủ.
+const COLUMNS = [
+  { header: "Ngày, tháng\nghi sổ", ordinal: "A", width: 13 },
+  { header: "Số hiệu",             ordinal: "B", width: 12 },
+  { header: "Ngày, tháng",         ordinal: "C", width: 13 },
+  { header: "Diễn giải",           ordinal: "D", width: 52 },
+  { header: "Đã ghi\nSổ Cái",      ordinal: "E", width: 9  },
+  { header: "STT\ndòng",           ordinal: "G", width: 7  },
+  { header: "Số hiệu\nTK đối ứng", ordinal: "H", width: 12 },
+  { header: "Nợ",                  ordinal: "1", width: 18, money: true },
+  { header: "Có",                  ordinal: "2", width: 18, money: true },
+];
+const COL_COUNT = COLUMNS.length;
+
 const RAW_HEADERS = [
   "id", "ngay_phat_sinh", "loai_su_kien", "dien_giai", "tk_no", "tk_co",
   "so_tien", "but_toan_dao", "ref_type", "ref_id",
-];
-
-const DISPLAY_COLUMNS = [
-  { header: "Mã bút toán", key: "id", width: 14 },
-  { header: "Ngày phát sinh", key: "occurredAt", width: 22 },
-  { header: "Loại sự kiện", key: "eventLabel", width: 24 },
-  { header: "Diễn giải", key: "description", width: 46 },
-  { header: "TK Nợ", key: "debitAccount", width: 12 },
-  { header: "TK Có", key: "creditAccount", width: 12 },
-  { header: "Số tiền", key: "amount", width: 18, money: true },
-  { header: "Bút toán đảo", key: "reversalOf", width: 15 },
-  { header: "Loại tham chiếu", key: "refType", width: 18 },
-  { header: "Mã tham chiếu", key: "refId", width: 15 },
 ];
 
 function parseCsvLine(line) {
@@ -56,30 +63,28 @@ function parseCsvLine(line) {
 }
 
 function parseLedgerCsv(csv) {
-  const clean = String(csv || "").replace(/^\uFEFF/, "");
+  const clean = String(csv || "").replace(/^﻿/, "");
   const lines = clean.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length <= 1) return [];
 
-  const headers = parseCsvLine(lines[0]);
-  const keys = headers.length ? headers : RAW_HEADERS;
-
   return lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
-    return Object.fromEntries(keys.map((key, index) => [key, values[index] ?? ""]));
+    const row = {};
+    RAW_HEADERS.forEach((key, i) => { row[key] = values[i] ?? ""; });
+    return row;
   });
 }
 
-function toNumber(value) {
-  if (value === "" || value == null) return null;
-  const n = Number(String(value).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : null;
-}
+const toNumber = (value) => {
+  const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
 
-function toDate(value) {
-  if (!value) return "";
+const toDate = (value) => {
+  if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date;
-}
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 function normalizeRows(csv) {
   return parseLedgerCsv(csv).map((row) => ({
@@ -91,143 +96,156 @@ function normalizeRows(csv) {
     creditAccount: row.tk_co,
     amount: toNumber(row.so_tien),
     reversalOf: row.but_toan_dao,
-    refType: row.ref_type,
-    refId: row.ref_id,
   }));
 }
 
-function styleHeaderRow(row) {
-  row.height = 26;
-  row.eachCell((cell) => {
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
-    cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
-    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.border = allBorders;
-  });
+/** Diễn giải hiển thị: loại sự kiện + mô tả, và nói rõ khi là bút toán đảo. */
+function describe(item) {
+  const parts = [];
+  if (item.eventLabel) parts.push(item.eventLabel);
+  if (item.description) parts.push(item.description);
+  const text = parts.join(" — ") || "(không có diễn giải)";
+  return item.reversalOf ? `${text}  [đảo bút toán #${item.reversalOf}]` : text;
 }
 
-function styleDataRow(row, rowIndex) {
-  row.height = 24;
-  row.eachCell((cell, colNumber) => {
-    const column = DISPLAY_COLUMNS[colNumber - 1];
-    cell.border = allBorders;
-    cell.alignment = {
-      vertical: "middle",
-      horizontal: column?.money ? "right" : colNumber >= 5 && colNumber <= 6 ? "center" : "left",
-      wrapText: colNumber === 4,
-    };
-    if (column?.money && typeof cell.value === "number") cell.numFmt = MONEY_FORMAT;
-    if (cell.value instanceof Date) cell.numFmt = "dd/mm/yyyy hh:mm";
-    if (rowIndex % 2 === 0) {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBTLE_FILL } };
+function drawTableHead(ws, startRow) {
+  const r1 = startRow;
+  const r2 = startRow + 1;
+  const r3 = startRow + 2;
+
+  // Hàng 1–2: tiêu đề hai tầng. "Chứng từ" gộp 2 cột con, "Số phát sinh" gộp 2 cột con,
+  // các cột còn lại gộp dọc qua hai hàng.
+  const single = [1, 4, 5, 6, 7];
+  single.forEach((c) => ws.mergeCells(r1, c, r2, c));
+  ws.mergeCells(r1, 2, r1, 3);   // Chứng từ
+  ws.mergeCells(r1, 8, r1, 9);   // Số phát sinh
+
+  ws.getCell(r1, 1).value = COLUMNS[0].header;
+  ws.getCell(r1, 2).value = "Chứng từ";
+  ws.getCell(r2, 2).value = COLUMNS[1].header;
+  ws.getCell(r2, 3).value = COLUMNS[2].header;
+  ws.getCell(r1, 4).value = COLUMNS[3].header;
+  ws.getCell(r1, 5).value = COLUMNS[4].header;
+  ws.getCell(r1, 6).value = COLUMNS[5].header;
+  ws.getCell(r1, 7).value = COLUMNS[6].header;
+  ws.getCell(r1, 8).value = "Số phát sinh";
+  ws.getCell(r2, 8).value = COLUMNS[7].header;
+  ws.getCell(r2, 9).value = COLUMNS[8].header;
+
+  [r1, r2].forEach((r) => {
+    ws.getRow(r).height = 22;
+    for (let c = 1; c <= COL_COUNT; c += 1) {
+      const cell = ws.getCell(r, c);
+      cell.font = { bold: true, size: 10 };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = allBorders;
     }
   });
-}
 
-function addInfoSheet(wb, { from, to, rowCount, totalAmount }) {
-  const ws = wb.addWorksheet("THONG_TIN_XUAT", { views: [{ showGridLines: false }] });
-  ws.columns = [{ width: 26 }, { width: 56 }];
-
-  const rows = [
-    ["Báo cáo", "Nhật ký tài chính"],
-    ["Kỳ kế toán", `${from} đến ${to}`],
-    ["Thời điểm xuất", new Date()],
-    ["Số bút toán", rowCount],
-    ["Tổng phát sinh", totalAmount],
-    ["Ghi chú", `File được tạo từ dữ liệu đã chốt kỳ trên hệ thống ${APP_NAME}.`],
-  ];
-
-  rows.forEach((values, index) => {
-    const row = ws.addRow(values);
-    row.eachCell((cell, colNumber) => {
-      cell.border = allBorders;
-      cell.alignment = { vertical: "middle", wrapText: true };
-      if (colNumber === 1) {
-        cell.font = { bold: true, color: { argb: BRAND_DARK } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: INFO_FILL } };
-      }
-      if (index === 2 && colNumber === 2) cell.numFmt = "dd/mm/yyyy hh:mm";
-      if (index === 4 && colNumber === 2) cell.numFmt = MONEY_FORMAT;
-    });
+  // Hàng 3: ký hiệu cột (A, B, C, D, E, G, H, 1, 2) — phần của biểu mẫu chuẩn, dùng để
+  // đối chiếu khi ai đó dẫn chiếu "cột H" trong biên bản kiểm tra.
+  ws.getRow(r3).height = 14;
+  COLUMNS.forEach((col, i) => {
+    const cell = ws.getCell(r3, i + 1);
+    cell.value = col.ordinal;
+    cell.font = { italic: true, size: 9 };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    cell.border = allBorders;
   });
+
+  return r3 + 1;
 }
 
-export async function exportLedgerCsvToExcel(csv, { from, to } = {}) {
-  const rows = normalizeRows(csv);
-  if (rows.length === 0) throw new Error("Không có dữ liệu để xuất Excel.");
+function writeLine(ws, rowIndex, values) {
+  const row = ws.getRow(rowIndex);
+  values.forEach((v, i) => { row.getCell(i + 1).value = v; });
+  row.height = 18;
+  COLUMNS.forEach((col, i) => {
+    const cell = row.getCell(i + 1);
+    cell.border = allBorders;
+    cell.font = { size: 10 };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: col.money ? "right" : i === 3 ? "left" : "center",
+      wrapText: i === 3,
+    };
+    if (col.money && typeof cell.value === "number") cell.numFmt = MONEY_FORMAT;
+    if (cell.value instanceof Date) cell.numFmt = DATE_FORMAT;
+  });
+  return row;
+}
+
+export async function exportLedgerCsvToExcel(csv, { from, to, company = {} } = {}) {
+  const items = normalizeRows(csv);
+  if (items.length === 0) throw new Error("Không có dữ liệu để xuất Excel.");
 
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = APP_NAME;
+  wb.creator = company.company_name || APP_NAME;
   wb.created = new Date();
 
-  const ws = wb.addWorksheet("NHAT_KY_TAI_CHINH", {
-    views: [{ state: "frozen", ySplit: 5, showGridLines: false }],
+  const ws = wb.addWorksheet("S03a-DN", { views: [{ showGridLines: false }] });
+  ws.columns = COLUMNS.map((c) => ({ width: c.width }));
+
+  let r = drawEntityHeader(ws, { company, form: TT200.NHAT_KY_CHUNG, colCount: COL_COUNT });
+
+  const namKy = (() => {
+    const d = toDate(from) || toDate(to);
+    return d ? d.getFullYear() : new Date().getFullYear();
+  })();
+
+  r = drawFormTitle(ws, {
+    title: "Sổ Nhật ký chung",
+    period: `Năm: ${namKy}`,
+    subtitle: from && to ? `Kỳ ghi sổ: từ ngày ${from} đến ngày ${to}` : null,
+    unit: "đồng",
+    colCount: COL_COUNT,
+    startRow: r,
   });
 
-  ws.columns = DISPLAY_COLUMNS.map((col) => ({
-    header: col.header,
-    key: col.key,
-    width: col.width,
-  }));
+  const headRow = r;
+  r = drawTableHead(ws, r);
+  const firstDataRow = r;
 
-  ws.spliceRows(1, 0, [], [], [], []);
-  ws.mergeCells(1, 1, 1, DISPLAY_COLUMNS.length);
-  ws.mergeCells(2, 1, 2, DISPLAY_COLUMNS.length);
-  ws.mergeCells(3, 1, 3, DISPLAY_COLUMNS.length);
+  let tongNo = 0;
+  let tongCo = 0;
 
-  ws.getCell("A1").value = "NHẬT KÝ TÀI CHÍNH";
-  ws.getCell("A1").font = { bold: true, size: 18, color: { argb: BRAND_DARK } };
-  ws.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(1).height = 30;
+  items.forEach((item) => {
+    const ngay = item.occurredAt;
+    const dienGiai = describe(item);
 
-  ws.getCell("A2").value = `Kỳ kế toán: ${from || "-"} đến ${to || "-"}`;
-  ws.getCell("A2").font = { size: 11, color: { argb: "FF475569" } };
-  ws.getCell("A2").alignment = { vertical: "middle", horizontal: "center" };
+    // Vế Nợ
+    writeLine(ws, r, [ngay, item.id, ngay, dienGiai, "x", 1, item.debitAccount, item.amount, null]);
+    r += 1;
 
-  ws.getCell("A3").value = `Xuất lúc: ${new Date().toLocaleString("vi-VN")} | Số bút toán: ${rows.length}`;
-  ws.getCell("A3").font = { italic: true, size: 10, color: { argb: "FF64748B" } };
-  ws.getCell("A3").alignment = { vertical: "middle", horizontal: "center" };
+    // Vế Có — chứng từ và diễn giải không lặp lại, đúng cách trình bày của sổ
+    writeLine(ws, r, [null, null, null, "", "", 2, item.creditAccount, null, item.amount]);
+    r += 1;
 
-  const headerRow = ws.getRow(5);
-  DISPLAY_COLUMNS.forEach((column, index) => {
-    headerRow.getCell(index + 1).value = column.header;
-  });
-  styleHeaderRow(headerRow);
-  ws.autoFilter = {
-    from: { row: 5, column: 1 },
-    to: { row: 5, column: DISPLAY_COLUMNS.length },
-  };
-
-  let totalAmount = 0;
-
-  rows.forEach((item, index) => {
-    const row = ws.addRow(DISPLAY_COLUMNS.map((column) => item[column.key] ?? ""));
-    styleDataRow(row, index);
-    totalAmount += Number(item.amount) || 0;
+    tongNo += item.amount;
+    tongCo += item.amount;
   });
 
-  const totalRow = ws.addRow([
-    "", "", "", "TỔNG CỘNG", "", "", totalAmount, "", "", "",
-  ]);
-  totalRow.height = 26;
-  totalRow.eachCell((cell, colNumber) => {
-    const column = DISPLAY_COLUMNS[colNumber - 1];
-    cell.font = { bold: true, color: { argb: BRAND_DARK } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: WARNING_FILL } };
-    cell.border = { top: { style: "double", color: { argb: BORDER_COLOR } }, left: thin, right: thin, bottom: thin };
-    cell.alignment = { vertical: "middle", horizontal: column?.money ? "right" : "left" };
-    if (column?.money && typeof cell.value === "number") cell.numFmt = MONEY_FORMAT;
+  // Dòng cộng — tổng Nợ phải bằng tổng Có, đó là phép cân đối của cuốn sổ
+  const totalRow = writeLine(ws, r, ["", "", "", "Cộng số phát sinh", "", "", "", tongNo, tongCo]);
+  totalRow.eachCell((cell) => { cell.font = { bold: true, size: 10 }; });
+  ws.mergeCells(r, 1, r, 7);
+  ws.getCell(r, 1).value = "Cộng số phát sinh";
+  ws.getCell(r, 1).alignment = { vertical: "middle", horizontal: "center" };
+  ws.getCell(r, 1).font = { bold: true, size: 10 };
+  r += 1;
+
+  r = drawBookFooter(ws, {
+    colCount: COL_COUNT,
+    startRow: r,
+    openedAt: from ? `ngày ${from}` : null,
   });
 
-  addInfoSheet(wb, { from, to, rowCount: rows.length, totalAmount });
+  drawSignatureBlock(ws, { colCount: COL_COUNT, startRow: r });
 
-  const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `Nhat Ky Tai Chinh_${from || "tu-ngay"}_${to || "den-ngay"}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // Sổ nhật ký thường dài nhiều trang: lặp lại tiêu đề bảng ở mọi trang, nếu không thì
+  // từ trang 2 trở đi người đọc không biết cột nào là Nợ, cột nào là Có.
+  setPrintLayout(ws, { landscape: true, headerRows: `${headRow}:${firstDataRow - 1}` });
+
+  await downloadWorkbook(wb, `So Nhat ky chung_${from || "tu-ngay"}_${to || "den-ngay"}.xlsx`);
 }

@@ -1,4 +1,5 @@
 const expenseRepository = require('../repositories/expenseRepository');
+const reversalService = require('./reversalService');
 const tripRepository    = require('../repositories/tripRepository');
 const profileRepository = require('../repositories/profileRepository');
 const roleRepository    = require('../repositories/roleRepository');
@@ -98,12 +99,27 @@ const approveExpense = async (expenseId, reviewerId) => {
     return expense;
 };
 
-// Gỡ duyệt — cách duy nhất để cứu một chi phí đã duyệt nhưng sai số tiền
-const unapproveExpense = async (expenseId, reviewerId) => {
+// Gỡ duyệt — cách duy nhất để cứu một chi phí đã duyệt nhưng sai số tiền.
+//
+// Tầng 2: đã sinh bút toán ghi nhận chi phí nên phải có lý do và phải để lại vết.
+// Trước đây hàm này không hỏi gì và không ghi gì — kế toán tự duyệt rồi tự gỡ thì
+// không ai truy được, mà đó đúng là chỗ dễ bị lạm dụng nhất.
+const unapproveExpense = async (expenseId, reviewerId, reason = null, actorRole = 'accountant') => {
+    reversalService.assertAllowed('expense.approve', { actorRole, reason });
+
     const expense = await expenseRepository.unapproveExpense(expenseId, reviewerId);
     if (!expense) {
         throw new Error('Không gỡ duyệt được: chi phí chưa được duyệt, đã được hoàn tiền cho tài xế, hoặc phiếu thu của đơn đã chốt');
     }
+
+    reversalService.recordReversal({
+        kind: 'expense.approve',
+        entityId: expense.id,
+        actorId: reviewerId,
+        reason,
+        oldData: { status: 'approved', amount: expense.amount, expense_type: expense.expense_type },
+        newData: { status: 'pending' },
+    });
 
     notificationService.createForUser(expense.created_by, {
         title: 'Chi phí cần khai lại',

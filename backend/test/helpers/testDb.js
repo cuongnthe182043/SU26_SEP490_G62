@@ -12,7 +12,15 @@ const schemaPath = path.join(__dirname, '../../../DB script/DB script.sql');
 async function setupTestDb() {
     const container = await new PostgreSqlContainer('postgres:16-alpine').start();
 
+    // XOÁ TRƯỚC KHI SET: buildDbConfig() ưu tiên DATABASE_URL hơn mọi biến DB_* rời.
+    // Còn sót nó trong .env là bộ test nối thẳng vào Supabase thật rồi nạp đè nguyên
+    // `DB script.sql` lên đó — mất sạch dữ liệu, và không có bước nào hỏi lại.
+    delete process.env.DATABASE_URL;
+
     process.env.DB_HOST = container.getHost();
+    // Ép tắt TLS: container test không có chứng chỉ. buildDbConfig() tự bật TLS cho
+    // host "không phải localhost", mà getHost() có thể trả về IP khi Docker chạy từ xa.
+    process.env.DB_SSL = 'false';
     process.env.DB_PORT = container.getPort();
     process.env.DB_NAME = container.getDatabase();
     process.env.DB_USER = container.getUsername();

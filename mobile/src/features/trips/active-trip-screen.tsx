@@ -36,6 +36,7 @@ import { CameraModal }      from './components/camera-modal';
 import { ExpenseFormModal }  from './components/expense-form-modal';
 import { PhotoCaptureCard }  from './components/photo-capture-card';
 import { ReasonModal }      from './components/reason-modal';
+import { UndoBar }          from './components/undo-bar';
 import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status-stepper';
 
 // Toast message shown after each lifecycle transition
@@ -507,11 +508,33 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
 }) {
     const { showToast }   = useToast();
 
-    const { isLoading: lifecycleLoading, advance } = useTripLifecycle((updatedTrip) => {
-        const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
-        if (msg) showToast({ type: 'success', message: msg, duration: 2500 });
-        refresh();
-    });
+    const { isLoading: lifecycleLoading, advance, undo } = useTripLifecycle(
+        (updatedTrip) => {
+            const msg = STATUS_ADVANCE_TOAST[updatedTrip.status as TripStatus];
+            if (msg) showToast({ type: 'success', message: msg, duration: 2500 });
+            refresh();
+        },
+        () => {
+            // Thông báo ngắn và không kèm dấu tích: người dùng vừa SỬA một lỗi, không
+            // phải vừa hoàn thành một việc. Mừng rỡ ở đây là lạc điệu.
+            showToast({ type: 'info', message: 'Đã quay lại bước trước', duration: 2000 });
+            refresh();
+        },
+    );
+
+    const handleUndo = async () => {
+        const ok = await undo(trip.id, trip.version);
+        if (!ok) {
+            // Hết hạn / có người đổi trong lúc đó — tải lại để nút biến mất thay vì
+            // đứng đó mời bấm tiếp vào chỗ không còn hoàn tác được.
+            showToast({
+                type: 'error',
+                message: 'Không hoàn tác được nữa — hãy báo điều phối nếu bấm nhầm',
+                duration: 3500,
+            });
+            refresh();
+        }
+    };
 
     const [permission, requestPermission] = useCameraPermissions();
 
@@ -978,12 +1001,15 @@ function ActiveTripContent({ trip, refresh, ngoaiTuyen, savedAt }: {
                     </YStack>
                 ) : null}
 
+                {/* ── Hoàn tác bước vừa bấm (cửa sổ ngắn, server quyết) ── */}
+                <UndoBar trip={trip} onUndo={() => void handleUndo()} isWorking={isWorking} />
+
                 {/* ── Primary action (non-special statuses) ── */}
                 {nextAction && !isArrived && !isPicking && !isReturning ? (
                     <LifecycleActionButton
                         label={nextAction.label}
                         tone={nextAction.tone}
-                        onPress={() => void advance(trip.id, nextAction.nextStatus)}
+                        onPress={() => void advance(trip.id, nextAction.nextStatus, undefined, trip.version)}
                         isLoading={isWorking}
                     />
                 ) : null}

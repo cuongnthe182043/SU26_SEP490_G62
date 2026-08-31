@@ -226,6 +226,13 @@ const reverseTransaction = async (ftId, { reason, actorId }, executor = pool) =>
     if (!original) throw new Error('Không tìm thấy bút toán');
     if (original.reversal_of_id) throw new Error('Đây đã là bút toán đảo — không đảo tiếp được');
     if (original.reversed_by_id) throw new Error('Bút toán này đã được đảo trước đó');
+    // Đã xuất ra file kế toán thì bản ngoài hệ thống đã có con số đó. Đảo ở đây làm sổ
+    // trong máy lệch với bản đã nộp, mà không ai biết cho tới lúc đối chiếu cuối kỳ.
+    // Sai sót của kỳ đã chốt phải xử lý bằng bút toán điều chỉnh của kỳ SAU.
+    if (original.exported_at) {
+        const ky = original.export_batch_id ? ` (kỳ ${original.export_batch_id})` : '';
+        throw new Error(`Bút toán #${original.id} đã xuất ra sổ kế toán${ky} — không đảo được; sai sót của kỳ đã chốt phải điều chỉnh ở kỳ sau`);
+    }
 
     const { rows: [reversal] } = await executor.query(
         `INSERT INTO financial_transactions

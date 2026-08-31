@@ -70,6 +70,13 @@ export type ActiveTrip = {
     is_final_shipment: boolean;
     max_shipment_index: number;
     stops: TripStop[];
+
+    // Khả năng hoàn tác do SERVER chốt, app không tự tính.
+    // undo_expires_at là mốc tuyệt đối: máy lệch giờ vẫn đếm ngược đúng khoảng còn lại,
+    // trong khi tự cộng 90 giây vào đồng hồ máy thì lệch bao nhiêu sai bấy nhiêu.
+    can_undo?: boolean;
+    undo_back_to?: TripStatus;
+    undo_expires_at?: string;
 };
 
 export type TripPoolPagination = {
