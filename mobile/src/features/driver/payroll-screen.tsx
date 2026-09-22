@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, KeyboardAvoidingView,
     Platform, Pressable, RefreshControl, ScrollView,
     StyleSheet, TextInput, View,
 } from 'react-native';
@@ -15,6 +15,7 @@ import { AppText }     from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
 import { PayrollSkeleton, SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { usePayroll, usePayrollEstimate, useSalaryAdvance } from '@/hooks/use-payroll';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import type { Payroll, PayrollEstimate, SalaryAdvance } from '@/services/payroll-service';
@@ -454,7 +455,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
     };
 
     return (
-        <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+        <AppModal visible animationType="slide" transparent onRequestClose={onClose}>
             <KeyboardAvoidingView
                 style={s.modalOverlay}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -529,7 +530,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
                     </XStack>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </AppModal>
     );
 }
 

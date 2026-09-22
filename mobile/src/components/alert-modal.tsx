@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet } from 'react-native';
+import { Animated, BackHandler, Pressable, StyleSheet } from 'react-native';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -74,6 +74,15 @@ export function AlertModal({ opts, onClose }: Props) {
             }),
         ]).start(() => onClose());
     };
+
+    // Như ConfirmModal: Back đóng thông báo thay vì lùi màn hình bên dưới.
+    useEffect(() => {
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            dismiss();
+            return true;
+        });
+        return () => sub.remove();
+    }, []);
 
     return (
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>

@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Modal,
     Pressable,
     RefreshControl,
     View,
@@ -28,6 +27,7 @@ import { AppText }              from '@/components/app-text';
 import { ScreenHeader }         from '@/components/screen-header';
 import { NotificationSkeleton } from '@/components/skeleton';
 import { appTheme }             from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { useNotifications } from '@/hooks/use-notifications';
 import type { AppNotification } from '@/types/notification';
 
@@ -180,7 +180,7 @@ function NotificationDetailModal({ item, onClose }: { item: AppNotification | nu
     })();
 
     return (
-        <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+        <AppModal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
             <Pressable
                 style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
                 onPress={onClose}
@@ -250,7 +250,7 @@ function NotificationDetailModal({ item, onClose }: { item: AppNotification | nu
                     </XStack>
                 </Pressable>
             </Pressable>
-        </Modal>
+        </AppModal>
     );
 }
 

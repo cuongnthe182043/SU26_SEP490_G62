@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
 import { AppText }   from '@/components/app-text';
 import { appTheme }  from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 
 type Props = {
     visible: boolean;
@@ -45,7 +46,7 @@ export function ReasonModal({
     };
 
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+        <AppModal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
             <KeyboardAvoidingView
                 style={s.overlay}
                 behavior={Platform.OS === 'ios' ? 'position' : 'height'}
@@ -99,7 +100,7 @@ export function ReasonModal({
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
-        </Modal>
+        </AppModal>
     );
 }
 

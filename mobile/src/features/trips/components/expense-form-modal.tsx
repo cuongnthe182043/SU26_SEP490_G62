@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    Alert, Animated, Modal, Platform,
+    Alert, Animated, Platform,
     Pressable, ScrollView, StyleSheet, TextInput, View,
  KeyboardAvoidingView } from 'react-native';
 
@@ -14,6 +14,7 @@ import { AppButton }  from '@/components/app-button';
 import { AppText }    from '@/components/app-text';
 import { FormField }  from '@/components/form-field';
 import { appTheme }   from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { tripService } from '@/services/trip-service';
 import { sendOrQueue } from '@/lib/send-or-queue';
@@ -194,7 +195,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     // ── Inline camera fullscreen ──
     if (showCamera) {
         return (
-            <Modal visible animationType="slide" statusBarTranslucent onRequestClose={() => setShowCamera(false)}>
+            <AppModal visible animationType="slide" statusBarTranslucent onRequestClose={() => setShowCamera(false)}>
                 <View style={cam.container}>
                     <StatusBar style="light" />
                     <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
@@ -219,13 +220,13 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                         </Pressable>
                     </View>
                 </View>
-            </Modal>
+            </AppModal>
         );
     }
 
     return (
         // animationType="none" — tự handle animation để nội dung và nền cùng lên 1 lúc
-        <Modal
+        <AppModal
             visible={visible}
             transparent
             animationType="none"
@@ -414,7 +415,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                     </XStack>
                 </Animated.View>
             </KeyboardAvoidingView>
-        </Modal>
+        </AppModal>
     );
 }
 
