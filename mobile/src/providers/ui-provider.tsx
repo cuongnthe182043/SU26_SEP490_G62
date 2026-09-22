@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ToastOverlay } from '@/components/toast';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { AlertModal } from '@/components/alert-modal';
@@ -41,6 +41,44 @@ type UIContextValue = {
 };
 
 const UIContext = createContext<UIContextValue | null>(null);
+
+// Toast / hộp xác nhận / thông báo là View thường vẽ ở gốc app, nên luôn nằm DƯỚI mọi
+// native <Modal> (camera toàn màn hình, bottom sheet...). Đã gặp: đang chụp hóa đơn bảo
+// dưỡng thì quản lý trả chứng từ về → thông báo hiện sau lưng camera, tài xế không thấy,
+// đóng camera ra mới thấy nó đè lên lúc ảnh đang gửi. Nên nội dung mỗi Modal được bọc
+// trong <UIOverlaySlot> (qua AppModal) và lớp phủ được vẽ vào slot của Modal nằm trên
+// cùng; không Modal nào mở thì vẽ ở gốc như cũ.
+//
+// "Trên cùng" = lồng sâu nhất, không phải mount sau cùng: Modal lồng trong Modal hiện đè
+// lên Modal cha, mà thứ tự render/effect không cho biết điều đó (effect chạy con trước
+// cha; slot cha có thể mount lại khi Modal con đang mở).
+type Slot = { id: number; depth: number };
+
+type OverlaySlotContextValue = {
+    topSlot: number | null;
+    overlays: React.ReactNode;
+    register: (slot: Slot) => () => void;
+};
+
+const OverlaySlotContext = createContext<OverlaySlotContextValue | null>(null);
+const SlotDepthContext = createContext(0);
+
+let slotSeq = 0;
+
+/** Bọc TOÀN BỘ nội dung của một native <Modal>. Dùng qua AppModal, không gắn tay. */
+export function UIOverlaySlot({ children }: { children?: React.ReactNode }) {
+    const ctx = useContext(OverlaySlotContext);
+    const depth = useContext(SlotDepthContext) + 1;
+    const [id] = useState(() => ++slotSeq);
+    const register = ctx?.register;
+    useEffect(() => register?.({ id, depth }), [register, id, depth]);
+    return (
+        <SlotDepthContext.Provider value={depth}>
+            {children}
+            {ctx?.topSlot === id ? ctx.overlays : null}
+        </SlotDepthContext.Provider>
+    );
+}
 
 export function useToast() {
     const ctx = useContext(UIContext);
@@ -111,9 +149,19 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         alertResolveRef.current = null;
     }, []);
 
-    return (
-        <UIContext.Provider value={{ showToast, showConfirm, showAlert }}>
-            {children}
+    // ── Overlay slots ──
+    const [slots, setSlots] = useState<Slot[]>([]);
+    const register = useCallback((slot: Slot) => {
+        setSlots((cur) => [...cur, slot]);
+        return () => setSlots((cur) => cur.filter((x) => x.id !== slot.id));
+    }, []);
+    // Sâu nhất thắng; cùng độ sâu (hai Modal ngang hàng) thì cái mở sau nằm trên.
+    const topSlot = slots.reduce<Slot | null>(
+        (top, x) => (!top || x.depth >= top.depth ? x : top), null,
+    )?.id ?? null;
+
+    const overlays = (
+        <>
             {toast && (
                 <ToastOverlay key={toast.id} toast={toast} onHide={handleToastHide} />
             )}
@@ -123,6 +171,15 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
             {alert && (
                 <AlertModal opts={alert} onClose={handleAlertClose} />
             )}
+        </>
+    );
+
+    return (
+        <UIContext.Provider value={{ showToast, showConfirm, showAlert }}>
+            <OverlaySlotContext.Provider value={{ topSlot, overlays, register }}>
+                {children}
+                {topSlot === null ? overlays : null}
+            </OverlaySlotContext.Provider>
         </UIContext.Provider>
     );
 }

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, KeyboardAvoidingView,
     Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +16,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { CameraModal }  from '@/features/trips/components/camera-modal';
 import { MaintenanceCardSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { useMaintenance } from '@/hooks/use-maintenance';
 import { maintenanceService } from '@/services/maintenance-service';
 import type { MaintenanceRecord, MaintenanceStatus, MaintenanceType } from '@/types/maintenance';
@@ -454,6 +456,7 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
     const [showCamera, setShowCamera] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const insets = useSafeAreaInsets();
 
     const handleSubmit = async () => {
         if (!reason.trim()) {
@@ -474,26 +477,16 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
         }
     };
 
-    if (showCamera) {
-        return (
-            <CameraModal
-                visible
-                label="Chụp chứng từ / báo giá"
-                onCapture={(uri) => { setBillUris((prev) => [...prev, uri]); setShowCamera(false); }}
-                onClose={() => setShowCamera(false)}
-                confirmBeforeUse
-            />
-        );
-    }
-
     return (
-        <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+        <AppModal visible animationType="slide" transparent onRequestClose={onClose}>
+            {/* Modal tràn viền nên Android không tự co cửa sổ khi hiện bàn phím — thiếu
+                behavior thì bàn phím che mất ô "Lý do" và nút gửi. */}
             <KeyboardAvoidingView
                 style={s2.modalOverlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
                 <Pressable style={s2.modalBackdrop} onPress={onClose} />
-                <View style={s2.modalSheet}>
+                <View style={[s2.modalSheet, { paddingBottom: 24 + insets.bottom }]}>
                     <View style={s2.handle} />
                     <Text fontSize={17} fontWeight="900" color={appTheme.colors.text} marginBottom={6}>
                         Yêu cầu bảo dưỡng xe
@@ -583,7 +576,19 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
                     </XStack>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+
+            {/* Camera lồng TRONG Modal của sheet chứ không thay chỗ sheet: gỡ Modal này để
+                dựng Modal khác cùng lúc thì iOS hay không hiện được Modal mới (đang đóng dở
+                Modal cũ) — màn hình đứng im, bấm gì cũng không mở lại được. Lồng vào thì sheet
+                vẫn nằm dưới, chụp xong camera trượt xuống là thấy ngay ảnh vừa thêm. */}
+            <CameraModal
+                visible={showCamera}
+                label="Chụp chứng từ / báo giá"
+                onCapture={(uri) => { setBillUris((prev) => [...prev, uri]); setShowCamera(false); }}
+                onClose={() => setShowCamera(false)}
+                confirmBeforeUse
+            />
+        </AppModal>
     );
 }
 

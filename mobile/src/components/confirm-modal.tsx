@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet } from 'react-native';
+import { Animated, BackHandler, Pressable, StyleSheet } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
@@ -39,6 +39,17 @@ export function ConfirmModal({ opts, onResult }: Props) {
             }),
         ]).start(() => onResult(result));
     };
+
+    // Hộp là View chứ không phải native Modal, nên nút Back của Android không tự đóng nó:
+    // Back sẽ đưa màn hình bên dưới lùi đi mà hộp vẫn đè lên, bấm "Xác nhận" lúc đó là chạy
+    // việc của màn đã đóng. Back = Huỷ. (Nằm trong một Modal thì Modal đó nhận Back trước.)
+    useEffect(() => {
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            dismiss(false);
+            return true;
+        });
+        return () => sub.remove();
+    }, []);
 
     return (
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>

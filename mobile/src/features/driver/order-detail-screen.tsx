@@ -1,4 +1,4 @@
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -12,6 +12,7 @@ import { OrderDetailSkeleton } from '@/components/skeleton';
 import { ScreenHeader } from '@/components/screen-header';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { useOrderDetail } from '@/hooks/use-order-detail';
 import type { ShipmentWithPhotos, TripStatus } from '@/types/trip';
 import { TRIP_STATUS_LABEL } from '@/types/trip';
@@ -27,14 +28,14 @@ const fmtDate = (iso: string | null) => {
 
 function PhotoViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
     return (
-        <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+        <AppModal visible transparent animationType="fade" onRequestClose={onClose}>
             <View style={pv.overlay}>
                 <Pressable style={pv.closeBtn} onPress={onClose} hitSlop={12}>
                     <X size={22} color="#fff" />
                 </Pressable>
                 <Image source={{ uri }} style={pv.image} contentFit="contain" />
             </View>
-        </Modal>
+        </AppModal>
     );
 }
 

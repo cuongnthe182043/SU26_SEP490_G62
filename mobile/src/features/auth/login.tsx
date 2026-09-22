@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Eye, EyeOff, HelpCircle } from "lucide-react-native";
@@ -10,6 +10,7 @@ import { FormField } from "@/components/form-field";
 import { KeyboardSafeScrollView } from "@/components/keyboard-safe-scroll-view";
 import { useAuthSession } from "@/providers/auth-provider";
 import { appTheme } from "@/theme/app-theme";
+import { AppModal } from "@/components/app-modal";
 import { useRememberMe } from "@/hooks/use-remember-me";
 import { useGoogleLogin, isGoogleAvailable } from "@/hooks/use-google-login";
 
@@ -324,7 +325,7 @@ export function LoginScreen() {
       </KeyboardSafeScrollView>
 
       {/* Forgot Password modal */}
-      <Modal visible={showForgot} transparent animationType="fade" onRequestClose={() => setShowForgot(false)}>
+      <AppModal visible={showForgot} transparent animationType="fade" onRequestClose={() => setShowForgot(false)}>
         <Pressable style={styles.forgotBackdrop} onPress={() => setShowForgot(false)} />
         <View style={styles.forgotCard}>
           <View style={styles.forgotIconWrap}>
@@ -348,7 +349,7 @@ export function LoginScreen() {
             </Text>
           </Pressable>
         </View>
-      </Modal>
+      </AppModal>
     </>
   );
 }

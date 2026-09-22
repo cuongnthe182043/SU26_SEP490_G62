@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    Alert, KeyboardAvoidingView, Modal, Platform,
+    Alert, KeyboardAvoidingView, Platform,
     ScrollView, StyleSheet, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -19,6 +19,7 @@ import { ScreenHeader }          from '@/components/screen-header';
 import { AppText }               from '@/components/app-text';
 import { ReceiptDetailSkeleton } from '@/components/skeleton';
 import { appTheme }              from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 import { tripService }           from '@/services/trip-service';
 import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, OrderShipmentRow, PaymentType } from '@/types/trip';
 import { ExpenseFormModal } from './components/expense-form-modal';
@@ -422,7 +423,7 @@ function ExpenseEditModal({
     if (!expense) return null;
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <AppModal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -471,7 +472,7 @@ function ExpenseEditModal({
                     </View>
                 </View>
             </KeyboardAvoidingView>
-        </Modal>
+        </AppModal>
     );
 }
 

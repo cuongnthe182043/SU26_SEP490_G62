@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { CameraView } from 'expo-camera';
 import { launchImageLibraryAsync, MediaTypeOptions, requestMediaLibraryPermissionsAsync } from 'expo-image-picker';
 import { Camera, Check, Images, RotateCcw, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/app-modal';
 
 type Props = {
     visible: boolean;
@@ -28,6 +30,13 @@ const CT = 3;
 export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeUse = false }: Props) {
     const cameraRef = useRef<CameraView>(null);
     const [preview, setPreview] = useState<string | null>(null);
+
+    // Modal luôn tràn viền (edgeToEdgeEnabled): thanh trên/dưới phải chừa chỗ cho thanh
+    // trạng thái và thanh điều hướng, không thì nút "Dùng ảnh này" / nút chụp dính sát
+    // hoặc nằm dưới 3 nút điều hướng của Android.
+    const insets = useSafeAreaInsets();
+    const topPad = Math.max(56, insets.top + 16);
+    const bottomPad = { paddingBottom: Math.max(52, insets.bottom + 24) };
 
     // Đóng camera thì bỏ ảnh đang xem dở — mở lại phải bắt đầu từ khung chụp.
     useEffect(() => { if (!visible) setPreview(null); }, [visible]);
@@ -64,16 +73,16 @@ export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeU
 
     if (preview) {
         return (
-            <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={() => setPreview(null)}>
+            <AppModal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={() => setPreview(null)}>
                 <View style={s.container}>
                     <StatusBar style="light" />
                     <Image source={{ uri: preview }} style={StyleSheet.absoluteFill} contentFit="contain" />
                     <View style={s.topBar}>
-                        <XStack paddingHorizontal={20} paddingTop={56} paddingBottom={14} alignItems="center" gap={12}>
+                        <XStack paddingHorizontal={20} paddingTop={topPad} paddingBottom={14} alignItems="center" gap={12}>
                             <Text fontSize={15} fontWeight="900" color="#fff">Kiểm tra lại ảnh trước khi gửi</Text>
                         </XStack>
                     </View>
-                    <View style={s.shutterBar}>
+                    <View style={[s.shutterBar, bottomPad]}>
                         <Text style={s.guide}>Ảnh phải rõ số tiền, tên cửa hàng và biển số xe (nếu có)</Text>
                         <XStack alignItems="center" justifyContent="center" gap={16}>
                             <Pressable onPress={() => setPreview(null)} style={s.previewBtn}>
@@ -90,12 +99,12 @@ export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeU
                         </XStack>
                     </View>
                 </View>
-            </Modal>
+            </AppModal>
         );
     }
 
     return (
-        <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+        <AppModal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
             <View style={s.container}>
                 <StatusBar style="light" />
                 <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
@@ -108,7 +117,7 @@ export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeU
 
                 {/* Top bar */}
                 <View style={s.topBar}>
-                    <XStack paddingHorizontal={20} paddingTop={56} paddingBottom={14} alignItems="center" gap={12}>
+                    <XStack paddingHorizontal={20} paddingTop={topPad} paddingBottom={14} alignItems="center" gap={12}>
                         <Pressable onPress={onClose} hitSlop={12} style={s.iconBtn}>
                             <X size={20} color="#fff" />
                         </Pressable>
@@ -117,7 +126,7 @@ export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeU
                 </View>
 
                 {/* Shutter + chọn từ thư viện */}
-                <View style={s.shutterBar}>
+                <View style={[s.shutterBar, bottomPad]}>
                     <Text style={s.guide}>Chụp ảnh hoặc chọn từ thư viện</Text>
                     <XStack alignItems="center" justifyContent="center" gap={28}>
                         <Pressable onPress={handlePickFromGallery} style={s.galleryBtn} hitSlop={12}>
@@ -133,7 +142,7 @@ export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeU
                     </XStack>
                 </View>
             </View>
-        </Modal>
+        </AppModal>
     );
 }
 
@@ -156,7 +165,7 @@ const s = StyleSheet.create({
     BR: { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 4 },
     shutterBar: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        paddingBottom: 52, paddingTop: 24,
+        paddingTop: 24,
         alignItems: 'center', gap: 18,
         backgroundColor: 'rgba(0,0,0,0.4)',
     },
