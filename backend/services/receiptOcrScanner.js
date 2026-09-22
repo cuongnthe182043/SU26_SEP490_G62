@@ -44,6 +44,18 @@ const LANGS = process.env.RECEIPT_OCR_LANGS || 'vie+eng';
 // (một cột) hoặc '6' (một khối) hơn, nên để chỉnh được qua env mà không phải deploy.
 const PSM = process.env.RECEIPT_OCR_PSM || '3';
 
+// Cách Tesseract tách chữ khỏi nền trước khi nhận dạng: '0' = Otsu (MỘT ngưỡng cho cả
+// ảnh, mặc định của Tesseract), '1' = Otsu theo ô của Leptonica, '2' = Sauvola (ngưỡng
+// riêng cho từng vùng, theo độ sáng quanh nó).
+//
+// Mặc định '2' vì ảnh chụp hóa đơn gần như luôn có bóng đổ hoặc loá đèn: một ngưỡng cho
+// cả ảnh thì góc bị bóng che hoặc chìm thành đen, hoặc chữ ở góc sáng bị nuốt trắng. Đây
+// là bước thay cho biến thể ảnh xám/tương phản/làm nét riêng mà trước đây phải xin
+// Cloudinary sinh ra — đo được: 57/71 số tiền tìm thấy, so với 38/71 của cách cũ, trên
+// đúng ảnh đã tải cho Gemini (xem ghi chú đầu receiptImagePipeline). '1' đo được TỆ nhất
+// (19/71) — đừng chọn nó chỉ vì nghe như "Otsu cải tiến".
+const THRESHOLDING = process.env.RECEIPT_OCR_THRESHOLDING || '2';
+
 // Đo trên bản in sạch 2000×2800, 6 dòng hàng: 2,7 giây lần đầu (gồm cả dựng worker)
 // và 2,0 giây các lần sau. Trần 25 giây rộng gấp nhiều lần mức đó là CỐ Ý: ảnh chụp
 // bằng điện thoại — nghiêng, loá, nhiễu nén — tốn hơn hẳn bản in sạch, và trần này chỉ
@@ -83,15 +95,6 @@ const IDLE_SHUTDOWN_MS = Number(process.env.RECEIPT_OCR_IDLE_MS || 120_000);
  * chạy sát hạn mức CPU, đánh đổi một lớp đối chiếu để lấy thời gian phản hồi là một
  * quyết định vận hành hợp lệ — và phải tắt được mà không cần sửa code.
  */
-/**
- * Kênh OCR có dùng được NGAY BÂY GIỜ không.
- *
- * Khác isOcrEnabled ở chỗ tính cả khoảng tạm tắt sau khi dựng worker hỏng. Nơi gọi dùng
- * nó để khỏi tải biến thể ảnh dành riêng cho OCR — một lượt tải ảnh nữa qua mạng, hoàn
- * toàn vô ích khi không có ai đọc nó.
- */
-const isOcrAvailable = () => isOcrEnabled() && Date.now() >= unavailableUntil;
-
 const isOcrEnabled = () => {
     if (String(process.env.RECEIPT_OCR_ENABLED ?? 'true').toLowerCase() === 'false') return false;
     try {
@@ -109,7 +112,6 @@ let idleTimer = null;
 // Lần dựng worker gần nhất tốn bao lâu. Đây là số đo của CHÍNH máy đang chạy, và là
 // căn cứ để quyết định có nên thả worker ra khi rảnh hay không (xem scheduleIdleShutdown).
 let lastBuildMs = 0;
-let keepAliveLogged = false;
 // Tesseract chỉ nhận MỘT việc một lúc. Hai ảnh gọi song song (validateMaintenanceBills
 // chạy Promise.all trên nhiều hóa đơn) mà cùng đẩy vào một worker thì kết quả trộn vào
 // nhau. Xếp hàng bằng một dây promise là cách rẻ nhất để bảo đảm tuần tự.
@@ -127,16 +129,7 @@ const scheduleIdleShutdown = () => {
     // 0,2-0,3 giây nên thả là đúng. Trên máy chủ thiếu CPU, dựng lại mất hàng giây tới
     // hàng chục giây — và cái giá đó tài xế trả bằng thời gian đứng chờ, mỗi lần hai đợt
     // bảo dưỡng cách nhau quá thời gian rảnh. Máy nào chậm thì giữ worker lại.
-    if (lastBuildMs >= KEEP_ALIVE_BUILD_MS) {
-        if (!keepAliveLogged) {
-            keepAliveLogged = true;
-            console.log(
-                `[receipt] Dựng worker OCR mất ${lastBuildMs}ms trên máy này — giữ worker lại thay vì `
-                + `thả ra khi rảnh, để hóa đơn sau không phải chờ dựng lại.`,
-            );
-        }
-        return;
-    }
+    if (lastBuildMs >= KEEP_ALIVE_BUILD_MS) return;
     idleTimer = setTimeout(() => { shutdown().catch(() => {}); }, IDLE_SHUTDOWN_MS);
     if (typeof idleTimer.unref === 'function') idleTimer.unref();
 };
@@ -258,6 +251,7 @@ const getWorker = async () => {
                 // thành "Nhớt 1 450.000" mất luôn khoảng cách cột — mà khoảng cách cột
                 // là manh mối duy nhất còn lại để tách con số ra khỏi tên hàng.
                 preserve_interword_spaces: '1',
+                thresholding_method: THRESHOLDING,
             });
             initFailures = 0;
             lastBuildMs = Date.now() - buildStartedAt;
@@ -285,37 +279,19 @@ const getWorker = async () => {
  */
 const warmUp = async () => {
     if (!isOcrEnabled()) {
-        console.log('[receipt] OCR đang tắt — bỏ qua bước dựng sẵn worker.');
         return { ok: false, code: 'OCR_DISABLED' };
     }
 
     const startedAt = Date.now();
     try {
         await withTimeout(getWorker(), WARMUP_TIMEOUT_MS, 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR lúc khởi động');
-        const latencyMs = Date.now() - startedAt;
-        console.log(`[receipt] Worker OCR sẵn sàng sau ${latencyMs}ms.`);
-        // Dựng lâu hơn trần trong request nghĩa là: nếu worker này bị thả ra, lượt quét
-        // sau sẽ KHÔNG dựng lại kịp. Nói ra ngay lúc khởi động thay vì để người trực tự
-        // suy từ những dòng OCR_INIT_FAILED lẻ tẻ sau này.
-        if (latencyMs >= INIT_TIMEOUT_MS) {
-            console.warn(
-                `[receipt] Dựng worker OCR (${latencyMs}ms) lâu hơn trần trong request (${INIT_TIMEOUT_MS}ms): `
-                + 'worker này sẽ được giữ tới khi tiến trình dừng. Nếu máy chủ hay bị khởi động lại '
-                + 'vì hết bộ nhớ, cân nhắc RECEIPT_OCR_ENABLED=false.',
-            );
-        }
-        return { ok: true, latency_ms: latencyMs };
+        return { ok: true, latency_ms: Date.now() - startedAt };
     } catch (rawErr) {
         const err = toError(rawErr, 'OCR_INIT_FAILED');
         // Cùng cách xử lý như khi dựng hỏng giữa một lượt quét: gỡ lời hứa hỏng khỏi vị trí
-        // dùng chung (kể cả khi nó đang treo) và tạm tắt kênh OCR.
+        // dùng chung (kể cả khi nó đang treo) và tạm tắt kênh OCR. recordInitFailure tự ghi log.
         shutdown().catch(() => {});
         recordInitFailure(err);
-        console.warn(
-            `[receipt] Không dựng được worker OCR lúc khởi động sau ${Date.now() - startedAt}ms. `
-            + 'Hóa đơn vẫn được đọc bằng Gemini, chỉ mất lớp đối chiếu OCR. '
-            + 'Nếu máy chủ thiếu CPU/RAM, đặt RECEIPT_OCR_ENABLED=false để khỏi thử lại.',
-        );
         return { ok: false, code: 'OCR_INIT_FAILED' };
     }
 };
@@ -398,7 +374,7 @@ const extractLines = (data) => {
  * KHÔNG ném lỗi ra ngoài — mọi sự cố thành `{ ok: false, code }`. Nơi gọi coi kênh OCR
  * là "không có ý kiến" và tiếp tục với một mình kênh Gemini.
  *
- * @param {Buffer} buffer  bytes của biến thể ảnh đã tăng cường (receiptImagePipeline)
+ * @param {Buffer} buffer  bytes của chính ảnh đã tải cho Gemini (receiptImagePipeline)
  * @returns {Promise<{ok: boolean, code?: string, text?: string, confidence?: number,
  *                    lines?: Array<{text: string, confidence: number}>, latency_ms: number, engine?: string}>}
  */
@@ -715,7 +691,6 @@ module.exports = {
     INIT_TIMEOUT_MS,
     WARMUP_TIMEOUT_MS,
     isOcrEnabled,
-    isOcrAvailable,
     warmUp,
     scanImage,
     shutdown,

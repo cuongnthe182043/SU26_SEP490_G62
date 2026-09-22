@@ -75,6 +75,28 @@ describe('receiptVisionExtractor — hạn chót của cả lượt đọc', () 
 
         assert.strictEqual(result.code, 'SERVICE_UNAVAILABLE');
         assert.strictEqual(calls, 3);
+        assert.deepStrictEqual(result.meta.attempt_codes, ['SERVICE_UNAVAILABLE', 'SERVICE_UNAVAILABLE', 'SERVICE_UNAVAILABLE']);
+    });
+
+    it('ghi lại lỗi TỪNG lần gọi: 503, 503 rồi treo tới hạn chót', async () => {
+        // Đúng ca trên production: "TIMEOUT (3 lượt gọi model)" sau 54 giây. Chỉ nhìn lỗi cuối
+        // thì không biết hai lần đầu đã hỏng vì Gemini quá tải.
+        jest.spyOn(Math, 'random').mockReturnValue(0); // lùi 350ms rồi 700ms, test không phải chờ lâu
+        try {
+            let calls = 0;
+            const extractor = loadExtractor(() => {
+                calls += 1;
+                return calls <= 2 ? Promise.reject(overloaded()) : new Promise(() => {});
+            });
+
+            const result = await extractor.extractReceipt('x.jpg', { image, deadlineAt: Date.now() + 5_500 });
+
+            assert.strictEqual(result.code, 'TIMEOUT');
+            assert.strictEqual(result.meta.attempts, 3);
+            assert.deepStrictEqual(result.meta.attempt_codes, ['SERVICE_UNAVAILABLE', 'SERVICE_UNAVAILABLE', 'TIMEOUT']);
+        } finally {
+            Math.random.mockRestore();
+        }
     });
 });
 

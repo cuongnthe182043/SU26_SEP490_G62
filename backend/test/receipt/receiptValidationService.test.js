@@ -14,8 +14,7 @@ const service = require('../../services/receiptValidationService');
  */
 const loadedImage = (overrides = {}) => ({
     ok: true,
-    vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'abc', bytes: 120_000 },
-    ocr: { buffer: Buffer.from('fake'), mimeType: 'image/jpeg', enhanced: true },
+    vision: { buffer: Buffer.from('fake'), base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'abc', bytes: 120_000 },
     quality: { bytes: 120_000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
     ...overrides,
 });
@@ -109,6 +108,25 @@ describe('receiptValidationService', () => {
         assert.strictEqual(result.verdict, 'needs_review');
         assert.strictEqual(result.blocked, false);
         assert.ok(result.reasons.some((r) => r.code === 'EXTRACTION_TIMEOUT'));
+    });
+
+    it('log lượt đọc hỏng kể lỗi TỪNG lần gọi model, không chỉ lỗi cuối', async () => {
+        // Log thật chỉ có "TIMEOUT (3 lượt gọi model)" — mà TIMEOUT không bao giờ được thử
+        // lại, nên hai lần trước nó hỏng vì lý do khác và dòng log giấu mất lý do đó.
+        mock.method(extractor, 'extractReceipt', async () => ({
+            ok: false, code: 'TIMEOUT', error: 'Quá thời gian đọc hóa đơn',
+            meta: {
+                provider: 'google', model: 'test', prompt_version: 'v1', image_sha256: null, latency_ms: 54_000,
+                attempts: 3, attempt_codes: ['SERVICE_UNAVAILABLE', 'SERVICE_UNAVAILABLE', 'TIMEOUT'],
+            },
+        }));
+        const warn = mock.method(console, 'warn', () => {});
+
+        await service.validateMaintenanceBills(['a.jpg'], { claimedAmount: 5_000_000 });
+
+        const line = warn.mock.calls.map((c) => String(c.arguments[0])).find((l) => l.includes('Không đọc được'));
+        assert.ok(line, 'phải có dòng log cho lượt đọc hỏng');
+        assert.match(line, /TIMEOUT \(3 lượt gọi model: SERVICE_UNAVAILABLE → SERVICE_UNAVAILABLE → TIMEOUT\)/);
     });
 
     it('chặn khi lỗi là do người gửi và sửa được ngay bằng cách chụp lại', async () => {

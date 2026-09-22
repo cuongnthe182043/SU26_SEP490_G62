@@ -49,7 +49,7 @@ describe('handleUpload — dịch lỗi tải ảnh ra mã HTTP đúng', () => {
         assert.ok(!res.body.error.includes('Request Timeout'), res.body.error);
     });
 
-    it('ghi log mọi sự cố tải ảnh — trước đây 422 làm cả sự cố hạ tầng biến mất khỏi log', async () => {
+    it('ghi log sự cố phía hệ thống — trước đây 422 làm cả sự cố hạ tầng biến mất khỏi log', async () => {
         await request(appThatFailsWith(cloudinaryTimeout())).post('/upload');
 
         assert.strictEqual(logger.error.mock.calls.length, 1);
@@ -65,7 +65,8 @@ describe('handleUpload — dịch lỗi tải ảnh ra mã HTTP đúng', () => {
 
         assert.strictEqual(res.status, 413);
         assert.match(res.body.error, /10MB/);
-        assert.strictEqual(logger.warn.mock.calls.length, 1);
+        // Lỗi của người gửi: câu trả về đã đủ, không cần một dòng log.
+        assert.strictEqual(logger.warn.mock.calls.length + logger.error.mock.calls.length, 0);
     });
 
     it('kho ảnh lỗi 5xx và mất kết nối giữa chừng đều là 502 — tài xế chỉ cần thử lại', async () => {

@@ -20,10 +20,6 @@ const repository = require('../../repositories/receiptExtractionRepository');
 
 const { RESPONSE_BUDGET_MS, MIN_SCAN_BUDGET_MS } = receiptService;
 
-// Trần riêng của một lượt quét (RECEIPT_SCAN_BUDGET_MS). Lấy qua đúng con đường mà mã
-// thật dùng, để test không trôi khi trần đổi.
-const SCAN_BUDGET_MS = Number(process.env.RECEIPT_SCAN_BUDGET_MS || 55_000);
-
 let seenDeadline;
 let seenOcrDeadline;
 
@@ -37,8 +33,7 @@ beforeEach(() => {
     mock.method(repository, 'findDuplicates', async () => []);
     mock.method(imagePipeline, 'loadImage', async () => ({
         ok: true,
-        vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'sha-1', bytes: 120_000 },
-        ocr: { buffer: Buffer.from('fake'), mimeType: 'image/jpeg', enhanced: true },
+        vision: { buffer: Buffer.from('fake'), base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'sha-1', bytes: 120_000 },
         quality: { bytes: 120_000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
     }));
     mock.method(ocrScanner, 'scanImage', async (_buffer, opts = {}) => {
@@ -73,14 +68,7 @@ describe('Trần thời gian quét bám theo hạn trả lời của cả reques
         nearly(seenDeadline, Date.now() + MIN_SCAN_BUDGET_MS, 'sàn tối thiểu');
     });
 
-    it('tải ảnh nhanh → lượt quét vẫn bị chặn ở trần riêng của nó', async () => {
-        const now = Date.now();
-        await receiptService.runPipeline('x.jpg', { profile: 'maintenance', deadlineAt: now + 600_000 });
-
-        nearly(seenDeadline, now + SCAN_BUDGET_MS, 'trần của lượt quét');
-    });
-
-    it('hạn còn lại nằm giữa sàn và trần thì lấy đúng phần còn lại', async () => {
+    it('hạn còn lại trên sàn thì lấy đúng phần còn lại', async () => {
         const now = Date.now();
         await receiptService.runPipeline('x.jpg', { profile: 'maintenance', deadlineAt: now + 30_000 });
 
@@ -94,11 +82,11 @@ describe('Trần thời gian quét bám theo hạn trả lời của cả reques
         nearly(seenOcrDeadline, now + 25_000, 'hạn của OCR');
     });
 
-    it('không truyền hạn nào (luồng cũ, màn duyệt) thì giữ nguyên trần cũ', async () => {
+    it('không truyền hạn nào thì lượt quét được trọn RESPONSE_BUDGET_MS', async () => {
         const now = Date.now();
         await receiptService.runPipeline('x.jpg', { profile: 'maintenance' });
 
-        nearly(seenDeadline, now + SCAN_BUDGET_MS, 'trần mặc định');
+        nearly(seenDeadline, now + RESPONSE_BUDGET_MS, 'hạn mặc định');
     });
 
     it('hạn trả lời đi xuyên validateReceipt tới tận lượt đọc', async () => {

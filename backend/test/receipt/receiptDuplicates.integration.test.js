@@ -232,8 +232,7 @@ describe('Dò trùng song song — trên Postgres thật', () => {
         mock.method(imagePipeline, 'loadImage', async (url) => ({
             ok: true,
             // Hai lần chụp khác nhau của cùng tờ giấy: băm KHÁC, khoá nội dung GIỐNG.
-            vision: { base64: 'x', mimeType: 'image/jpeg', sha256: `sha-${url}`, bytes: 100_000 },
-            ocr: null,
+            vision: { buffer: Buffer.from('x'), base64: 'x', mimeType: 'image/jpeg', sha256: `sha-${url}`, bytes: 100_000 },
             quality: { width: 1600, height: 2000, bytes: 100_000, reasons: [] },
         }));
         mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED' }));

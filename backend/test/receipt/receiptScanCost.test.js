@@ -18,11 +18,11 @@ const CLOUD_URL = 'https://res.cloudinary.com/demo/image/upload/v1/g62/bill.jpg'
 
 const anhGia = Buffer.from('anh-gia-du-lon'.repeat(400));
 
-/** fetch giả: ghi lại thứ tự gọi và thời điểm gọi, trả ảnh sau `delay` ms. */
-const stubFetch = (delay = 40) => {
+/** fetch giả: ghi lại các URL được gọi, trả ảnh sau `delay` ms. */
+const stubFetch = (delay = 10) => {
     const calls = [];
     global.fetch = jest.fn(async (url) => {
-        calls.push({ url: String(url), at: Date.now() });
+        calls.push(String(url));
         await new Promise((resolve) => { setTimeout(resolve, delay); });
         return {
             ok: true,
@@ -33,54 +33,32 @@ const stubFetch = (delay = 40) => {
     return calls;
 };
 
-describe('Tải ảnh: hai biến thể đi song song', () => {
+describe('Tải ảnh: một lượt tải cho cả hai kênh đọc', () => {
     let savedFetch;
     beforeEach(() => { savedFetch = global.fetch; });
     afterEach(() => { global.fetch = savedFetch; });
 
-    it('biến thể cho model và cho OCR tải cùng lúc, không nối đuôi nhau', async () => {
-        const calls = stubFetch(60);
-        const startedAt = Date.now();
-
-        const loaded = await imagePipeline.loadImage(CLOUD_URL);
-        const elapsed = Date.now() - startedAt;
-
-        assert.strictEqual(calls.length, 2);
-        assert.ok(loaded.ocr.enhanced, 'phải dùng được biến thể tăng cường');
-        // Hai lượt tải bắt đầu gần như cùng lúc; nối đuôi nhau thì tổng phải ~120ms.
-        assert.ok(calls[1].at - calls[0].at < 30, `lệch nhau ${calls[1].at - calls[0].at}ms — vẫn đang nối đuôi`);
-        assert.ok(elapsed < 110, `tổng ${elapsed}ms — vẫn đang nối đuôi`);
-    });
-
-    it('không cần biến thể OCR thì KHÔNG tải nó — tiết kiệm hẳn một lượt tải ảnh', async () => {
-        const calls = stubFetch(10);
-
-        const loaded = await imagePipeline.loadImage(CLOUD_URL, { withOcrVariant: false });
-
-        assert.strictEqual(calls.length, 1, 'chỉ được tải biến thể cho model');
-        assert.strictEqual(loaded.ocr, null);
-    });
-
-    it('biến thể OCR hỏng thì lượt quét vẫn chạy trên ảnh thường', async () => {
-        // Phân biệt theo URL chứ không theo thứ tự gọi: hai lượt tải giờ đi song song nên
-        // thứ tự tới nơi không còn cố định.
-        global.fetch = jest.fn(async (url) => {
-            if (String(url).includes('e_grayscale')) throw new Error('mạng lỗi');
-            return {
-                ok: true,
-                headers: { get: (h) => (h === 'content-type' ? 'image/jpeg' : String(anhGia.length)) },
-                arrayBuffer: async () => anhGia,
-            };
-        });
+    it('chỉ tải đúng biến thể cho model — không còn biến thể riêng cho OCR', async () => {
+        // Trước đây mỗi lượt quét tải thêm một ảnh 2000px xám/tương phản/làm nét cho
+        // Tesseract: tệp nặng nhất của cả lượt, một ảnh dẫn xuất Cloudinary nữa phải sinh,
+        // và đo lại thì còn làm OCR đọc kém hơn ảnh thường (xem receiptImagePipeline).
+        const calls = stubFetch();
 
         const loaded = await imagePipeline.loadImage(CLOUD_URL);
 
-        assert.strictEqual(loaded.ok, true);
-        assert.strictEqual(loaded.ocr.enhanced, false, 'lùi về ảnh thường chứ không bỏ luôn OCR');
+        assert.deepStrictEqual(calls, [imagePipeline.visionUrl(CLOUD_URL)]);
+        assert.ok(Buffer.isBuffer(loaded.vision.buffer), 'OCR quét trên chính buffer này');
+        assert.strictEqual(loaded.ocr, undefined);
     });
 });
 
-describe('Dây chuyền không tải ảnh cho một kênh đang tắt', () => {
+describe('Dây chuyền đưa cho OCR đúng ảnh đã tải cho model', () => {
+    const loaded = () => ({
+        ok: true,
+        vision: { buffer: Buffer.from('anh-that'), base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'sha', bytes: 1000 },
+        quality: { bytes: 1000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
+    });
+
     beforeEach(() => {
         mock.method(repository, 'saveExtraction', async () => null);
         mock.method(repository, 'getExtraKeywords', async () => []);
@@ -91,32 +69,30 @@ describe('Dây chuyền không tải ảnh cho một kênh đang tắt', () => {
     });
     afterEach(() => mock.restoreAll());
 
-    it('OCR đang không dùng được → không xin biến thể ảnh dành cho OCR', async () => {
-        mock.method(ocrScanner, 'isOcrAvailable', () => false);
-        const spy = mock.method(imagePipeline, 'loadImage', async () => ({
-            ok: true,
-            vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'sha', bytes: 1000 },
-            ocr: null,
-            quality: { bytes: 1000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
-        }));
+    it('OCR quét CÙNG buffer với model, ảnh chỉ được tải một lần', async () => {
+        const image = loaded();
+        const load = mock.method(imagePipeline, 'loadImage', async () => image);
+        const scan = mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED' }));
 
         await receiptService.runPipeline(CLOUD_URL, { profile: 'maintenance' });
 
-        assert.strictEqual(spy.mock.calls[0].arguments[1].withOcrVariant, false);
+        assert.strictEqual(load.mock.callCount(), 1);
+        assert.strictEqual(scan.mock.calls[0].arguments[0], image.vision.buffer);
     });
 
-    it('OCR dùng được → vẫn xin biến thể ảnh cho nó', async () => {
-        mock.method(ocrScanner, 'isOcrAvailable', () => true);
-        mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED' }));
-        const spy = mock.method(imagePipeline, 'loadImage', async () => ({
-            ok: true,
-            vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'sha', bytes: 1000 },
-            ocr: { buffer: Buffer.from('x'), mimeType: 'image/jpeg', enhanced: true },
-            quality: { bytes: 1000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
-        }));
+    it('OCR tắt thì kênh OCR trả lời ngay, không kéo theo lượt tải nào', async () => {
+        const saved = process.env.RECEIPT_OCR_ENABLED;
+        process.env.RECEIPT_OCR_ENABLED = 'false';
+        try {
+            const load = mock.method(imagePipeline, 'loadImage', async () => loaded());
 
-        await receiptService.runPipeline(CLOUD_URL, { profile: 'maintenance' });
+            const result = await receiptService.runPipeline(CLOUD_URL, { profile: 'maintenance' });
 
-        assert.strictEqual(spy.mock.calls[0].arguments[1].withOcrVariant, true);
+            assert.strictEqual(load.mock.callCount(), 1);
+            assert.strictEqual(result.ocr.code, 'OCR_DISABLED');
+        } finally {
+            if (saved === undefined) delete process.env.RECEIPT_OCR_ENABLED;
+            else process.env.RECEIPT_OCR_ENABLED = saved;
+        }
     });
 });

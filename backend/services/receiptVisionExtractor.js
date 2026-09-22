@@ -91,8 +91,7 @@ const isVisionEnabled = () => Boolean(process.env.GEMINI_API_KEY);
 
 /**
  * Việc tải và tiền xử lý ảnh đã chuyển hết sang receiptImagePipeline (giai đoạn 1),
- * vì cùng một tấm ảnh giờ phục vụ hai kênh đọc với hai biến thể khác nhau và không
- * được tải hai lần.
+ * vì cùng một tấm ảnh phục vụ cả hai kênh đọc và không được tải hai lần.
  *
  * Giữ lại tên hàm cũ ở đây làm bí danh: nó là một phần giao diện công khai của
  * module, có test đang gọi thẳng, và chuỗi biến đổi của biến thể này chính là thứ
@@ -102,7 +101,7 @@ const optimizeCloudinaryUrl = (url) => imagePipeline.visionUrl(url);
 
 /** Tải ảnh khi nơi gọi chưa có sẵn — giữ đúng mã lỗi cũ để tầng trên xử lý như trước. */
 const fetchImage = async (imageUrl) => {
-    const loaded = await imagePipeline.loadImage(imageUrl, { withOcrVariant: false });
+    const loaded = await imagePipeline.loadImage(imageUrl);
     if (!loaded.ok) {
         throw Object.assign(new Error(loaded.error), { code: loaded.code });
     }
@@ -437,6 +436,10 @@ const extractReceipt = async (imageUrl, {
 
     let last = null;
     let attempts = 0;
+    // Mã lỗi của TỪNG lần gọi. Chỉ giữ lỗi cuối thì log "TIMEOUT (3 lượt gọi model)" giấu
+    // mất hai lần 503 phía trước — mà TIMEOUT không bao giờ được thử lại, nên chính hai lần
+    // đó mới là chỗ cần nhìn.
+    meta.attempt_codes = [];
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
         const budget = Math.min(MODEL_TIMEOUT_MS, remaining());
         if (budget < MIN_ATTEMPT_MS) {
@@ -464,6 +467,7 @@ const extractReceipt = async (imageUrl, {
             return { ok: true, extraction: normalizeExtraction(parsed), raw: parsed, meta };
         } catch (err) {
             last = { ...classifyError(err), message: err.message };
+            meta.attempt_codes.push(last.code);
             if (last.code === 'RATE_LIMIT' && RATE_LIMIT_COOLDOWN_MS > 0) {
                 const daNghi = Date.now() < rateLimitedUntil;
                 rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;

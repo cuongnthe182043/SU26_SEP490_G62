@@ -116,8 +116,7 @@ beforeEach(() => {
 
     mock.method(imagePipeline, 'loadImage', async (url) => ({
         ok: true,
-        vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: images[url]?.sha ?? `sha-${url}`, bytes: 120_000 },
-        ocr: { buffer: Buffer.from('fake'), mimeType: 'image/jpeg', enhanced: true },
+        vision: { buffer: Buffer.from('fake'), base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: images[url]?.sha ?? `sha-${url}`, bytes: 120_000 },
         quality: { bytes: 120_000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
     }));
     mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED' }));

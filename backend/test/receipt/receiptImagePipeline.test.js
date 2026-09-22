@@ -4,7 +4,7 @@ const pipeline = require('../../services/receiptImagePipeline');
 
 const CLOUDINARY = 'https://res.cloudinary.com/demo/image/upload/v1/bills/a.jpg';
 
-describe('receiptImagePipeline — hai biến thể ảnh', () => {
+describe('receiptImagePipeline — biến thể ảnh', () => {
     it('GIỮ NGUYÊN chuỗi biến đổi của biến thể cho model', () => {
         // Đây không phải test hình thức. `image_sha256` — khoá chặn nộp lại đúng một
         // tấm ảnh — được băm trên bytes của chính biến thể này. Đổi chuỗi biến đổi là
@@ -17,24 +17,8 @@ describe('receiptImagePipeline — hai biến thể ảnh', () => {
         );
     });
 
-    it('biến thể cho OCR được xám hoá, tăng tương phản và làm nét', () => {
-        // Tesseract chỉ nhìn hình dạng ký tự: màu mực, giấy ngả vàng, bóng đèn đều là
-        // nhiễu. Gemini thì ngược lại, cần màu và đường kẻ bảng để biết đâu là cột nào
-        // — nên hai bên không thể dùng chung một biến thể.
-        const url = pipeline.ocrUrl(CLOUDINARY);
-
-        assert.match(url, /e_grayscale/);
-        assert.match(url, /e_contrast:\d+/);
-        assert.match(url, /e_sharpen:\d+/);
-        // Phải rộng hơn biến thể cho model: chữ hóa đơn nhiệt quá nhỏ ở 1600px.
-        assert.match(url, /w_2000,c_limit/);
-    });
-
     it('URL không phải Cloudinary thì giữ nguyên, không đoán mò', () => {
         assert.strictEqual(pipeline.visionUrl('https://x/y.png'), 'https://x/y.png');
-        assert.strictEqual(pipeline.ocrUrl('https://x/y.png'), 'https://x/y.png');
-        assert.strictEqual(pipeline.hasOcrVariant('https://x/y.png'), false);
-        assert.strictEqual(pipeline.hasOcrVariant(CLOUDINARY), true);
     });
 });
 

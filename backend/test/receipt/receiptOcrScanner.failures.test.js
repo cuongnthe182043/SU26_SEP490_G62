@@ -131,6 +131,27 @@ describe('receiptOcrScanner — cấu hình bắt buộc truyền cho tesseract.
         assert.strictEqual(options.cacheMethod, 'readOnly');
         await scanner.shutdown();
     });
+
+    it('mặc định nhị phân hoá thích nghi (Sauvola)', async () => {
+        // OCR giờ quét trên chính ảnh màu đã tải cho Gemini, không còn biến thể xám/tương
+        // phản riêng. Mất tham số này là rơi về một ngưỡng cho cả ảnh — góc bị bóng đổ
+        // chìm thành đen, và số tiền nằm ở đó biến mất khỏi tập đối chiếu.
+        let params;
+        const scanner = loadScanner({}, {
+            'tesseract.js': () => ({
+                createWorker: async () => ({
+                    setParameters: async (p) => { params = p; },
+                    recognize: async () => ({ data: { text: '', confidence: 0 } }),
+                    terminate: async () => {},
+                }),
+            }),
+        });
+
+        await scanner.scanImage(Buffer.from('anh'));
+
+        assert.strictEqual(params.thresholding_method, '2');
+        await scanner.shutdown();
+    });
 });
 
 describe('receiptOcrScanner — hạn chót tính từ lúc gọi, gồm cả thời gian xếp hàng', () => {

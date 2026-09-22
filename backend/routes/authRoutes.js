@@ -5,11 +5,15 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const { verifyToken } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
+const { rateLimitKey } = require('../utils/clientIp');
 
-// Chống brute-force mật khẩu / dò mã OTP — riêng cho các endpoint xác thực nhạy cảm
+// Chống brute-force mật khẩu / dò mã OTP — riêng cho các endpoint xác thực nhạy cảm.
+// Khoá theo IP thật: khoá theo req.ip thì 20 lượt này là của CHUNG mọi tài xế đi qua cùng
+// một máy Cloudflare, và đầu ca người thứ 21 đăng nhập đã bị chặn.
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 20,
+    keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Quá nhiều lần thử, vui lòng thử lại sau ít phút.' },
