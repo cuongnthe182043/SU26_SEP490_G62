@@ -42,22 +42,7 @@ const taxonomy = require('./receiptTaxonomy');
 // thì hạ chi phí mà không mất cả tính năng — hệ thống lùi về đúng hành vi một lượt đọc.
 const RECHECK_ENABLED = String(process.env.RECEIPT_VISION_RECHECK ?? 'true').toLowerCase() !== 'false';
 
-// Lượt đọc lại chỉ được chạy khi dây chuyền còn thời gian. Một lượt gọi model có thể mất
-// tới 45 giây; app tài xế cắt request tải ảnh ở 120 giây, và 120 giây đó còn gồm cả thời
-// gian đẩy ảnh qua mạng điện thoại yếu. Đọc lại khi đã tốn hơn mức này thì cái giá có thể
-// là tài xế nhận lỗi "hết thời gian" trong khi máy chủ vẫn lưu hóa đơn — tệ hơn nhiều so
-// với việc để hóa đơn đó cần người xem.
-const RECHECK_MAX_ELAPSED_MS = Number(process.env.RECEIPT_RECHECK_MAX_ELAPSED_MS || 20_000);
-
-// Trần thời gian CẢ lượt đọc một ảnh (tải ảnh + model, tính cả lượt đọc lại và mọi lần thử
-// lại). Trước đây mỗi lần gọi model có hạn 45 giây nhưng được thử lại tới 3 lần, và lượt
-// đọc lại — chạy đúng với những hóa đơn LỆCH TRƯỜNG — lại thêm 3 × 45 giây nữa. Tài xế
-// đứng chờ trên màn hình "Đang kiểm tra..." có thể quá hạn chờ app cho phép, và kết nối
-// di động treo lâu không có dữ liệu là kết nối hay bị cắt. Hết trần thì hóa đơn chỉ rơi
-// vào "cần người xem" — không bao giờ bị chặn vì hệ thống chậm.
-const SCAN_BUDGET_MS = Number(process.env.RECEIPT_SCAN_BUDGET_MS || 55_000);
-
-// Lượt đọc lại chỉ chạy khi còn ít nhất chừng này trong trần — ít hơn thì gần như chắc
+// Lượt đọc lại chỉ chạy khi còn ít nhất chừng này trước hạn chót — ít hơn thì gần như chắc
 // chắn hết giờ giữa chừng, tốn quota mà không sửa được gì.
 const MIN_RECHECK_REMAINING_MS = 15_000;
 
@@ -68,12 +53,10 @@ const MIN_RECHECK_REMAINING_MS = 15_000;
 const MIN_SCAN_BUDGET_MS = Number(process.env.RECEIPT_MIN_SCAN_BUDGET_MS || 20_000);
 
 // Hạn TRẢ LỜI cho một request có quét hóa đơn, đếm từ lúc request tới máy chủ (req.receivedAt).
-// Khác với SCAN_BUDGET_MS ở chỗ nó tính cả những đoạn nằm NGOÀI dây chuyền quét: thân
-// request đi qua mạng di động, rồi ảnh đẩy tiếp lên Cloudinary. Trước đây hai đoạn đó là
-// thời gian "miễn phí" — trần 55 giây của lượt quét bắt đầu đếm SAU chúng, nên tổng thời
-// gian tài xế phải chờ là (tải ảnh) + 55 giây, còn app thì cắt request. Ảnh sai lại
-// đúng là ảnh đi hết trần (lệch trường → đọc lại → thử lại), nên "ảnh sai" và "app báo
-// hết thời gian chờ" gần như luôn đi cùng nhau.
+// Nó tính cả những đoạn nằm NGOÀI dây chuyền quét: thân request đi qua mạng di động, rồi
+// ảnh đẩy tiếp lên Cloudinary. Lượt quét (tải ảnh + model, cả lượt đọc lại và mọi lần thử
+// lại) chỉ được dùng phần còn lại; hết hạn thì hóa đơn rơi vào "cần người xem", không bao
+// giờ bị chặn vì hệ thống chậm.
 const RESPONSE_BUDGET_MS = Number(process.env.RECEIPT_RESPONSE_BUDGET_MS || 55_000);
 
 // Trần độ dài text OCR khi LƯU. Hóa đơn A4 quét ra 2–4 nghìn ký tự; hơn nhiều lần mức đó
@@ -262,18 +245,13 @@ const safeCorroborate = (extraction, ocr, options) => {
  */
 const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt: responseDeadline = null }) => {
     const startedAt = Date.now();
-    // Trần của lượt quét = phần còn lại của hạn trả lời, nhưng không bao giờ quá
-    // SCAN_BUDGET_MS và không bao giờ dưới MIN_SCAN_BUDGET_MS.
+    // Trần của lượt quét = phần còn lại của hạn trả lời (không truyền thì trọn
+    // RESPONSE_BUDGET_MS), nhưng không bao giờ dưới MIN_SCAN_BUDGET_MS.
     const deadlineAt = Math.max(
         startedAt + MIN_SCAN_BUDGET_MS,
-        Math.min(startedAt + SCAN_BUDGET_MS, responseDeadline ?? Infinity),
+        responseDeadline ?? startedAt + RESPONSE_BUDGET_MS,
     );
-    // Không tải biến thể ảnh dành riêng cho OCR khi kênh OCR đang không dùng được (tắt
-    // bằng env, hoặc đang tạm tắt vì dựng worker hỏng). Đó là một lượt tải ảnh nữa qua
-    // mạng cho một tấm ảnh sẽ không ai đọc.
-    const loaded = await imagePipeline.loadImage(imageUrl, {
-        withOcrVariant: ocrScanner.isOcrAvailable(),
-    });
+    const loaded = await imagePipeline.loadImage(imageUrl);
     if (!loaded.ok) {
         return {
             extraction: null,
@@ -301,17 +279,23 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
         };
     }
 
+    // Hai kênh đọc CÙNG một buffer. OCR đang tắt hay tạm tắt thì scanImage tự trả lời ngay,
+    // không tốn gì — không còn lượt tải ảnh riêng nào cần tránh.
     const [ocr, first] = await Promise.all([
-        loaded.ocr ? ocrScanner.scanImage(loaded.ocr.buffer, { deadlineAt }) : Promise.resolve({ ok: false, code: 'OCR_SKIPPED' }),
+        ocrScanner.scanImage(loaded.vision.buffer, { deadlineAt }),
         extractor.extractReceipt(imageUrl, { image: loaded.vision, deadlineAt }),
     ]);
 
     if (!first.ok) {
         // Lượt đọc hỏng cũng phải có một dòng. Trước đây chỉ lượt THÀNH CÔNG mới được ghi,
         // nên đúng lúc hệ thống đọc không nổi hóa đơn nào thì log lại im lặng nhất.
+        // Nhiều lần gọi thì liệt kê lỗi từng lần: lỗi cuối một mình không kể được chuyện gì
+        // đã xảy ra (TIMEOUT không được thử lại, nên các lần trước nó hẳn đã hỏng vì lý do khác).
+        const codes = first.meta?.attempt_codes ?? [];
+        const perAttempt = codes.length > 1 ? `: ${codes.join(' → ')}` : '';
         console.warn(
             `[receipt] Không đọc được ${shortUrl(imageUrl)} sau ${Date.now() - startedAt}ms: `
-            + `${first.code} (${first.meta?.attempts ?? 0} lượt gọi model) — hóa đơn chuyển sang cần người xem.`,
+            + `${first.code} (${first.meta?.attempts ?? 0} lượt gọi model${perAttempt}) — hóa đơn chuyển sang cần người xem.`,
         );
         return {
             extraction: null,
@@ -335,10 +319,9 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
     // cái gì. Lượt này thất bại thì im lặng giữ kết quả cũ — nó là phần THÊM.
     const recheck = { ran: false, skipped: null, chosen: 'first' };
     if (RECHECK_ENABLED && crossCheck.shouldRecheck(best.corroboration)) {
-        const elapsed = Date.now() - startedAt;
         if (!allowRecheck) {
             recheck.skipped = 'not_allowed';
-        } else if (elapsed > RECHECK_MAX_ELAPSED_MS || deadlineAt - Date.now() < MIN_RECHECK_REMAINING_MS) {
+        } else if (deadlineAt - Date.now() < MIN_RECHECK_REMAINING_MS) {
             recheck.skipped = 'time_budget';
         } else {
             recheck.ran = true;
@@ -360,15 +343,6 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
             }
         }
     }
-
-    // Một dòng cho mỗi lượt quét THẬT. Đây là thứ trả lời câu "vì sao request này lâu":
-    // tách riêng thời gian của model và của OCR, thay vì chỉ thấy tổng thời gian request
-    // rồi phải đoán. Lượt dùng lại bản đọc cũ không tốn gì nên không cần một dòng log.
-    console.log(
-        `[receipt] Quét xong ${shortUrl(imageUrl)}: tổng ${Date.now() - startedAt}ms `
-        + `(model ${best.result.meta?.latency_ms ?? '-'}ms, OCR ${ocr?.latency_ms ?? '-'}ms/${ocr?.ok ? 'ok' : ocr?.code}`
-        + `${recheck.ran ? ', có đọc lại' : ''})`,
-    );
 
     return {
         extraction: best.result.extraction,
@@ -424,12 +398,6 @@ const readReceipt = async (imageUrl, {
         } catch (err) {
             console.warn('[receipt] Không đọc được bản trích xuất cũ:', err.message);
         }
-
-        // Tới được đây nghĩa là CÓ xin bản đọc cũ nhưng không dùng được: hoặc ảnh này chưa
-        // từng được quét, hoặc lần quét trước hỏng nên không lưu được nội dung đọc. Bước
-        // hoàn tất rơi vào đây là phải chạy lại cả dây chuyền cho từng ảnh — đúng chỗ khác
-        // nhau giữa một request vài giây và một request vài chục giây.
-        console.warn(`[receipt] Không dùng lại được bản đọc cũ của ${shortUrl(imageUrl)} — chạy lại cả dây chuyền.`);
     }
 
     return runPipeline(imageUrl, { profile, allowRecheck, deadlineAt });
@@ -501,6 +469,7 @@ const buildPipelineTrace = ({ quality, ocr, corroboration, meta, recheck = null,
         prompt_version: meta?.prompt_version ?? null,
         ocr_assisted: Boolean(meta?.ocr_assisted),
         attempts: meta?.attempts ?? null,
+        attempt_codes: meta?.attempt_codes ?? null,
         latency_ms: meta?.latency_ms ?? null,
     },
     corroboration: corroboration ? {

@@ -137,11 +137,11 @@ const handleUpload = (middleware) => (req, res, next) => {
         if (!err) return next();
 
         const { status, code, message } = classifyUploadError(err);
-        // LUÔN ghi log, kể cả khi trả 4xx. Sự cố tải ảnh trước đây biến mất hoàn toàn
-        // khỏi log vì nó được trả về dưới dạng 422; người trực không có cách nào biết
-        // kho ảnh đang chậm cho tới khi tài xế gọi điện.
-        const line = `[upload] ${req.method} ${req.originalUrl} → ${status} (${code}): ${describeError(err)}`;
-        if (status >= 500) logger.error(line); else logger.warn(line);
+        // Chỉ ghi log sự cố phía hệ thống hoặc đường truyền (5xx). Lỗi 4xx là lỗi của người
+        // gửi (ảnh quá nặng, không phải ảnh) và câu trả về đã nói đủ cách sửa.
+        if (status >= 500) {
+            logger.error(`[upload] ${req.method} ${req.originalUrl} → ${status} (${code}): ${describeError(err)}`);
+        }
 
         return res.status(status).json({ error: message, code });
     });

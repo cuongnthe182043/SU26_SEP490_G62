@@ -1,18 +1,23 @@
 /**
  * GIAI ĐOẠN 1 của dây chuyền đọc hóa đơn: LẤY ẢNH VỀ VÀ CHUẨN BỊ.
  *
- * Trước đây bước này nằm lẫn trong receiptVisionExtractor và chỉ làm đúng một việc:
- * thu nhỏ ảnh cho đỡ tốn token. Tách ra thành file riêng vì nó phải phục vụ HAI người
- * dùng có nhu cầu NGƯỢC NHAU:
+ * Tách khỏi receiptVisionExtractor vì cùng một tấm ảnh phục vụ HAI kênh đọc: Gemini và
+ * Tesseract. Hai kênh dùng CHUNG một biến thể, tải MỘT lần.
  *
- *   * Gemini đọc tốt nhất trên ảnh MÀU, gần với bản gốc — nó dùng cả bố cục, màu mực,
- *     đường kẻ bảng để hiểu đâu là cột số lượng, đâu là cột thành tiền. Ép về đen
- *     trắng tương phản cao là vứt đi chính những manh mối đó.
- *   * Tesseract đọc tốt nhất trên ảnh XÁM, tương phản cao, nét sắc — nó chỉ nhìn hình
- *     dạng ký tự, mọi thứ còn lại là nhiễu.
+ * Trước đây Tesseract có biến thể riêng: 2000px, xám hoá, tăng tương phản, làm nét trên
+ * Cloudinary. Đo lại (21/9, bộ ảnh hóa đơn dựng giả mô phỏng ảnh chụp tay: bóng đổ, nhiễu,
+ * mờ, mộc đỏ đè lên số) thì biến thể đó còn làm Tesseract đọc KÉM đi — tăng tương phản toàn
+ * cục và làm nét khuếch đại cả nhiễu lẫn mép bóng đổ, còn xám hoá thì Tesseract vốn tự làm.
+ * Thứ thật sự cứu ảnh chụp tay là nhị phân hoá THÍCH NGHI theo từng vùng, và Tesseract có
+ * sẵn bước đó (xem THRESHOLDING trong receiptOcrScanner):
  *
- * Nên ở đây sinh ra HAI biến thể từ cùng một URL. Nếu ép hai bên dùng chung một biến
- * thể thì luôn có một bên bị thiệt, và cả dây chuyền chỉ mạnh bằng mắt xích yếu nhất.
+ *   biến thể riêng 2000px + ngưỡng toàn cục (cũ)   38/71 số tiền tìm thấy
+ *   biến thể riêng 2000px + ngưỡng thích nghi      49/71
+ *   ảnh chung 1600px      + ngưỡng thích nghi      57/71
+ *
+ * Bỏ biến thể riêng thì mỗi lượt quét bớt một lượt tải ảnh — lại là tệp nặng nhất, nén ít
+ * nhất, gấp 2-9 lần ảnh cho model — bớt một ảnh dẫn xuất Cloudinary phải sinh (và tính vào
+ * hạn mức), và Tesseract quét ảnh ít điểm ảnh hơn.
  *
  * Việc biến đổi ảnh đẩy hết sang Cloudinary (nơi ảnh vốn đã nằm sẵn) thay vì xử lý
  * bằng thư viện trong tiến trình Node: `sharp`/OpenCV là binding native, phải biên
@@ -30,33 +35,18 @@ const crypto = require('crypto');
 const CLOUDINARY_MARKER = '/image/upload/';
 
 /**
- * Biến thể cho Gemini. TUYỆT ĐỐI KHÔNG đổi chuỗi này nếu không có lý do đủ lớn.
+ * Biến thể duy nhất, dùng chung cho Gemini và Tesseract. TUYỆT ĐỐI KHÔNG đổi chuỗi này
+ * nếu không có lý do đủ lớn.
  *
  * `image_sha256` — khoá dùng để chặn nộp lại đúng một tấm ảnh — được băm trên chính
  * bytes của biến thể này. Đổi tham số biến đổi là đổi bytes, là đổi băm: mọi bản ghi
  * đã có trong `receipt_extractions` sẽ không bao giờ khớp với ảnh đọc sau này nữa, và
  * lớp chống dùng lại hóa đơn âm thầm mất tác dụng mà không có lỗi nào bật lên.
+ *
+ * Cũng vì vậy mà ĐỪNG thêm lại một biến thể riêng cho OCR để "cho Tesseract ảnh to hơn":
+ * đã đo, 1600px không phải chỗ nghẽn — xem ghi chú đầu file.
  */
 const VISION_TRANSFORM = 'w_1600,c_limit,q_auto:good';
-
-/**
- * Biến thể cho Tesseract.
- *
- *   w_2000,c_limit  — Tesseract cần chữ cao tối thiểu ~20px mới nhận dạng ổn định.
- *                     Chữ trên hóa đơn nhiệt vốn nhỏ, ảnh 1600px là hụt; `c_limit`
- *                     chỉ thu nhỏ chứ không phóng to nên ảnh gốc nhỏ vẫn giữ nguyên
- *                     (phóng to ảnh mờ không tạo thêm thông tin, chỉ tạo thêm nhiễu).
- *   e_grayscale     — bỏ màu: dấu mộc đỏ, giấy ngả vàng chỉ là nhiễu với Tesseract.
- *   e_contrast:35   — kéo giãn tương phản, cứu ảnh chụp thiếu sáng.
- *   e_sharpen:150   — làm nét biên ký tự, bù lại phần nhoè do rung tay.
- *   q_auto:best     — nén ít nhất có thể; vết nén JPEG bám quanh nét chữ là nguyên
- *                     nhân đọc sai số phổ biến nhất.
- *
- * CỐ Ý KHÔNG nhị phân hoá (`e_blackwhite`): ảnh chụp hóa đơn bằng điện thoại gần như
- * luôn có bóng đổ hoặc loá đèn, một ngưỡng đen/trắng cố định sẽ nuốt trắng cả một góc
- * tờ giấy. Xám + tương phản là mức an toàn cho ảnh chụp tay.
- */
-const OCR_TRANSFORM = 'w_2000,c_limit,e_grayscale,e_contrast:35,e_sharpen:150,q_auto:best';
 
 /**
  * Chèn chuỗi biến đổi vào URL Cloudinary. URL không phải Cloudinary thì trả nguyên si
@@ -69,10 +59,6 @@ const buildVariantUrl = (url, transform) => {
 };
 
 const visionUrl = (url) => buildVariantUrl(url, VISION_TRANSFORM);
-const ocrUrl = (url) => buildVariantUrl(url, OCR_TRANSFORM);
-
-/** Có sinh được biến thể riêng cho OCR hay không (chỉ ảnh trên Cloudinary mới có). */
-const hasOcrVariant = (url) => ocrUrl(url) !== url;
 
 // ─── Đo ảnh từ header ────────────────────────────────────────────────────────
 
@@ -273,30 +259,12 @@ const fetchVariant = async (url) => {
 /**
  * Điểm vào của giai đoạn 1: từ một URL ra đủ thứ hai giai đoạn sau cần.
  *
- * Biến thể OCR tải SAU và tải RIÊNG, lỗi thì bỏ qua chứ không làm hỏng cả lượt: kênh
- * OCR là lớp đối chiếu THÊM, mất nó thì hệ thống lùi về đúng hành vi cũ (chỉ có
- * Gemini) chứ không được phép làm hỏng luồng chính.
+ * Chỉ MỘT lượt tải: `vision.buffer` là ảnh Gemini đọc, và cũng là ảnh Tesseract quét.
  *
  * @param {string} imageUrl
- * @param {{withOcrVariant?: boolean}} options
- * @returns {Promise<{ok: boolean, code?: string, error?: string, vision?: object, ocr?: object, quality?: object}>}
+ * @returns {Promise<{ok: boolean, code?: string, error?: string, vision?: object, quality?: object}>}
  */
-const loadImage = async (imageUrl, { withOcrVariant = true } = {}) => {
-    // Hai biến thể tải SONG SONG. Trước đây tải nối đuôi nhau: biến thể cho model xong
-    // mới tới biến thể cho OCR, tức là mỗi lượt quét gánh HAI vòng mạng cộng lại, trong
-    // khi hai ảnh chẳng liên quan gì tới nhau. Trên mạng của máy chủ mỗi vòng vài trăm
-    // ms tới vài giây (Cloudinary còn phải sinh ảnh dẫn xuất ở lần đầu), và cả khoản đó
-    // nằm trong thời gian tài xế đứng chờ.
-    //
-    // Lỗi của biến thể OCR được nuốt ngay tại đây: nó là lớp THÊM, và bắt lỗi tại chỗ
-    // cũng để không sinh unhandled rejection khi nhánh dưới bỏ nó đi.
-    const ocrPending = withOcrVariant && hasOcrVariant(imageUrl)
-        ? fetchVariant(ocrUrl(imageUrl)).catch((err) => {
-            console.warn('[receipt] Không tải được biến thể ảnh cho OCR, dùng ảnh thường:', err.message);
-            return null;
-        })
-        : null;
-
+const loadImage = async (imageUrl) => {
     let vision;
     try {
         vision = await fetchVariant(visionUrl(imageUrl));
@@ -323,31 +291,14 @@ const loadImage = async (imageUrl, { withOcrVariant = true } = {}) => {
         bytes: vision.buffer.length,
     };
 
-    // Ảnh đã bị chặn vì quá nhỏ thì OCR cũng vô vọng: bỏ luôn biến thể đang tải dở (nó đã
-    // có sẵn catch nên không sinh lỗi treo), thay vì chờ nó về rồi mới vứt.
-    const blocked = quality.reasons.some((r) => r.severity === 'error');
-    if (!withOcrVariant || blocked) {
-        return { ok: true, vision: visionPart, ocr: null, quality };
-    }
-
-    let ocrPart = null;
-    const enhanced = ocrPending ? await ocrPending : null;
-    if (enhanced) ocrPart = { buffer: enhanced.buffer, mimeType: enhanced.mimeType, enhanced: true };
-    // Không có biến thể tăng cường thì OCR chạy trên chính ảnh đã tải — kém hơn nhưng
-    // vẫn hơn hẳn việc không có kênh đối chiếu nào.
-    if (!ocrPart) ocrPart = { buffer: vision.buffer, mimeType: vision.mimeType, enhanced: false };
-
-    return { ok: true, vision: visionPart, ocr: ocrPart, quality };
+    return { ok: true, vision: visionPart, quality };
 };
 
 module.exports = {
     VISION_TRANSFORM,
-    OCR_TRANSFORM,
     QUALITY,
     buildVariantUrl,
     visionUrl,
-    ocrUrl,
-    hasOcrVariant,
     probeImage,
     assessImage,
     fetchVariant,

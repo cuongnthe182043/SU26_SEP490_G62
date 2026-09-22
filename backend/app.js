@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const routes = require('./routes');
 const { trackRequestTiming } = require('./middleware/requestTiming');
+const { clientIp, rateLimitKey } = require('./utils/clientIp');
 const pool = require('./config/database');
 const logger = require('./config/logger');
 const authService = require('./services/authService');
@@ -92,8 +93,9 @@ const csrfProtection = (req, res, next) => {
     return res.status(403).json({ error: 'CSRF token không hợp lệ', code: 'CSRF_TOKEN_INVALID' });
 };
 
-// Chạy sau reverse proxy/load balancer (Cloud Run...) — cần để req.ip và rate-limit
-// nhận đúng IP thật của client thay vì IP của proxy.
+// Chạy sau reverse proxy/load balancer — để req.ip bóc được lớp proxy của nền tảng.
+// Trên Render còn Cloudflare đứng trước, nên req.ip vẫn là IP của Cloudflare: log và
+// rate limit phải dùng clientIp() (xem utils/clientIp.js), không dùng thẳng req.ip.
 app.set('trust proxy', 1);
 
 // Middleware
@@ -112,7 +114,8 @@ app.use(csrfProtection);
 // "app hiện lỗi hết thời gian chờ" thì log máy chủ chỉ có một dòng 200 trông hoàn toàn
 // bình thường — không thể biết request đó mất 8 giây hay 80 giây, tức là không thể biết
 // lỗi nằm ở app hay ở máy chủ.
-app.use(morgan(isProduction ? ':remote-addr :method :url :status :res[content-length] :response-time ms ":user-agent"' : 'dev', {
+morgan.token('client-ip', clientIp);
+app.use(morgan(isProduction ? ':client-ip :method :url :status :res[content-length] :response-time ms ":user-agent"' : 'dev', {
     stream: { write: (message) => logger.info(message.trim()) },
 }));
 
@@ -122,6 +125,7 @@ app.use(morgan(isProduction ? ':remote-addr :method :url :status :res[content-le
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: Number(process.env.RATE_LIMIT_MAX || 600),
+    keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' },
