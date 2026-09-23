@@ -63,6 +63,17 @@ const registerToken = async (profileId, token, platform = 'android') => {
              SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, updated_at = NOW()`,
         [profileId, token, platform],
     );
+
+    // Đường đăng ký token TRƯỚC ĐÂY không có một dòng log nào, nên khi device_tokens
+    // rỗng sạch trên production thì không phân biệt được "app chưa bao giờ gọi" với
+    // "app có gọi nhưng lưu hỏng". Đây là dòng đầu tiên của chuỗi bằng chứng; log cả
+    // dạng token để bắt ngay trường hợp đăng ký nhầm loại (xem bộ lọc ở sendNotification).
+    logger.info('[push] đã đăng ký thiết bị', {
+        userId: profileId,
+        platform,
+        laExpoToken: isExpoPushToken(token),
+        mauDau: String(token).slice(0, 22),
+    });
 };
 
 /** Xoá toàn bộ token của 1 user (VD: khi logout). */
@@ -104,7 +115,24 @@ const sendNotification = async (profileId, { title, body, data = {} }) => {
     );
     const tokens = rows.map((r) => r.token).filter(isExpoPushToken);
     if (tokens.length === 0) {
-        logger.info('[push] bỏ qua — user chưa đăng ký thiết bị nào', { userId: profileId });
+        // Hai tình huống RẤT khác nhau, trước đây in ra cùng một câu "chưa đăng ký
+        // thiết bị nào" nên đọc log xong vẫn không biết đường nào mà lần:
+        //
+        //  • rows rỗng — user này không có thiết bị. Với manager/kế toán/điều phối
+        //    (chỉ dùng web) đây là chuyện BÌNH THƯỜNG, không phải sự cố, và mỗi thông
+        //    báo gửi theo vai trò lại sinh một dòng log vô nghĩa. Hạ xuống debug.
+        //  • rows CÓ nhưng không dòng nào là Expo token — app đăng ký nhầm loại token
+        //    (VD getDevicePushTokenAsync thay vì getExpoPushTokenAsync). Đây là lỗi
+        //    thật, im lặng nuốt mất là mất luôn manh mối. Giữ ở mức warn.
+        if (rows.length === 0) {
+            logger.debug?.('[push] user không có thiết bị nào đăng ký', { userId: profileId });
+        } else {
+            logger.warn('[push] có token nhưng KHÔNG phải Expo token — bị loại hết', {
+                userId: profileId,
+                soDong: rows.length,
+                mauDau: String(rows[0].token).slice(0, 22),
+            });
+        }
         return;
     }
 

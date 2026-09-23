@@ -125,6 +125,10 @@ const styles = StyleSheet.create({
         left: 16,
         right: 16,
         zIndex: 9999,
+        // Cùng lý do với alert-modal: zIndex không so được với thanh tab / banner nằm ở
+        // nhánh khác trên Android. Toast không chặn thao tác nên hậu quả nhẹ hơn hộp
+        // thoại, nhưng bị che thì tài xế mất thông báo mà không biết.
+        elevation: appTheme.overlayElevation,
     },
     card: {
         shadowColor: '#000',

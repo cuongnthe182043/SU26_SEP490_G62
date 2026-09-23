@@ -138,6 +138,10 @@ const styles = StyleSheet.create({
     backdrop: {
         ...StyleSheet.absoluteFillObject,
         zIndex: 9998,
+        // Android xếp lớp giữa hai nhánh khác cha bằng elevation, không phải zIndex —
+        // xem appTheme.overlayElevation. Thiếu dòng này là thanh tab (elevation 10)
+        // nằm đè lên nền mờ và vẫn bấm được trong lúc hộp thoại đang mở.
+        elevation: appTheme.overlayElevation,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',

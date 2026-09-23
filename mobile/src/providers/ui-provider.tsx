@@ -65,17 +65,39 @@ const SlotDepthContext = createContext(0);
 
 let slotSeq = 0;
 
-/** Bọc TOÀN BỘ nội dung của một native <Modal>. Dùng qua AppModal, không gắn tay. */
-export function UIOverlaySlot({ children }: { children?: React.ReactNode }) {
+/**
+ * Bọc TOÀN BỘ nội dung của một native <Modal>. Dùng qua AppModal, không gắn tay.
+ *
+ * `active` = Modal này có đang thực sự hiện hay không. Bắt buộc phải có, vì "React có
+ * render children" KHÔNG đồng nghĩa "Modal đang hiện":
+ *
+ *   • Android: Modal.render() trả null khi visible=false → children tháo, slot tự huỷ.
+ *   • iOS:     _shouldShowModal() = `visible === true || state.isRendered === true`.
+ *              isRendered chỉ về false khi native bắn sự kiện modalDismissed, nên có
+ *              cửa sổ (và với New Architecture là có thể MÃI MÃI) Modal đã ẩn mà
+ *              children vẫn còn mount.
+ *
+ * Không có cờ này thì một Modal đã ẩn vẫn giữ slot, `topSlot` trỏ vào nó, và toàn bộ
+ * toast/hộp xác nhận/thông báo được vẽ vào bên trong một Modal vô hình — tức là biến
+ * mất hoàn toàn khỏi màn hình. Đáng ngại nhất ở active-trip-screen: nó giữ 5 Modal
+ * mount thường trực (2 ReasonModal, 2 CameraModal, 1 ExpenseFormModal).
+ */
+export function UIOverlaySlot({
+    children,
+    active = true,
+}: { children?: React.ReactNode; active?: boolean }) {
     const ctx = useContext(OverlaySlotContext);
     const depth = useContext(SlotDepthContext) + 1;
     const [id] = useState(() => ++slotSeq);
     const register = ctx?.register;
-    useEffect(() => register?.({ id, depth }), [register, id, depth]);
+    useEffect(() => {
+        if (!active) return;
+        return register?.({ id, depth });
+    }, [register, id, depth, active]);
     return (
         <SlotDepthContext.Provider value={depth}>
             {children}
-            {ctx?.topSlot === id ? ctx.overlays : null}
+            {active && ctx?.topSlot === id ? ctx.overlays : null}
         </SlotDepthContext.Provider>
     );
 }

@@ -117,6 +117,10 @@ const styles = StyleSheet.create({
     backdrop: {
         ...StyleSheet.absoluteFillObject,
         zIndex: 9998,
+        // Xem alert-modal.tsx / appTheme.overlayElevation. Ở hộp xác nhận thì hậu quả
+        // nặng hơn: bấm được thanh tab trong lúc hộp đang chờ trả lời nghĩa là màn hình
+        // bên dưới đổi mất, rồi "Xác nhận" chạy việc của màn đã rời đi.
+        elevation: appTheme.overlayElevation,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',
