@@ -29,8 +29,8 @@ export type AlertOptions = {
 };
 
 type ToastState = ToastOptions & { id: number; visible: boolean };
-type ConfirmState = ConfirmOptions & { visible: boolean };
-type AlertState = AlertOptions & { visible: boolean };
+type ConfirmState = ConfirmOptions & { visible: boolean; id: number; resolve: (v: boolean) => void };
+type AlertState = AlertOptions & { visible: boolean; id: number; resolve: () => void };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -100,14 +100,28 @@ export function useAppAlert() {
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
+// Mỗi hộp thoại mang một id riêng để làm `key` khi render: không có key, React giữ
+// nguyên instance cũ khi hộp kế tiếp thay chỗ — hiệu ứng mở không chạy lại và
+// BackHandler vẫn là của hộp đã đóng.
+let dialogSeq = 0;
+
 export function UIProvider({ children }: { children: React.ReactNode }) {
     const [toast, setToast] = useState<ToastState | null>(null);
-    const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-    const [alert, setAlert] = useState<AlertState | null>(null);
+    // Hộp xác nhận / thông báo xếp HÀNG ĐỢI chứ không phải một ô duy nhất.
+    //
+    // Trước đây mỗi loại giữ đúng một state + một resolver: hộp mới đè lên hộp đang
+    // mở và ghi đè luôn resolver của nó, nên `await showAlert(...)` của màn hình bên
+    // dưới KHÔNG BAO GIỜ resolve. Chỉ cần một thông báo đẩy tới (WS, display_mode
+    // 'alert'/'traffic_alert' — xem notifications-provider) rơi đúng lúc màn hình
+    // đang hiện hộp "Đã gửi yêu cầu!" là màn đó treo vĩnh viễn: nút kẹt ở "Đang xử
+    // lý...", `router.back()` sau await không chạy, và nội dung hộp bị tráo giữa
+    // chừng nên tài xế bấm OK cho một đằng lại xác nhận một nẻo.
+    //
+    // Xếp hàng thì hộp nào cũng được xem và promise nào cũng resolve, đúng một lần.
+    const [confirms, setConfirms] = useState<ConfirmState[]>([]);
+    const [alerts, setAlerts]     = useState<AlertState[]>([]);
 
-    const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
-    const alertResolveRef   = useRef<(() => void) | null>(null);
-    const toastTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ── Toast ──
     const showToast = useCallback((opts: ToastOptions) => {
@@ -124,29 +138,32 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     // ── Confirm ──
     const showConfirm = useCallback((opts: ConfirmOptions): Promise<boolean> => {
         return new Promise((resolve) => {
-            confirmResolveRef.current = resolve;
-            setConfirm({ ...opts, visible: true });
+            setConfirms((queue) => [...queue, { ...opts, visible: true, id: ++dialogSeq, resolve }]);
         });
     }, []);
 
+    // Gọi resolve bên trong updater là có chủ ý: nó lấy đúng phần tử đầu hàng của
+    // state mới nhất, không cần thêm ref đi kèm. Resolve một promise hai lần là
+    // no-op nên StrictMode chạy updater lặp cũng không sinh hệ quả.
     const handleConfirmResult = useCallback((result: boolean) => {
-        setConfirm(null);
-        confirmResolveRef.current?.(result);
-        confirmResolveRef.current = null;
+        setConfirms(([current, ...rest]) => {
+            current?.resolve(result);
+            return rest;
+        });
     }, []);
 
     // ── Alert ──
     const showAlert = useCallback((opts: AlertOptions): Promise<void> => {
         return new Promise((resolve) => {
-            alertResolveRef.current = resolve;
-            setAlert({ ...opts, visible: true });
+            setAlerts((queue) => [...queue, { ...opts, visible: true, id: ++dialogSeq, resolve }]);
         });
     }, []);
 
     const handleAlertClose = useCallback(() => {
-        setAlert(null);
-        alertResolveRef.current?.();
-        alertResolveRef.current = null;
+        setAlerts(([current, ...rest]) => {
+            current?.resolve();
+            return rest;
+        });
     }, []);
 
     // ── Overlay slots ──
@@ -160,16 +177,22 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         (top, x) => (!top || x.depth >= top.depth ? x : top), null,
     )?.id ?? null;
 
+    // Chỉ hộp đầu hàng được vẽ; các hộp sau lần lượt lên khi hộp trước đóng.
+    // Hộp xác nhận nằm trên thông báo: nó đang chờ một quyết định, còn thông báo
+    // chỉ cần đọc — và cả hai đều chặn thao tác bên dưới nên không thể xen kẽ.
+    const confirm = confirms[0];
+    const alert   = alerts[0];
+
     const overlays = (
         <>
             {toast && (
                 <ToastOverlay key={toast.id} toast={toast} onHide={handleToastHide} />
             )}
-            {confirm && (
-                <ConfirmModal opts={confirm} onResult={handleConfirmResult} />
+            {alert && !confirm && (
+                <AlertModal key={alert.id} opts={alert} onClose={handleAlertClose} />
             )}
-            {alert && (
-                <AlertModal opts={alert} onClose={handleAlertClose} />
+            {confirm && (
+                <ConfirmModal key={confirm.id} opts={confirm} onResult={handleConfirmResult} />
             )}
         </>
     );

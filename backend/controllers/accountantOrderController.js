@@ -1,5 +1,5 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
-const { posInt, posAmount, nonNegAmount, nonNegNumber, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
+const { posInt, posAmount, nonNegAmount, nonNegNumber, enumVal, pageParams, phoneVN, validDate, notFutureDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 const { buildImportFingerprint } = require('../utils/importFingerprint');
 const { money } = require('../utils/formatNumber');
@@ -103,6 +103,19 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
 
     nonNegAmount(prepaid_amount ?? 0, 'Số tiền đặt cọc');
 
+    // Đơn kế toán khai lại là đơn ĐÃ CHẠY XONG — ngày chạy phải trước hoặc bằng hôm nay.
+    //
+    // `completed_at` là cột thật đi vào order_shipments, nên đây là chốt chặn bắt buộc:
+    // sai nó là doanh thu rơi vào kỳ tương lai. `order_date` chỉ là nhãn hiển thị ghi
+    // kèm ghi chú đơn; form nhập tay gửi đúng YYYY-MM-DD nên kiểm được, còn import gửi
+    // nguyên chuỗi thô của ô Excel ("12/8/26", "8-Dec") để in lại cho kế toán đối chiếu
+    // — bắt chuỗi đó theo định dạng ISO sẽ đánh trượt toàn bộ file. Ngày thật của dòng
+    // import đi trong completed_at và đã bị chặn ở trên.
+    const completedAt = notFutureDate(body.completed_at, 'Ngày hoàn thành');
+    const orderDateIso = /^\d{4}-\d{2}-\d{2}/.test(String(order_date ?? ''))
+        ? notFutureDate(order_date, 'Ngày đơn')
+        : null;
+
         if (!Array.isArray(shipments) || shipments.length === 0)
             throw err400('Đơn hàng phải có ít nhất 1 chuyến xe.');
         if (shipments.length > 50)
@@ -177,7 +190,12 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
         customer_company: customer_company?.trim() || null,
         customer_id:      customer_id || null,
         order_date:       order_date  || null,
-        completed_at:     body.completed_at || null,
+        // Form nhập tay chỉ có một ô ngày ("Ngày đơn") và trước đây nó chỉ được chép
+        // vào ghi chú đơn — completed_at để trống nên câu INSERT rơi về NOW(). Hệ quả:
+        // đơn tháng 8 khai vào tháng 9 được ghi nhận doanh thu THÁNG 9, và "Ngày hoàn
+        // thành" của mọi đơn khai tay đều đúng bằng ngày nhập. Lấy ngày đã nhập làm
+        // ngày chạy khi bên gọi không nói gì khác (import luôn gửi completed_at riêng).
+        completed_at:     completedAt || orderDateIso || null,
         notes:            notes?.trim() || null,
         prepaid_amount:   nonNegAmount(prepaid_amount, 'Số tiền khách ứng trước'),
         partner_id:       partner_id ? Number(partner_id) : null,

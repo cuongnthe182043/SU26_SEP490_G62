@@ -743,7 +743,11 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             SELECT
                 COALESCE(SUM(estimated_price), 0) AS estimated_price,
                 COALESCE(SUM(actual_price), 0)    AS actual_price,
-                COUNT(*)                           AS shipment_count
+                COUNT(*)                           AS shipment_count,
+                -- Ngày hoàn thành của ĐƠN = lúc chuyến cuối cùng chạy xong, nên là MAX
+                -- chứ không phải completed_at của chuyến đầu. Lọc theo status để chuyến
+                -- bị huỷ (completed_at NULL nhưng vẫn thuộc đơn) không kéo mốc đi đâu cả.
+                MAX(completed_at) FILTER (WHERE status = 'completed') AS completed_at
             FROM order_shipments
             WHERE order_id = o.id
         ) ship_agg ON TRUE
@@ -796,6 +800,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             o.derived_status AS status,
             o.notes,
             o.created_at,
+            ship_agg.completed_at,
             COALESCE(c.full_name, c.company_name) AS customer_name,
             c.company_name   AS customer_company,
             c.phone          AS customer_phone,

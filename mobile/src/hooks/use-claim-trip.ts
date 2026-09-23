@@ -7,7 +7,7 @@ import type { ActiveTrip } from '@/types/trip';
 
 type ClaimResult =
   | { ok: true; trip: ActiveTrip }
-  | { ok: false; message: string; alreadyClaimed: boolean; sameOrder?: boolean };
+  | { ok: false; message: string; alreadyClaimed: boolean; sameOrder?: boolean; blocked?: boolean };
 
 export function useClaimTrip() {
   const [isLoading, setIsLoading] = useState(false);
@@ -26,9 +26,14 @@ export function useClaimTrip() {
 
       return {
         ok: false,
-        message: is409 ? msg : msg,
+        message: msg,
         alreadyClaimed: is409 && !sameOrder,
         sameOrder,
+        // 422 = server từ chối vì tài xế còn nghĩa vụ chưa xong (chuyến giao thất bại
+        // chờ điều phối xử lý, phiếu thu chưa gửi...). Khác hẳn "chuyến đã có người
+        // nhận": bấm lại bao nhiêu lần cũng vậy cho tới khi việc cũ xong, nên phải
+        // hiện thành hộp thoại bắt đọc chứ không phải toast trôi qua sau 3 giây.
+        blocked: error instanceof ApiError && error.status === 422,
       };
     } finally {
       setIsLoading(false);

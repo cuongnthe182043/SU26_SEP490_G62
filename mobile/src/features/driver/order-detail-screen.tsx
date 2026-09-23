@@ -25,6 +25,24 @@ const fmtDate = (iso: string | null) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
+// Có NĂM, khác fmtDate ở trên. Mốc trong timeline của một chuyến thì ngày/tháng là đủ
+// vì cả chuyến gói gọn trong ít ngày, nhưng "ngày hoàn thành đơn" là thứ tài xế tra lại
+// khi đối chiếu lương hay công nợ nhiều tháng sau — thiếu năm là đọc nhầm.
+const fmtDateFull = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+};
+
+// Ngày hoàn thành của ĐƠN = lúc chuyến cuối cùng chạy xong. Chỉ có nghĩa khi mọi chuyến
+// đã xong; đơn còn chuyến đang chạy thì chưa hoàn thành, dù vài chuyến đầu đã xong.
+const orderCompletedAt = (shipments: { status: string; completed_at: string | null }[]) => {
+    if (shipments.length === 0) return null;
+    const done = shipments.filter(s => s.status === 'completed' && s.completed_at);
+    if (done.length !== shipments.length) return null;
+    return done.reduce((latest, s) => (s.completed_at! > latest ? s.completed_at! : latest), done[0].completed_at!);
+};
+
 
 function PhotoViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
     return (
@@ -278,6 +296,7 @@ export default function OrderDetailScreen() {
     // nếu chuyến đó chưa hoàn thành/chưa chốt — khớp BR-026.
     const totalPrice = shipments.reduce((sum, s) => sum + (Number(s.actual_price) || Number(s.estimated_price) || 0), 0);
     const completedLegs = shipments.filter(s => s.status === 'completed').length;
+    const completedAtLabel = fmtDateFull(orderCompletedAt(shipments));
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
@@ -321,6 +340,15 @@ export default function OrderDetailScreen() {
                                 {order.cargo_name ?? 'Hàng hóa'}
                             </Text>
                         </XStack>
+                        {completedAtLabel ? (
+                            <XStack alignItems="center" gap={8}>
+                                <CheckCircle size={16} color={appTheme.colors.success} />
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>Ngày hoàn thành</Text>
+                                <Text fontSize={12} fontWeight="800" color={appTheme.colors.text} flex={1} textAlign="right">
+                                    {completedAtLabel}
+                                </Text>
+                            </XStack>
+                        ) : null}
                         <XStack justifyContent="space-between" paddingTop={4}>
                             <YStack alignItems="center" flex={1} gap={3}>
                                 <Text fontSize={20} fontWeight="900" color={appTheme.colors.primary}>

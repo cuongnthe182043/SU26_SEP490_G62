@@ -66,6 +66,27 @@ const validDate = (val, label = 'Ngày') => {
     return s;
 };
 
+// Ngày của một việc ĐÃ XẢY RA (ngày đơn, ngày chạy kế toán khai lại). Không được nằm
+// sau hôm nay; hôm nay thì được — đơn chạy sáng nay tối nhập vào là chuyện thường.
+//
+// So theo ngày Việt Nam chứ không theo giờ máy chủ: server chạy UTC thì từ 0h đến 7h
+// sáng giờ VN "hôm nay" của nó vẫn là hôm qua, và mọi đơn chạy trong ngày bị chặn oan.
+//
+// Vì sao phải chặn: đơn nhập tay được tạo thẳng ở trạng thái hoàn thành, nên ngày này
+// là ngày GHI NHẬN DOANH THU. Một ô ngày gõ nhầm sang tương lai (hay đọc nhầm định dạng
+// Excel kiểu Mỹ m/d/yy) đẩy doanh thu sang kỳ sau — KPI và bảng lương tháng này hụt đi
+// mà không có lỗi nào báo ra. Trình đọc Excel đã chặn phía trình duyệt; đây là lớp chốt
+// của máy chủ, cũng là lớp DUY NHẤT cho đơn nhập tay từ form.
+const notFutureDate = (val, label = 'Ngày') => {
+    const s = validDate(val, label);
+    if (s === null) return null;
+    const todayVN = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    if (s > todayVN) {
+        throw err400(`${label} không được ở tương lai (sau ${todayVN}).`);
+    }
+    return s;
+};
+
 // Số tháng lùi lại cho các báo cáo dạng "N tháng gần đây"
 const validMonthsBack = (val, fallback = 6, label = 'Số tháng') => {
     if (val === undefined || val === null || val === '') return fallback;
@@ -92,6 +113,6 @@ const sendError = (res, err) => {
 
 module.exports = {
     posInt, posAmount, nonNegAmount, nonNegNumber, enumVal, pageParams, phoneVN,
-    validMonth, validYear, validDate, validMonthsBack, optMonth, optYear,
+    validMonth, validYear, validDate, notFutureDate, validMonthsBack, optMonth, optYear,
     sendError, err400,
 };

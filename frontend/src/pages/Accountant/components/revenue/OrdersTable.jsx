@@ -14,12 +14,18 @@ const DEBT_STATUS_CHIP = {
   unpaid:  { label: "Chưa thu",     color: "danger"  },
 };
 
-function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, onPayment, onDetail }) {
-  const date = order.created_at
-    ? new Date(order.created_at).toLocaleDateString("vi-VN", {
+const viDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString("vi-VN", {
         day: "2-digit", month: "2-digit", year: "numeric",
       })
     : "—";
+
+function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, onPayment, onDetail }) {
+  const date = viDate(order.created_at);
+  // Lúc chuyến cuối của đơn chạy xong — mốc dùng để đối chiếu kỳ ghi nhận doanh thu,
+  // khác ngày tạo với đơn kế toán khai lại (đơn tháng trước nhập vào tháng này).
+  const completedDate = viDate(order.completed_at);
 
   const debtChip = DEBT_STATUS_CHIP[order.debt_status];
   const pendingReceiptAmount = Number(order.pending_receipt_amount || 0);
@@ -62,6 +68,11 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         {}
         <td className="py-3.5 pr-4">
           <span className="text-xs text-gray-500 dark:text-gray-400">{date}</span>
+        </td>
+
+        {}
+        <td className="py-3.5 pr-4">
+          <span className="text-xs text-gray-500 dark:text-gray-400">{completedDate}</span>
         </td>
 
         {}
@@ -204,12 +215,13 @@ export function OrdersTable({
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
         <div className="overflow-x-auto">
-        <table className="w-full table-fixed min-w-[900px]">
+        <table className="w-full table-fixed min-w-[1020px]">
           <colgroup>
             <col className="w-10" />
             <col />
             <col className="w-28" />
-            <col className="w-[140px]" />
+            <col className="w-32" />
+            <col className="w-[120px]" />
             <col className="w-36" />
             <col className="w-44" />
             <col className="w-24" />
@@ -220,6 +232,7 @@ export function OrdersTable({
                 { label: "" },
                 { label: "Khách hàng / SĐT" },
                 { label: "Ngày tạo" },
+                { label: "Ngày hoàn thành" },
                 { label: "Chuyến" },
                 { label: "Doanh thu" },
                 { label: "Trạng thái" },
