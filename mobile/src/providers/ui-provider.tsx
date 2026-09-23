@@ -38,6 +38,7 @@ type UIContextValue = {
     showToast: (opts: ToastOptions) => void;
     showConfirm: (opts: ConfirmOptions) => Promise<boolean>;
     showAlert: (opts: AlertOptions) => Promise<void>;
+    dismissAllDialogs: () => void;
 };
 
 const UIContext = createContext<UIContextValue | null>(null);
@@ -120,6 +121,13 @@ export function useAppAlert() {
     return { showAlert: ctx.showAlert };
 }
 
+/** Dọn hộp thoại còn treo khi phiên kết thúc — xem dismissAllDialogs trong UIProvider. */
+export function useDismissAllDialogs() {
+    const ctx = useContext(UIContext);
+    if (!ctx) throw new Error('useDismissAllDialogs must be used inside UIProvider');
+    return ctx.dismissAllDialogs;
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 // Mỗi hộp thoại mang một id riêng để làm `key` khi render: không có key, React giữ
@@ -188,6 +196,29 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         });
     }, []);
 
+    /**
+     * Dọn sạch hàng đợi hộp thoại. Gọi khi PHIÊN kết thúc (đăng xuất, bị 401 đá ra).
+     *
+     * Hộp thoại thuộc về phiên đã mở nó. Không dọn thì cái còn xếp hàng sẽ hiện lên
+     * trên màn ĐĂNG NHẬP của người tiếp theo — gặp thật khi chạm hai lần nhanh vào
+     * "Đăng xuất": hộp thứ nhất đăng xuất xong, hộp thứ hai trồi lên sau màn login.
+     *
+     * Confirm resolve `false`, alert thì KHÔNG resolve — cố ý lệch nhau:
+     *  • Mọi nơi gọi confirm đều viết `if (!ok) return;` nên `false` mang đúng nghĩa
+     *    "người dùng không đồng ý", dừng lại sạch sẽ.
+     *  • Alert thì phần chạy tiếp sau `await` thường là điều hướng (`router.back()`).
+     *    Resolve nó lúc này là chạy điều hướng của màn đã bị đăng xuất gỡ bỏ, đè lên
+     *    `router.replace('/login')` vừa chạy. Bỏ treo lời hứa an toàn hơn: màn đang
+     *    chờ nó cũng đang bị tháo, treo rồi được thu hồi cùng màn đó.
+     */
+    const dismissAllDialogs = useCallback(() => {
+        setConfirms((queue) => {
+            queue.forEach((c) => c.resolve(false));
+            return [];
+        });
+        setAlerts(() => []);
+    }, []);
+
     // ── Overlay slots ──
     const [slots, setSlots] = useState<Slot[]>([]);
     const register = useCallback((slot: Slot) => {
@@ -220,7 +251,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     );
 
     return (
-        <UIContext.Provider value={{ showToast, showConfirm, showAlert }}>
+        <UIContext.Provider value={{ showToast, showConfirm, showAlert, dismissAllDialogs }}>
             <OverlaySlotContext.Provider value={{ topSlot, overlays, register }}>
                 {children}
                 {topSlot === null ? overlays : null}

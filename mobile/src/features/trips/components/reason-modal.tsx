@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
@@ -32,6 +33,11 @@ export function ReasonModal({
 }: Props) {
     const [text, setText] = useState('');
     const canConfirm = !required || text.trim().length > 0;
+    // Hộp này neo xuống đáy (justifyContent: 'flex-end'). Trên iPhone có thanh home
+    // indicator, 24px padding cố định là chưa đủ: nút bấm nằm chồng lên vạch home,
+    // trông như hộp bị đẩy tụt hẳn xuống mép dưới và bấm hay trượt nhầm.
+    // Android không có vạch này nên insets.bottom = 0, giữ nguyên như cũ.
+    const insets = useSafeAreaInsets();
 
     const handleClose = () => {
         setText('');
@@ -48,7 +54,7 @@ export function ReasonModal({
     return (
         <AppModal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
             <KeyboardAvoidingView
-                style={s.overlay}
+                style={[s.overlay, { paddingBottom: insets.bottom + 24 }]}
                 behavior={Platform.OS === 'ios' ? 'position' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
@@ -108,7 +114,8 @@ const s = StyleSheet.create({
     overlay: {
         flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'flex-end', alignItems: 'center',
-        padding: 24,
+        // paddingBottom đặt lúc render theo insets.bottom — xem ghi chú ở component.
+        paddingHorizontal: 24, paddingTop: 24,
     },
     scrollContainer: {
         flexGrow: 1,

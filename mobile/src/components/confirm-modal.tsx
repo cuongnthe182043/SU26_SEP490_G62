@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Animated, BackHandler, Pressable, StyleSheet } from 'react-native';
+// Modal THÔ, không phải AppModal — xem ghi chú ở alert-modal.tsx (AppModal bọc
+// UIOverlaySlot, mà component này chính là nội dung của slot).
+import { Animated, Modal, Pressable, StyleSheet } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
@@ -47,18 +49,11 @@ export function ConfirmModal({ opts, onResult }: Props) {
         ]).start(() => onResult(result));
     };
 
-    // Hộp là View chứ không phải native Modal, nên nút Back của Android không tự đóng nó:
-    // Back sẽ đưa màn hình bên dưới lùi đi mà hộp vẫn đè lên, bấm "Xác nhận" lúc đó là chạy
-    // việc của màn đã đóng. Back = Huỷ. (Nằm trong một Modal thì Modal đó nhận Back trước.)
-    useEffect(() => {
-        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-            dismiss(false);
-            return true;
-        });
-        return () => sub.remove();
-    }, []);
-
+    // Back = Huỷ, do chính Modal nhận qua onRequestClose. Quan trọng vì nếu không, Back
+    // đưa màn hình bên dưới lùi đi mà hộp vẫn đè lên, rồi bấm "Xác nhận" là chạy việc
+    // của màn đã đóng.
     return (
+        <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={() => dismiss(false)}>
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => dismiss(false)} />
             <Animated.View style={[styles.card, { transform: [{ scale }], opacity }]}>
@@ -110,17 +105,15 @@ export function ConfirmModal({ opts, onResult }: Props) {
                 </XStack>
             </Animated.View>
         </Animated.View>
+        </Modal>
     );
 }
 
 const styles = StyleSheet.create({
+    // Trong cửa sổ riêng của Modal nên absoluteFillObject phủ đúng màn hình —
+    // xem ghi chú dài ở alert-modal.tsx về việc vì sao View thường không đủ.
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        zIndex: 9998,
-        // Xem alert-modal.tsx / appTheme.overlayElevation. Ở hộp xác nhận thì hậu quả
-        // nặng hơn: bấm được thanh tab trong lúc hộp đang chờ trả lời nghĩa là màn hình
-        // bên dưới đổi mất, rồi "Xác nhận" chạy việc của màn đã rời đi.
-        elevation: appTheme.overlayElevation,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',
