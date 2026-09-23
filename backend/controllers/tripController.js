@@ -44,6 +44,11 @@ const claimTrip = async (req, res) => {
         if (err.message.startsWith('PENDING_RECEIPT:')) {
             return res.status(422).json({ error: err.message.replace('PENDING_RECEIPT:', ''), code: 'PENDING_RECEIPT' });
         }
+        // Chuyến cũ giao thất bại, điều phối chưa chốt giao lại / hoàn hàng (BR-005).
+        // 422 như PENDING_RECEIPT: yêu cầu hợp lệ nhưng tài xế còn nghĩa vụ chưa xong.
+        if (err.message.startsWith('FAILED_UNRESOLVED:')) {
+            return res.status(422).json({ error: err.message.replace('FAILED_UNRESOLVED:', ''), code: 'FAILED_UNRESOLVED' });
+        }
         // Nhận chuyến sai nhóm xe: dữ liệu gửi lên không hợp lệ với xe đang lái (422),
         // kèm code để app phân biệt được với các lỗi 422 khác.
         if (err.message.startsWith('VEHICLE_GROUP_MISMATCH:')) {

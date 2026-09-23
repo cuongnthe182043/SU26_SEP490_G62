@@ -20,6 +20,14 @@ const fmtDate = (iso: string | null) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
+// Có NĂM. Lịch sử cuộn ngược được nhiều tháng, mà đây là mốc tài xế đối chiếu khi thắc
+// mắc lương hay công nợ của một đơn cũ — "12/03" không nói được là năm nào.
+const fmtDateFull = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+};
+
 
 type Filter = 'all' | 'active' | 'completed' | 'cancelled';
 
@@ -137,7 +145,7 @@ function OrderCard({ item }: { item: OrderHistoryItem }) {
                     >
                         <CheckCircle size={13} color={appTheme.colors.success} />
                         <Text fontSize={11} fontWeight="700" color={appTheme.colors.success}>
-                            Hoàn thành lúc {fmtDate(item.last_completed_at)}
+                            Ngày hoàn thành: {fmtDateFull(item.last_completed_at)}
                         </Text>
                     </XStack>
                 ) : isCancelled ? (

@@ -145,6 +145,15 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
     return { trips: rowsResult.rows, total, page, limit, totalPages };
 };
 
+// Chuyến đang giữ chân tài xế — BLOCKING_STATUSES nên gồm cả 'failed'.
+//
+// Chuyến giao thất bại vẫn là chuyến của tài cho tới khi điều phối chốt giao lại hay
+// hoàn hàng: hàng còn trên xe và tài không được nhận việc khác. Trước đây hàm này dùng
+// ACTIVE_STATUSES nên chuyến biến mất khỏi /trips/active ngay khi tài bấm "giao thất
+// bại" — màn hình "Đang chờ điều phối viên xử lý" mà app đã dựng sẵn chỉ hiện được tới
+// lần tải lại đầu tiên, sau đó tài rơi về màn chính như thể đã xong việc và thoải mái
+// vào pool bấm nhận chuyến mới. Giữ chuyến ở đây thì app tự khoá nút "Nhận chuyến"
+// (hasActiveTrip) và nói rõ đang chờ ai; claimShipment vẫn chặn ở tầng ghi.
 const getActiveTrip = async (driverId) => {
     const result = await pool.query(
         `SELECT
@@ -178,7 +187,7 @@ const getActiveTrip = async (driverId) => {
          WHERE sc.owner_driver_id = $1
            AND os.status = ANY($2::text[])
          LIMIT 1`,
-        [driverId, ACTIVE_STATUSES],
+        [driverId, BLOCKING_STATUSES],
     );
     if (!result.rows[0]) return null;
     const row = result.rows[0];
@@ -344,30 +353,57 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             throw new Error('DRIVER_MAINTENANCE');
         }
 
-        const activeVehicleCheck = await client.query(
-            `SELECT os.id FROM order_shipments os
-             JOIN v_shipment_current sc ON sc.shipment_id = os.id
-             WHERE sc.vehicle_id = $1
-               AND os.status = ANY($2::text[])
-             LIMIT 1`,
-            [vehicleId, ACTIVE_STATUSES],
-        );
-        if (activeVehicleCheck.rows.length > 0) {
-            await client.query('ROLLBACK');
-            throw new Error('ACTIVE_VEHICLE_TRIP');
-        }
+        // BLOCKING_STATUSES chứ không phải ACTIVE_STATUSES: chuyến 'failed' cũng đang
+        // giữ chân tài xế và xe. Điều phối chưa chọn giao lại hay hoàn hàng thì hàng
+        // vẫn nằm trên thùng xe, và cả hai lựa chọn đều đưa chuyến cũ về trạng thái
+        // đang chạy — nhận thêm chuyến lúc này là tài có hai chuyến cùng lúc (BR-005).
+        //
+        // assignOrderShipmentsToDriver (điều phối gán) đã chặn đúng từ đầu; đường tài
+        // tự nhận từ pool thì không, nên cùng một tài bị điều phối từ chối vẫn tự bấm
+        // nhận được. Lấy thêm status để nói đúng lý do bị chặn, ưu tiên nêu chuyến
+        // thất bại vì đó là việc tài phải chờ người khác xử lý chứ không tự làm được.
+        const blockingOrder = `ORDER BY (os.status = '${SHIPMENT_STATUS.FAILED}') DESC, os.id ASC`;
 
+        // Hỏi chuyến của CHÍNH tài xế trước chuyến của xe: chuyến đang treo thường là
+        // của cả hai (tài nào xe nấy), mà "bạn còn chuyến chưa xong" nói đúng việc tài
+        // phải làm hơn là "xe đang bận" — nghe như chỉ cần đổi xe là nhận được.
         const activeCheck = await client.query(
-            `SELECT os.id FROM order_shipments os
+            `SELECT os.id, os.order_id, os.status FROM order_shipments os
              JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE sc.owner_driver_id = $1
                AND os.status = ANY($2::text[])
+             ${blockingOrder}
              LIMIT 1`,
-            [driverId, ACTIVE_STATUSES],
+            [driverId, BLOCKING_STATUSES],
         );
         if (activeCheck.rows.length > 0) {
             await client.query('ROLLBACK');
+            const blocker = activeCheck.rows[0];
+            if (blocker.status === SHIPMENT_STATUS.FAILED) {
+                throw Object.assign(new Error('FAILED_UNRESOLVED'), {
+                    shipmentId: blocker.id,
+                    orderId: blocker.order_id,
+                });
+            }
             throw new Error('ACTIVE_TRIP');
+        }
+
+        const activeVehicleCheck = await client.query(
+            `SELECT os.id, os.status FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.vehicle_id = $1
+               AND os.status = ANY($2::text[])
+             ${blockingOrder}
+             LIMIT 1`,
+            [vehicleId, BLOCKING_STATUSES],
+        );
+        if (activeVehicleCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw new Error(
+                activeVehicleCheck.rows[0].status === SHIPMENT_STATUS.FAILED
+                    ? 'VEHICLE_FAILED_UNRESOLVED'
+                    : 'ACTIVE_VEHICLE_TRIP',
+            );
         }
 
         const locked = await client.query(
@@ -401,7 +437,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             throw new Error('VEHICLE_GROUP_MISMATCH');
         }
 
-        // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
+        // Chặn nếu driver đang có chuyến chưa xong trong CÙNG order (không chặn nếu đã hoàn thành)
         const sameOrderCheck = await client.query(
             `SELECT os.id FROM order_shipments os
              JOIN v_shipment_current sc ON sc.shipment_id = os.id
@@ -409,7 +445,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
                AND sc.owner_driver_id = $2
                AND os.status = ANY($3::text[])
              LIMIT 1`,
-            [order_id, driverId, ACTIVE_STATUSES],
+            [order_id, driverId, BLOCKING_STATUSES],
         );
         if (sameOrderCheck.rows.length > 0) {
             await client.query('ROLLBACK');

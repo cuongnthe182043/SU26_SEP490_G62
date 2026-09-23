@@ -29,7 +29,14 @@ export function ConfirmModal({ opts, onResult }: Props) {
         ]).start();
     }, []);
 
+    // Xem alert-modal.tsx: chạm thêm lần nữa trong lúc hiệu ứng đóng còn chạy sẽ
+    // báo cho hàng đợi đóng thêm một hộp — và ở đây còn tệ hơn, "Huỷ" bấm nhầm sau
+    // "Xác nhận" sẽ trả kết quả cho hộp xếp sau. Chỉ lần bấm đầu tiên được tính.
+    const dismissedRef = useRef(false);
+
     const dismiss = (result: boolean) => {
+        if (dismissedRef.current) return;
+        dismissedRef.current = true;
         Animated.parallel([
             Animated.timing(backdropOpacity, {
                 toValue: 0, duration: 180, useNativeDriver: true,

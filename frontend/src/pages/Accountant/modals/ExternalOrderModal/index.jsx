@@ -26,8 +26,24 @@ const EMPTY_SHIPMENT = () => ({
 
 const VN_PHONE_RE = /^0\d{8,10}$/;
 
-const validate = (customer, shipments) => {
+// Hôm nay theo GIỜ MÁY, dạng YYYY-MM-DD để so chuỗi thẳng với giá trị của <input type="date">.
+// Không dùng toISOString() vì nó quy về UTC — từ 0h đến 7h sáng giờ VN sẽ ra ngày hôm qua
+// và chặn oan đơn chạy trong ngày. (Cùng cách làm với todayIso() trong parseImportRows.)
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const validate = (customer, shipments, orderDate) => {
   const errors = {};
+
+  // Đơn khai tay là đơn ĐÃ CHẠY XONG, và ngày này chính là ngày ghi nhận doanh thu
+  // (xem completed_at ở backend). Gõ nhầm sang tương lai là doanh thu rơi vào kỳ sau,
+  // KPI và bảng lương tháng này hụt mà không có gì báo. Server cũng chặn; ở đây chặn
+  // sớm để kế toán sửa ngay tại ô nhập thay vì mất cả form vì một con số.
+  if (orderDate && orderDate > todayIso()) {
+    errors.order_date = "Ngày đơn không được ở tương lai";
+  }
 
   if (!customer.name.trim()) {
     errors.customer_name = "Bắt buộc";
@@ -114,7 +130,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
     setShipments((prev) => prev.filter((_, i) => i !== index));
 
   const handleSubmit = async () => {
-    const validationErrors = validate(customer, shipments);
+    const validationErrors = validate(customer, shipments, orderDate);
     if (isPartner && !partnerId) validationErrors.partner = "Vui lòng chọn đối tác.";
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -230,8 +246,15 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
             <Input
               label="Ngày đơn"
               type="date"
+              // max chặn ngay trên bộ chọn ngày của trình duyệt: ngày sau hôm nay
+              // không bấm chọn được. Vẫn giữ kiểm tra trong validate() vì ô date cho
+              // phép gõ tay và max không chặn được đường đó.
+              max={todayIso()}
               value={orderDate}
               onValueChange={setOrderDate}
+              isInvalid={!!errors.order_date}
+              errorMessage={errors.order_date}
+              description="Ngày đơn thực tế chạy — không được sau hôm nay"
             />
             <Input
               label="Ghi chú đơn"

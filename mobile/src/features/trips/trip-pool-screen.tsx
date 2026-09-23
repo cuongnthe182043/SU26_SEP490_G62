@@ -16,7 +16,7 @@ import type { TripPoolItem }   from '@/types/trip';
 import { useActiveTrip }       from '@/hooks/use-active-trip';
 import { useClaimTrip }        from '@/hooks/use-claim-trip';
 import { useTripPool }         from '@/hooks/use-trip-pool';
-import { useConfirm, useToast } from '@/providers/ui-provider';
+import { useAppAlert, useConfirm, useToast } from '@/providers/ui-provider';
 import { useOnline }           from '@/providers/network-provider';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ export function TripPoolScreen() {
     const scrollRef = useRef<ScrollView>(null);
     const { showConfirm } = useConfirm();
     const { showToast }   = useToast();
+    const { showAlert }   = useAppAlert();
     const { claim }       = useClaimTrip();
     const online          = useOnline();
 
@@ -83,12 +84,22 @@ export function TripPoolScreen() {
             } else if (result.alreadyClaimed) {
                 showToast({ type: 'warning', message: 'Chuyến này đã được tài xế khác nhận' });
                 refresh(false);
+            } else if (result.blocked) {
+                // Việc cũ chưa xong — tài phải biết là việc gì và phải làm gì tiếp,
+                // nên dùng hộp thoại thay vì toast (xem use-claim-trip).
+                void showAlert({
+                    type:    'warning',
+                    title:   'Chưa nhận chuyến mới được',
+                    message: result.message,
+                    okLabel: 'Đã hiểu',
+                });
+                refresh(false);
             } else {
                 showToast({ type: 'error', message: result.message });
                 refresh(false);
             }
         },
-        [online, hasActiveTrip, claimingId, claim, removeShipment, refresh, showConfirm, showToast],
+        [online, hasActiveTrip, claimingId, claim, removeShipment, refresh, showAlert, showConfirm, showToast],
     );
 
     const paginationDisabled = isLoading || claimingId !== null;

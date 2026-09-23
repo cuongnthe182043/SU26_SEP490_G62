@@ -33,7 +33,11 @@ export const STATUS_BANNER: Partial<Record<TripStatus, { icon: React.ReactNode; 
     picking:   { icon: <Truck      size={14} color={appTheme.colors.warningText} />, text: 'Chụp ảnh lấy hàng để xác nhận và bắt đầu vận chuyển' },
     transit:   { icon: <Navigation size={14} color={appTheme.colors.primary} />,     text: 'Đang vận chuyển đến điểm giao' },
     arrived:   { icon: <MapPin      size={14} color={appTheme.colors.success} />,     text: 'Đã đến — chụp ảnh biên lai rồi hoàn thành' },
-    failed:    { icon: <XCircle     size={14} color={appTheme.colors.danger} />,      text: 'Giao hàng thất bại — bắt đầu hoàn hàng về' },
+    // Tài KHÔNG tự bắt đầu hoàn hàng — điều phối liên hệ khách rồi mới chốt giao lại
+    // hay trả hàng về (xem NEXT_ACTIONS, không có nhánh 'failed'). Câu cũ bảo tài
+    // "bắt đầu hoàn hàng về" trong khi màn hình ngay bên dưới nói "đang chờ điều phối
+    // viên xử lý" và không có nút nào để bấm.
+    failed:    { icon: <XCircle     size={14} color={appTheme.colors.danger} />,      text: 'Giao hàng thất bại — chờ điều phối quyết định giao lại hay hoàn hàng' },
     returning: { icon: <RotateCcw   size={14} color={appTheme.colors.textMuted} />,   text: 'Đang hoàn hàng về điểm lấy hàng ban đầu' },
 };
 

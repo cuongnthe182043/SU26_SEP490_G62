@@ -167,8 +167,21 @@ const claimTrip = async (shipmentId, driverId) => {
         if (err.message === 'ACTIVE_TRIP') {
             throw new Error('Bạn đang có chuyến đang hoạt động, không thể nhận thêm chuyến mới');
         }
+        // Chuyến giao thất bại chưa được điều phối chốt hướng xử lý (giao lại / hoàn
+        // hàng). Tài xế KHÔNG tự gỡ được, nên câu nhắc phải nói rõ đang chờ ai —
+        // không thì tài cứ bấm lại và tưởng app hỏng.
+        if (err.message === 'FAILED_UNRESOLVED') {
+            throw new Error(
+                `FAILED_UNRESOLVED:Chuyến #${err.shipmentId} (đơn #${err.orderId}) giao thất bại và điều phối chưa xử lý. Vui lòng liên hệ điều phối để chốt giao lại hay hoàn hàng trước khi nhận chuyến mới.`
+            );
+        }
         if (err.message === 'ACTIVE_VEHICLE_TRIP') {
             throw new Error('Xe đang có chuyến đang hoạt động, không thể nhận thêm chuyến mới');
+        }
+        if (err.message === 'VEHICLE_FAILED_UNRESOLVED') {
+            throw new Error(
+                'FAILED_UNRESOLVED:Xe bạn đang lái còn một chuyến giao thất bại chưa được điều phối xử lý. Hàng chưa được chốt giao lại hay hoàn về nên xe chưa nhận chuyến mới được.'
+            );
         }
         if (err.message === 'VEHICLE_UNAVAILABLE') {
             throw new Error('Xe hiện không sẵn sàng cho vận hành');

@@ -64,7 +64,15 @@ export function AlertModal({ opts, onClose }: Props) {
         ]).start();
     }, []);
 
+    // Hộp còn nhận chạm suốt 180ms chạy hiệu ứng đóng, nên bấm OK rồi chạm nền (hoặc
+    // bấm Back) trong khoảng đó gọi onClose HAI lần. Hàng đợi ở UIProvider hiểu mỗi
+    // lần gọi là "đóng một hộp", nên lần thừa sẽ nuốt luôn hộp đang xếp sau — thông
+    // báo kế tiếp biến mất mà không ai thấy. Chốt cửa ngay lần đầu.
+    const dismissedRef = useRef(false);
+
     const dismiss = () => {
+        if (dismissedRef.current) return;
+        dismissedRef.current = true;
         Animated.parallel([
             Animated.timing(backdropOpacity, {
                 toValue: 0, duration: 180, useNativeDriver: true,

@@ -37,7 +37,7 @@ function InfoRow({ icon: Icon, label, value, mono }) {
   return (
     <div className="flex items-center gap-2.5">
       <Icon size={14} className="text-gray-400 dark:text-gray-400 shrink-0" />
-      <span className="text-xs text-gray-400 dark:text-gray-400 w-24 shrink-0">{label}</span>
+      <span className="text-xs text-gray-400 dark:text-gray-400 w-28 shrink-0 whitespace-nowrap">{label}</span>
       <span className={`text-sm font-medium text-gray-800 dark:text-gray-100 ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
@@ -180,11 +180,17 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
 
   if (!order) return null;
 
-  const date = order.created_at
-    ? new Date(order.created_at).toLocaleDateString("vi-VN", {
-        day: "2-digit", month: "2-digit", year: "numeric",
-      })
-    : null;
+  const viDate = (value) =>
+    value
+      ? new Date(value).toLocaleDateString("vi-VN", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+        })
+      : null;
+
+  const date = viDate(order.created_at);
+  // Lúc chuyến cuối của đơn chạy xong. Với đơn kế toán khai lại thì đây mới là ngày
+  // việc thật sự diễn ra — ngày tạo chỉ là ngày gõ vào hệ thống.
+  const completedDate = viDate(order.completed_at);
 
   const debtChip = DEBT_STATUS[order.debt_status];
   const totalRevenue = order.actual_price ?? order.estimated_price;
@@ -219,6 +225,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               <InfoRow icon={RiPhoneLine}    label="SĐT"     value={order.customer_phone} mono />
               <InfoRow icon={RiBuildingLine} label="Công ty" value={order.customer_company} />
               <InfoRow icon={RiCalendarLine} label="Ngày tạo" value={date} />
+              <InfoRow icon={RiCheckboxCircleLine} label="Ngày hoàn thành" value={completedDate} />
             </div>
 
             {}
@@ -228,7 +235,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               </span>
               <div className="flex items-center gap-2">
                 <RiMoneyDollarCircleLine size={14} className="text-gray-400 dark:text-gray-400" />
-                <span className="text-xs text-gray-400 dark:text-gray-400 w-24">Thực thu khách</span>
+                <span className="text-xs text-gray-400 dark:text-gray-400 w-28">Thực thu khách</span>
                 <div className="flex flex-col">
                   <MoneyText amount={totalCustomerDue} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
                   {order.actual_price == null && <span className="text-[9px] text-gray-400 dark:text-gray-400">ước tính</span>}
@@ -262,7 +269,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               )}
               <div className="flex items-center gap-2 pt-1">
                 <RiTruckLine size={14} className="text-gray-400 dark:text-gray-400" />
-                <span className="text-xs text-gray-400 dark:text-gray-400 w-24">Số chuyến</span>
+                <span className="text-xs text-gray-400 dark:text-gray-400 w-28">Số chuyến</span>
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{order.shipment_count ?? 0} chuyến</span>
               </div>
             </div>
