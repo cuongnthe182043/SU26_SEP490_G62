@@ -132,14 +132,34 @@ describe('fcmService.sendNotification', () => {
         expect(gui[0].to).toBe(TOKEN_1);
     });
 
-    it('TC-UNIT-FcmService-010 — a user with no registered device is skipped and logged', async () => {
+    // Hai nhánh dưới đây TRƯỚC ĐÂY in ra cùng một dòng log, nên đọc log production
+    // không phân biệt được "user web không có điện thoại" (bình thường) với "app đăng
+    // ký nhầm loại token" (lỗi thật). Tách ra rồi thì mỗi nhánh phải giữ đúng mức của nó.
+    it('TC-UNIT-FcmService-010 — a user with no device at all is skipped quietly, not warned', async () => {
         dungDb({ tokens: [] });
 
         await fcmService.sendNotification(5, { title: 'X' });
 
         expect(global.fetch).not.toHaveBeenCalled();
-        expect(logger.info).toHaveBeenCalledWith(
-            '[push] bỏ qua — user chưa đăng ký thiết bị nào', { userId: 5 },
+        // debug, không phải info: manager/kế toán chỉ dùng web sẽ không bao giờ có
+        // thiết bị, mỗi thông báo theo vai trò lại sinh một dòng — đó là rác log.
+        expect(logger.debug).toHaveBeenCalledWith(
+            '[push] user không có thiết bị nào đăng ký', { userId: 5 },
+        );
+        expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('TC-UNIT-FcmService-010b — a device registered with a NON-Expo token is a real fault and warns', async () => {
+        // VD app gọi nhầm getDevicePushTokenAsync: dòng vẫn nằm trong device_tokens,
+        // nhưng bộ lọc isExpoPushToken loại sạch nên không push nào đi được.
+        dungDb({ tokens: ['fGh1JkLmNoPqRsTuVwXyZ:APA91bHunNativeFcmToken'] });
+
+        await fcmService.sendNotification(5, { title: 'X' });
+
+        expect(global.fetch).not.toHaveBeenCalled();
+        expect(logger.warn).toHaveBeenCalledWith(
+            '[push] có token nhưng KHÔNG phải Expo token — bị loại hết',
+            expect.objectContaining({ userId: 5, soDong: 1 }),
         );
     });
 

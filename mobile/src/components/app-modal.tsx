@@ -12,7 +12,10 @@ import { UIOverlaySlot } from '@/providers/ui-provider';
 export function AppModal({ children, ...props }: ModalProps) {
     return (
         <Modal {...props}>
-            <UIOverlaySlot>{children}</UIOverlaySlot>
+            {/* `visible` truyền tiếp xuống slot: trên iOS Modal còn render children một
+                lúc (có khi mãi) sau khi đã ẩn, và slot của một Modal vô hình mà giành
+                được lớp phủ thì mọi thông báo biến mất. Xem UIOverlaySlot. */}
+            <UIOverlaySlot active={props.visible !== false}>{children}</UIOverlaySlot>
         </Modal>
     );
 }
