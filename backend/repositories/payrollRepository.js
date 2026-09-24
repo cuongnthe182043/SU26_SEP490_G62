@@ -165,7 +165,8 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
 
     const kpiBonus = (kpi.kpi_bonus_reward && kpi.kpi_threshold && totalRevenue > Number(kpi.kpi_threshold))
         ? Number(kpi.kpi_bonus_reward) : 0;
-    const topDriverBonus = (Number(kpi.revenue_rank) === 1 && kpi.top_driver_reward)
+    // Doanh thu 0 không được giải — xem accountantPayrollRepository._calcDriverPayroll.
+    const topDriverBonus = (Number(kpi.revenue_rank) === 1 && totalRevenue > 0 && kpi.top_driver_reward)
         ? Number(kpi.top_driver_reward) : 0;
 
     // 4. Tiền ứng lương đã giải ngân tháng này — số thực trừ tính ở dưới (splitAdvance)

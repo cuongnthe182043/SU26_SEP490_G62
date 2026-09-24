@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea, Image } from "@heroui/react";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Select, SelectItem, Textarea } from "@heroui/react";
 import {
   RiToolsLine, RiFileTextLine, RiUserLine,
   RiErrorWarningFill, RiAlertLine, RiErrorWarningLine, RiCloseLine,
@@ -7,7 +7,6 @@ import {
 import { notify } from "../../../components/shared-ui/Toast";
 import ReceiptReviewPanel from "../../../components/shared-ui/ReceiptReviewPanel";
 import { managerService } from "../services/manager.service";
-import { money } from "../../../utils/formatNumber";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -24,8 +23,6 @@ const SEVERITY_LEVELS = [
   { value: "high", label: "Cao" },
   { value: "critical", label: "Khẩn cấp" },
 ];
-
-const normalizeBillPics = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === "string" && v.trim()) : []);
 
 // Nhãn lý do bấm-là-xong. Bắt manager gõ tay mỗi lần từ chối chỉ tạo ra những
 // dòng "khong hop le" vô nghĩa; nhãn cố định vừa nhanh vừa thống kê được.
@@ -145,12 +142,8 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
     }
   };
 
-  const images = normalizeBillPics(vehicle?.active_maintenance_bill_pics);
-  // Ảnh chụp lúc gửi yêu cầu (báo giá...) — chứng từ tham khảo, KHÔNG phải hóa đơn được
-  // đối chiếu với chi phí. Để lẫn vào "Ảnh hóa đơn" là người duyệt tưởng đó là hóa đơn.
-  const requestImages = normalizeBillPics(vehicle?.active_maintenance_request_pics);
-  const cost = Number(vehicle?.active_maintenance_cost);
-
+  // Ảnh gốc, ảnh chứng từ kèm yêu cầu và số tiền khai không hiện riêng nữa: panel hóa đơn
+  // bên dưới đã có ảnh từng tờ (bấm để mở ảnh gốc) và cảnh báo khi tổng hóa đơn lệch số khai.
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="lg">
       <ModalContent>
@@ -159,47 +152,7 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <div>
             <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Ảnh hóa đơn {images.length > 0 ? "— bấm để xem ảnh gốc" : ""}
-            </div>
-            {images.length > 0 ? (
-              <div className="flex gap-3 flex-wrap">
-                {images.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noreferrer">
-                    <Image src={url} width={100} height={100} className="object-cover rounded-lg" />
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có ảnh hóa đơn.</p>
-            )}
-          </div>
-          {requestImages.length > 0 && (
-            <div>
-              <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
-                Chứng từ tài xế gửi kèm yêu cầu — không tính là hóa đơn
-              </div>
-              <div className="flex gap-3 flex-wrap">
-                {requestImages.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noreferrer">
-                    <Image src={url} width={72} height={72} className="object-cover rounded-lg opacity-80" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-          <div>
-            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-1">Chi phí tài xế khai</div>
-            <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-              {Number.isFinite(cost) && cost > 0 ? `${money(cost)}` : "Chưa khai"}
-            </p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-1">
-              Số tiền này đã được đối chiếu tự động với hóa đơn khi tài xế bấm hoàn tất.
-              Việc còn lại là mắt người: hóa đơn có thật và đúng của xe này không.
-            </p>
-          </div>
-          <div>
-            <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Máy đọc được gì trên hóa đơn
+              Hóa đơn
             </div>
             <ReceiptReviewPanel
               recordId={vehicle?.active_maintenance_id}
