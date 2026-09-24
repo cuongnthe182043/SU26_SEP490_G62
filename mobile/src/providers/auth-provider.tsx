@@ -9,6 +9,7 @@ import { profileService } from '@/services/profile-service';
 import { tokenStorage } from '@/services/token-storage';
 import { offlineCache } from '@/lib/offline-cache';
 import { offlineQueue } from '@/lib/offline-queue';
+import { useDismissAllDialogs } from '@/providers/ui-provider';
 import type { UserProfile } from '@/types/profile';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -31,7 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
+  const dismissAllDialogs = useDismissAllDialogs();
+
   const signOut = useCallback(async () => {
+    // Dọn hộp thoại còn treo TRƯỚC khi rời phiên. Hộp thoại thuộc về phiên đã mở nó;
+    // còn sót lại là nó trồi lên trên màn đăng nhập của người kế tiếp và chạy việc của
+    // tài khoản vừa thoát. Xem dismissAllDialogs trong ui-provider.
+    dismissAllDialogs();
+
     const refreshToken = await tokenStorage.getRefreshToken();
     if (refreshToken) {
       try {
@@ -49,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setStatus('unauthenticated');
     router.replace('/login');
-  }, []);
+  }, [dismissAllDialogs]);
 
   const refreshSession = useCallback(async () => {
     const token = await tokenStorage.getToken();

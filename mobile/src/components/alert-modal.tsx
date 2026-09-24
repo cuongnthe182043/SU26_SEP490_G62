@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Animated, BackHandler, Pressable, StyleSheet } from 'react-native';
+// Modal THÔ của react-native, cố ý KHÔNG dùng AppModal: AppModal bọc con nó trong
+// UIOverlaySlot, mà chính component này LÀ nội dung của slot — dùng AppModal ở đây là
+// đệ quy. Đây là ngoại lệ duy nhất của quy ước "mọi nơi dùng AppModal".
+import { Animated, Modal, Pressable, StyleSheet } from 'react-native';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -83,16 +86,11 @@ export function AlertModal({ opts, onClose }: Props) {
         ]).start(() => onClose());
     };
 
-    // Như ConfirmModal: Back đóng thông báo thay vì lùi màn hình bên dưới.
-    useEffect(() => {
-        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-            dismiss();
-            return true;
-        });
-        return () => sub.remove();
-    }, []);
+    // Back của Android do chính Modal nhận qua onRequestClose — không cần BackHandler
+    // riêng nữa, và như thế cũng hết cảnh hai lớp cùng giành phím Back.
 
     return (
+        <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={dismiss}>
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
             <Animated.View style={[styles.card, { transform: [{ scale }], opacity }]}>
@@ -131,17 +129,25 @@ export function AlertModal({ opts, onClose }: Props) {
                 </Pressable>
             </Animated.View>
         </Animated.View>
+        </Modal>
     );
 }
 
 const styles = StyleSheet.create({
+    // Nằm TRONG một <Modal> native, nên absoluteFillObject phủ đúng cửa sổ Modal —
+    // tức đúng màn hình — bất kể cây View của app bên ngoài trông như thế nào.
+    //
+    // Trước đây hộp này là View thường vẽ ở gốc app và tin rằng `position: absolute`
+    // sẽ phủ kín màn hình. Trên Expo Go/iOS thì không: ảnh chụp cho thấy nền mờ chỉ
+    // chiếm dải ~476px dưới cùng còn <Stack> chiếm 1570px phía trên — cộng lại vừa
+    // đúng chiều cao màn hình, tức lớp phủ đang được xếp TRONG LUỒNG như một View
+    // thường và chia chỗ với Stack. Không có giá trị style nào chữa được chuyện đó;
+    // chỉ có cửa sổ riêng của Modal mới thoát hẳn khỏi layout của cha.
+    //
+    // Modal cũng làm luôn việc mà elevation từng phải gánh (nổi trên thanh tab) và
+    // việc của BackHandler (phím Back), nên cả hai đã bỏ khỏi đây.
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        zIndex: 9998,
-        // Android xếp lớp giữa hai nhánh khác cha bằng elevation, không phải zIndex —
-        // xem appTheme.overlayElevation. Thiếu dòng này là thanh tab (elevation 10)
-        // nằm đè lên nền mờ và vẫn bấm được trong lúc hộp thoại đang mở.
-        elevation: appTheme.overlayElevation,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',

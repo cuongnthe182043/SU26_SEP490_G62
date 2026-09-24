@@ -5,6 +5,7 @@ import {
     StyleSheet, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     AlertTriangle, Banknote, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, CreditCard, DollarSign, Info, TrendingUp,
@@ -435,6 +436,9 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
     const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange } = useMoneyInput();
     const [reason, setReason] = useState('');
     const { isSubmitting, error, request } = useSalaryAdvance();
+    // Sheet neo đáy màn hình: trên iPhone phải chừa thanh home indicator, không thì
+    // nút "Gửi yêu cầu" nằm chồng lên vạch home. Android trả về 0 nên không đổi gì.
+    const insets = useSafeAreaInsets();
 
     const today = new Date();
     const isToday25 = today.getDate() === 25;
@@ -461,7 +465,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <Pressable style={s.modalBackdrop} onPress={onClose} />
-                <View style={s.modalSheet}>
+                <View style={[s.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={s.handle} />
                     <Text fontSize={17} fontWeight="900" color={appTheme.colors.text} marginBottom={6}>
                         Yêu cầu ứng lương
