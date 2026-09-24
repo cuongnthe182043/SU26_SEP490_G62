@@ -22,9 +22,9 @@ const viDate = (value) =>
     : "—";
 
 function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, onPayment, onDetail }) {
-  const date = viDate(order.created_at);
-  // Lúc chuyến cuối của đơn chạy xong — mốc dùng để đối chiếu kỳ ghi nhận doanh thu,
-  // khác ngày tạo với đơn kế toán khai lại (đơn tháng trước nhập vào tháng này).
+  // Lúc chuyến cuối của đơn chạy xong — mốc dùng để đối chiếu kỳ ghi nhận doanh thu.
+  // Ngày tạo cố ý không hiện: với đơn kế toán khai lại (đơn tháng trước nhập vào tháng
+  // này) nó chỉ là ngày gõ vào hệ thống, dễ bị đọc nhầm thành ngày chạy.
   const completedDate = viDate(order.completed_at);
 
   const debtChip = DEBT_STATUS_CHIP[order.debt_status];
@@ -63,11 +63,6 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
               {order.customer_phone ?? "—"}
             </span>
           </div>
-        </td>
-
-        {}
-        <td className="py-3.5 pr-4">
-          <span className="text-xs text-gray-500 dark:text-gray-400">{date}</span>
         </td>
 
         {}
@@ -215,11 +210,10 @@ export function OrdersTable({
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161922] shadow-sm">
         <div className="overflow-x-auto">
-        <table className="w-full table-fixed min-w-[1020px]">
+        <table className="w-full table-fixed min-w-[910px]">
           <colgroup>
             <col className="w-10" />
             <col />
-            <col className="w-28" />
             <col className="w-32" />
             <col className="w-[120px]" />
             <col className="w-36" />
@@ -231,7 +225,6 @@ export function OrdersTable({
               {[
                 { label: "" },
                 { label: "Khách hàng / SĐT" },
-                { label: "Ngày tạo" },
                 { label: "Ngày hoàn thành" },
                 { label: "Chuyến" },
                 { label: "Doanh thu" },

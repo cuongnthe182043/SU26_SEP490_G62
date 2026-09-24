@@ -274,10 +274,12 @@ const checkArithmetic = (extraction, items) => {
             ));
         }
     } else if (items.length > 0 && !allLinesValued && effectiveSubtotal !== null) {
+        // Số dòng thiếu vẫn giữ trong data cho vết kiểm tra; câu hiển thị thì chỉ nói
+        // việc cần làm — "n/n dòng" là chuyện bên trong máy, người đọc không dùng được.
         reasons.push(reason(
             'LINE_TOTALS_INCOMPLETE', 'warning',
-            `Không đọc được thành tiền của ${items.length - valuedLines.length}/${items.length} dòng `
-            + 'nên chưa đối chiếu được tổng. Người duyệt vui lòng kiểm tra bằng mắt.',
+            'Vui lòng kiểm tra lại kê khai hàng hóa.',
+            { unvalued_lines: items.length - valuedLines.length, total_lines: items.length },
         ));
     }
 

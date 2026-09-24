@@ -194,10 +194,11 @@ const getMaintenanceReceipts = async (req, res) => {
 };
 
 // POST /api/admin/receipt-extractions/:id/review
-// Body: { action: 'agree'|'override_accept'|'override_reject', note?, learn_keywords?: [...] }
+// Body: { learn_keywords: [...] }
 //
-// Ghi đè của người duyệt là dữ liệu quý nhất ở đây: nó vừa là vết kiểm toán, vừa là
-// tín hiệu máy sai, vừa là nguồn nuôi từ điển hạng mục.
+// Chỉ còn dạy từ điển hạng mục. Phán quyết trên từng tờ (review_action) do nút Xác nhận /
+// Từ chối của cả đợt bảo dưỡng ghi (receiptExtractionRepository.saveReviewsForEntity) —
+// cho ghi tay ở đây nữa thì hai nguồn kết luận có thể nói ngược nhau.
 const reviewReceiptExtraction = async (req, res) => {
     try {
         const extractionId = Number(req.params.id);
@@ -205,8 +206,6 @@ const reviewReceiptExtraction = async (req, res) => {
             return res.status(400).json({ error: 'Mã bản ghi đọc hóa đơn không hợp lệ' });
         }
         const result = await receiptValidationService.submitReceiptReview(extractionId, req.user.userId, {
-            action: req.body?.action,
-            note: req.body?.note,
             learnKeywords: req.body?.learn_keywords,
         });
         res.json({ message: 'Đã ghi nhận kết quả kiểm tra hóa đơn', ...result });

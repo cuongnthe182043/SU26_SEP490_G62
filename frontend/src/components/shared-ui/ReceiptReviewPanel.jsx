@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button, Image, Chip, Textarea, Spinner, Select, SelectItem } from "@heroui/react";
+import { Button, Image, Chip, Spinner, Select, SelectItem } from "@heroui/react";
 import {
   RiCheckLine, RiErrorWarningFill, RiAlertLine, RiInformationLine,
   RiRobot2Line, RiPriceTag3Line, RiEyeLine, RiEyeOffLine,
@@ -161,26 +161,22 @@ function LineItemRow({ item, onTeach, teachable, categories, profileLabel, showT
 // khỏi tổng. Gắn "Không đạt" cho nó là báo động giả cho người duyệt.
 const SUPPORTING = { label: "Chứng từ kèm theo — không tính vào tổng", color: "default", Icon: RiInformationLine };
 
+// Phán quyết trên từng tờ do backend suy từ nút Xác nhận / Từ chối của cả đợt: "agree"
+// nghĩa là người duyệt kết luận giống máy, nên phải nhìn verdict mới biết là xác nhận
+// hay từ chối.
+const reviewLabel = (review, verdict) => {
+  const accepted = review.action === "override_accept" || (review.action === "agree" && verdict === "passed");
+  return accepted ? "Đã xác nhận" : "Đã từ chối";
+};
+
 function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, showClaim, recordCost, showTechnical }) {
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
   const verdict = receipt.supporting ? SUPPORTING : (VERDICT[receipt.verdict] ?? VERDICT.error);
   // Số khai CUỐI CÙNG của đợt nếu có; claimed_amount của dòng vết là số lúc tải ảnh, tài xế
   // có thể đã sửa sau đó.
   const claimed = Number.isFinite(recordCost) && recordCost > 0 ? recordCost : receipt.claimed_amount;
 
-  const submit = async (action, learnKeywords) => {
-    setBusy(true);
-    try {
-      await onReview(receipt.id, { action, note: note.trim() || null, learn_keywords: learnKeywords });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Dạy từ điển KHÔNG kèm kết luận về tờ hóa đơn: sửa một chữ mà hệ thống ghi luôn
-  // "đã chấp nhận hóa đơn" thì vết kiểm toán thành sai. Người duyệt vẫn phải tự bấm
-  // một trong ba nút kết luận sau khi sửa xong.
+  // Dạy từ điển KHÔNG kèm kết luận về tờ hóa đơn: kết luận do nút Xác nhận / Từ chối
+  // của cả đợt ghi, sửa một chữ ở đây không được coi là đã duyệt hóa đơn.
   const teach = (keyword) => onReview(receipt.id, { learn_keywords: [keyword] });
 
   return (
@@ -200,7 +196,7 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
         </div>
         {receipt.review && (
           <Chip size="sm" variant="flat" color="default">
-            {receipt.review.action === "agree" ? "Đã đồng ý" : "Đã ghi đè"}
+            {reviewLabel(receipt.review, receipt.verdict)}
             {receipt.review.by ? ` · ${receipt.review.by}` : ""}
           </Chip>
         )}
@@ -333,28 +329,6 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
         </div>
       )}
 
-      {!readOnly && (
-        <div className="mt-3 flex flex-col gap-2">
-          <Textarea
-            size="sm" minRows={1} placeholder="Ghi chú khi kết luận khác máy (tuỳ chọn)"
-            value={note} onValueChange={setNote}
-          />
-          <div className="flex gap-2 flex-wrap">
-            <Button size="sm" color="success" variant="flat" isLoading={busy}
-              onPress={() => submit("agree")}>
-              Đồng ý với kết quả máy
-            </Button>
-            <Button size="sm" color="primary" variant="flat" isLoading={busy}
-              onPress={() => submit("override_accept")}>
-              Vẫn chấp nhận hóa đơn
-            </Button>
-            <Button size="sm" color="danger" variant="flat" isLoading={busy}
-              onPress={() => submit("override_reject")}>
-              Hóa đơn có vấn đề
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

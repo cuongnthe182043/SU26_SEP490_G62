@@ -1032,7 +1032,7 @@ const rejectPendingMaintenanceRecord = async ({
         }
 
         const recordResult = await client.query(
-            `SELECT id, performed_by, requested_by
+            `SELECT id, status, bill_pics, performed_by, requested_by
              FROM maintenance_records
              WHERE vehicle_id = $1
                AND status = ANY($2)
@@ -1047,6 +1047,18 @@ const rejectPendingMaintenanceRecord = async ({
             const err = new Error('Maintenance record awaiting verification not found');
             err.code = 'PENDING_MAINTENANCE_NOT_FOUND';
             throw err;
+        }
+
+        // Từ chối một đợt tài xế ĐÃ nộp là phán quyết lên chính các tờ hóa đơn đó. Huỷ
+        // đợt còn 'open' thì không — xe mở nhầm, tài xế bỏ dở chẳng nói gì về hóa đơn.
+        // Phải trước bước làm lại (xoá bill_pics) và bước thả hóa đơn bên dưới.
+        if (record.status === 'pending_verification') {
+            await receiptExtractionRepository.saveReviewsForEntity('maintenance_record', record.id, {
+                imageUrls: Array.isArray(record.bill_pics) ? record.bill_pics : [],
+                reviewedBy: managerId,
+                outcome: 'rejected',
+                note: reason,
+            }, client);
         }
 
         if (mode === 'cancel') {
@@ -1145,6 +1157,7 @@ const verifyMaintenanceRecordAndSetStatus = async ({
     maintenanceRecordId,
     managerId,
     note = null,
+    reviewNote = null,
 }) => {
     const client = await pool.connect();
     try {
@@ -1286,6 +1299,13 @@ const verifyMaintenanceRecordAndSetStatus = async ({
             VALUES ($1, 'complete_maintenance', $2, 'active', 'maintenance_record', $3, $4, $5)`,
             [vehicleId, vehicle.status, record.id, note, managerId],
         );
+
+        await receiptExtractionRepository.saveReviewsForEntity('maintenance_record', record.id, {
+            imageUrls: billPics,
+            reviewedBy: managerId,
+            outcome: 'accepted',
+            note: reviewNote,
+        }, client);
 
         await client.query('COMMIT');
         return { maintenanceId: record.id, previousStatus: vehicle.status };

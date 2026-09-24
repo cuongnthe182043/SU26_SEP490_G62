@@ -201,6 +201,43 @@ const saveReview = async (id, { reviewedBy, action, note }) => {
 };
 
 /**
+ * Suy phán quyết trên từng tờ hóa đơn từ quyết định của người duyệt trên CẢ ĐỢT.
+ *
+ * Người duyệt chỉ bấm Xác nhận hoặc Từ chối phiếu; so với verdict của máy mà ra
+ * agree / override_*. Xác nhận một tờ máy chưa chắc (needs_review, error) cũng là
+ * ghi đè — máy không cho qua mà người cho qua.
+ *
+ * Chỉ đụng các lần đọc còn hiệu lực, thuộc đúng ảnh hóa đơn của đợt (ảnh chứng từ kèm
+ * yêu cầu không phải hóa đơn, không có gì để kết luận), và chưa có phán quyết.
+ * Phải chạy TRƯỚC releaseByEntity trong cùng giao dịch — thả ra rồi thì không còn lọc
+ * được lần đọc nào thuộc đợt.
+ *
+ * @param {'accepted'|'rejected'} outcome
+ */
+const saveReviewsForEntity = async (entityType, entityId, {
+    imageUrls, reviewedBy, outcome, note = null,
+}, db = pool) => {
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) return 0;
+    const agreeVerdict = outcome === 'accepted' ? 'passed' : 'rejected';
+    const overrideAction = outcome === 'accepted' ? 'override_accept' : 'override_reject';
+
+    const result = await db.query(
+        `UPDATE receipt_extractions
+            SET review_action = CASE WHEN verdict = $4 THEN 'agree' ELSE $5 END,
+                review_note = $6,
+                reviewed_by = $7,
+                reviewed_at = NOW()
+          WHERE entity_type = $1
+            AND entity_id = $2
+            AND image_url = ANY($3::text[])
+            AND released_at IS NULL
+            AND review_action IS NULL`,
+        [entityType, entityId, imageUrls, agreeVerdict, overrideAction, note, reviewedBy ?? null],
+    );
+    return result.rowCount;
+};
+
+/**
  * Bổ sung từ khoá hạng mục học được từ lần duyệt tay.
  *
  * Đây là vòng phản hồi: người duyệt sửa một phân loại sai là từ điển lớn lên, lần sau
@@ -240,5 +277,6 @@ module.exports = {
     releaseByEntity,
     listByEntity,
     saveReview,
+    saveReviewsForEntity,
     addKeywords,
 };

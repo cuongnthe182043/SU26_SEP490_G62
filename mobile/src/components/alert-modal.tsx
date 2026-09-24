@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 // Modal THÔ của react-native, cố ý KHÔNG dùng AppModal: AppModal bọc con nó trong
 // UIOverlaySlot, mà chính component này LÀ nội dung của slot — dùng AppModal ở đây là
 // đệ quy. Đây là ngoại lệ duy nhất của quy ước "mọi nơi dùng AppModal".
-import { Animated, Modal, Pressable, StyleSheet } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -46,6 +46,8 @@ type Props = {
 };
 
 export function AlertModal({ opts, onClose }: Props) {
+    // Kích thước tường minh cho lớp nền — xem ghi chú ở styles.backdrop.
+    const { width, height } = useWindowDimensions();
     const backdropOpacity = useRef(new Animated.Value(0)).current;
     const scale           = useRef(new Animated.Value(0.88)).current;
     const opacity         = useRef(new Animated.Value(0)).current;
@@ -91,7 +93,7 @@ export function AlertModal({ opts, onClose }: Props) {
 
     return (
         <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={dismiss}>
-        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <Animated.View style={[styles.backdrop, { width, height, opacity: backdropOpacity }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
             <Animated.View style={[styles.card, { transform: [{ scale }], opacity }]}>
                 {/* Icon */}
@@ -134,20 +136,20 @@ export function AlertModal({ opts, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-    // Nằm TRONG một <Modal> native, nên absoluteFillObject phủ đúng cửa sổ Modal —
-    // tức đúng màn hình — bất kể cây View của app bên ngoài trông như thế nào.
+    // Nằm TRONG một <Modal> native để thoát hẳn khỏi layout của app. Trước đây hộp này
+    // là View thường vẽ ở gốc app: trên Expo Go/iOS nền mờ bị xếp TRONG LUỒNG, chia chỗ
+    // với <Stack> (dải ~476px dưới cùng + Stack 1570px = đúng chiều cao màn hình).
+    // Modal cũng gánh luôn việc nổi trên thanh tab và nhận phím Back.
     //
-    // Trước đây hộp này là View thường vẽ ở gốc app và tin rằng `position: absolute`
-    // sẽ phủ kín màn hình. Trên Expo Go/iOS thì không: ảnh chụp cho thấy nền mờ chỉ
-    // chiếm dải ~476px dưới cùng còn <Stack> chiếm 1570px phía trên — cộng lại vừa
-    // đúng chiều cao màn hình, tức lớp phủ đang được xếp TRONG LUỒNG như một View
-    // thường và chia chỗ với Stack. Không có giá trị style nào chữa được chuyện đó;
-    // chỉ có cửa sổ riêng của Modal mới thoát hẳn khỏi layout của cha.
-    //
-    // Modal cũng làm luôn việc mà elevation từng phải gánh (nổi trên thanh tab) và
-    // việc của BackHandler (phím Back), nên cả hai đã bỏ khỏi đây.
+    // Nhưng KHÔNG dùng absoluteFill: trên Expo Go/iOS, khung chứa bên trong Modal không
+    // nhận chiều cao cửa sổ, nên top/bottom: 0 bám theo một khung co về nội dung — ảnh
+    // chụp hộp "Đăng xuất" cho thấy nền mờ chỉ cao đúng bằng tấm thẻ và dính lên đỉnh
+    // màn hình, đè cả thanh trạng thái. width/height lấy từ useWindowDimensions lúc
+    // render nên không phụ thuộc cha đo ra bao nhiêu.
     backdrop: {
-        ...StyleSheet.absoluteFillObject,
+        position: 'absolute',
+        top: 0,
+        left: 0,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',
