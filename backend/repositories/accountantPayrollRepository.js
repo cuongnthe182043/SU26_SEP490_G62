@@ -110,7 +110,9 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const kpiBonus       = (kpi?.kpi_bonus_reward && kpi?.kpi_threshold
                            && totalRevenue > Number(kpi.kpi_threshold))
                          ? Number(kpi.kpi_bonus_reward) : 0;
-    const topDriverBonus = (Number(kpi?.revenue_rank) === 1 && kpi?.top_driver_reward)
+    // Điều II.4 thưởng người "đem về doanh thu cao nhất" — cả nhóm không ai chạy chuyến
+    // thì RANK() vẫn cho mọi người hạng 1, phải chặn doanh thu 0.
+    const topDriverBonus = (Number(kpi?.revenue_rank) === 1 && totalRevenue > 0 && kpi?.top_driver_reward)
                          ? Number(kpi.top_driver_reward) : 0;
 
     const { rows: [advRow] } = await client.query(`

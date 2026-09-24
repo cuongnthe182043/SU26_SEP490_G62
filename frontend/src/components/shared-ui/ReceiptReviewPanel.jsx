@@ -169,7 +169,14 @@ const reviewLabel = (review, verdict) => {
   return accepted ? "Đã xác nhận" : "Đã từ chối";
 };
 
+// Cảnh báo đếm dòng của lớp đối chiếu OCR ("Chỉ 1/5 dòng có thành tiền tìm thấy trong
+// văn bản quét", "Ảnh có khoảng 8 dòng nhưng máy chỉ đọc ra 5") — là chuyện bên trong
+// máy, người duyệt không làm gì được với con số đó nên không hiện. Vẫn nằm trong
+// receipt_extractions.checks và vẫn tính vào kết luận của máy.
+const HIDDEN_WARNING_CODES = new Set(["OCR_LINE_TOTALS_NOT_GROUNDED", "OCR_MISSING_LINE_ITEMS"]);
+
 function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, showClaim, recordCost, showTechnical }) {
+  const warnings = receipt.warnings.filter((r) => !HIDDEN_WARNING_CODES.has(r.code));
   const verdict = receipt.supporting ? SUPPORTING : (VERDICT[receipt.verdict] ?? VERDICT.error);
   // Số khai CUỐI CÙNG của đợt nếu có; claimed_amount của dòng vết là số lúc tải ảnh, tài xế
   // có thể đã sửa sau đó.
@@ -278,14 +285,14 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
         </div>
       </div>
 
-      {(receipt.errors.length > 0 || receipt.warnings.length > 0) && (
+      {(receipt.errors.length > 0 || warnings.length > 0) && (
         <div className="mt-3 flex flex-col gap-1">
           {receipt.errors.map((r, i) => (
             <p key={`e${i}`} className="text-xs text-rose-600 dark:text-rose-400 flex gap-1.5">
               <RiErrorWarningFill size={14} className="shrink-0 mt-0.5" /><span>{r.message}</span>
             </p>
           ))}
-          {receipt.warnings.map((r, i) => (
+          {warnings.map((r, i) => (
             <p key={`w${i}`} className="text-xs text-amber-600 dark:text-amber-400 flex gap-1.5">
               <RiAlertLine size={14} className="shrink-0 mt-0.5" /><span>{r.message}</span>
             </p>
