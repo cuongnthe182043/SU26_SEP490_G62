@@ -694,12 +694,14 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
         throw createError('Maintenance is not ready for verification yet. Driver must upload bill images and mark it ready first.', 409);
     }
 
+    const verificationNote = normalizeString(payload.verification_note) || normalizeString(payload.note) || null;
     try {
         await vehicleManagementRepository.verifyMaintenanceRecordAndSetStatus({
             vehicleId: vehicle.id,
             maintenanceRecordId: parsePositiveInteger(payload.maintenance_record_id, 'maintenance_record_id', { required: false }),
             managerId: parsePositiveInteger(managerId, 'manager_id'),
-            note: normalizeString(payload.verification_note) || normalizeString(payload.note) || 'Maintenance verified',
+            note: verificationNote || 'Maintenance verified',
+            reviewNote: verificationNote,
         });
     } catch (err) {
         if (err.code === 'PENDING_MAINTENANCE_NOT_FOUND') {

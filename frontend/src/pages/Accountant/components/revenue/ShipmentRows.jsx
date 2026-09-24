@@ -32,9 +32,6 @@ function ShipmentRow({ shipment }) {
         </div>
       </td>
 
-      {}
-      <td className="py-3 pr-4" />
-
       {/* Cột "Ngày hoàn thành" — ở hàng chuyến là mốc chạy xong của CHÍNH chuyến đó,
           nên đơn nhiều chặng thấy được từng chặng kết thúc ngày nào. */}
       <td className="py-3 pr-4">
@@ -127,7 +124,7 @@ export function ShipmentRows({ shipments, isLoading }) {
   if (isLoading) {
     return (
       <tr>
-        <td colSpan={8} className="py-4 text-center bg-blue-50/20 dark:bg-blue-500/10">
+        <td colSpan={7} className="py-4 text-center bg-blue-50/20 dark:bg-blue-500/10">
           <Spinner size="sm" color="primary" />
         </td>
       </tr>
@@ -137,7 +134,7 @@ export function ShipmentRows({ shipments, isLoading }) {
   if (!shipments || shipments.length === 0) {
     return (
       <tr>
-        <td colSpan={8} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20 dark:bg-blue-500/10">
+        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 dark:text-gray-400 italic bg-blue-50/20 dark:bg-blue-500/10">
           Không có chuyến xe nào.
         </td>
       </tr>

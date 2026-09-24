@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 // Modal THÔ, không phải AppModal — xem ghi chú ở alert-modal.tsx (AppModal bọc
 // UIOverlaySlot, mà component này chính là nội dung của slot).
-import { Animated, Modal, Pressable, StyleSheet } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
@@ -13,6 +13,8 @@ type Props = {
 };
 
 export function ConfirmModal({ opts, onResult }: Props) {
+    // Kích thước tường minh cho lớp nền — xem ghi chú ở styles.backdrop của alert-modal.tsx.
+    const { width, height } = useWindowDimensions();
     const backdropOpacity = useRef(new Animated.Value(0)).current;
     const scale           = useRef(new Animated.Value(0.88)).current;
     const opacity         = useRef(new Animated.Value(0)).current;
@@ -54,7 +56,7 @@ export function ConfirmModal({ opts, onResult }: Props) {
     // của màn đã đóng.
     return (
         <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={() => dismiss(false)}>
-        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <Animated.View style={[styles.backdrop, { width, height, opacity: backdropOpacity }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => dismiss(false)} />
             <Animated.View style={[styles.card, { transform: [{ scale }], opacity }]}>
                 <YStack gap={8} marginBottom={20}>
@@ -110,10 +112,12 @@ export function ConfirmModal({ opts, onResult }: Props) {
 }
 
 const styles = StyleSheet.create({
-    // Trong cửa sổ riêng của Modal nên absoluteFillObject phủ đúng màn hình —
-    // xem ghi chú dài ở alert-modal.tsx về việc vì sao View thường không đủ.
+    // width/height gắn lúc render từ useWindowDimensions — xem ghi chú dài ở
+    // alert-modal.tsx về việc vì sao không dựa vào absoluteFill.
     backdrop: {
-        ...StyleSheet.absoluteFillObject,
+        position: 'absolute',
+        top: 0,
+        left: 0,
         backgroundColor: 'rgba(0,0,0,0.45)',
         justifyContent: 'center',
         alignItems: 'center',

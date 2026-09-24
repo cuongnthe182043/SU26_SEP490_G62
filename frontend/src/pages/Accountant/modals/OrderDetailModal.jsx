@@ -6,7 +6,7 @@ import {
 import {
   RiFileList3Line,
   RiTruckLine, RiUserLine, RiPhoneLine, RiBuildingLine,
-  RiCheckboxCircleLine, RiTimeLine, RiCalendarLine,
+  RiCheckboxCircleLine, RiTimeLine,
   RiMoneyDollarCircleLine, RiBox2Line, RiScalesLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
@@ -187,9 +187,8 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
         })
       : null;
 
-  const date = viDate(order.created_at);
   // Lúc chuyến cuối của đơn chạy xong. Với đơn kế toán khai lại thì đây mới là ngày
-  // việc thật sự diễn ra — ngày tạo chỉ là ngày gõ vào hệ thống.
+  // việc thật sự diễn ra — ngày tạo chỉ là ngày gõ vào hệ thống nên không hiện.
   const completedDate = viDate(order.completed_at);
 
   const debtChip = DEBT_STATUS[order.debt_status];
@@ -208,7 +207,6 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
             <p className="text-base font-bold">Chi tiết đơn #{order.id}</p>
             <p className="text-xs font-normal text-gray-400 dark:text-gray-400">
               {order.cargo_name ?? "Đơn hàng"}
-              {date ? ` · ${date}` : ""}
             </p>
           </div>
         </ModalHeader>
@@ -224,7 +222,6 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               <InfoRow icon={RiUserLine}     label="Tên"     value={order.customer_name} />
               <InfoRow icon={RiPhoneLine}    label="SĐT"     value={order.customer_phone} mono />
               <InfoRow icon={RiBuildingLine} label="Công ty" value={order.customer_company} />
-              <InfoRow icon={RiCalendarLine} label="Ngày tạo" value={date} />
               <InfoRow icon={RiCheckboxCircleLine} label="Ngày hoàn thành" value={completedDate} />
             </div>
 
