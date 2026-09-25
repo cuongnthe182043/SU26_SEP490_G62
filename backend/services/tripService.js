@@ -3,6 +3,7 @@ const paymentRepository  = require('../repositories/paymentRepository');
 const stopRepository     = require('../repositories/stopRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const incidentRepository = require('../repositories/incidentRepository');
+const leaveRepository    = require('../repositories/leaveRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -147,6 +148,12 @@ const undoLastTransition = async (tripId, driverId, { expectedVersion } = {}) =>
 };
 
 const claimTrip = async (shipmentId, driverId) => {
+    // Ngày đã xin nghỉ thì không nhận chuyến — cùng luật với điều phối gán tay
+    // (coordinatorService.assignOrderShipments), không thì tự nhận là đường lách.
+    if (await leaveRepository.hasApprovedLeaveToday(driverId)) {
+        throw new Error('ON_LEAVE:Hôm nay bạn có đơn nghỉ nên không thể nhận chuyến. Nếu vẫn đi làm, hãy huỷ đơn nghỉ trước.');
+    }
+
     // Chặn nhận chuyến mới nếu còn chuyến cash đã COMPLETED mà chưa nhập km /
     // chưa gửi yêu cầu tạo phiếu thu — bắt buộc tài xế xử lý xong nghĩa vụ tài
     // chính của chuyến trước rồi mới được nhận chuyến tiếp theo.

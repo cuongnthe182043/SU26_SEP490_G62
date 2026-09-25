@@ -16,6 +16,7 @@ jest.mock('../../repositories/paymentRepository');
 jest.mock('../../repositories/stopRepository');
 jest.mock('../../repositories/revenueAllocationRepository');
 jest.mock('../../repositories/incidentRepository');
+jest.mock('../../repositories/leaveRepository');
 jest.mock('../../services/notificationService', () => ({
     createForUser: jest.fn().mockResolvedValue(undefined),
     createForUsers: jest.fn().mockResolvedValue([]),
@@ -33,6 +34,7 @@ const paymentRepository = require('../../repositories/paymentRepository');
 const stopRepository = require('../../repositories/stopRepository');
 const revenueAllocationRepository = require('../../repositories/revenueAllocationRepository');
 const incidentRepository = require('../../repositories/incidentRepository');
+const leaveRepository = require('../../repositories/leaveRepository');
 const notificationService = require('../../services/notificationService');
 const notificationGateway = require('../../services/notificationGateway');
 const kpiService = require('../../services/kpiService');
@@ -45,6 +47,7 @@ beforeEach(() => {
     tripRepository.getTripById.mockResolvedValue(chuyen());
     tripRepository.getDriverVehicleId.mockResolvedValue(22);
     tripRepository.getPendingReceiptOrder.mockResolvedValue(null);
+    leaveRepository.hasApprovedLeaveToday.mockResolvedValue(false);
     tripRepository.updateTripStatus.mockResolvedValue({ id: 100, status: 'updated' });
     tripRepository.getFullTripById.mockResolvedValue({ id: 100, is_final_shipment: false, order_id: 900 });
     tripRepository.saveDeliveryProof.mockResolvedValue(undefined);
@@ -98,6 +101,15 @@ describe('tripService.claimTrip', () => {
 
         await expect(tripService.claimTrip(100, 5)).rejects.toThrow(/^PENDING_RECEIPT:/);
 
+        expect(tripRepository.claimShipment).not.toHaveBeenCalled();
+    });
+
+    it('TC-UNIT-TripService-004b — a driver with approved leave today cannot claim a trip', async () => {
+        leaveRepository.hasApprovedLeaveToday.mockResolvedValue(true);
+
+        await expect(tripService.claimTrip(100, 5)).rejects.toThrow(/^ON_LEAVE:/);
+
+        expect(leaveRepository.hasApprovedLeaveToday).toHaveBeenCalledWith(5);
         expect(tripRepository.claimShipment).not.toHaveBeenCalled();
     });
 

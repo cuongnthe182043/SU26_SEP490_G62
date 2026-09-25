@@ -203,7 +203,7 @@ const assignOrderShipments = async (req, res) => {
             : err.message.includes('chỉ gán được') || err.message.includes('đã được tài xế khác')
                 || err.message.includes('đang vướng chuyến') || err.message.includes('đang chạy chuyến')
                 || err.message.includes('không sẵn sàng') || err.message.includes('đang trong bảo trì')
-                || err.message.includes('phụ trách bảo trì') ? 409
+                || err.message.includes('phụ trách bảo trì') || err.message.includes('có đơn nghỉ') ? 409
             : err.message.includes('bắt buộc') || err.message.includes('không hợp lệ')
                 || err.message.includes('Phải chọn') || err.message.includes('không thuộc')
                 || err.message.includes('vui lòng chọn xe') ? 400
@@ -262,6 +262,7 @@ const reassignShipment = async (req, res) => {
         res.json({ message: 'Đã điều chuyển chuyến', shipment: updated });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('có đơn nghỉ') ? 409
             : err.message.includes('bắt buộc') || err.message.includes('phải khác') || err.message.includes('vui lòng') || err.message.includes('chưa') ? 422
             : 500;
         res.status(code).json({ error: err.message });

@@ -162,4 +162,21 @@ const rejectExpiredLeaveRequests = async () => {
     return result.rowCount;
 };
 
-module.exports = { getDriverLeaves, getAttendanceSummary, getPayrollStatus, findBlockingAttendance, createLeave, deleteLeave, rejectExpiredLeaveRequests };
+/**
+ * Tài xế có đơn nghỉ đã duyệt vào HÔM NAY không — chặn gán chuyến / tự nhận chuyến.
+ *
+ * Đơn hàng không có ngày chạy riêng, nên "ngày chạy" = ngày gán/nhận. CURRENT_DATE theo
+ * múi giờ phiên, mà DB đặt Asia/Ho_Chi_Minh (xem DB script) — cùng mốc với
+ * driverRepository.getDriverForAssignment.
+ */
+const hasApprovedLeaveToday = async (driverId, db = pool) => {
+    const { rows } = await db.query(
+        `SELECT 1 FROM leave_requests
+          WHERE driver_id = $1 AND leave_date = CURRENT_DATE AND status = 'approved'
+          LIMIT 1`,
+        [driverId],
+    );
+    return rows.length > 0;
+};
+
+module.exports = { hasApprovedLeaveToday, getDriverLeaves, getAttendanceSummary, getPayrollStatus, findBlockingAttendance, createLeave, deleteLeave, rejectExpiredLeaveRequests };

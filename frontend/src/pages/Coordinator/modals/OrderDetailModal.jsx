@@ -229,13 +229,18 @@ function AssignShipmentsPanel({ order, drivers, vehicles, onAssign }) {
           className="flex-1"
           selectedKeys={driverId ? [String(driverId)] : []}
           onSelectionChange={(keys) => setDriverId([...keys][0] ?? null)}
+          // Người có đơn nghỉ hôm nay vẫn hiện (để điều phối biết vì sao không có họ)
+          // nhưng không chọn được — backend cũng chặn, đây chỉ để khỏi bấm rồi bị từ chối.
+          disabledKeys={(drivers || []).filter((d) => d.on_leave_today).map((d) => String(d.id))}
           variant="bordered"
         >
           {(drivers || []).map((d) => (
             <SelectItem
               key={String(d.id)}
               textValue={d.full_name || d.name}
-              description={[d.vehicle_group_name, d.plate_number].filter(Boolean).join(" · ") || "Chưa có xe biên chế"}
+              description={d.on_leave_today
+                ? "Nghỉ hôm nay"
+                : [d.vehicle_group_name, d.plate_number].filter(Boolean).join(" · ") || "Chưa có xe biên chế"}
             >
               {d.full_name || d.name}
             </SelectItem>
