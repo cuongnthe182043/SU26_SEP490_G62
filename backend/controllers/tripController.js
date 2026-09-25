@@ -440,17 +440,34 @@ const recordReceiptCollection = async (req, res) => {
             collectedAmount,
         });
 
-        const message = result?.excessDistributed
-            ? 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.'
-            : result?.partialPayment
-                ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${money(Number(result.shortfall))}.`
-                : 'Đã ghi nhận thanh toán phiếu thu';
+        const refundDue = Number(result?.prepaidRefundDue || 0);
+        const prepaid   = Number(result?.prepaidAmount || 0);
+        let message;
+        if (result?.nothingToCollect && refundDue > 0.01) {
+            // Khách ứng DƯ: phiếu hoàn tiền đã được tạo sẵn lúc điều phối duyệt phiếu thu —
+            // nói rõ để tài không tự móc tiền trả lại khách tại chỗ.
+            message = `Đã đóng phiếu thu. Khách đã trả trước ${money(prepaid)}, nhiều hơn số phải trả `
+                + `${money(prepaid - refundDue)} — không thu thêm. Phần dư ${money(refundDue)} công ty sẽ `
+                + 'hoàn lại cho khách qua Kế toán, bạn không cần trả lại tiền cho khách.';
+        } else if (result?.nothingToCollect && prepaid > 0.01) {
+            message = `Đã đóng phiếu thu. Khách đã trả trước đủ ${money(prepaid)} — không thu thêm.`;
+        } else if (result?.nothingToCollect) {
+            message = 'Đã đóng phiếu thu 0đ — không phát sinh khoản phải thu nào.';
+        } else if (result?.excessDistributed) {
+            message = 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.';
+        } else if (result?.partialPayment) {
+            message = `Đã ghi nhận thanh toán một phần — khách còn nợ ${money(Number(result.shortfall))}.`;
+        } else {
+            message = 'Đã ghi nhận thanh toán phiếu thu';
+        }
 
         res.json({
             message,
             excessDistributed: result?.excessDistributed ?? false,
             partialPayment: result?.partialPayment ?? false,
             shortfall: result?.shortfall ?? 0,
+            nothingToCollect: result?.nothingToCollect ?? false,
+            prepaidRefundDue: refundDue,
         });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403

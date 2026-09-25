@@ -163,20 +163,29 @@ const rejectExpiredLeaveRequests = async () => {
 };
 
 /**
- * Tài xế có đơn nghỉ đã duyệt vào HÔM NAY không — chặn gán chuyến / tự nhận chuyến.
+ * Tài xế có đơn nghỉ đã duyệt (có lương hay không lương đều tính) vào ngày chạy chuyến
+ * không — chốt chặn DÙNG CHUNG cho mọi đường ghi chủ chuyến: tạo/sửa đơn, gán, điều
+ * chuyển, sự cố, tài tự nhận. Thêm đường giao việc mới thì phải gọi hàm này.
  *
- * Đơn hàng không có ngày chạy riêng, nên "ngày chạy" = ngày gán/nhận. CURRENT_DATE theo
- * múi giờ phiên, mà DB đặt Asia/Ho_Chi_Minh (xem DB script) — cùng mốc với
- * driverRepository.getDriverForAssignment.
+ * `date` là NGÀY GIAO HÀNG của chuyến (order_shipments.arrived_at) — Date, chuỗi
+ * 'YYYY-MM-DD' hoặc timestamptz đều được. Hai quy ước:
+ *   - null/thiếu → hôm nay (chuyến dữ liệu cũ không có ngày giao);
+ *   - ngày đã qua → hôm nay: chuyến quá hạn giao mà giờ mới giao việc thì thực tế chạy
+ *     hôm nay, so với ngày cũ là so với một ngày không ai làm việc.
+ *
+ * Quy đổi sang ngày bằng múi giờ phiên (Asia/Ho_Chi_Minh — xem config/dbConfig.js) chứ
+ * không ở Node: arrived_at lưu nửa đêm giờ VN, cắt theo UTC sẽ lùi mất một ngày.
  */
-const hasApprovedLeaveToday = async (driverId, db = pool) => {
+const hasApprovedLeaveOn = async (driverId, date = null, db = pool) => {
     const { rows } = await db.query(
         `SELECT 1 FROM leave_requests
-          WHERE driver_id = $1 AND leave_date = CURRENT_DATE AND status = 'approved'
+          WHERE driver_id = $1
+            AND status = 'approved'
+            AND leave_date = GREATEST(COALESCE(($2::timestamptz)::date, CURRENT_DATE), CURRENT_DATE)
           LIMIT 1`,
-        [driverId],
+        [driverId, date ?? null],
     );
     return rows.length > 0;
 };
 
-module.exports = { hasApprovedLeaveToday, getDriverLeaves, getAttendanceSummary, getPayrollStatus, findBlockingAttendance, createLeave, deleteLeave, rejectExpiredLeaveRequests };
+module.exports = { hasApprovedLeaveOn, getDriverLeaves, getAttendanceSummary, getPayrollStatus, findBlockingAttendance, createLeave, deleteLeave, rejectExpiredLeaveRequests };

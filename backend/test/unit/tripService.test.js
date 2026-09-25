@@ -47,7 +47,6 @@ beforeEach(() => {
     tripRepository.getTripById.mockResolvedValue(chuyen());
     tripRepository.getDriverVehicleId.mockResolvedValue(22);
     tripRepository.getPendingReceiptOrder.mockResolvedValue(null);
-    leaveRepository.hasApprovedLeaveToday.mockResolvedValue(false);
     tripRepository.updateTripStatus.mockResolvedValue({ id: 100, status: 'updated' });
     tripRepository.getFullTripById.mockResolvedValue({ id: 100, is_final_shipment: false, order_id: 900 });
     tripRepository.saveDeliveryProof.mockResolvedValue(undefined);
@@ -104,13 +103,11 @@ describe('tripService.claimTrip', () => {
         expect(tripRepository.claimShipment).not.toHaveBeenCalled();
     });
 
-    it('TC-UNIT-TripService-004b — a driver with approved leave today cannot claim a trip', async () => {
-        leaveRepository.hasApprovedLeaveToday.mockResolvedValue(true);
+    it('TC-UNIT-TripService-004b — a driver on approved leave on the delivery date cannot claim the trip', async () => {
+        // Guard nằm trong claimShipment (theo ngày giao của chuyến) — service chỉ dịch mã lỗi.
+        tripRepository.claimShipment.mockRejectedValue(new Error('ON_LEAVE'));
 
-        await expect(tripService.claimTrip(100, 5)).rejects.toThrow(/^ON_LEAVE:/);
-
-        expect(leaveRepository.hasApprovedLeaveToday).toHaveBeenCalledWith(5);
-        expect(tripRepository.claimShipment).not.toHaveBeenCalled();
+        await expect(tripService.claimTrip(100, 5)).rejects.toThrow(/^ON_LEAVE:.*ngày giao/);
     });
 
     it('TC-UNIT-TripService-005 — a driver with no vehicle assigned cannot claim a trip (BR-DRV-003)', async () => {

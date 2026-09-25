@@ -663,11 +663,17 @@ const createOrderWithShipments = async (orderData) => {
     }
 };
 
+// "Mới nhất / Cũ nhất" theo NGÀY HOÀN THÀNH — cùng mốc với bộ lọc ngày và cột "Hoàn thành"
+// trên màn hình (xem getAllOrders). Sắp theo ngày tạo thì đơn import lùi (tạo hôm nay, chạy
+// từ tháng trước) nhảy lên đầu danh sách dù ngày hiển thị nằm lẫn giữa các đơn khác.
+// o.id là khoá phụ để thứ tự ổn định khi nhiều đơn xong cùng lúc — không có nó, phân
+// trang có thể lặp hoặc sót đơn giữa hai trang.
+const ORDER_COMPLETED_AT_SQL = 'COALESCE(ship_agg.completed_at, o.created_at)';
 const ORDER_SORT_OPTIONS = {
-    newest:      'o.created_at DESC',
-    oldest:      'o.created_at ASC',
-    value_desc:  'ship_agg.actual_price DESC NULLS LAST, o.created_at DESC',
-    value_asc:   'ship_agg.actual_price ASC NULLS LAST, o.created_at DESC',
+    newest:      `${ORDER_COMPLETED_AT_SQL} DESC, o.id DESC`,
+    oldest:      `${ORDER_COMPLETED_AT_SQL} ASC, o.id ASC`,
+    value_desc:  `ship_agg.actual_price DESC NULLS LAST, ${ORDER_COMPLETED_AT_SQL} DESC, o.id DESC`,
+    value_asc:   `ship_agg.actual_price ASC NULLS LAST, ${ORDER_COMPLETED_AT_SQL} DESC, o.id DESC`,
 };
 
 const getAllOrders = async (filters = {}, page = null, limit = null) => {
@@ -691,14 +697,21 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         conditions.push(`(c.full_name ILIKE $${params.length} OR c.company_name ILIKE $${params.length})`);
     }
 
+    // Lọc theo NGÀY HOÀN THÀNH của đơn (lúc chuyến cuối chạy xong — ship_agg.completed_at),
+    // không phải ngày tạo: doanh thu thuộc về kỳ chuyến chạy xong, và đơn kế toán import
+    // lùi (tạo hôm nay, chạy từ tháng trước) phải rơi vào đúng tháng chạy. Cũng là ngày mà
+    // cột "Hoàn thành" trên màn hình đang hiển thị. Đơn dữ liệu cũ không có mốc hoàn thành
+    // thì rơi về ngày tạo để khỏi biến mất khỏi mọi khoảng lọc.
+    const ngayHoanThanh = ORDER_COMPLETED_AT_SQL;
+
     if (filters.dateFrom) {
         params.push(filters.dateFrom);
-        conditions.push(`o.created_at >= $${params.length}`);
+        conditions.push(`${ngayHoanThanh} >= $${params.length}::date`);
     }
 
     if (filters.dateTo) {
         params.push(filters.dateTo);
-        conditions.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+        conditions.push(`${ngayHoanThanh} < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     // debt_status filter is applied as a compound condition across customer + driver debts

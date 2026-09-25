@@ -398,6 +398,8 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     pickup_addresses: string[] | null;
     delivery_addresses: string[] | null;
     prepaid_amount: string | null;
+    // Khách ứng DƯ so với số phải trả → phiếu 0đ, phần dư công ty hoàn qua Kế toán
+    prepaid_refund_due: string | null;
     expenses: ExpenseItem[];
     order_shipments: OrderShipmentRow[];
 };

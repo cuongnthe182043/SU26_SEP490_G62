@@ -403,12 +403,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         if (!replacementDriver.vehicle_id) {
             throw new Error('Tài xế thay thế chưa được gán xe');
         }
-        if (replacementDriver.on_leave_today) {
-            throw Object.assign(
-                new Error(`Tài xế ${replacementDriver.full_name} có đơn nghỉ hôm nay — không thể nhận chuyến thay`),
-                { statusCode: 409 },
-            );
-        }
+        // Nghỉ phép (hôm nay hoặc ngày giao) chặn trong tripRepository.reassignShipmentAfterIncident.
 
         replacementVehicleId = Number(replacementDriver.vehicle_id);
     }

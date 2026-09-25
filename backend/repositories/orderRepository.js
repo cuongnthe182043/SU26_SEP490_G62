@@ -291,6 +291,8 @@ const getExistingShipmentIds = async (client, orderId) => {
         `SELECT os.id,
                 os.status,
                 os.vehicle_group_id,
+                -- Ngày giao theo giờ VN (phiên DB) — so với ngày mới gửi lên để biết có dời ngày không
+                to_char(os.arrived_at, 'YYYY-MM-DD') AS arrived_date,
                 sc.owner_driver_id,
                 sc.vehicle_id,
                 v.plate_number

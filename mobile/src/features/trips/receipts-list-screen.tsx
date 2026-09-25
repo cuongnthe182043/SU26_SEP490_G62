@@ -29,6 +29,11 @@ function getReceiptBadge(item: DriverReceiptSummary): { label: string; color: st
     if (s === 'pending')    return { label: 'Chờ coordinator duyệt',   color: '#B45309', bg: '#FEF3C7' };
     if (s === 'processing') return { label: 'Đang xử lý',              color: '#1D4ED8', bg: '#DBEAFE' };
     // approved — phân biệt driver đã xác nhận thanh toán chưa
+    // Phiếu 0đ (khách trả trước đủ / hàng hư hại) được đóng bằng payment_type
+    // 'client_credit' nhưng KHÔNG tạo công nợ — xét trước, kẻo hiện "Khách đang nợ".
+    if (s === 'approved' && item.payment_type && Number(item.amount) <= 0) {
+        return { label: 'Đã đóng · không phải thu', color: appTheme.colors.success, bg: `${appTheme.colors.success}18` };
+    }
     if (s === 'approved' && item.payment_type) {
         const map: Record<string, { label: string; color: string }> = {
             cash_collected: { label: 'Đã thu tiền mặt',    color: appTheme.colors.success },

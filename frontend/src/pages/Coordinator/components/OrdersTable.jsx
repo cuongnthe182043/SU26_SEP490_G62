@@ -85,7 +85,12 @@ function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder,
       </tr>
 
       {isExpanded && (
-        <ShipmentSubRows shipments={trip.trips} onReassign={onReassignShipment} onCancel={onCancelShipment} />
+        <ShipmentSubRows
+          shipments={trip.trips}
+          // Kèm mã đơn: danh sách xe chọn được khi điều chuyển phụ thuộc vào đơn đang xem
+          onReassign={(shipmentId) => onReassignShipment(shipmentId, trip.orderId)}
+          onCancel={onCancelShipment}
+        />
       )}
     </>
   );

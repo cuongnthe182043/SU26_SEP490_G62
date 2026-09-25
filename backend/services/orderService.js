@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const logger = require('../config/logger');
 const orderRepository = require('../repositories/orderRepository');
+const leaveRepository = require('../repositories/leaveRepository');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
@@ -57,6 +58,21 @@ const normalizeDateInput = (value) => {
     const parsed = new Date(text);
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed.toISOString().slice(0, 10);
+};
+
+// 'YYYY-MM-DD' → 'dd/mm/yyyy' cho câu báo lỗi
+const toViDate = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+
+// Chọn BKS lúc tạo/sửa đơn là giao luôn chuyến cho tài biên chế của xe (status 'claimed')
+// — một đường giao việc như gán/nhận chuyến, nên qua cùng chốt chặn nghỉ phép.
+const assertDriverNotOnLeave = async (dbClient, { driverId, deliveryDate, plateNumber }) => {
+    if (!driverId) return;
+    if (await leaveRepository.hasApprovedLeaveOn(driverId, deliveryDate, dbClient)) {
+        const ngay = deliveryDate ? `ngày giao hàng ${toViDate(deliveryDate)}` : 'hôm nay';
+        throw new Error(
+            `Tài xế của xe ${plateNumber} có đơn nghỉ vào ${ngay} — chọn xe khác hoặc để trống BKS để gán sau`,
+        );
+    }
 };
 
 const isBeforeToday = (dateText) => {
@@ -337,6 +353,11 @@ const createOrder = async (userId, payload) => {
                     vehicleId: finalVehicleId,
                     driverId: finalDriverId,
                 });
+                await assertDriverNotOnLeave(dbClient, {
+                    driverId: finalDriverId,
+                    deliveryDate: normalizedDate,
+                    plateNumber: vehicle.plate_number,
+                });
             }
             ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle?.plate_number || plate}`);
             ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tài xe');
@@ -566,6 +587,8 @@ const updateOrder = async (orderId, payload) => {
     }
 
     const shipmentsDataArray = [];
+    // Ngày giao mới; null = không đổi (tầng repository giữ nguyên arrived_at cũ)
+    const newDeliveryDate = normalizeDateInput(arrived_at || date);
     const dbClient = await pool.connect();
 
     try {
@@ -647,6 +670,23 @@ const updateOrder = async (orderId, payload) => {
                     vehicleId: finalVehicleId,
                     driverId: finalDriverId,
                     excludeShipmentId: existing?.id ?? null,
+                });
+            }
+
+            // Kiểm nghỉ phép khi chuyến vừa được giao cho người mới, HOẶC giữ tài cũ nhưng
+            // dời ngày giao (dời đúng vào ngày tài đã xin nghỉ cũng là giao việc ngày nghỉ).
+            // Giữ nguyên cả tài lẫn ngày thì không kiểm — sửa ghi chú không được phép bị
+            // chặn vì một đơn nghỉ tài đăng ký SAU khi đã nhận chuyến. Chuyến đã xong/huỷ
+            // thì không còn là giao việc.
+            const deliveryDate = newDeliveryDate ?? existing?.arrived_date ?? null;
+            const dateChanged = Boolean(newDeliveryDate && existing?.arrived_date
+                && newDeliveryDate !== existing.arrived_date);
+            const isFinished = [SHIPMENT_STATUS.COMPLETED, SHIPMENT_STATUS.CANCELLED].includes(existing?.status);
+            if (finalDriverId && finalVehicleId && !isFinished && (assignmentChanged || dateChanged)) {
+                await assertDriverNotOnLeave(dbClient, {
+                    driverId: finalDriverId,
+                    deliveryDate,
+                    plateNumber: vehicle.plate_number,
                 });
             }
             ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle?.plate_number || plate}`);

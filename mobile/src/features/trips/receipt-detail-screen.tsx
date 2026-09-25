@@ -505,7 +505,33 @@ function PaymentOptionBtn({
 
 // ─── Recorded / debt banner ───────────────────────────────────────────────────
 
-function RecordedBanner({ pt, hasDriverDebt }: { pt: PaymentType; hasDriverDebt: boolean }) {
+// Phiếu 0đ được ĐÓNG bằng payment_type 'client_credit' (hình thức duy nhất không đòi ảnh)
+// nhưng backend KHÔNG tạo công nợ nào (NOTHING_TO_COLLECT). Mọi chỗ hiển thị theo
+// payment_type phải xét 0đ trước — nếu không phiếu khách đã trả trước đủ lại hiện
+// "Khách đang nợ công ty".
+type ZeroInfo = { prepaidAmount: number; prepaidRefundDue: number };
+
+function RecordedBanner({ pt, hasDriverDebt, zero }: { pt: PaymentType; hasDriverDebt: boolean; zero?: ZeroInfo | null }) {
+    if (zero) {
+        const sub = zero.prepaidRefundDue > 0
+            ? `Khách đã trả trước dư ${money(zero.prepaidRefundDue)} — công ty sẽ hoàn lại cho khách qua Kế toán.`
+            : zero.prepaidAmount > 0
+                ? 'Khách đã trả trước đủ — không phát sinh công nợ.'
+                : 'Không phát sinh khoản phải thu hay công nợ nào.';
+        return (
+            <View style={[styles.statusBanner, { borderColor: appTheme.colors.successBorder, backgroundColor: appTheme.colors.successSoft }]}>
+                <XStack alignItems="center" gap={10} padding={14}>
+                    <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />
+                    <YStack flex={1} gap={2}>
+                        <Text fontSize={13} fontWeight="900" color={appTheme.colors.success}>
+                            Đã đóng phiếu thu — không phải thu của khách
+                        </Text>
+                        <Text fontSize={11} color={appTheme.colors.success} opacity={0.85}>{sub}</Text>
+                    </YStack>
+                </XStack>
+            </View>
+        );
+    }
     const configs = {
         cash_collected: {
             color:  hasDriverDebt ? appTheme.colors.warningText : appTheme.colors.success,
@@ -614,9 +640,16 @@ export function ReceiptDetailScreen() {
     // khoản nợ 0đ rác nào sinh ra dù nhãn hình thức là "khách nợ".
     const handleCloseZeroReceipt = async () => {
         if (!receipt) return;
+        const refundDue = Number(receipt.prepaid_refund_due ?? 0);
+        const prepaid   = Number(receipt.prepaid_amount ?? 0);
         Alert.alert(
             'Đóng phiếu thu',
-            'Phiếu thu 0đ — không thu tiền của khách và không tạo công nợ. Xác nhận đóng phiếu?',
+            refundDue > 0
+                ? `Khách đã trả trước ${money(prepaid)}, dư ${money(refundDue)} so với số phải trả. `
+                  + 'Không thu thêm tiền; phần dư công ty sẽ hoàn cho khách qua Kế toán. Xác nhận đóng phiếu?'
+                : prepaid > 0
+                    ? 'Khách đã trả trước đủ — không thu thêm tiền và không tạo công nợ. Xác nhận đóng phiếu?'
+                    : 'Phiếu thu 0đ — không thu tiền của khách và không tạo công nợ. Xác nhận đóng phiếu?',
             [
                 { text: 'Huỷ', style: 'cancel' },
                 {
@@ -625,10 +658,17 @@ export function ReceiptDetailScreen() {
                         try {
                             const fd = new FormData();
                             fd.append('payment_type', 'client_credit');
-                            fd.append('notes', 'Phiếu thu 0đ — không phát sinh khoản phải thu của khách');
-                            await tripService.recordReceiptCollection(receipt.orr_id, fd);
+                            fd.append('notes', prepaid > 0
+                                ? 'Phiếu thu 0đ — khách đã trả trước đủ, không thu thêm'
+                                : 'Phiếu thu 0đ — không phát sinh khoản phải thu của khách');
+                            const res = await tripService.recordReceiptCollection(receipt.orr_id, fd);
                             load();
-                            Alert.alert('Đã đóng phiếu thu', 'Phiếu thu không phát sinh khoản phải thu nào.');
+                            // Câu báo do backend dựng theo đúng lý do phiếu 0đ (trả trước dư /
+                            // trả trước đủ / hàng hư hại) — xem tripController.recordReceiptCollection.
+                            Alert.alert(
+                                'Đã đóng phiếu thu',
+                                (res as any)?.message ?? 'Phiếu thu không phát sinh khoản phải thu nào.',
+                            );
                         } catch (err: any) {
                             Alert.alert('Không ghi nhận được', err?.message ?? 'Thử lại.');
                         } finally {
@@ -794,6 +834,10 @@ export function ReceiptDetailScreen() {
     // 3 nút thanh toán đều vô nghĩa — và ép chụp ảnh xác minh sẽ khóa cứng tài xế, không
     // cách nào đóng được phiếu. Thay bằng một nút đóng phiếu duy nhất.
     const nothingToCollect = Number(receipt.amount) <= 0;
+    // Hai lý do 0đ nói hai chuyện khác nhau với tài: hàng hư hại (công ty chịu chi phí) hay
+    // khách đã trả trước đủ/dư (có thể còn tiền dư công ty phải hoàn — tài không tự trả).
+    const prepaidRefundDue = Number(receipt.prepaid_refund_due ?? 0);
+    const zeroByPrepaid    = nothingToCollect && Number(receipt.prepaid_amount ?? 0) > 0;
     // Sửa/xoá được khi khoản đó CHƯA được duyệt và phiếu thu của đơn chưa chốt
     // (chốt rồi là đã thu tiền khách, không được đổi số nữa). Trước đây chỉ xét
     // request_status === 'rejected' nên nút vẫn hiện với khoản đã duyệt rồi tài
@@ -921,7 +965,9 @@ export function ReceiptDetailScreen() {
                         </Text>
                         <Text fontSize={10} color={appTheme.colors.textMuted}>
                             {nothingToCollect
-                                ? 'Không phát sinh khoản phải thu — chi phí chuyến do công ty chịu'
+                                ? (zeroByPrepaid
+                                    ? 'Khách đã trả trước đủ — không phải thu thêm'
+                                    : 'Không phát sinh khoản phải thu — chi phí chuyến do công ty chịu')
                                 : 'Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)'}
                         </Text>
 
@@ -956,7 +1002,9 @@ export function ReceiptDetailScreen() {
                                 {bankPendingConfirm
                                     ? 'Chờ kế toán xác nhận chuyển khoản'
                                     : alreadyRecorded
-                                        ? (PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type)
+                                        ? (nothingToCollect
+                                            ? 'Đã đóng — không phải thu'
+                                            : (PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type))
                                         : isRejected ? 'Yêu cầu bị từ chối'
                                         : 'Chưa xác nhận thanh toán'}
                             </Text>
@@ -1213,7 +1261,13 @@ export function ReceiptDetailScreen() {
 
                 {/* ── Recorded status ───────────────────────────────────────── */}
                 {alreadyRecorded ? (
-                    <RecordedBanner pt={receipt.payment_type!} hasDriverDebt={receipt.has_driver_debt} />
+                    <RecordedBanner
+                        pt={receipt.payment_type!}
+                        hasDriverDebt={receipt.has_driver_debt}
+                        zero={nothingToCollect
+                            ? { prepaidAmount: Number(receipt.prepaid_amount ?? 0), prepaidRefundDue }
+                            : null}
+                    />
                 ) : null}
 
                 {/* ── Phiếu 0đ: không có gì để thu, chỉ cần đóng phiếu ────── */}
@@ -1223,10 +1277,26 @@ export function ReceiptDetailScreen() {
                             Không phải thu của khách
                         </Text>
                         <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={14}>
-                            Phiếu thu này là 0đ — chuyến bị hủy do hàng hóa hư hại nên toàn bộ chi phí
-                            phát sinh do công ty chịu, hoặc khách đã thanh toán trước đủ. Bạn không cần
-                            thu tiền và không cần chụp ảnh; chi phí bạn đã ứng vẫn được hoàn qua lương.
+                            {prepaidRefundDue > 0
+                                ? `Khách đã trả trước ${money(receipt.prepaid_amount)}, nhiều hơn số phải trả `
+                                  + `${money(Number(receipt.prepaid_amount) - prepaidRefundDue)}. Bạn không thu thêm `
+                                  + 'tiền và không cần chụp ảnh. Phần dư sẽ do công ty hoàn lại cho khách qua Kế toán '
+                                  + '— bạn KHÔNG tự trả lại tiền cho khách.'
+                                : zeroByPrepaid
+                                    ? 'Khách đã thanh toán trước đủ số phải trả. Bạn không thu thêm tiền và không cần '
+                                      + 'chụp ảnh; chi phí bạn đã ứng vẫn được hoàn qua lương.'
+                                    : 'Phiếu thu này là 0đ — chuyến bị hủy do hàng hóa hư hại nên toàn bộ chi phí '
+                                      + 'phát sinh do công ty chịu. Bạn không cần thu tiền và không cần chụp ảnh; chi '
+                                      + 'phí bạn đã ứng vẫn được hoàn qua lương.'}
                         </Text>
+                        {prepaidRefundDue > 0 ? (
+                            <XStack justifyContent="space-between" marginBottom={14}>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>Công ty hoàn lại khách</Text>
+                                <Text fontSize={12} fontWeight="800" color={appTheme.colors.text}>
+                                    {money(prepaidRefundDue)}
+                                </Text>
+                            </XStack>
+                        ) : null}
                         <TouchableOpacity
                             style={[styles.saveBtn, isSubmitting && { opacity: 0.45 }]}
                             onPress={handleCloseZeroReceipt}

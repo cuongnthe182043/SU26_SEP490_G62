@@ -39,8 +39,8 @@ const getAllDrivers = async () => {
                 WHERE sc.owner_driver_id = d.profile_id
                   AND os.status IN ('claimed', 'picking', 'transit', 'arrived', 'returning')
             ) AS has_active_trip,
-            -- Cùng điều kiện với leaveRepository.hasApprovedLeaveToday — ô chọn tài xế
-            -- khoá sẵn người đang nghỉ thay vì để điều phối bấm rồi mới bị từ chối.
+            -- Chỉ là GỢI Ý hiển thị (nghỉ HÔM NAY). Chốt chặn thật ở tầng ghi là
+            -- leaveRepository.hasApprovedLeaveOn, so theo NGÀY GIAO của chuyến.
             EXISTS (
                 SELECT 1 FROM leave_requests lr
                 WHERE lr.driver_id = d.profile_id
