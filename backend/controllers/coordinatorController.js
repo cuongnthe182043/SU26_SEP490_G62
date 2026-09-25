@@ -253,15 +253,21 @@ const cancelShipment = async (req, res) => {
     }
 };
 
-// PATCH /api/coordinator/trips/:id/reassign  Body: { toDriverId }
+// PATCH /api/coordinator/trips/:id/reassign  Body: { toDriverId, toVehicleId? }
+// toVehicleId tùy chọn — bỏ trống thì dùng xe biên chế của tài thay thế.
 const reassignShipment = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
         if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
-        const updated = await coordinatorService.reassignShipment(shipmentId, { toDriverId: req.body?.toDriverId }, req.user.userId);
+        const updated = await coordinatorService.reassignShipment(
+            shipmentId,
+            { toDriverId: req.body?.toDriverId, toVehicleId: req.body?.toVehicleId },
+            req.user.userId,
+        );
         res.json({ message: 'Đã điều chuyển chuyến', shipment: updated });
     } catch (err) {
-        const code = err.message.includes('không tồn tại') ? 404
+        const code = err.statusCode ? err.statusCode
+            : err.message.includes('không tồn tại') ? 404
             : err.message.includes('có đơn nghỉ') ? 409
             : err.message.includes('bắt buộc') || err.message.includes('phải khác') || err.message.includes('vui lòng') || err.message.includes('chưa') ? 422
             : 500;

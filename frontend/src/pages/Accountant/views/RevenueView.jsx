@@ -63,8 +63,8 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
         return;
       }
       const filterParts = [];
-      if (filters.dateFrom) filterParts.push(`Từ ${filters.dateFrom}`);
-      if (filters.dateTo) filterParts.push(`Đến ${filters.dateTo}`);
+      if (filters.dateFrom) filterParts.push(`Hoàn thành từ ${filters.dateFrom}`);
+      if (filters.dateTo) filterParts.push(`Hoàn thành đến ${filters.dateTo}`);
       if (filters.customer) filterParts.push(`Khách hàng: ${filters.customer}`);
       if (filters.debt_status) filterParts.push(`Trạng thái nợ: ${filters.debt_status}`);
       if (filters.search) filterParts.push(`Tìm kiếm: ${filters.search}`);

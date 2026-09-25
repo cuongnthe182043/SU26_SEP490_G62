@@ -4,7 +4,6 @@ const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
 const coordinatorRepository = require('../repositories/coordinatorRepository');
-const leaveRepository = require('../repositories/leaveRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const {
@@ -1105,7 +1104,10 @@ const cancelShipment = async (shipmentId, reason, actorId) => {
 
 // Điều chuyển tài xế/xe thủ công cho 1 trip — KHÔNG qua Incident, KHÔNG chia doanh thu
 // (chỉ áp dụng khi chưa lấy hàng; nếu đã lấy hàng cần dùng luồng Incident để chia doanh thu công bằng)
-const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
+//
+// Xe chọn độc lập với tài — cùng quy ước với assignOrderShipments: toVehicleId là xe chạy
+// tiếp chuyến này, bỏ trống thì lấy xe biên chế của tài thay thế.
+const reassignShipment = async (shipmentId, { toDriverId, toVehicleId = null }, actorId) => {
     const tripRepository = require('../repositories/tripRepository');
     const driverRepository = require('../repositories/driverRepository');
     const notificationService = require('./notificationService');
@@ -1127,9 +1129,26 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
 
     const toDriver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedToDriverId);
     if (!toDriver) throw new Error('Tài xế thay thế không tồn tại');
-    if (!toDriver.vehicle_id) throw new Error('Tài xế thay thế chưa được gán xe');
-    if (toDriver.on_leave_today) {
-        throw new Error(`Tài xế ${toDriver.full_name} có đơn nghỉ hôm nay — không thể điều chuyển chuyến sang`);
+    // Nghỉ phép (hôm nay hoặc ngày giao) chặn trong reassignShipmentAfterIncident.
+
+    const requestedVehicleId = toVehicleId === null || toVehicleId === undefined || toVehicleId === ''
+        ? null
+        : Number(toVehicleId);
+    if (requestedVehicleId !== null && (!Number.isInteger(requestedVehicleId) || requestedVehicleId <= 0)) {
+        throw new Error('Xe được chọn không hợp lệ');
+    }
+    const finalVehicleId = requestedVehicleId ?? (toDriver.vehicle_id ? Number(toDriver.vehicle_id) : null);
+    if (!finalVehicleId) {
+        throw new Error('Tài xế thay thế chưa có xe biên chế — vui lòng chọn xe cho chuyến này');
+    }
+
+    // Cùng ràng buộc với assignOrderShipments: tài còn nợ phiếu thu của chuyến trước thì
+    // không nhận việc mới — thiếu ở đây thì điều chuyển thành đường lách guard đó.
+    const pendingReceipt = await tripRepository.getPendingReceiptOrder(parsedToDriverId);
+    if (pendingReceipt) {
+        throw Object.assign(new Error(
+            `Tài xế thay thế còn chuyến #${pendingReceipt.shipment_id} (đơn #${pendingReceipt.order_id}) chưa nhập km thực tế / chưa gửi yêu cầu tạo phiếu thu. Không thể điều chuyển sang.`,
+        ), { statusCode: 409 });
     }
 
     const fromDriverId = Number(shipment.owner_driver_id);
@@ -1137,7 +1156,7 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
         incidentId: null,
         fromDriverId,
         toDriverId: parsedToDriverId,
-        toVehicleId: Number(toDriver.vehicle_id),
+        toVehicleId: finalVehicleId,
         changedBy: actorId,
         changeReason: 'manual_reassign',
         note: 'Điều phối viên/Quản lý chủ động điều chuyển (ngoài luồng sự cố)',
@@ -1286,9 +1305,8 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId, vehicleId 
 
     const driver = await driverRepository.getDriverForAssignment(parsedDriverId);
     if (!driver) throw new Error('Tài xế không tồn tại hoặc tài khoản đã bị khóa');
-    if (await leaveRepository.hasApprovedLeaveToday(parsedDriverId)) {
-        throw new Error(`Tài xế ${driver.full_name} có đơn nghỉ hôm nay — không thể gán chuyến`);
-    }
+    // Nghỉ phép được chặn trong assignOrderShipmentsToDriver theo NGÀY GIAO của từng chuyến
+    // (leaveRepository.hasApprovedLeaveOn) — không chặn theo hôm nay ở đây nữa.
 
     // Xe chỉ định > xe biên chế. Tài chưa có xe biên chế mà điều phối cũng không chọn xe
     // thì không suy ra được gì — báo rõ thay vì để guard dưới ném VEHICLE_NOT_FOUND khó hiểu.
@@ -1334,6 +1352,7 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId, vehicleId 
             DRIVER_MAINTENANCE: 'Tài xế đang phụ trách bảo trì một xe khác',
             OTHER_ORDER_ACTIVE: `Tài xế đang có chuyến thuộc đơn #${err.conflictingOrderId} — chỉ gán được nhiều chuyến trong cùng một đơn`,
             VEHICLE_BUSY_OTHER_ORDER: `${bienSo} đang vướng chuyến thuộc đơn #${err.conflictingOrderId}`,
+            DRIVER_ON_LEAVE: `Tài xế ${driver.full_name} có đơn nghỉ vào ngày giao của chuyến ${err.shipmentIndex} — không thể gán chuyến`,
         };
         if (messages[err.message]) throw new Error(messages[err.message]);
         throw err;

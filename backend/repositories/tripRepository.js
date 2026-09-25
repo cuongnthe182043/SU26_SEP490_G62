@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
+const leaveRepository = require('./leaveRepository');
 const { money } = require('../utils/formatNumber');
 const {
     SHIPMENT_STATUS,
@@ -34,7 +35,8 @@ const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.payment_type, o.payment_type)`;
 //
 // Chỉ trừ tiền ứng ĐÃ XÁC NHẬN: 'pending' là kế toán mới nhập, tiền chưa về và chưa ghi sổ —
 // approveReceiptRequest cũng từ chối chốt phiếu trong trạng thái đó.
-const PENDING_RECEIPT_AMOUNT_SQL = `GREATEST(
+// Tổng khách phải trả TRƯỚC khi trừ tiền ứng: cước + chi hộ khách.
+const RECEIPT_GROSS_SQL = `(
     (SELECT COALESCE(SUM(COALESCE(os2.actual_price, os2.estimated_price)), 0)
      FROM order_shipments os2
      WHERE os2.order_id = orr.order_id
@@ -45,9 +47,16 @@ const PENDING_RECEIPT_AMOUNT_SQL = `GREATEST(
        WHERE os3.order_id = orr.order_id
          AND e.status != 'rejected'
          AND ${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os3')})
-    - CASE WHEN o.prepaid_status = 'confirmed' THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END,
-    0
 )`;
+const CONFIRMED_PREPAID_SQL = `CASE WHEN o.prepaid_status = 'confirmed' THEN COALESCE(o.prepaid_amount, 0) ELSE 0 END`;
+
+const PENDING_RECEIPT_AMOUNT_SQL = `GREATEST(${RECEIPT_GROSS_SQL} - ${CONFIRMED_PREPAID_SQL}, 0)`;
+
+// Phần khách ứng DƯ so với số phải trả — cùng công thức với prepaidRefundDue lúc điều phối
+// duyệt phiếu thu (coordinatorService), và đúng khoản mà phiếu hoàn tiền trả trước sẽ chi.
+// Phiếu thu lúc đó kẹp về 0đ; tài xế cần biết vì sao 0đ và rằng tiền dư do CÔNG TY hoàn,
+// không phải tài tự trả lại khách bằng tiền mặt.
+const PREPAID_REFUND_DUE_SQL = `GREATEST(${CONFIRMED_PREPAID_SQL} - ${RECEIPT_GROSS_SQL}, 0)`;
 
 // Tài xế/xe hiện tại của chuyến được suy ra từ dòng shipment_assignment_history mới nhất
 // (view v_shipment_current). owner_driver_id IS NULL ⇒ chuyến đang ở pool, không ai giữ.
@@ -407,7 +416,7 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const locked = await client.query(
-            `SELECT os.id, os.order_id, os.status, os.vehicle_group_id, sc.owner_driver_id
+            `SELECT os.id, os.order_id, os.status, os.vehicle_group_id, os.arrived_at, sc.owner_driver_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE os.id = $1
@@ -418,11 +427,18 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
             await client.query('ROLLBACK');
             return null;
         }
-        const { order_id, status, owner_driver_id, vehicle_group_id } = locked.rows[0];
+        const { order_id, status, owner_driver_id, vehicle_group_id, arrived_at } = locked.rows[0];
 
         if (status !== 'available' || owner_driver_id !== null) {
             await client.query('ROLLBACK');
             return null;
+        }
+
+        // Nghỉ đúng ngày giao của chuyến thì không nhận — cùng chốt chặn với mọi đường
+        // giao việc khác (leaveRepository.hasApprovedLeaveOn).
+        if (await leaveRepository.hasApprovedLeaveOn(driverId, arrived_at, client)) {
+            await client.query('ROLLBACK');
+            throw new Error('ON_LEAVE');
         }
 
         // BR-003: xe đang lái phải đúng nhóm xe mà chuyến yêu cầu.
@@ -717,7 +733,7 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
 
         // Khoá toàn bộ chuyến của order để hai coordinator không gán chồng nhau
         const lockedResult = await client.query(
-            `SELECT os.id, os.shipment_index, os.status, os.vehicle_group_id,
+            `SELECT os.id, os.shipment_index, os.status, os.vehicle_group_id, os.arrived_at,
                     sc.owner_driver_id, sc.vehicle_id
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
@@ -745,6 +761,15 @@ const assignOrderShipmentsToDriver = async ({ orderId, shipmentIds, driverId, ve
                 throw new Error('SHIPMENT_NOT_ASSIGNABLE');
             }
             targets.push(shipment);
+        }
+
+        // Nghỉ vào ngày giao của BẤT KỲ chuyến nào đang gán thì chặn cả lượt — gán lệch
+        // một nửa thì điều phối phải tự dò chuyến nào lọt, chuyến nào không.
+        for (const shipment of targets) {
+            if (await leaveRepository.hasApprovedLeaveOn(driverId, shipment.arrived_at, client)) {
+                await client.query('ROLLBACK');
+                throw Object.assign(new Error('DRIVER_ON_LEAVE'), { shipmentIndex: shipment.shipment_index });
+            }
         }
 
         // ── Xe có sẵn sàng không ─────────────────────────────────────────────
@@ -1318,6 +1343,11 @@ const reassignShipmentAfterIncident = async (
             await client.query('BEGIN');
         }
 
+        // Cùng advisory lock với claimShipment và assignOrderShipmentsToDriver — thiếu nó
+        // thì tài thay thế tự nhận chuyến (hoặc điều phối gán chuyến cho họ) đúng lúc đang
+        // điều chuyển, hai bên cùng đọc "tài/xe đang rảnh" rồi cùng ghi.
+        await lockClaimResources(client, toDriverId, toVehicleId);
+
         const shipment = await getTripByIdForUpdate(client, shipmentId);
         if (!shipment) {
             throw new Error('Chuyến không tồn tại');
@@ -1332,34 +1362,48 @@ const reassignShipmentAfterIncident = async (
             throw new Error('Thông tin tài xế hiện tại không còn khớp');
         }
 
-        const vehicleRes = await client.query(
-            `SELECT v.id, v.assigned_driver_id, v.status
-             FROM vehicles v
-             JOIN drivers d ON d.profile_id = $2 AND d.vehicle_id = v.id
-             WHERE v.id = $1
-             LIMIT 1`,
-            [toVehicleId, toDriverId],
-        );
-        const vehicle = vehicleRes.rows[0];
-        if (!vehicle || Number(vehicle.assigned_driver_id) !== Number(toDriverId)) {
-            throw new Error('Tài xế thay thế chưa được gán đúng xe');
-        }
-        if (vehicle.status !== 'active') {
-            throw new Error('Xe thay thế hiện không sẵn sàng vận hành');
+        const conflict = (message) => Object.assign(new Error(message), { statusCode: 409 });
+
+        // Chuyến điều chuyển là chuyến ĐANG CHẠY (hoặc treo 'failed'): tài thay thế phải cầm
+        // lái ngay hôm nay và chạy tới ngày giao. Nên khác các đường gán khác, ở đây kiểm cả
+        // hai ngày — nghỉ hôm nay hay nghỉ đúng ngày giao đều không nhận thay được.
+        if (await leaveRepository.hasApprovedLeaveOn(toDriverId, null, client)
+            || await leaveRepository.hasApprovedLeaveOn(toDriverId, shipment.arrived_at, client)) {
+            throw conflict('Tài xế thay thế có đơn nghỉ hôm nay hoặc vào ngày giao của chuyến — không thể điều chuyển sang');
         }
 
+        // ── Xe có sẵn sàng không ─────────────────────────────────────────────
+        // Cùng mô hình với assignOrderShipmentsToDriver: tài và xe chọn ĐỘC LẬP, xe chạy
+        // chuyến không cần là xe biên chế của tài thay thế (đổi lái giữ nguyên xe là chuyện
+        // thường). Bên gọi quyết định xe nào; ở đây chỉ hỏi xe còn dùng được không.
+        const vehicleRes = await client.query(
+            `SELECT id, plate_number, status FROM vehicles WHERE id = $1`,
+            [toVehicleId],
+        );
+        const vehicle = vehicleRes.rows[0];
+        if (!vehicle) {
+            throw new Error('Xe thay thế không tồn tại');
+        }
+        if (vehicle.status !== 'active') {
+            throw conflict(`Xe ${vehicle.plate_number} hiện không sẵn sàng vận hành (trạng thái: ${vehicle.status})`);
+        }
+
+        // Vướng chuyến khác: đang chạy, đang treo 'failed', HOẶC đã được gán trước ('available'
+        // có người giữ) ở ĐƠN KHÁC — đúng điều kiện của luồng gán. Chuyến gán trước trong
+        // cùng đơn thì không tính: đó là hàng đợi chạy lần lượt của chính đơn này.
         const vehicleBusyRes = await client.query(
-            `SELECT os.id
+            `SELECT os.id, os.order_id
              FROM order_shipments os
              JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE sc.vehicle_id = $1
-               AND os.status = ANY($2::text[])
                AND os.id <> $3
+               AND (os.status = ANY($2::text[]) OR (os.status = 'available' AND os.order_id <> $4))
              LIMIT 1`,
-            [toVehicleId, ACTIVE_STATUSES, shipmentId],
+            [toVehicleId, BLOCKING_STATUSES, shipmentId, shipment.order_id],
         );
         if (vehicleBusyRes.rows[0]) {
-            throw new Error('Xe thay thế đang có chuyến hoạt động khác');
+            const busy = vehicleBusyRes.rows[0];
+            throw conflict(`Xe ${vehicle.plate_number} đang vướng chuyến #${busy.id} (đơn #${busy.order_id})`);
         }
 
         const maintenanceVehicleRes = await client.query(
@@ -1371,9 +1415,10 @@ const reassignShipmentAfterIncident = async (
             [toVehicleId],
         );
         if (maintenanceVehicleRes.rows[0]) {
-            throw new Error('Xe thay thế đang trong bảo trì');
+            throw conflict(`Xe ${vehicle.plate_number} đang trong bảo trì`);
         }
 
+        // ── Tài có sẵn sàng không ────────────────────────────────────────────
         const maintenanceDriverRes = await client.query(
             `SELECT id
              FROM maintenance_records
@@ -1384,21 +1429,22 @@ const reassignShipmentAfterIncident = async (
             [toDriverId, toVehicleId],
         );
         if (maintenanceDriverRes.rows[0]) {
-            throw new Error('Tài xế thay thế đang phụ trách bảo trì xe khác');
+            throw conflict('Tài xế thay thế đang phụ trách bảo trì xe khác');
         }
 
         const activeTripRes = await client.query(
-            `SELECT os.id
+            `SELECT os.id, os.order_id
              FROM order_shipments os
              JOIN v_shipment_current sc ON sc.shipment_id = os.id
              WHERE sc.owner_driver_id = $1
-               AND os.status = ANY($2::text[])
                AND os.id <> $3
+               AND (os.status = ANY($2::text[]) OR (os.status = 'available' AND os.order_id <> $4))
              LIMIT 1`,
-            [toDriverId, ACTIVE_STATUSES, shipmentId],
+            [toDriverId, BLOCKING_STATUSES, shipmentId, shipment.order_id],
         );
         if (activeTripRes.rows[0]) {
-            throw new Error('Tài xế thay thế đang có chuyến hoạt động khác');
+            const busy = activeTripRes.rows[0];
+            throw conflict(`Tài xế thay thế đang vướng chuyến #${busy.id} (đơn #${busy.order_id})`);
         }
 
         await insertAssignmentHistory(client, {
@@ -1828,6 +1874,7 @@ const getDriverReceiptDetail = async (orrId, driverId) => {
             -- trước đây chỗ này bỏ quên phần chi hộ khách nên hai màn hiện hai số khác nhau.
             COALESCE(sr.amount, ${PENDING_RECEIPT_AMOUNT_SQL})
                                          AS amount,
+            ${PREPAID_REFUND_DUE_SQL}   AS prepaid_refund_due,
             COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
             o.id                         AS order_id,
@@ -1988,7 +2035,9 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                     JOIN orders o2 ON o2.id = os2.order_id
                     WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL
                       AND os2.status NOT IN ('cancelled', 'failed'))
-               ) AS amount
+               ) AS amount,
+               ${CONFIRMED_PREPAID_SQL} AS prepaid_amount,
+               ${PREPAID_REFUND_DUE_SQL} AS prepaid_refund_due
         FROM shipment_receipts sr
         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
         JOIN orders o ON o.id = orr.order_id
@@ -2258,6 +2307,10 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
             // "không phải thu" thay vì "đã ghi nhận công nợ khách".
             nothingToCollect: NOTHING_TO_COLLECT,
             receiptAmount,
+            // Phiếu 0đ vì khách ứng trước đủ/dư: tầng trên báo tài "không thu thêm, phần dư
+            // công ty hoàn" thay vì câu chung chung của phiếu 0đ do hàng hư hại.
+            prepaidAmount: Number(rec.prepaid_amount || 0),
+            prepaidRefundDue: Number(rec.prepaid_refund_due || 0),
         };
     } catch (err) {
         await client.query('ROLLBACK');

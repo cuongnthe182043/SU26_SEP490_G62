@@ -327,7 +327,11 @@ const reassignShipment = async (req, res) => {
     try {
         const shipmentId = parseId(req.params.id, 'Shipment ID');
         const coordinatorService = require('../services/coordinatorService');
-        const updated = await coordinatorService.reassignShipment(shipmentId, { toDriverId: req.body?.toDriverId }, req.user.userId);
+        const updated = await coordinatorService.reassignShipment(
+            shipmentId,
+            { toDriverId: req.body?.toDriverId, toVehicleId: req.body?.toVehicleId },
+            req.user.userId,
+        );
         res.json({ message: 'Đã điều chuyển chuyến', shipment: updated });
     } catch (err) {
         sendError(res, err);

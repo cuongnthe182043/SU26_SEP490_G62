@@ -159,7 +159,7 @@ export const managerService = {
   // ─── Trips / expenses (shared with Coordinator) ──────────────────────────
   getTripPool: (params = {}) => apiRequest(`${BASE}/trip-pool?${new URLSearchParams(params)}`),
   cancelShipment: (shipmentId, reason) => apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
-  reassignShipment: (shipmentId, toDriverId) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+  reassignShipment: (shipmentId, toDriverId, toVehicleId = null) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId, toVehicleId } }),
 
   // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ─────────────────
   getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),

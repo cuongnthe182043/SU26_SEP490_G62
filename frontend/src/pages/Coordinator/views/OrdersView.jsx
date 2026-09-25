@@ -51,8 +51,11 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
 
+  // { shipmentId, orderId } — orderId để nạp đúng danh sách xe chọn được cho đơn đó
   const [reassignTarget, setReassignTarget] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
+  const [reassignVehicleId, setReassignVehicleId] = useState(null);
+  const [reassignVehicles, setReassignVehicles] = useState([]);
   const [reassignBusy, setReassignBusy] = useState(false);
 
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -108,6 +111,34 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       .catch(() => { if (!huy) setAssignableVehicles([]); });
     return () => { huy = true; };
   }, [detailOrder?.orderId]);
+
+  useEffect(() => {
+    if (!reassignTarget?.orderId) { setReassignVehicles([]); return; }
+    let huy = false;
+    coordinatorService.getAssignableVehicles({ order_id: reassignTarget.orderId })
+      .then((data) => { if (!huy) setReassignVehicles(data.vehicles || []); })
+      .catch(() => { if (!huy) setReassignVehicles([]); });
+    return () => { huy = true; };
+  }, [reassignTarget?.orderId]);
+
+  const reassignDriver = useMemo(
+    () => drivers.find((d) => Number(d.id) === Number(selectedDriver)) ?? null,
+    [drivers, selectedDriver],
+  );
+
+  // Giống ô chọn xe lúc gán chuyến: xe biên chế của tài luôn có mặt để lựa chọn mặc định
+  // không bao giờ là một xe không bấm được.
+  const reassignVehicleOptions = useMemo(() => {
+    const list = [...reassignVehicles];
+    if (reassignDriver?.vehicle_id && !list.some((v) => Number(v.id) === Number(reassignDriver.vehicle_id))) {
+      list.unshift({
+        id: reassignDriver.vehicle_id,
+        plate_number: reassignDriver.plate_number || `Xe #${reassignDriver.vehicle_id}`,
+        vehicle_group_name: reassignDriver.vehicle_group_name || null,
+      });
+    }
+    return list;
+  }, [reassignVehicles, reassignDriver]);
 
   const closeOrderModal = () => {
     setCreateOpen(false);
@@ -304,14 +335,18 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     }
   };
 
-  const closeReassignModal = () => { setReassignTarget(null); setSelectedDriver(null); };
+  const closeReassignModal = () => { setReassignTarget(null); setSelectedDriver(null); setReassignVehicleId(null); };
   const closeCancelModal = () => { setCancelTarget(null); setCancelReason(""); };
 
   const submitReassignShipment = async () => {
     if (!reassignTarget || !selectedDriver) return;
     setReassignBusy(true);
     try {
-      await coordinatorService.reassignShipment(reassignTarget, Number(selectedDriver));
+      await coordinatorService.reassignShipment(
+        reassignTarget.shipmentId,
+        Number(selectedDriver),
+        reassignVehicleId ? Number(reassignVehicleId) : null,
+      );
       closeReassignModal();
       await loadOrders(pagination.page);
       notify.success("Đã điều chuyển chuyến.");
@@ -523,7 +558,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
           onDetail={setDetailOrder}
           onEdit={openEditModal}
           onCancelOrder={handleCancelOrder}
-          onReassignShipment={(shipmentId) => setReassignTarget(shipmentId)}
+          onReassignShipment={(shipmentId, orderId) => setReassignTarget({ shipmentId, orderId })}
           onCancelShipment={(shipmentId) => setCancelTarget(shipmentId)}
           onConfirmPrepaid={(trip) => setPrepaidTarget({
             id: trip.orderId,
@@ -574,7 +609,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
 
       <Modal isOpen={!!reassignTarget} onOpenChange={(isOpen) => !isOpen && closeReassignModal()} size="sm">
         <ModalContent>
-          <ModalHeader>Điều chuyển chuyến #{reassignTarget}</ModalHeader>
+          <ModalHeader>Điều chuyển chuyến #{reassignTarget?.shipmentId}</ModalHeader>
           <ModalBody>
             <Select
               label="Tài xế thay thế"
@@ -585,15 +620,45 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
               variant="bordered"
             >
               {drivers.map((d) => (
-                <SelectItem key={String(d.id)} textValue={d.full_name || d.name} description={d.on_leave_today ? "Nghỉ hôm nay" : undefined}>
+                <SelectItem
+                  key={String(d.id)}
+                  textValue={d.full_name || d.name}
+                  description={d.on_leave_today
+                    ? "Nghỉ hôm nay"
+                    : [d.vehicle_group_name, d.plate_number].filter(Boolean).join(" · ") || "Chưa có xe biên chế"}
+                >
                   {d.full_name || d.name}
                 </SelectItem>
               ))}
             </Select>
+            <Select
+              label="Xe chạy tiếp chuyến"
+              placeholder={reassignDriver?.plate_number ? `Mặc định: ${reassignDriver.plate_number}` : "Chọn xe"}
+              selectedKeys={reassignVehicleId ? [String(reassignVehicleId)] : []}
+              onSelectionChange={(keys) => setReassignVehicleId([...keys][0] ?? null)}
+              variant="bordered"
+            >
+              {reassignVehicleOptions.map((v) => (
+                <SelectItem key={String(v.id)} textValue={v.plate_number} description={v.vehicle_group_name || "Chưa có nhóm xe"}>
+                  {v.plate_number}
+                </SelectItem>
+              ))}
+            </Select>
+            {!reassignVehicleId && reassignDriver && !reassignDriver.vehicle_id && (
+              <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+                Tài xế này chưa có xe biên chế — vui lòng chọn xe cho chuyến.
+              </p>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={closeReassignModal}>Đóng</Button>
-            <Button color="primary" className="h-10 px-4 gap-2 overflow-visible" isDisabled={!selectedDriver} isLoading={reassignBusy} onPress={submitReassignShipment}>
+            <Button
+              color="primary"
+              className="h-10 px-4 gap-2 overflow-visible"
+              isDisabled={!selectedDriver || (!reassignVehicleId && !reassignDriver?.vehicle_id)}
+              isLoading={reassignBusy}
+              onPress={submitReassignShipment}
+            >
               {!reassignBusy && <RiExchangeLine size={18} className="shrink-0 overflow-visible" />}
               <span>Điều chuyển</span>
             </Button>

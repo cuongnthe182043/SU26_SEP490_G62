@@ -30,8 +30,9 @@ export const coordinatorService = {
 
   cancelShipment: (shipmentId, reason) =>
     apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
-  reassignShipment: (shipmentId, toDriverId) =>
-    apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+  // toVehicleId bỏ trống (null) → backend dùng xe biên chế của tài thay thế
+  reassignShipment: (shipmentId, toDriverId, toVehicleId = null) =>
+    apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId, toVehicleId } }),
 
   // Xử lý chuyến giao thất bại (làm từ màn Sự cố): 'redeliver' (giao lại) | 'return' (hoàn hàng).
   // Hoàn hàng thì chuyến tự tính GẤP ĐÔI cước — không có tùy chọn tiền nào để chọn.

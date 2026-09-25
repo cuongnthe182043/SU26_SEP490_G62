@@ -131,7 +131,7 @@ export const tripService = {
         ),
 
     recordReceiptCollection: (orrId: number, formData: FormData) =>
-        apiClient.postForm<{ message: string }>(
+        apiClient.postForm<{ message: string; nothingToCollect?: boolean; prepaidRefundDue?: number }>(
             `/api/trips/receipt-requests/${orrId}/record-collection`,
             formData,
         ),

@@ -54,11 +54,12 @@ export function FilterBar({
 
       <div className="flex flex-wrap items-end gap-3">
         <Input
-          type="date" label="Từ ngày" size="sm" className="w-40"
+          // Lọc theo ngày HOÀN THÀNH của đơn (cùng ngày với cột "Hoàn thành"), không phải ngày tạo
+          type="date" label="Hoàn thành từ" size="sm" className="w-40"
           value={dateFrom} onValueChange={onDateFromChange}
         />
         <Input
-          type="date" label="Đến ngày" size="sm" className="w-40"
+          type="date" label="Hoàn thành đến" size="sm" className="w-40"
           value={dateTo} onValueChange={onDateToChange}
         />
         <Input
