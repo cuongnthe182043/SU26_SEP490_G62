@@ -13,7 +13,7 @@ import {
   RiCheckboxCircleLine, RiCheckLine, RiCloseLine,
 } from "react-icons/ri";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
-import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
+import { VehicleStatusBadge } from "../../../components/shared-ui/VehicleStatusBadge";
 import VehicleGroupFormModal from "../modals/VehicleGroupFormModal";
 import VehicleFormModal from "../modals/VehicleFormModal";
 import VehicleDetailModal from "../modals/VehicleDetailModal";
@@ -466,8 +466,8 @@ export default function VehiclesView({ user }) {
         <div className="grid grid-cols-4 gap-3 mb-4">
           <Input placeholder="Tìm theo biển số" value={search} onValueChange={setSearch} onKeyDown={(e) => e.key === "Enter" && loadVehicles({ page: 1 })} startContent={<RiSearchLine size={14} className="text-gray-400 dark:text-gray-400" />} variant="bordered" size="sm" isClearable />
           <Select selectedKeys={statusFilter ? [statusFilter] : []} onSelectionChange={(k) => setStatusFilter([...k][0] ?? "")} placeholder="Tất cả trạng thái" variant="bordered" size="sm">
-            <SelectItem key="active">Hoạt động</SelectItem>
-            <SelectItem key="maintenance">Bảo trì</SelectItem>
+            <SelectItem key="active">Đang hoạt động</SelectItem>
+            <SelectItem key="maintenance">Đang bảo dưỡng / chờ xác nhận</SelectItem>
             <SelectItem key="broken">Hỏng</SelectItem>
             <SelectItem key="retired">Đã thu hồi</SelectItem>
           </Select>
@@ -541,7 +541,7 @@ export default function VehiclesView({ user }) {
                     </div>
                   ) : <span className="text-xs text-gray-300">Chưa gán</span>}
                 </TableCell>
-                <TableCell><StatusBadge status={v.status} /></TableCell>
+                <TableCell><VehicleStatusBadge vehicle={v} /></TableCell>
                 <TableCell>
                   <Dropdown>
                     <DropdownTrigger>

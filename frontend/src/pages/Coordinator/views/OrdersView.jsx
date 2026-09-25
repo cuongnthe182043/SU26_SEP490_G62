@@ -581,9 +581,14 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
               placeholder="Chọn tài xế"
               selectedKeys={selectedDriver ? [selectedDriver] : []}
               onSelectionChange={(keys) => setSelectedDriver([...keys][0] ?? null)}
+              disabledKeys={drivers.filter((d) => d.on_leave_today).map((d) => String(d.id))}
               variant="bordered"
             >
-              {drivers.map((d) => <SelectItem key={String(d.id)}>{d.full_name || d.name}</SelectItem>)}
+              {drivers.map((d) => (
+                <SelectItem key={String(d.id)} textValue={d.full_name || d.name} description={d.on_leave_today ? "Nghỉ hôm nay" : undefined}>
+                  {d.full_name || d.name}
+                </SelectItem>
+              ))}
             </Select>
           </ModalBody>
           <ModalFooter>

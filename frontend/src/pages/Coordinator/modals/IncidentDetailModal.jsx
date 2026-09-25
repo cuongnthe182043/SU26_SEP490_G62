@@ -32,6 +32,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
   const replacementOptions = drivers.filter((driver) => {
     if (!driver?.vehicle_id) return false;
     if (driver.has_active_trip) return false;
+    if (driver.on_leave_today) return false;
     return Number(driver.id) !== Number(incident.current_driver_id || incident.reported_by);
   });
 

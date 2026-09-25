@@ -38,7 +38,15 @@ const getAllDrivers = async () => {
                 JOIN v_shipment_current sc ON sc.shipment_id = os.id
                 WHERE sc.owner_driver_id = d.profile_id
                   AND os.status IN ('claimed', 'picking', 'transit', 'arrived', 'returning')
-            ) AS has_active_trip
+            ) AS has_active_trip,
+            -- Cùng điều kiện với leaveRepository.hasApprovedLeaveToday — ô chọn tài xế
+            -- khoá sẵn người đang nghỉ thay vì để điều phối bấm rồi mới bị từ chối.
+            EXISTS (
+                SELECT 1 FROM leave_requests lr
+                WHERE lr.driver_id = d.profile_id
+                  AND lr.leave_date = CURRENT_DATE
+                  AND lr.status = 'approved'
+            ) AS on_leave_today
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id

@@ -4,6 +4,7 @@ const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
 const coordinatorRepository = require('../repositories/coordinatorRepository');
+const leaveRepository = require('../repositories/leaveRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const {
@@ -1127,6 +1128,9 @@ const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
     const toDriver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedToDriverId);
     if (!toDriver) throw new Error('Tài xế thay thế không tồn tại');
     if (!toDriver.vehicle_id) throw new Error('Tài xế thay thế chưa được gán xe');
+    if (toDriver.on_leave_today) {
+        throw new Error(`Tài xế ${toDriver.full_name} có đơn nghỉ hôm nay — không thể điều chuyển chuyến sang`);
+    }
 
     const fromDriverId = Number(shipment.owner_driver_id);
     const reassigned = await tripRepository.reassignShipmentAfterIncident(shipmentId, {
@@ -1282,6 +1286,9 @@ const assignOrderShipments = async (orderId, { shipmentIds, driverId, vehicleId 
 
     const driver = await driverRepository.getDriverForAssignment(parsedDriverId);
     if (!driver) throw new Error('Tài xế không tồn tại hoặc tài khoản đã bị khóa');
+    if (await leaveRepository.hasApprovedLeaveToday(parsedDriverId)) {
+        throw new Error(`Tài xế ${driver.full_name} có đơn nghỉ hôm nay — không thể gán chuyến`);
+    }
 
     // Xe chỉ định > xe biên chế. Tài chưa có xe biên chế mà điều phối cũng không chọn xe
     // thì không suy ra được gì — báo rõ thay vì để guard dưới ném VEHICLE_NOT_FOUND khó hiểu.

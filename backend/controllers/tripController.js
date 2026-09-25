@@ -44,6 +44,9 @@ const claimTrip = async (req, res) => {
         if (err.message.startsWith('PENDING_RECEIPT:')) {
             return res.status(422).json({ error: err.message.replace('PENDING_RECEIPT:', ''), code: 'PENDING_RECEIPT' });
         }
+        if (err.message.startsWith('ON_LEAVE:')) {
+            return res.status(422).json({ error: err.message.replace('ON_LEAVE:', ''), code: 'ON_LEAVE' });
+        }
         // Chuyến cũ giao thất bại, điều phối chưa chốt giao lại / hoàn hàng (BR-005).
         // 422 như PENDING_RECEIPT: yêu cầu hợp lệ nhưng tài xế còn nghĩa vụ chưa xong.
         if (err.message.startsWith('FAILED_UNRESOLVED:')) {
