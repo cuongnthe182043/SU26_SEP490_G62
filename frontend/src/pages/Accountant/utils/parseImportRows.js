@@ -1,4 +1,7 @@
-import { money } from "../../../utils/formatNumber";
+import { money as fmtMoney } from "../../../utils/formatNumber";
+
+// Backend nhận tối đa 1000 dòng một lượt (accountantOrderController.importOrders).
+export const MAX_IMPORT_ROWS = 1000;
 /**
  * Đọc file Excel đơn ngoài thành payload gửi lên API.
  *
@@ -42,7 +45,6 @@ const HEADER_KEYS = [
   ["so luot",              "runs"],
   ["ten hang",             "cargo_name"],
   ["cuoc xe",              "cargo_fee"],
-  ["gia chot",             "settled_fee"],
   // Thu hộ (COD) — tiền hàng công ty thu hộ khách khi giao. KHÔNG phải doanh thu, không
   // cộng vào số khách phải trả; chỉ ghi nhận để đối chiếu và trả lại khách.
   ["thu ho",               "collect_on_behalf"],
@@ -54,19 +56,32 @@ const HEADER_KEYS = [
   ["tien tai dang giu",    "holding"],
   ["ghi chu",              "notes"],
 ];
-// Trả { value, negative } — số âm phải BÁO LỖI chứ không được lặng lẽ đổi thành dương.
-// Trước đây "-500000" (kế toán gõ nhầm dấu, hoặc ô Excel định dạng kế toán hiển thị số
-// âm trong ngoặc) bị biến thành +500000 và ghi thẳng vào doanh thu.
+// Cách kế toán ghi "không có" trong ô tiền — coi như bỏ trống.
+const BLANK_MONEY = new Set(["", "-", "--", "–", "—", "n/a", "na", "khong", "không"]);
+
+// Số tiền viết tay hợp lệ: "1500000", "1.500.000", "1,500,000", "1 500 000", có thể kèm
+// đuôi đ/vnd và dấu âm/ngoặc kế toán. KHÔNG nhận phần thập phân (tiền Việt tính tới đồng).
+const MONEY_TEXT_RE = /^\(?-?\s*(\d{1,3}([.,\s]\d{3})+|\d+)\s*(đ|d|vnd|vnđ)?\s*\)?$/i;
+
+// Trả { value, negative, invalid }.
+//   - negative: số âm phải BÁO LỖI chứ không được lặng lẽ đổi thành dương. Trước đây
+//     "-500000" (gõ nhầm dấu, hoặc ô định dạng kế toán hiện số âm trong ngoặc) bị biến
+//     thành +500000 và ghi thẳng vào doanh thu.
+//   - invalid: ô có chữ / phần thập phân. Trước đây mọi ký tự không phải số bị lọc bỏ
+//     nên "2tr" thành 2đ, "1.5tr" thành 15đ, "1,500,000.00" (ô để 2 chữ số thập phân)
+//     thành 150.000.000đ — lọt thẳng vào doanh thu mà không lỗi nào báo ra.
 export const parseMoneyCell = (v) => {
   const s = String(v ?? "").trim();
-  const digits = s.replace(/[^\d]/g, "");
-  const negative = digits !== "" && (s.startsWith("-") || /^\(.*\)$/.test(s));
-  return { value: digits ? Number(digits) : 0, negative };
+  if (BLANK_MONEY.has(s.toLowerCase())) return { value: 0, negative: false, invalid: false };
+  if (!MONEY_TEXT_RE.test(s)) return { value: 0, negative: false, invalid: true };
+  const value = Number(s.replace(/[^\d]/g, ""));
+  const negative = value > 0 && (s.startsWith("-") || /^\(.*\)$/.test(s));
+  return { value, negative, invalid: false };
 };
 
 const parseMoney = (v) => parseMoneyCell(v).value;
 
-// Các cột tiền phụ cần kiểm tra dấu âm (cước xe kiểm riêng vì còn phải > 0)
+// Các cột tiền phụ cần kiểm tra dấu âm / ô không phải số (cước xe kiểm riêng vì còn phải > 0)
 const MONEY_FIELD_LABELS = [
   ["toll", "Phí cầu đường/vé"],
   ["parking", "Phí đỗ xe/bãi"],
@@ -194,15 +209,48 @@ export function parseWorkbook(wb, XLSX) {
     const idx = headerRow.findIndex((h) => h.startsWith(prefix));
     if (idx >= 0) colIndex[key] = idx;
   }
-  const missing = ["date", "plate", "driver", "pickup", "delivery", "cargo_fee", "payment"]
-    .filter((k) => colIndex[k] === undefined);
+  // Tên cột hiển thị cho kế toán — báo "thiếu: payment, cargo_fee" thì không ai hiểu.
+  const REQUIRED_COLUMNS = {
+    date: "Ngày chạy", plate: "Biển số xe", driver: "Tên tài xế", pickup: "Điểm lấy hàng",
+    delivery: "Điểm giao hàng", cargo_fee: "Cước xe 1 lượt", payment: "Thanh toán",
+  };
+  const missing = Object.keys(REQUIRED_COLUMNS).filter((k) => colIndex[k] === undefined);
   if (missing.length) {
-    return { rows: [], errors: [`File thiếu cột bắt buộc — hãy dùng đúng template. Thiếu: ${missing.join(", ")}`] };
+    return {
+      rows: [],
+      errors: [`File thiếu cột bắt buộc — hãy dùng đúng template. Thiếu: ${missing.map((k) => REQUIRED_COLUMNS[k]).join(", ")}`],
+      skipped: [],
+    };
   }
 
   const get = (r, key) => (colIndex[key] !== undefined ? r[colIndex[key]] : "");
+
+  // Ô tiền đọc từ GIÁ TRỊ SỐ của ô khi ô là kiểu số, không đọc chuỗi hiển thị: ô định dạng
+  // "#,##0.00" hiện 1.500.000 thành "1,500,000.00" — lọc chữ số trên chuỗi đó ra 150 triệu.
+  const readMoney = (i, r, key) => {
+    if (colIndex[key] === undefined) return { value: 0, negative: false, invalid: false };
+    const cell = ws[XLSX.utils.encode_cell({ r: i, c: colIndex[key] })];
+    if (cell && cell.t === "n" && typeof cell.v === "number") {
+      if (!Number.isFinite(cell.v) || !Number.isInteger(cell.v)) return { value: 0, negative: false, invalid: true };
+      return { value: Math.abs(cell.v), negative: cell.v < 0, invalid: false };
+    }
+    return parseMoneyCell(get(r, key));
+  };
+
+  // Cột "Giá chốt" đã BỎ khỏi template: giá thực tế nhập thẳng vào "Cước xe". File cũ vẫn
+  // còn cột này — lặng lẽ bỏ qua thì dòng có chốt giá sẽ bị ghi doanh thu theo giá báo cũ
+  // mà không ai biết. Nên dòng nào còn điền giá chốt thì báo lỗi, bảo chuyển sang Cước xe.
+  const legacySettledIdx = headerRow.findIndex((h) => h.startsWith("gia chot"));
+
+  // Cột dữ liệu CHUYẾN — dòng trống hết các cột này (chỉ còn số lượt, thanh toán chọn sẵn
+  // từ dropdown, ghi chú...) là dòng thừa trong template: bỏ qua và báo số dòng, không
+  // coi là lỗi. Coi là lỗi thì chỉ cần một ô "Số lượt = 1" kéo thừa xuống là CẢ FILE bị
+  // chặn không import được.
+  const TRIP_KEYS = ["date", "plate", "driver", "pickup", "delivery", "cargo_fee"];
+
   const rows = [];
   const errors = [];
+  const skipped = [];
 
   for (let i = headerAt + 1; i < raw.length; i += 1) {
     const r = raw[i];
@@ -216,7 +264,15 @@ export function parseWorkbook(wb, XLSX) {
     // Phòng trường hợp file bị xoá mất dòng tổng: nhận diện thẳng khối ký.
     if (r.some((c) => FOOTER_MARKERS.some((m) => stripVN(c).startsWith(m)))) continue;
     const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
+    if (TRIP_KEYS.every((k) => String(get(r, k)).trim() === "")) {
+      skipped.push(rowNo);
+      continue;
+    }
     const rowErr = [];
+
+    if (legacySettledIdx >= 0 && String(r[legacySettledIdx] ?? "").trim() !== "") {
+      rowErr.push('Cột "Giá chốt" đã bỏ — nhập giá thực tế vào cột "Cước xe 1 lượt" rồi xoá ô giá chốt');
+    }
 
     const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
     const dateIso = parseDateCell(ws[dateCellAddr], XLSX);
@@ -243,14 +299,20 @@ export function parseWorkbook(wb, XLSX) {
     if (pickups.length === 0) rowErr.push("Thiếu điểm lấy hàng");
     if (deliveries.length === 0) rowErr.push("Thiếu điểm giao hàng");
 
-    const cargoFeeCell = parseMoneyCell(get(r, "cargo_fee"));
+    const cargoFeeCell = readMoney(i, r, "cargo_fee");
     const cargoFee = cargoFeeCell.value;
-    if (cargoFeeCell.negative) rowErr.push("Cước xe không được âm");
+    if (cargoFeeCell.invalid) rowErr.push(`Cước xe không phải số tiền hợp lệ: "${String(get(r, "cargo_fee")).trim()}"`);
+    else if (cargoFeeCell.negative) rowErr.push("Cước xe không được âm");
     else if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
 
-    // Các cột tiền còn lại: âm là sai dữ liệu, không được tự đổi dấu
+    // Các cột tiền còn lại: âm hoặc không phải số là sai dữ liệu — không tự đổi dấu,
+    // không tự lọc chữ ra thành một con số khác.
+    const money = {};
     for (const [key, label] of MONEY_FIELD_LABELS) {
-      if (parseMoneyCell(get(r, key)).negative) rowErr.push(`${label} không được âm`);
+      const c = readMoney(i, r, key);
+      if (c.invalid) rowErr.push(`${label} không phải số tiền hợp lệ: "${String(get(r, key)).trim()}"`);
+      else if (c.negative) rowErr.push(`${label} không được âm`);
+      money[key] = c.value;
     }
 
     const paymentRaw = String(get(r, "payment")).trim();
@@ -268,48 +330,41 @@ export function parseWorkbook(wb, XLSX) {
     const runs = parseRuns(get(r, "runs"));
     if (runs == null) rowErr.push('Cột "Số lượt" phải là số nguyên từ 1 đến 50');
 
-    const holding = parseHoldingCell(get(r, "holding"));
+    // "0" / "-" / trống ở cột tiền tài giữ = không điền (cùng quy ước parseHoldingCell).
+    const holding = money.holding > 0 ? money.holding : null;
 
-    const toll = parseMoney(get(r, "toll"));
-    const parking = parseMoney(get(r, "parking"));
-    const fuel = parseMoney(get(r, "fuel"));
-    const repair = parseMoney(get(r, "repair"));
+    // Tiền tài giữ chỉ có nghĩa khi tài cầm tiền mặt. Điền kèm "CK công ty" / "Khách nợ"
+    // thì backend bỏ qua ô này — kế toán tưởng đã ghi công nợ tài xế mà thật ra không có.
+    if (holding != null && payment && !["driver_holding", "driver_paid"].includes(payment.driver_payment_state)) {
+      rowErr.push(
+        `Tiền tài đang giữ chỉ điền khi Thanh toán là "Tiền mặt - tài đang giữ" hoặc "Tiền mặt - tài đã nộp" `
+        + `(đang là "${paymentRaw}") — xoá ô này hoặc sửa lại cột Thanh toán`,
+      );
+    }
+
+    const { toll, parking, fuel, repair } = money;
     // Thu hộ (COD): tiền của KHÁCH mà công ty thu giúp rồi trả lại — ngược chiều với công
     // nợ cước nên KHÔNG cộng vào customerTotal và không đụng gì tới doanh thu.
-    const collectOnBehalf = parseMoney(get(r, "collect_on_behalf"));
+    const collectOnBehalf = money.collect_on_behalf;
 
-    // Giá chốt: giá thật sau khi hai bên thống nhất lại, giống việc coordinator sửa giá
-    // lúc duyệt phiếu thu trong app (estimated_price → actual_price). Để trống thì giá
-    // chốt = giá báo, tức y hệt cách chạy cũ nên file cũ không phải sửa gì.
-    // Được phép CAO hoặc THẤP hơn giá báo — tăng giá do phát sinh, giảm giá cho khách
-    // quen đều là chuyện thật.
-    const settledCell = parseMoneyCell(get(r, "settled_fee"));
-    if (settledCell.negative) rowErr.push("Giá chốt không được âm");
-    const settledFee = settledCell.value > 0 ? settledCell.value : null;
-
-    // Số tiền dùng cho mọi tính toán tiền bạc: doanh thu, KPI, công nợ.
-    const effectiveFee = settledFee ?? cargoFee;
-
-    // Khách phải trả = giá chốt từng lượt × số lượt + phần chi hộ (cầu đường, bãi).
+    // Khách phải trả = cước từng lượt × số lượt + phần chi hộ (cầu đường, bãi).
     // Xăng dầu / sửa xe là công ty chịu nên không nằm trong số khách trả.
     const runCount = runs ?? 1;
-    const totalFee = effectiveFee * runCount;
+    const totalFee = cargoFee * runCount;
     const passThrough = toll + parking;
     const customerTotal = totalFee + passThrough;
 
     // Kiểm tra THẬT SỰ có ý nghĩa: tài không thể đang giữ nhiều hơn số khách đưa.
-    // So với GIÁ CHỐT chứ không phải giá báo — chốt 1tr2 rồi thì tài cầm 1tr2 là đúng.
     // Trần gồm CẢ thu hộ: tài xế thu COD của người nhận thì cũng đang cầm số tiền đó, nên
     // giữ nhiều hơn cước là hợp lệ. Bỏ thu hộ ra khỏi trần sẽ chặn oan đúng những dòng có
     // COD — dòng mà cột thu hộ sinh ra để phục vụ.
     const holdingCeiling = customerTotal + collectOnBehalf;
-    if (holding != null && effectiveFee > 0 && runs != null && holding > holdingCeiling) {
-      const goc = settledFee != null ? "giá chốt" : "cước";
+    if (holding != null && cargoFee > 0 && runs != null && holding > holdingCeiling) {
       rowErr.push(
-        `Tiền tài đang giữ (${money(holding)}) lớn hơn số tiền tài có thể cầm `
-        + `(${money(holdingCeiling)} = ${goc} ${money(effectiveFee)} × ${runCount} lượt`
-        + `${passThrough > 0 ? ` + chi hộ ${money(passThrough)}` : ""}`
-        + `${collectOnBehalf > 0 ? ` + thu hộ ${money(collectOnBehalf)}` : ""})`,
+        `Tiền tài đang giữ (${fmtMoney(holding)}) lớn hơn số tiền tài có thể cầm `
+        + `(${fmtMoney(holdingCeiling)} = cước ${fmtMoney(cargoFee)} × ${runCount} lượt`
+        + `${passThrough > 0 ? ` + chi hộ ${fmtMoney(passThrough)}` : ""}`
+        + `${collectOnBehalf > 0 ? ` + thu hộ ${fmtMoney(collectOnBehalf)}` : ""})`,
       );
     }
 
@@ -347,8 +402,6 @@ export function parseWorkbook(wb, XLSX) {
         pickup_addresses: pickups,
         delivery_addresses: deliveries,
         cargo_fee: cargoFee,
-        // null = không sửa giá → backend để actual_price = cargo_fee như cũ
-        settled_fee: settledFee,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
         // Thu hộ là số của CẢ DÒNG (giống chi phí, khác cước xe vốn tính theo lượt) — dồn
@@ -374,7 +427,7 @@ export function parseWorkbook(wb, XLSX) {
         // danh được nên hiện SĐT, gọi là khách lẻ thì kế toán tưởng dòng bị mất khách.
         customer: customerName || phone || "Khách lẻ",
         pickups, deliveries,
-        cargoFee, settledFee, effectiveFee, totalFee, holding, paymentRaw, runs: runCount,
+        cargoFee, totalFee, holding, paymentRaw, runs: runCount,
       },
       order: {
         row_index: rowNo,
@@ -389,5 +442,16 @@ export function parseWorkbook(wb, XLSX) {
     });
   }
 
-  return { rows, errors };
+  // Chặn ở đây để kế toán biết trước, thay vì chọn file, đối chiếu xong, bấm Import rồi
+  // mới ăn một lỗi chung cho cả file từ backend.
+  if (rows.length > MAX_IMPORT_ROWS) {
+    errors.unshift(`File có ${rows.length} dòng — mỗi lần import tối đa ${MAX_IMPORT_ROWS} dòng. Tách file thành nhiều phần rồi import lần lượt.`);
+  }
+  // Có tiêu đề mà không có dòng nào đọc được: trước đây trả về rỗng cả hai, màn hình
+  // không hiện gì và nút Import cứ mờ — kế toán không biết vì sao.
+  if (rows.length === 0 && errors.length === 0) {
+    errors.push('File không có dòng dữ liệu chuyến nào — kiểm tra đã nhập vào sheet DON_HANG, ngay dưới dòng tiêu đề chưa.');
+  }
+
+  return { rows, errors, skipped };
 }

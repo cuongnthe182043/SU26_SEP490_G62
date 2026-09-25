@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
 
 // ────────────────────────────────────────────────────────────────────────────
 // Báo cáo kinh doanh theo KỲ (tháng) cho Manager.
@@ -116,32 +117,47 @@ const getUnpricedShipmentsInPeriod = async (year, month) => {
     return rows[0];
 };
 
-// A. Chi phí vận hành công ty chịu (KHÔNG gồm chi hộ khách toll/parking/etc —
-// những khoản đó thu lại từ khách). Tách 2 nhóm để hiển thị cơ cấu chi phí:
-//   - vehicle : nhiên liệu / sửa chữa / bảo dưỡng / khấu hao / khác (bảng expenses)
+// A. Chi phí vận hành công ty chịu. Tách 2 nhóm để hiển thị cơ cấu chi phí:
+//   - vehicle : mọi khoản chi của xe/chuyến (bảng expenses) TRỪ chi hộ khách
 //   - office  : phiếu chi văn phòng / thuê / tiện ích / đền bù ... (payment_vouchers)
+//
+// Chi hộ khách (cầu đường/bãi/ETC của chuyến giao được) không phải chi phí: khách trả lại,
+// và doanh thu ở _revenue cũng không cộng khoản đó — hai vế cân nhau. Nhưng trước đây câu
+// này loại THEO LOẠI (chỉ lấy fuel/repair/...), nên cầu đường của chuyến HUỶ / GIAO THẤT BẠI
+// — khoản doanh nghiệp chịu, sổ đã chuyển sang 642 (reclassPassThroughToCompany) — và cầu
+// đường không gắn chuyến nào đều biến mất khỏi báo cáo. Giờ loại đúng bằng quy tắc chi hộ
+// dùng chung toàn hệ thống (CUSTOMER_BILLABLE_EXPENSE_SQL); không có chuyến thì không có
+// khách nào để đòi lại → COALESCE về FALSE, tính là chi phí công ty.
 const _operatingCost = async (year, month) => {
     const [veh, off] = await Promise.all([
         pool.query(`
-            SELECT COALESCE(SUM(amount), 0)::float AS amount
-            FROM expenses
-            WHERE status = 'approved'
-              AND expense_type IN ('fuel','repair','maintenance','depreciation','other')
-              AND expense_date >= make_date($1, $2, 1)
-              AND expense_date <  (make_date($1, $2, 1) + INTERVAL '1 month')
+            SELECT COALESCE(SUM(e.amount), 0)::float AS amount
+            FROM expenses e
+            LEFT JOIN order_shipments os ON os.id = e.shipment_id
+            WHERE e.status = 'approved'
+              AND NOT COALESCE(${CUSTOMER_BILLABLE_EXPENSE_SQL('e', 'os')}, FALSE)
+              AND e.expense_date >= make_date($1, $2, 1)
+              AND e.expense_date <  (make_date($1, $2, 1) + INTERVAL '1 month')
         `, [year, month]),
         pool.query(`
             SELECT COALESCE(SUM(amount), 0)::float AS amount
             FROM payment_vouchers
             WHERE status IN ('approved','paid')
-              -- Hai loại dưới đây đều là TRẢ LẠI tiền vốn không phải của công ty, không
-              -- phải chi phí vận hành. Sổ tài chính ghi chúng vào 131 / 3388 chứ không vào
-              -- 642, nên tính vào đây sẽ đội chi phí và làm lợi nhuận gộp thấp giả tạo:
+              -- Ba loại dưới đây KHÔNG phải chi phí vận hành phát sinh trong kỳ. Sổ tài
+              -- chính ghi chúng vào 131 / 3388 / 334 chứ không vào 642, nên tính vào đây
+              -- sẽ đội chi phí và làm lợi nhuận gộp thấp giả tạo:
               --   prepaid_refund           — trả lại tiền khách ứng trước cho đơn đã huỷ
               --   collect_on_behalf_return — trả lại tiền thu hộ (COD) cho người bán
+              --   driver_reimbursement     — hoàn tiền tài xế đã ứng. Bản thân khoản chi
+              --       (xăng, sửa xe...) ĐÃ nằm trong "chi phí xe" ở trên theo expense_date;
+              --       phiếu hoàn chỉ là trả nợ tài xế. Tính thêm ở đây là một hoá đơn bị
+              --       đếm HAI lần — và lần thứ hai rơi vào tháng chi hoàn (thường là tháng
+              --       sau), nên báo cáo kỳ này hiện cả chi phí của kỳ trước. Phiếu hoàn chi
+              --       hộ khách (cầu đường, bãi) còn tệ hơn: đó là tiền thu lại được từ
+              --       khách, không phải chi phí của công ty ở kỳ nào cả.
               -- Riêng COD số tiền thường lớn hơn cả cước, nên bỏ sót chỗ này là báo cáo
               -- lãi lỗ sai hẳn một bậc.
-              AND voucher_type NOT IN ('prepaid_refund', 'collect_on_behalf_return')
+              AND voucher_type NOT IN ('prepaid_refund', 'collect_on_behalf_return', 'driver_reimbursement')
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
         `, [year, month]),

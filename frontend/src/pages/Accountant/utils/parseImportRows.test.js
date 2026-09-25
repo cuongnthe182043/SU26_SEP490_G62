@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
 
-import { parseWorkbook, parseRuns, parseHoldingCell } from "./parseImportRows";
+import { parseWorkbook, parseRuns, parseHoldingCell, parseMoneyCell, MAX_IMPORT_ROWS } from "./parseImportRows";
 
 /**
  * Đây là chỗ quyết định doanh thu và công nợ của từng dòng Excel. Trước đây không có
@@ -12,8 +12,13 @@ import { parseWorkbook, parseRuns, parseHoldingCell } from "./parseImportRows";
 const HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
   "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
+];
+
+// Header của template TRƯỚC khi bỏ cột "Giá chốt" — kế toán còn lưu file này trên máy.
+const HEADERS_GIA_CHOT = [
+  ...HEADERS.slice(0, 11), "Giá chốt 1 lượt (đ)", ...HEADERS.slice(11),
 ];
 
 // Header của file CŨ — không có cột "Thu hộ". Dùng để chốt rằng file kế toán đang lưu
@@ -33,12 +38,12 @@ const readSheet = (...rows) => readSheetWith(HEADERS, rows);
 /** Dòng chuẩn; truyền object để ghi đè từng ô theo chỉ số cột */
 const makeRow = (o = {}) => {
   const r = ["22/07/2026", "29H-961.45", "Toàn", "", "", "Kho A", "Kho B", "", "", "",
-    250000, "", "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
+    250000, "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
   for (const [i, v] of Object.entries(o)) r[Number(i)] = v;
   return r;
 };
 
-const FEE_COL = 10, SETTLED = 11, COH = 12, SO_LUOT = 8, GIU = 18, TOLL = 13, PAY = 17;
+const FEE_COL = 10, COH = 11, SO_LUOT = 8, GIU = 17, TOLL = 12, PAY = 16, NOTES = 18;
 
 describe("parseRuns — số lượt", () => {
   it("ô trống là 1 lượt", () => expect(parseRuns("")).toBe(1));
@@ -124,7 +129,7 @@ describe("Kiểm tra tiền tài giữ vượt số khách phải trả", () => 
   it("giữ nhiều hơn tổng cước thì báo lỗi", () => {
     const { errors } = readSheet(makeRow({ [SO_LUOT]: 2, [GIU]: 900000 }));
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/lớn hơn số khách phải trả/);
+    expect(errors[0]).toMatch(/lớn hơn số tiền tài có thể cầm/);
   });
 
   it("giữ đúng bằng tổng cước thì hợp lệ", () => {
@@ -164,47 +169,136 @@ describe("Các kiểm tra sẵn có không bị hỏng", () => {
   });
 });
 
-describe("Giá chốt — sửa giá sau khi thống nhất lại", () => {
-  it("để trống thì giá chốt = giá báo, hành vi y như cũ", () => {
-    const { rows } = readSheet(makeRow());
-    expect(rows[0].order.shipments[0].cargo_fee).toBe(250000);
-    expect(rows[0].order.shipments[0].settled_fee).toBeNull();
-  });
-
-  it("chốt CAO hơn giá báo: doanh thu và công nợ theo giá chốt", () => {
-    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1200000 }));
+describe("Bỏ cột Giá chốt — giá thực tế nhập thẳng vào Cước xe", () => {
+  it("payload không còn settled_fee; doanh thu tính theo Cước xe", () => {
+    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 1200000, [GIU]: 1200000 }));
     expect(errors).toEqual([]);
     const s = rows[0].order.shipments[0];
-    expect(s.cargo_fee).toBe(1000000);      // giá báo giữ nguyên để đối chiếu
-    expect(s.settled_fee).toBe(1200000);    // giá chốt → actual_price
+    expect(s).not.toHaveProperty("settled_fee");
+    expect(s.cargo_fee).toBe(1200000);
     expect(s.driver_holding_amount).toBe(1200000);
   });
 
-  it("chốt THẤP hơn giá báo cũng được (giảm giá khách quen)", () => {
-    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 800000, [GIU]: 800000 }));
+  // File cũ còn cột Giá chốt: lặng lẽ bỏ qua thì doanh thu bị ghi theo giá báo cũ
+  it("file CŨ có điền Giá chốt → báo lỗi, bảo chuyển sang cột Cước xe", () => {
+    const rowCu = [...makeRow({ [FEE_COL]: 1000000 }).slice(0, 11), 1200000, ...makeRow().slice(11)];
+    const { rows, errors } = readSheetWith(HEADERS_GIA_CHOT, [rowCu]);
+    expect(rows).toHaveLength(0);
+    expect(errors[0]).toMatch(/Cột "Giá chốt" đã bỏ/);
+  });
+
+  it("file CŨ có cột Giá chốt nhưng để trống → import bình thường", () => {
+    const rowCu = [...makeRow().slice(0, 11), "", ...makeRow().slice(11)];
+    const { rows, errors } = readSheetWith(HEADERS_GIA_CHOT, [rowCu]);
     expect(errors).toEqual([]);
-    expect(rows[0].order.shipments[0].settled_fee).toBe(800000);
+    expect(rows[0].order.shipments[0].cargo_fee).toBe(250000);
+  });
+});
+
+describe("parseMoneyCell — ô tiền viết tay", () => {
+  it("nhận các cách viết số tiền bình thường", () => {
+    expect(parseMoneyCell("1500000").value).toBe(1500000);
+    expect(parseMoneyCell("1.500.000").value).toBe(1500000);
+    expect(parseMoneyCell("1,500,000").value).toBe(1500000);
+    expect(parseMoneyCell("1 500 000 đ").value).toBe(1500000);
+    expect(parseMoneyCell("500000 VND").value).toBe(500000);
   });
 
-  it("kiểm tra tiền tài giữ so với GIÁ CHỐT chứ không phải giá báo", () => {
-    // Đúng tình huống thật: báo 1tr, chốt 1tr2, tài cầm 1tr2 → phải cho qua
-    expect(readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1200000 })).errors).toEqual([]);
-    // Cầm quá cả giá chốt thì vẫn chặn
-    const { errors } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [GIU]: 1500000 }));
-    expect(errors[0]).toMatch(/giá chốt 1.200.000/);
+  it('"-", "n/a", trống là không có — không phải lỗi', () => {
+    for (const v of ["", "-", "n/a", "không"]) {
+      expect(parseMoneyCell(v)).toEqual({ value: 0, negative: false, invalid: false });
+    }
   });
 
-  it("giá chốt âm bị từ chối", () => {
-    const { errors } = readSheet(makeRow({ [SETTLED]: "-500000" }));
-    expect(errors[0]).toMatch(/Giá chốt không được âm/);
+  // Trước đây mọi ký tự không phải số bị lọc bỏ: "2tr" thành 2đ, "1.5tr" thành 15đ
+  it("viết tắt / có chữ / có phần lẻ → invalid, KHÔNG đoán ra một con số", () => {
+    for (const v of ["2tr", "1.5tr", "1,500,000.00", "12.5", "abc", "1tr2"]) {
+      expect(parseMoneyCell(v).invalid).toBe(true);
+    }
   });
 
-  it("tăng bo: giá chốt cũng là giá MỘT lượt", () => {
-    const { rows } = readSheet(makeRow({ [FEE_COL]: 1000000, [SETTLED]: 1200000, [SO_LUOT]: 2 }));
-    const ships = rows[0].order.shipments;
-    expect(ships).toHaveLength(2);
-    expect(ships.every((x) => x.settled_fee === 1200000)).toBe(true);
-    expect(rows[0].display.totalFee).toBe(2400000);
+  it("số âm và ngoặc kế toán vẫn nhận ra là âm", () => {
+    expect(parseMoneyCell("-500000").negative).toBe(true);
+    expect(parseMoneyCell("(500.000)").negative).toBe(true);
+  });
+});
+
+describe("Dữ liệu bất thường", () => {
+  it('cước viết "2tr" bị báo lỗi thay vì ghi doanh thu 2đ', () => {
+    const { rows, errors } = readSheet(makeRow({ [FEE_COL]: "2tr" }));
+    expect(rows).toHaveLength(0);
+    expect(errors[0]).toMatch(/Cước xe không phải số tiền hợp lệ: "2tr"/);
+  });
+
+  it("phí cầu đường có chữ bị báo lỗi thay vì lặng lẽ thành 0", () => {
+    const { errors } = readSheet(makeRow({ [TOLL]: "ba mươi nghìn" }));
+    expect(errors[0]).toMatch(/Phí cầu đường\/vé không phải số tiền hợp lệ/);
+  });
+
+  // Ô KIỂU SỐ định dạng 2 chữ số thập phân hiện "1,500,000.00" — đọc chuỗi hiển thị rồi
+  // lọc chữ số sẽ ra 150 triệu. Phải đọc giá trị số của ô.
+  it("ô kiểu số định dạng #,##0.00 vẫn đọc đúng 1.500.000", () => {
+    const ws = XLSX.utils.aoa_to_sheet([HEADERS, makeRow({ [FEE_COL]: 1500000 })]);
+    ws[XLSX.utils.encode_cell({ r: 1, c: FEE_COL })].z = "#,##0.00";
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "DON_HANG");
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const { rows, errors } = parseWorkbook(XLSX.read(buf, { type: "buffer" }), XLSX);
+    expect(errors).toEqual([]);
+    expect(rows[0].order.shipments[0].cargo_fee).toBe(1500000);
+  });
+
+  it("ô kiểu số có phần lẻ (1.500.000,5đ) bị báo lỗi", () => {
+    const { errors } = readSheet(makeRow({ [FEE_COL]: 1500000.5 }));
+    expect(errors[0]).toMatch(/Cước xe không phải số tiền hợp lệ/);
+  });
+
+  it("dòng trống ở GIỮA file bị bỏ qua, số dòng báo lỗi phía sau vẫn đúng", () => {
+    const blank = new Array(HEADERS.length).fill("");
+    const { rows, errors } = readSheet(makeRow(), blank, makeRow({ [FEE_COL]: "-1" }));
+    expect(rows).toHaveLength(1);
+    expect(errors).toEqual([expect.stringMatching(/^Dòng 4:/)]);
+  });
+
+  // Ô Số lượt / Thanh toán kéo thừa xuống dưới: trước đây báo "thiếu biển số, thiếu tài
+  // xế..." cho từng dòng và chặn CẢ FILE.
+  it("dòng chỉ còn Số lượt / Thanh toán / Ghi chú (thiếu mọi cột chuyến) được bỏ qua và liệt kê", () => {
+    const thua = new Array(HEADERS.length).fill("");
+    thua[SO_LUOT] = 1;
+    thua[PAY] = "CK công ty";
+    thua[NOTES] = "x";
+    const { rows, errors, skipped } = readSheet(makeRow(), thua, thua);
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(skipped).toEqual([3, 4]);
+  });
+
+  it("dòng có dữ liệu chuyến nhưng thiếu cột bắt buộc vẫn báo lỗi đủ các cột thiếu", () => {
+    const { errors } = readSheet(makeRow({ 1: "", 2: "", 5: "" }));
+    expect(errors[0]).toMatch(/Thiếu biển số xe; Thiếu tên tài xế; Thiếu điểm lấy hàng/);
+  });
+
+  it("file chỉ có tiêu đề + dòng trống → báo không có dữ liệu, không im lặng", () => {
+    const blank = new Array(HEADERS.length).fill("");
+    const { rows, errors } = readSheet(blank, blank);
+    expect(rows).toHaveLength(0);
+    expect(errors[0]).toMatch(/không có dòng dữ liệu chuyến nào/);
+  });
+
+  it("file thiếu cột bắt buộc → báo tên cột thiếu", () => {
+    const { errors } = readSheetWith(HEADERS.filter((h) => !h.startsWith("Thanh toán")), [makeRow()]);
+    expect(errors[0]).toMatch(/Thiếu: Thanh toán$/);
+  });
+
+  it("tiền tài giữ điền kèm \"CK công ty\" → báo lỗi thay vì bị backend lặng lẽ bỏ qua", () => {
+    const { errors } = readSheet(makeRow({ [PAY]: "CK công ty", [GIU]: 250000 }));
+    expect(errors[0]).toMatch(/Tiền tài đang giữ chỉ điền khi Thanh toán là/);
+  });
+
+  it(`vượt ${MAX_IMPORT_ROWS} dòng → báo trước, không đợi backend từ chối cả file`, () => {
+    const many = Array.from({ length: MAX_IMPORT_ROWS + 1 }, () => makeRow());
+    const { errors } = readSheet(...many);
+    expect(errors[0]).toMatch(/tối đa 1000 dòng/);
   });
 });
 
@@ -261,7 +355,7 @@ describe("Thu hộ (COD)", () => {
   // File kế toán đang lưu trên máy không có cột này — thêm cột mới không được làm hỏng
   it("file CŨ không có cột Thu hộ vẫn import bình thường", () => {
     const rowCu = ["22/07/2026", "29H-961.45", "Toàn", "", "", "Kho A", "Kho B", "", "", "",
-      250000, "", "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
+      250000, "", "", "", "", "Tiền mặt - tài đang giữ", "", ""];
     const { rows, errors } = readSheetWith(HEADERS_CU, [rowCu]);
 
     expect(errors).toEqual([]);

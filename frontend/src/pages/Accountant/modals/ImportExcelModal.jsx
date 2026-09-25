@@ -10,7 +10,7 @@ import { RouteStops } from "../components/shared/RouteStops";
 import { notify } from "../../../components/shared-ui/Toast";
 import { APP_NAME } from "../../../constants/brand";
 import {
-  PAYMENT_OPTIONS, parseWorkbook,
+  PAYMENT_OPTIONS, parseWorkbook, MAX_IMPORT_ROWS,
 } from "../utils/parseImportRows";
 import { money } from "../../../utils/formatNumber";
 
@@ -22,7 +22,9 @@ import { money } from "../../../utils/formatNumber";
 const TEMPLATE_HEADERS = [
   "Ngày chạy (*)", "Biển số xe (*)", "Tên tài xế (*)", "Tên khách hàng", "SĐT khách hàng",
   "Điểm lấy hàng (*)", "Điểm giao hàng (*)", "Quãng đường (km)", "Số lượt (tăng bo)", "Tên hàng",
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
+  // KHÔNG còn cột "Giá chốt": giá thực tế (sau khi hai bên chốt lại) nhập thẳng vào "Cước
+  // xe". File cũ còn cột này thì parseWorkbook báo lỗi ở dòng có điền, không lặng lẽ bỏ qua.
+  "Cước xe 1 lượt (đ) (*)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)",
   "Xăng dầu (đ)", "Sửa xe (đ)", "Thanh toán (*)", "Tiền tài đang giữ (đ)", "Ghi chú",
 ];
 
@@ -30,22 +32,22 @@ const DATE_HEADER = TEMPLATE_HEADERS[0];
 
 const TEMPLATE_EXAMPLES = [
   ["02/05/2026", "29E-080.32", "Tân", "Cty Hưng Dũng", "0912345678",
-    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", "", 30000, "", "", "",
+    "Hưng Yên", "Hoàng Cầu", 35, 1, "Đồ chuyển nhà", 1000000, "", 30000, "", "", "",
     "CK công ty", "", ""],
   ["03/05/2026", "29E-080.32", "Tân", "", "",
-    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "", "", "",
+    "Xuân Đỉnh", "Tây Hồ", "", 1, "", 500000, "", "", "", "", "",
     "Tiền mặt - tài đang giữ", "", "Khách lẻ"],
   ["05/05/2026", "29E-080.32", "Tân", "An Trần", "0987654321",
-    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, "", "", 30000, "", 1450075, "",
+    "Hoàng Đạt", "Nam Trung Yên", 27, 1, "", 750000, "", 30000, "", 1450075, "",
     "Khách nợ", "", ""],
   ["08/05/2026", "29E-080.32", "Tân", "", "",
-    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", "", "", 900133, "",
+    "Kho A", "Kho B", 12, 5, "Tăng bo x5c", 300000, "", "", "", 900133, "",
     "CK công ty", "", "Cước 300.000 MỘT LƯỢT × 5 lượt → doanh thu 1.500.000"],
   ["09/05/2026", "29E-080.32", "Tân", "Ngọc Hà", "0905111222",
-    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1000000, 1200000, "", "", "", "", "",
-    "Tiền mặt - tài đang giữ", 1200000, "Báo 1tr, chốt lại 1tr2 — tài cầm đủ 1tr2"],
+    "Ngọc Hà", "Bắc Giang", 43, 1, "", 1200000, "", "", "", "", "",
+    "Tiền mặt - tài đang giữ", 1200000, "Báo 1tr, chốt lại 1tr2 — nhập giá thực tế 1tr2 vào Cước xe"],
   ["10/05/2026", "29E-080.32", "Tân", "Cty Minh Long", "0913222333",
-    "Kho Long Biên", "Hải Phòng", 120, 1, "Hàng điện tử", 2000000, "", 15000000, "", "", "", "",
+    "Kho Long Biên", "Hải Phòng", 120, 1, "Hàng điện tử", 2000000, 15000000, "", "", "", "",
     "Tiền mặt - tài đang giữ", 17000000,
     "Thu hộ 15tr tiền hàng — tài cầm cả cước lẫn thu hộ. Doanh thu vẫn chỉ là 2tr"],
 ];
@@ -55,7 +57,7 @@ const REQUIRED_COLS = new Set([
   "Điểm giao hàng (*)", "Cước xe 1 lượt (đ) (*)", "Thanh toán (*)",
 ]);
 const MONEY_COLS = new Set([
-  "Cước xe 1 lượt (đ) (*)", "Giá chốt 1 lượt (đ)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
+  "Cước xe 1 lượt (đ) (*)", "Thu hộ (đ)", "Phí cầu đường/vé (đ)", "Phí đỗ xe/bãi (đ)", "Xăng dầu (đ)", "Sửa xe (đ)", "Tiền tài đang giữ (đ)",
 ]);
 
 const BRAND_BLUE = "FF2563EB";
@@ -120,9 +122,9 @@ const downloadTemplate = async () => {
   // kế toán tải template về nhập thêm bên dưới rồi import là dính đúng 5 dòng lỗi
   // "xe chưa có trong hệ thống" mỗi lần.
 
-  // Dropdown chọn sẵn cho cột "Thanh toán (*)" — áp dụng cho 500 dòng đầu để chừa chỗ nhập thêm
+  // Dropdown chọn sẵn cho cột "Thanh toán (*)" — phủ đủ số dòng tối đa một lần import
   const paymentColIndex = TEMPLATE_HEADERS.indexOf("Thanh toán (*)") + 1;
-  for (let r = 2; r <= 500; r += 1) {
+  for (let r = 2; r <= MAX_IMPORT_ROWS + 1; r += 1) {
     ws.getCell(r, paymentColIndex).dataValidation = {
       type: "list",
       allowBlank: true,
@@ -186,7 +188,8 @@ const downloadTemplate = async () => {
   };
   addNote("• Nhập dữ liệu vào sheet DON_HANG. Sheet VI_DU_MAU chỉ để xem cách nhập — hệ thống KHÔNG đọc sheet đó.");
   addNote("• Mỗi dòng = 1 chuyến đã chạy xong. Cột có nền vàng ở sheet DON_HANG là BẮT BUỘC — thiếu sẽ bị từ chối.");
-  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy) và KHÔNG ÂM.");
+  addNote("• Số tiền nhập SỐ (vd 1000000 hoặc 1.000.000), KHÔNG ÂM, không số lẻ và KHÔNG viết tắt kiểu 1tr / 1.5tr — ô có chữ sẽ bị báo lỗi chứ không tự đoán.");
+  addNote("• Dòng để trống hoàn toàn (hoặc chỉ còn Số lượt / Thanh toán chọn sẵn) được bỏ qua, không tính là lỗi. Mỗi lần import tối đa 1000 dòng.");
   // Cảnh báo này đến từ một sự cố có thật: file để cột ngày ở định dạng kiểu Mỹ (m/d/yy),
   // kế toán gõ "12/8" định là 12 tháng 8, Excel hiểu thành 8 THÁNG 12 và lưu số 46364 —
   // nhưng ô vẫn hiện "12/8/26" nên không ai nhận ra. Doanh thu 11.900.000 rơi sang tháng 12,
@@ -234,8 +237,7 @@ const downloadTemplate = async () => {
   addNote("Trùng tên: nếu tên khách trùng với khách khác đang có, hệ thống sẽ báo và yêu cầu điền SĐT vào ĐÚNG CỘT \"SĐT khách hàng\" — đừng viết số vào sau tên, viết vào tên thì không tra cứu hay nhắc nợ được.");
   addNote("Gõ sai tên (thừa/thiếu dấu, viết tắt khác đi) sẽ tạo ra khách MỚI và tách đôi công nợ. Màn xem trước lúc import có báo dòng nào tạo khách mới — kiểm lại trước khi bấm.");
   addNote("Bỏ trống cả tên lẫn SĐT chỉ dùng cho khách vãng lai trả tiền ngay; dòng \"Khách nợ\" bắt buộc có ít nhất một trong hai.");
-  addNote("Giá chốt: giá thật sau khi hai bên chốt lại — giống việc điều phối sửa giá lúc duyệt phiếu thu. Để TRỐNG nếu không đổi giá. Được phép cao hoặc thấp hơn giá báo. Doanh thu, KPI và công nợ đều tính theo GIÁ CHỐT; cột Cước xe giữ lại giá báo ban đầu để đối chiếu.");
-  addNote("Cước xe: giá của MỘT lượt. Chạy nhiều lượt thì hệ thống tự nhân lên — vd cước 250.000, Số lượt 2 → doanh thu 500.000.");
+  addNote("Cước xe: giá THỰC TẾ của MỘT lượt — nếu hai bên đã chốt lại giá khác giá báo thì nhập giá đã chốt. Doanh thu, KPI và công nợ đều tính theo số này. Chạy nhiều lượt thì hệ thống tự nhân lên — vd cước 250.000, Số lượt 2 → doanh thu 500.000.");
   addNote("Số lượt (tăng bo): chuyến chạy N lượt cùng tuyến điền N — hệ thống tách thành N chuyến, mỗi chuyến mang trọn cước 1 lượt. Điền số nguyên (1, 2, 3...), đừng để ô ở định dạng thập phân.");
   addNote("Tiền tài đang giữ: TỔNG số tiền tài đang cầm của cả dòng (không phải của 1 lượt). Chỉ điền khi khác số khách phải trả — vd khách trả thiếu, tài nộp trước một phần. Không có thì để TRỐNG, đừng gõ số 0.");
   addNote("Phí cầu đường/đỗ xe: KHÁCH chịu (cộng vào tiền khách phải trả). Xăng dầu/Sửa xe: CÔNG TY chịu.");
@@ -476,6 +478,17 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
             <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
               <div className="px-4 py-2 bg-gray-50 dark:bg-white/5 text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-wrap">
                 <span>Đọc được {parsed.rows.length} chuyến từ file</span>
+                {parsed.skipped?.length > 0 && (
+                  // Dòng thừa (trống các cột chuyến) bị bỏ qua — nói ra để kế toán đối chiếu
+                  // với file, không để một dòng thật lặng lẽ biến mất.
+                  <span
+                    className="font-normal text-gray-400 dark:text-gray-400"
+                    title={`Dòng ${parsed.skipped.join(", ")}`}
+                  >
+                    · bỏ qua {parsed.skipped.length} dòng không có dữ liệu chuyến
+                    {parsed.skipped.length <= 5 ? ` (dòng ${parsed.skipped.join(", ")})` : ""}
+                  </span>
+                )}
                 {previewing && (
                   <span className="font-normal text-gray-400 dark:text-gray-400">· đang đối chiếu với hệ thống...</span>
                 )}
@@ -549,19 +562,9 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                             thấy ngay hệ thống hiểu cước là giá 1 lượt chứ không phải tổng */}
                           <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
                             <MoneyText amount={display.totalFee} />
-                            {display.settledFee != null && (
-                              // Chốt lại giá thì phải thấy rõ báo bao nhiêu → chốt bao nhiêu,
-                              // vì đây là con số quyết định doanh thu và KPI của tài xế.
-                              <div className={`text-[10px] font-normal ${
-                                display.settledFee >= display.cargoFee
-                                  ? "text-emerald-600 dark:text-emerald-300"
-                                  : "text-amber-600 dark:text-amber-300"}`}>
-                                báo {money(display.cargoFee)} → chốt {money(display.settledFee)}
-                              </div>
-                            )}
                             {display.runs > 1 && (
                               <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
-                                {money(display.effectiveFee)} × {display.runs} lượt
+                                {money(display.cargoFee)} × {display.runs} lượt
                               </div>
                             )}
                           </td>
